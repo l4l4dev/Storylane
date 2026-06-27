@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm run dev)",
+      "Bash(pnpm run build)",
+      "Bash(pnpm run test)",
+      "Bash(pnpm run lint)",
+      "Bash(pnpm exec tsc --noEmit)",
+      "Bash(supabase start)",
+      "Bash(supabase stop)",
+      "Bash(supabase db push)",
+      "Bash(supabase db reset)",
+      "Bash(supabase migration new *)",
+      "Bash(supabase functions serve *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add apps/*)",
+      "Bash(git add supabase/*)",
+      "Bash(git add CLAUDE.md)",
+      "Bash(git add SPEC.md)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)",
+      "Bash(git branch *)",
+      "Bash(swift build)",
+      "Bash(swift test)"
+    ],
+    "deny": [
+      "Bash(git add -A)",
+      "Bash(git add .)",
+      "Bash(git push --force*)",
+      "Bash(rm -rf *)",
+      "Bash(supabase db drop*)",
+      "Bash(DROP TABLE*)",
+      "Bash(DELETE FROM*)"
+    ]
+  }
+}
