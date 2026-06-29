@@ -53,8 +53,23 @@ apps/ios/
 ## シークレットの受け渡し（Config.xcconfig）
 Supabase の URL / キーはコードに直書きせず `Config.xcconfig`（`.gitignore` 済み）で渡します。
 **iOS でも anon ではなく Publishable key（`sb_publishable_...`）を使用**します。
-具体的な配線は **Task 3（認証）** で実施（`Config.xcconfig.example` を用意し、`project.yml` の
-`configFiles` で参照予定）。
+
+```bash
+cp Config.xcconfig.example Config.xcconfig   # 初回のみ。値を編集
+```
+
+`project.yml` の `configFiles` で参照され、ビルド時に `Info.plist`（生成物）へ
+`SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` が注入され、`SupabaseConfig` が `Bundle.main` 経由で読み込みます。
+既定の `Config.xcconfig` はローカル Supabase（`http://127.0.0.1:54321`）を指します。
+
+> xcconfig では `//` がコメント扱いになるため、URL は `http:/$()/...` のように `$()` でエスケープします。
+
+## 認証（OAuth）
+- `SupabaseClient.swift`（共有クライアント、セッションは SDK が Keychain に永続化）
+- `AuthManager`（`@Observable`）が `authStateChanges` を購読し、ログイン状態でルートを分岐
+- `LoginView` の GitHub / Google ボタン → `signInWithOAuth`（ASWebAuthenticationSession）
+- OAuth コールバックは URL スキーム `dev.l4l4.storylane://login-callback`（`Info.plist` の `CFBundleURLTypes` と Supabase の redirect 許可リストに登録済み）
+- 実機/シミュレータでの OAuth テストには、対象 Supabase（ローカル or クラウド）でプロバイダが有効・コールバック許可されている必要があります
 
 ## ビルド / テスト（CLI）
 ```bash

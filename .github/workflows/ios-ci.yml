@@ -45,6 +45,10 @@ jobs:
       - name: SwiftLint
         run: mint run swiftlint --strict
 
+      # Config.xcconfig is gitignored; CI uses placeholder values (no network in build/tests).
+      - name: Create Config.xcconfig
+        run: cp Config.xcconfig.example Config.xcconfig
+
       - name: Generate Xcode project
         run: mint run xcodegen generate
 

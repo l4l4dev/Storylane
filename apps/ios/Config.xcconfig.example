@@ -1,0 +1,8 @@
+// Copy this file to `Config.xcconfig` and fill in your Supabase values.
+// `Config.xcconfig` is gitignored. iOS uses the Publishable key (sb_publishable_...).
+//
+// NOTE: `//` inside a value starts an xcconfig comment, so URLs must escape it
+// with `$()` as shown below.
+
+SUPABASE_URL = https:/$()/YOUR-PROJECT.supabase.co
+SUPABASE_PUBLISHABLE_KEY = sb_publishable_REPLACE_ME

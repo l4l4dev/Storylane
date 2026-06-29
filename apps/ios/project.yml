@@ -24,18 +24,30 @@ targets:
     platform: iOS
     sources:
       - path: Storylane
+    configFiles:
+      Debug: Config.xcconfig
+      Release: Config.xcconfig
     dependencies:
       - package: Supabase
         product: Supabase
+    info:
+      path: Storylane/Info.plist
+      properties:
+        CFBundleDisplayName: Storylane
+        UILaunchScreen: {}
+        # Injected from Config.xcconfig at build time and read via Bundle.main.
+        SUPABASE_URL: $(SUPABASE_URL)
+        SUPABASE_PUBLISHABLE_KEY: $(SUPABASE_PUBLISHABLE_KEY)
+        # Custom URL scheme used as the OAuth callback for ASWebAuthenticationSession.
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - dev.l4l4.storylane
     settings:
       base:
-        GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: dev.l4l4.Storylane
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
     preBuildScripts:
       - name: SwiftLint
         basedOnDependencyAnalysis: false
