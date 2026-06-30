@@ -1,0 +1,114 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { filterStories } from "@/lib/utils/stories";
+import { BacklogBoard } from "@/components/features/backlog/backlog-board";
+import { BacklogFilters } from "@/components/features/backlog/backlog-filters";
+import { CreateStoryDialog } from "@/components/features/backlog/create-story-dialog";
+import type { StoryCardData } from "@/components/features/backlog/story-card";
+
+export default async function BacklogPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ type?: string; assignee?: string; label?: string }>;
+}) {
+  const { id } = await params;
+  const { type, assignee, label } = await searchParams;
+  const supabase = await createClient();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("id", id)
+    .single();
+
+  if (!project) {
+    notFound();
+  }
+
+  const [{ data: stories }, { data: epics }, { data: labels }, { data: members }] =
+    await Promise.all([
+      supabase
+        .from("stories")
+        .select(
+          "id, title, story_type, state, points, assignee_id, position, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+        )
+        .eq("project_id", id)
+        .order("position", { ascending: true }),
+      supabase.from("epics").select("id, name").eq("project_id", id).order("position"),
+      supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
+      supabase
+        .from("project_members")
+        .select("user_id, profiles(display_name)")
+        .eq("project_id", id),
+    ]);
+
+  const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
+
+  const cards = (stories ?? []).map((story) => {
+    const assigneeProfile = Array.isArray(story.assignee)
+      ? story.assignee[0]
+      : story.assignee;
+    const labelIds = story.story_labels.map((sl) => sl.label_id);
+    const card: StoryCardData & { labelIds: string[]; assignee_id: string | null } = {
+      id: story.id,
+      title: story.title,
+      story_type: story.story_type,
+      state: story.state,
+      points: story.points,
+      assignee_id: story.assignee_id,
+      assigneeName: assigneeProfile?.display_name ?? null,
+      labels: labelIds
+        .map((labelId) => labelById.get(labelId))
+        .filter((l): l is NonNullable<typeof l> => l != null)
+        .map((l) => ({ id: l.id, name: l.name, color: l.color })),
+      labelIds,
+    };
+    return card;
+  });
+
+  const filtered = filterStories(cards, { type, assigneeId: assignee, labelId: label });
+
+  const assigneeOptions = (members ?? []).map((m) => {
+    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+    return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
+  });
+
+  return (
+    <main className="mx-auto max-w-3xl p-6">
+      <div className="mb-4">
+        <div className="flex items-center gap-3 text-sm">
+          <Link href="/dashboard" className="text-indigo-600 hover:underline">
+            ← Projects
+          </Link>
+          <Link
+            href={`/projects/${project.id}/settings`}
+            className="text-indigo-600 hover:underline"
+          >
+            Settings
+          </Link>
+        </div>
+        <div className="mt-2 flex items-center justify-between">
+          <h1 className="text-2xl font-bold">{project.name} · Backlog</h1>
+          <CreateStoryDialog
+            projectId={project.id}
+            epics={epics ?? []}
+            labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
+            members={assigneeOptions}
+          />
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <BacklogFilters
+          assignees={assigneeOptions}
+          labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
+        />
+      </div>
+
+      <BacklogBoard projectId={project.id} stories={filtered} />
+    </main>
+  );
+}

@@ -5,6 +5,9 @@ type Tables = Database["public"]["Tables"];
 export type Project = Tables["projects"]["Row"];
 export type ProjectMember = Tables["project_members"]["Row"];
 export type Profile = Tables["profiles"]["Row"];
+export type Story = Tables["stories"]["Row"];
+export type Epic = Tables["epics"]["Row"];
+export type Label = Tables["labels"]["Row"];
 
 export type ProjectRole = "owner" | "member" | "viewer";
 export type PointScale = "fibonacci" | "linear" | "custom";
