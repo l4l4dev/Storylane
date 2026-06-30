@@ -10,7 +10,7 @@ struct StorylaneApp: App {
                 if auth.isLoading {
                     ProgressView()
                 } else if auth.session != nil {
-                    ContentView()
+                    ProjectListView()
                 } else {
                     LoginView()
                 }
