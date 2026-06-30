@@ -40,8 +40,25 @@ private struct InviteParams: Encodable {
     }
 }
 
+/// Project/member persistence, abstracted so view models can be unit-tested
+/// against a mock instead of the live Supabase client.
+protocol ProjectRepositoryProtocol: Sendable {
+    func fetchProjects() async throws -> [Project]
+    func createProject(
+        name: String,
+        description: String?,
+        iterationLength: Int,
+        pointScale: String
+    ) async throws
+    func updateProject(_ project: Project) async throws
+    func fetchMembers(projectId: UUID) async throws -> [ProjectMember]
+    func inviteMember(projectId: UUID, email: String, role: String) async throws
+    func updateMemberRole(projectId: UUID, userId: UUID, role: String) async throws
+    func removeMember(projectId: UUID, userId: UUID) async throws
+}
+
 /// All Supabase access for projects and their members.
-struct ProjectRepository {
+struct ProjectRepository: ProjectRepositoryProtocol {
     func fetchProjects() async throws -> [Project] {
         try await supabase
             .from("projects")

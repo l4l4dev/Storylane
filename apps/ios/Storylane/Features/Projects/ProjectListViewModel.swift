@@ -7,7 +7,11 @@ final class ProjectListViewModel {
     private(set) var isLoading = false
     var errorMessage: String?
 
-    private let repository = ProjectRepository()
+    private let repository: ProjectRepositoryProtocol
+
+    init(repository: ProjectRepositoryProtocol = ProjectRepository()) {
+        self.repository = repository
+    }
 
     func load() async {
         isLoading = true

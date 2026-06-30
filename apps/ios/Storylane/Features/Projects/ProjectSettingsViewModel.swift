@@ -8,10 +8,11 @@ final class ProjectSettingsViewModel {
     private(set) var isLoading = false
     var errorMessage: String?
 
-    private let repository = ProjectRepository()
+    private let repository: ProjectRepositoryProtocol
 
-    init(project: Project) {
+    init(project: Project, repository: ProjectRepositoryProtocol = ProjectRepository()) {
         self.project = project
+        self.repository = repository
     }
 
     func loadMembers() async {
