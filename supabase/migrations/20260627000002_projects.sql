@@ -78,9 +78,11 @@ alter table public.projects enable row level security;
 alter table public.project_members enable row level security;
 
 -- projects policies
+-- `created_by = auth.uid()` lets the creator read the row immediately, including
+-- via INSERT ... RETURNING (membership is added by an AFTER trigger).
 create policy "members can view their projects"
   on public.projects for select to authenticated
-  using (public.is_project_member(id));
+  using (public.is_project_member(id) or created_by = auth.uid());
 
 create policy "authenticated users can create projects"
   on public.projects for insert to authenticated
