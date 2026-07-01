@@ -4,7 +4,7 @@ Steps to follow before starting any story-related implementation.
 
 ## Checklist
 
-1. Review the story model and state definitions in `SPEC.md`
+1. Review the story model and state definitions in `spec/data-model.md` (see `stories` and `tasks`)
 2. Confirm the story type to implement: feature / bug / chore / release
 3. Confirm whether this is an iOS or Web implementation
 
@@ -46,4 +46,4 @@ apps/web/components/features/story/
 ```
 
 4. Write tests using Swift Testing (iOS) or Vitest (Web) after implementing
-5. Verify that Supabase RLS policies align with the guidelines in `SPEC.md`
+5. Verify that Supabase RLS policies align with the guidelines in `spec/rls.md`

@@ -11,7 +11,7 @@ supabase migration new <name>
 
 ## Checklist
 
-1. Verify consistency with the data model in `SPEC.md`
+1. Verify consistency with the data model in `spec/data-model.md`
 2. Always define RLS policies in the same migration
 3. Write a DOWN migration for rollback
 4. Check the impact on existing data when adding or modifying columns

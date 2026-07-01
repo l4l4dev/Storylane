@@ -12,6 +12,7 @@
       "Bash(supabase stop)",
       "Bash(supabase db push)",
       "Bash(supabase db reset)",
+      "Bash(supabase db diff *)",
       "Bash(supabase migration new *)",
       "Bash(supabase functions serve *)",
       "Bash(git status)",
@@ -21,11 +22,19 @@
       "Bash(git add supabase/*)",
       "Bash(git add CLAUDE.md)",
       "Bash(git add SPEC.md)",
+      "Bash(git add spec/*)",
+      "Bash(git add ARCHITECTURE.md)",
       "Bash(git commit *)",
       "Bash(git checkout *)",
       "Bash(git branch *)",
       "Bash(swift build)",
-      "Bash(swift test)"
+      "Bash(swift test)",
+      "mcp__memory__create_entities",
+      "mcp__memory__create_relations",
+      "mcp__memory__add_observations",
+      "mcp__memory__read_graph",
+      "mcp__memory__search_nodes",
+      "mcp__memory__open_nodes"
     ],
     "deny": [
       "Bash(git add -A)",
@@ -35,6 +44,20 @@
       "Bash(supabase db drop*)",
       "Bash(DROP TABLE*)",
       "Bash(DELETE FROM*)"
+    ]
+  },
+  "enabledMcpjsonServers": ["memory"],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -Rs '{hookSpecificOutput: {hookEventName: \"SessionStart\", additionalContext: .}}' ARCHITECTURE.md",
+            "statusMessage": "Loading architecture map..."
+          }
+        ]
+      }
     ]
   }
 }
