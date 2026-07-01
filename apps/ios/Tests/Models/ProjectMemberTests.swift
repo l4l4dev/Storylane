@@ -5,13 +5,13 @@ import Testing
 
 @Suite struct ProjectMemberTests {
     @Test func decodesNestedProfileFromSupabaseJoin() throws {
-        let json = """
+        let json = Data("""
         {
             "user_id": "44444444-4444-4444-4444-444444444444",
             "role": "owner",
             "profiles": { "display_name": "Ada Lovelace" }
         }
-        """.data(using: .utf8)!
+        """.utf8)
 
         let member = try JSONDecoder().decode(ProjectMember.self, from: json)
 
@@ -37,15 +37,15 @@ import Testing
         #expect(member.displayName == "Grace Hopper")
     }
 
-    @Test func displayNameFallsBackToShortUuidWhenProfileMissing() {
-        let userId = UUID(uuidString: "55555555-5555-5555-5555-555555555555")!
+    @Test func displayNameFallsBackToShortUuidWhenProfileMissing() throws {
+        let userId = try #require(UUID(uuidString: "55555555-5555-5555-5555-555555555555"))
         let member = ProjectMember(userId: userId, role: "viewer", profile: nil)
 
         #expect(member.displayName == "55555555")
     }
 
-    @Test func displayNameFallsBackWhenProfileDisplayNameIsNil() {
-        let userId = UUID(uuidString: "66666666-6666-6666-6666-666666666666")!
+    @Test func displayNameFallsBackWhenProfileDisplayNameIsNil() throws {
+        let userId = try #require(UUID(uuidString: "66666666-6666-6666-6666-666666666666"))
         let member = ProjectMember(
             userId: userId,
             role: "member",

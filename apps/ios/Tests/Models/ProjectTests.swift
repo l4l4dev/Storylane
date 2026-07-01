@@ -5,7 +5,7 @@ import Testing
 
 @Suite struct ProjectTests {
     @Test func decodesSnakeCaseKeysFromSupabaseRow() throws {
-        let json = """
+        let json = Data("""
         {
             "id": "11111111-1111-1111-1111-111111111111",
             "name": "Apollo",
@@ -14,7 +14,7 @@ import Testing
             "iteration_length": 14,
             "point_scale": "fibonacci"
         }
-        """.data(using: .utf8)!
+        """.utf8)
 
         let project = try JSONDecoder().decode(Project.self, from: json)
 
@@ -27,7 +27,7 @@ import Testing
     }
 
     @Test func decodesNullDescription() throws {
-        let json = """
+        let json = Data("""
         {
             "id": "22222222-2222-2222-2222-222222222222",
             "name": "Gemini",
@@ -36,7 +36,7 @@ import Testing
             "iteration_length": 7,
             "point_scale": "linear"
         }
-        """.data(using: .utf8)!
+        """.utf8)
 
         let project = try JSONDecoder().decode(Project.self, from: json)
 
@@ -60,8 +60,9 @@ import Testing
     }
 
     @Test func encodesUsingSnakeCaseKeys() throws {
+        let knownId = try #require(UUID(uuidString: "33333333-3333-3333-3333-333333333333"))
         let project = Project(
-            id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!,
+            id: knownId,
             name: "Voyager",
             description: nil,
             velocityWindow: 4,
