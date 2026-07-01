@@ -1,0 +1,45 @@
+-- ============================================================
+-- Local dev seed data. Only ever runs against the local Supabase
+-- instance (via `supabase db reset` / `supabase start`), never against a
+-- deployed project — see [db.seed] in config.toml.
+--
+-- Seeds a fixed dev user so `/auth/login` can offer a "Continue as dev
+-- user" shortcut in local development, skipping the OAuth flow. The
+-- password below is intentionally not a secret: it only ever grants
+-- access to this throwaway local sandbox database.
+-- ============================================================
+
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, recovery_sent_at, last_sign_in_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, email_change, email_change_token_new, recovery_token
+) values (
+  '00000000-0000-0000-0000-000000000000',
+  '11111111-1111-1111-1111-111111111111',
+  'authenticated',
+  'authenticated',
+  'dev@storylane.local',
+  crypt('dev-local-only-password', gen_salt('bf')),
+  now(), now(), now(),
+  '{"provider":"email","providers":["email"]}',
+  '{"full_name":"Dev User"}',
+  now(), now(), '', '', '', ''
+)
+on conflict (id) do nothing;
+
+insert into auth.identities (
+  id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
+) values (
+  gen_random_uuid(),
+  '11111111-1111-1111-1111-111111111111',
+  format(
+    '{"sub":"%s","email":"%s"}',
+    '11111111-1111-1111-1111-111111111111',
+    'dev@storylane.local'
+  )::jsonb,
+  'email',
+  '11111111-1111-1111-1111-111111111111',
+  now(), now(), now()
+)
+on conflict (provider, provider_id) do nothing;
