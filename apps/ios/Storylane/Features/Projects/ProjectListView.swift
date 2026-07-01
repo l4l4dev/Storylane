@@ -33,7 +33,7 @@ struct ProjectListView: View {
             }
             .navigationTitle("Projects")
             .navigationDestination(for: Project.self) { project in
-                ProjectSettingsView(project: project)
+                BacklogView(project: project)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
