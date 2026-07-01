@@ -44,10 +44,10 @@ export default async function StoryDetailPage({
     <main className="mx-auto max-w-2xl p-6">
       <div className="mb-6">
         <Link
-          href={`/projects/${story.project_id}/backlog`}
+          href={`/projects/${story.project_id}/board`}
           className="text-sm text-indigo-600 hover:underline"
         >
-          ← Backlog
+          ← Board
         </Link>
         <h1 className="mt-2 text-2xl font-bold">{story.title}</h1>
       </div>

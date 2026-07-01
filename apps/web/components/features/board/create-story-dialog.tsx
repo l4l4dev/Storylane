@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createStory } from "@/app/projects/[id]/backlog/actions";
+import { createStory } from "@/app/projects/[id]/board/actions";
 import { STORY_TYPES, storyTypeUsesPoints } from "@/lib/utils/stories";
 
 type Option = { id: string; name: string };

@@ -40,9 +40,20 @@ export default async function ProjectSettingsPage({
   return (
     <main className="mx-auto max-w-2xl p-6">
       <div className="mb-6">
-        <Link href="/dashboard" className="text-sm text-indigo-600 hover:underline">
-          ← Projects
-        </Link>
+        <div className="flex items-center gap-3 text-sm">
+          <Link href="/dashboard" className="text-indigo-600 hover:underline">
+            ← Projects
+          </Link>
+          <Link href={`/projects/${project.id}`} className="text-indigo-600 hover:underline">
+            Home
+          </Link>
+          <Link
+            href={`/projects/${project.id}/board`}
+            className="text-indigo-600 hover:underline"
+          >
+            Board
+          </Link>
+        </div>
         <h1 className="mt-2 text-2xl font-bold">{project.name} · Settings</h1>
       </div>
 

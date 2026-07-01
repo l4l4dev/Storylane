@@ -96,14 +96,16 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 ## Task 6 — Iterations
 
-### Web
-- [ ] Iteration list page (`/projects/[id]/iterations`)
-- [ ] Auto-generate next iteration based on `iteration_length`
-- [ ] Auto-assign stories from backlog up to current velocity
-- [ ] Display current iteration on project home (`/projects/[id]`)
-- [ ] Sprint goal input
-- [ ] Manual story move between iterations
-- [ ] Mark iteration as done → finalize velocity
+### Web ✅
+- [x] Iteration + backlog board on the merged `/projects/[id]/board` page (iterations stacked
+      above the unassigned backlog, drag-and-drop between them; superseded the standalone
+      `/iterations` route, merged 2026-07-01 to match Pivotal Tracker's actual UX)
+- [x] Auto-generate next iteration based on `iteration_length`
+- [x] Auto-assign stories from backlog up to current velocity
+- [x] Display current iteration on project home (`/projects/[id]`)
+- [x] Sprint goal input
+- [x] Manual story move between iterations (drag-and-drop across iteration/backlog sections)
+- [x] Mark iteration as done → finalize velocity
 
 ### iOS（Web 全タスク完了後に着手）
 - [ ] `IterationsView` — list of iterations
@@ -127,14 +129,14 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 ---
 
-## Task 8 — Velocity Calculation
+## Task 8 — Velocity Calculation ✅
 
-- [ ] Implement velocity calculation logic (see SPEC.md)
+- [x] Implement velocity calculation logic (see SPEC.md)
   - Average accepted points across last `velocity_window` completed iterations
   - Exclude `chore` and `release` story types
-- [ ] Store finalized velocity on iteration completion
-- [ ] Display current velocity on project home and iteration views
-- [ ] Use velocity for auto-assignment in Task 6
+- [x] Store finalized velocity on iteration completion
+- [x] Display current velocity on project home and iteration views
+- [x] Use velocity for auto-assignment in Task 6
 
 ---
 

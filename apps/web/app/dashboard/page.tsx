@@ -35,7 +35,7 @@ export default async function DashboardPage() {
               className="rounded-lg border border-gray-200 p-4 hover:border-indigo-400 dark:border-gray-800"
             >
               <div className="flex items-start justify-between gap-3">
-                <Link href={`/projects/${project.id}/backlog`} className="block flex-1">
+                <Link href={`/projects/${project.id}`} className="block flex-1">
                   <p className="font-medium">{project.name}</p>
                   {project.description && (
                     <p className="mt-1 text-sm text-gray-500">{project.description}</p>

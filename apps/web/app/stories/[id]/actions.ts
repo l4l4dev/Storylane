@@ -57,7 +57,7 @@ export async function updateStory(formData: FormData) {
   }
 
   revalidatePath(`/stories/${id}`);
-  revalidatePath(`/projects/${projectId}/backlog`);
+  revalidatePath(`/projects/${projectId}/board`);
 }
 
 export async function deleteStory(formData: FormData) {
@@ -71,6 +71,6 @@ export async function deleteStory(formData: FormData) {
     throw new Error(error.message);
   }
 
-  revalidatePath(`/projects/${projectId}/backlog`);
-  redirect(`/projects/${projectId}/backlog`);
+  revalidatePath(`/projects/${projectId}/board`);
+  redirect(`/projects/${projectId}/board`);
 }

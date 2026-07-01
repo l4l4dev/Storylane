@@ -8,9 +8,8 @@
 /                         Login / top page
 /auth/login               Login (OAuth)
 /dashboard                Project list
-/projects/[id]            Project home (backlog + current iteration)
-/projects/[id]/backlog    Backlog detail
-/projects/[id]/iterations Iteration list
+/projects/[id]            Project home (backlog + current iteration, read-only summary)
+/projects/[id]/board      Board (unassigned backlog + current/planned/done iterations, drag-and-drop)
 /projects/[id]/epics      Epic list
 /projects/[id]/settings   Project settings (members, integrations, point scale, etc.)
 /stories/[id]             Story detail (modal or standalone page)

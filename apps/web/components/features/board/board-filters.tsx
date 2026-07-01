@@ -5,7 +5,7 @@ import { STORY_TYPES } from "@/lib/utils/stories";
 
 type Option = { id: string; name: string };
 
-export function BacklogFilters({
+export function BoardFilters({
   assignees,
   labels,
 }: {
