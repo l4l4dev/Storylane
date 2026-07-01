@@ -5,86 +5,92 @@ Each task should be completed with tests before moving to the next.
 
 Reference `SPEC.md` for data models, RLS policies, and feature details.
 
----
+## 開発順序方針（2026-07-01 変更）
 
-## Task 1 — Repository & Project Setup
-
-- [ ] Initialize monorepo structure (`apps/web`, `apps/ios`, `supabase`)
-- [ ] Set up Next.js project in `apps/web` with TypeScript and Tailwind CSS
-- [ ] Set up Xcode project in `apps/ios` with SwiftUI
-- [ ] Add `supabase-swift` Swift Package to iOS project
-- [ ] Install and configure Supabase CLI
-- [ ] Verify local Supabase starts correctly with `supabase start`
+**Web を全タスク実装し終えてから iOS に着手する。**
+理由: Web で仕様変更が発生することがあり、Web 実装を先に安定させてから iOS を実装する方が手戻りを最小化できる。
+Tasks 6〜13 は Web → iOS の順で進める。
 
 ---
 
-## Task 2 — Database: Migrations & RLS
+## Task 1 — Repository & Project Setup ✅
 
-- [ ] Create migration: `profiles`
-- [ ] Create migration: `projects` + `project_members`
-- [ ] Create migration: `epics` + `labels` + `story_labels`
-- [ ] Create migration: `iterations`
-- [ ] Create migration: `stories` + `tasks`
-- [ ] Create migration: `comments` + `activity_logs`
-- [ ] Create migration: `integrations`
-- [ ] Write RLS policies for all tables (see SPEC.md for guidelines)
-- [ ] Verify all policies locally with `supabase db reset`
+- [x] Initialize monorepo structure (`apps/web`, `apps/ios`, `supabase`)
+- [x] Set up Next.js project in `apps/web` with TypeScript and Tailwind CSS
+- [x] Set up Xcode project in `apps/ios` with SwiftUI
+- [x] Add `supabase-swift` Swift Package to iOS project
+- [x] Install and configure Supabase CLI
+- [x] Verify local Supabase starts correctly with `supabase start`
 
 ---
 
-## Task 3 — Authentication
+## Task 2 — Database: Migrations & RLS ✅
 
-### Web
-- [ ] Set up Supabase Auth client (`lib/supabase/`)
-- [ ] Implement GitHub OAuth login page (`/auth/login`)
-- [ ] Implement Google OAuth login
-- [ ] Handle session persistence with `@supabase/ssr`
-- [ ] Redirect unauthenticated users to `/auth/login`
-- [ ] Auto-create `profiles` row on first sign-in
-
-### iOS
-- [ ] Set up `SupabaseClient.swift`
-- [ ] Implement GitHub OAuth sign-in
-- [ ] Implement Google OAuth sign-in
-- [ ] Persist session across app launches
-- [ ] Auto-create `profiles` row on first sign-in
+- [x] Create migration: `profiles`
+- [x] Create migration: `projects` + `project_members`
+- [x] Create migration: `epics` + `labels` + `story_labels`
+- [x] Create migration: `iterations`
+- [x] Create migration: `stories` + `tasks`
+- [x] Create migration: `comments` + `activity_logs`
+- [x] Create migration: `integrations`
+- [x] Write RLS policies for all tables (see SPEC.md for guidelines)
+- [x] Verify all policies locally with `supabase db reset`
 
 ---
 
-## Task 4 — Project Management
+## Task 3 — Authentication ✅
 
-### Web
-- [ ] Project list page (`/dashboard`)
-- [ ] Create project modal (name, description, iteration length, point scale)
-- [ ] Project settings page (`/projects/[id]/settings`)
-  - [ ] Edit project details
-  - [ ] Invite members by email
-  - [ ] Change member roles
-  - [ ] Remove members
+### Web ✅
+- [x] Set up Supabase Auth client (`lib/supabase/`)
+- [x] Implement GitHub OAuth login page (`/auth/login`)
+- [x] Implement Google OAuth login
+- [x] Handle session persistence with `@supabase/ssr`
+- [x] Redirect unauthenticated users to `/auth/login`
+- [x] Auto-create `profiles` row on first sign-in
 
-### iOS
-- [ ] `ProjectListView` — list of projects on launch
-- [ ] Create project sheet
-- [ ] Project settings screen
+### iOS ✅
+- [x] Set up `SupabaseClient.swift`
+- [x] Implement GitHub OAuth sign-in
+- [x] Implement Google OAuth sign-in
+- [x] Persist session across app launches
+- [x] Auto-create `profiles` row on first sign-in
 
 ---
 
-## Task 5 — Backlog & Stories
+## Task 4 — Project Management ✅
 
-### Web
-- [ ] Backlog page (`/projects/[id]/backlog`)
-- [ ] Story card component with type badge and state indicator
-- [ ] Create story panel (title, type, points, assignee, labels, epic)
-- [ ] Story detail page/modal (`/stories/[id]`)
-- [ ] Edit and delete story
-- [ ] Drag-and-drop reordering (update `position` field)
-- [ ] Filter backlog by type / label / assignee
+### Web ✅
+- [x] Project list page (`/dashboard`)
+- [x] Create project modal (name, description, iteration length, point scale)
+- [x] Project settings page (`/projects/[id]/settings`)
+  - [x] Edit project details
+  - [x] Invite members by email
+  - [x] Change member roles
+  - [x] Remove members
 
-### iOS
-- [ ] `BacklogView` — scrollable story list
-- [ ] `StoryDetailView` — full story detail
-- [ ] `StoryEditView` — create and edit story
-- [ ] Swipe actions for quick state changes
+### iOS ✅
+- [x] `ProjectListView` — list of projects on launch
+- [x] Create project sheet
+- [x] Project settings screen
+
+---
+
+## Task 5 — Backlog & Stories ✅
+
+### Web ✅
+- [x] Backlog page (`/projects/[id]/backlog`)
+- [x] Story card component with type badge and state indicator
+- [x] Create story panel (title, type, points, assignee, labels, epic)
+- [x] Story detail page/modal (`/stories/[id]`)
+- [x] Edit and delete story
+- [x] Drag-and-drop reordering (update `position` field)
+- [x] Filter backlog by type / label / assignee
+
+### iOS ✅
+- [x] `BacklogView` — scrollable story list
+- [x] `StoryDetailView` — full story detail
+- [x] `StoryEditView` — create and edit story
+- [x] Swipe actions for quick state changes
 
 ---
 
@@ -99,7 +105,7 @@ Reference `SPEC.md` for data models, RLS policies, and feature details.
 - [ ] Manual story move between iterations
 - [ ] Mark iteration as done → finalize velocity
 
-### iOS
+### iOS（Web 全タスク完了後に着手）
 - [ ] `IterationsView` — list of iterations
 - [ ] Current iteration detail with story list
 - [ ] Sprint goal display and edit
@@ -115,7 +121,7 @@ Reference `SPEC.md` for data models, RLS policies, and feature details.
 - [ ] Label management in project settings
 - [ ] Apply multiple labels to a story
 
-### iOS
+### iOS（Web 全タスク完了後に着手）
 - [ ] `EpicsView` — epic list with progress
 - [ ] Label picker in story edit screen
 
@@ -139,7 +145,7 @@ Reference `SPEC.md` for data models, RLS policies, and feature details.
 - [ ] @mention support (parse `@username` in comment body)
 - [ ] Activity log timeline on project home
 
-### iOS
+### iOS（Web 全タスク完了後に着手）
 - [ ] Comment list and input on `StoryDetailView`
 - [ ] Activity log screen
 
@@ -151,7 +157,7 @@ Reference `SPEC.md` for data models, RLS policies, and feature details.
 - [ ] Request browser notification permission on sign-in
 - [ ] Trigger notification on: assigned to story, @mentioned, story state changed
 
-### iOS
+### iOS（Web 全タスク完了後に着手）
 > **保留（当面なし）**: iOS プッシュ通知(APNs)は当面実装しない（シミュレータのみで開発するため）。
 > APNs には Apple Developer Program（有料・$99/年）が必要。実装する場合はその登録後に着手する。
 > それまでは Web のブラウザ通知のみを提供する。
