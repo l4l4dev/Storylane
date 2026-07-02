@@ -8,11 +8,13 @@ type Option = { id: string; name: string };
 
 export function CreateStoryDialog({
   projectId,
+  pointScale,
   epics,
   labels,
   members,
 }: {
   projectId: string;
+  pointScale: number[];
   epics: Option[];
   labels: Option[];
   members: Option[];
@@ -77,16 +79,22 @@ export function CreateStoryDialog({
                   </select>
                 </label>
 
-                <label className="flex w-24 flex-col gap-1 text-sm">
+                <label className="flex w-32 flex-col gap-1 text-sm">
                   <span>Points</span>
-                  <input
+                  {/* Points come from the project's point scale — no free
+                      numeric input (see spec/features.md). */}
+                  <select
                     name="points"
-                    type="number"
-                    min={0}
                     disabled={!storyTypeUsesPoints(storyType)}
-                    placeholder={storyTypeUsesPoints(storyType) ? "" : "—"}
                     className="rounded-md border border-gray-300 px-3 py-2 disabled:opacity-50 dark:border-gray-700 dark:bg-zinc-800"
-                  />
+                  >
+                    <option value="">{storyTypeUsesPoints(storyType) ? "Unestimated" : "—"}</option>
+                    {pointScale.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
 

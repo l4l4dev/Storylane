@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { transitionStory } from "@/app/projects/[id]/board/actions";
 import {
+  applyTransition,
   availableTransitions,
   transitionLabel,
   type StoryState as StoryLifecycleState,
 } from "@/lib/utils/story-state";
 import {
   formatPoints,
+  isUnestimatedFeature,
   STORY_STATE_META,
   STORY_TYPE_META,
   type StoryState,
@@ -107,19 +109,28 @@ export function StoryCard({
 
       {actions.length > 0 && (
         <div className="mt-2 flex items-center gap-2">
-          {actions.map((action) => (
-            <form key={action} action={transitionStory}>
-              <input type="hidden" name="project_id" value={projectId ?? ""} />
-              <input type="hidden" name="story_id" value={story.id} />
-              <input type="hidden" name="action" value={action} />
-              <button
-                type="submit"
-                className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-zinc-800"
-              >
-                {transitionLabel(action)}
-              </button>
-            </form>
-          ))}
+          {actions.map((action) => {
+            // An unestimated feature cannot be started (spec/features.md) —
+            // the button targeting `started` (Start / Restart) is disabled.
+            const blocked =
+              isUnestimatedFeature(story.story_type, story.points) &&
+              applyTransition(story.state as StoryLifecycleState, action) === "started";
+            return (
+              <form key={action} action={transitionStory}>
+                <input type="hidden" name="project_id" value={projectId ?? ""} />
+                <input type="hidden" name="story_id" value={story.id} />
+                <input type="hidden" name="action" value={action} />
+                <button
+                  type="submit"
+                  disabled={blocked}
+                  title={blocked ? "Estimate this feature before starting" : undefined}
+                  className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-gray-700 dark:hover:bg-zinc-800"
+                >
+                  {transitionLabel(action)}
+                </button>
+              </form>
+            );
+          })}
         </div>
       )}
     </div>

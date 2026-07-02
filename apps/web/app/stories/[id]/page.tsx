@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { STORY_STATES, STORY_TYPES } from "@/lib/utils/stories";
+import { pointScaleValues, STORY_STATES, STORY_TYPES } from "@/lib/utils/stories";
 import { CommentBody } from "@/components/features/story/comment-body";
 import { addComment, deleteStory, updateStory } from "./actions";
 
@@ -23,8 +23,13 @@ export default async function StoryDetailPage({
     notFound();
   }
 
-  const [{ data: epics }, { data: labels }, { data: members }, { data: comments }] =
+  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }] =
     await Promise.all([
+      supabase
+        .from("projects")
+        .select("point_scale, custom_points")
+        .eq("id", story.project_id)
+        .single(),
       supabase.from("epics").select("id, name").eq("project_id", story.project_id).order("position"),
       supabase.from("labels").select("id, name").eq("project_id", story.project_id).order("name"),
       supabase
@@ -39,6 +44,7 @@ export default async function StoryDetailPage({
     ]);
 
   const storyLabelIds = new Set(story.story_labels.map((sl) => sl.label_id));
+  const pointScale = pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points);
   const assigneeOptions = (members ?? []).map((m) => {
     const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
     return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
@@ -101,15 +107,18 @@ export default async function StoryDetailPage({
             </select>
           </label>
 
-          <label className="flex w-24 flex-col gap-1 text-sm">
+          <label className="flex w-32 flex-col gap-1 text-sm">
             <span>Points</span>
-            <input
-              name="points"
-              type="number"
-              min={0}
-              defaultValue={story.points ?? ""}
-              className={inputClass}
-            />
+            {/* Points come from the project's point scale — no free numeric
+                input (see spec/features.md). */}
+            <select name="points" defaultValue={story.points ?? ""} className={inputClass}>
+              <option value="">Unestimated</option>
+              {pointScale.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 

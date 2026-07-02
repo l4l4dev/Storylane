@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { parsePoints } from "@/lib/utils/stories";
+import { isUnestimatedFeature, parsePoints, pointScaleValues } from "@/lib/utils/stories";
 
 export async function updateStory(formData: FormData) {
   const id = String(formData.get("story_id"));
@@ -12,7 +12,6 @@ export async function updateStory(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim() || null;
   const storyType = String(formData.get("story_type") ?? "feature");
   const state = String(formData.get("state") ?? "unstarted");
-  const points = parsePoints(formData.get("points") as string | null, storyType);
   const epicId = String(formData.get("epic_id") ?? "") || null;
   const assigneeId = String(formData.get("assignee_id") ?? "") || null;
 
@@ -21,6 +20,29 @@ export async function updateStory(formData: FormData) {
   }
 
   const supabase = await createClient();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("point_scale, custom_points")
+    .eq("id", projectId)
+    .single();
+
+  if (!project) {
+    throw new Error("Project not found");
+  }
+
+  const points = parsePoints(
+    formData.get("points") as string | null,
+    storyType,
+    pointScaleValues(project.point_scale, project.custom_points),
+  );
+
+  // An unestimated feature cannot be started (see spec/features.md). The
+  // free-form state select lives here until Task 12.5 step 7 replaces it,
+  // so the invariant is enforced server-side too.
+  if (state === "started" && isUnestimatedFeature(storyType, points)) {
+    throw new Error("An unestimated feature cannot be started");
+  }
   const { error } = await supabase
     .from("stories")
     .update({

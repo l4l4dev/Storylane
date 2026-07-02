@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { groupStoriesByIteration } from "@/lib/utils/board";
-import { filterStories } from "@/lib/utils/stories";
+import { filterStories, pointScaleValues } from "@/lib/utils/stories";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { BoardFilters } from "@/components/features/board/board-filters";
 import { CreateStoryDialog } from "@/components/features/board/create-story-dialog";
@@ -27,7 +27,7 @@ export default async function BoardPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, velocity_window")
+    .select("id, name, velocity_window, point_scale, custom_points")
     .eq("id", id)
     .single();
 
@@ -157,6 +157,7 @@ export default async function BoardPage({
         backlogToolbar={
           <CreateStoryDialog
             projectId={project.id}
+            pointScale={pointScaleValues(project.point_scale, project.custom_points)}
             epics={epics ?? []}
             labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
             members={assigneeOptions}

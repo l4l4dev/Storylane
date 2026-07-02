@@ -3,7 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { autoAssignStoryIds, nextIterationDates, nextIterationNumber } from "@/lib/utils/iterations";
-import { nextPosition, parsePoints, reorderPositions } from "@/lib/utils/stories";
+import {
+  isUnestimatedFeature,
+  nextPosition,
+  parsePoints,
+  pointScaleValues,
+  reorderPositions,
+} from "@/lib/utils/stories";
 import { applyTransition, type StoryState, type StoryTransitionAction } from "@/lib/utils/story-state";
 import { acceptedPoints, calculateVelocity } from "@/lib/utils/velocity";
 
@@ -16,7 +22,6 @@ export async function createStory(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
   const storyType = String(formData.get("story_type") ?? "feature");
-  const points = parsePoints(formData.get("points") as string | null, storyType);
   const epicId = String(formData.get("epic_id") ?? "") || null;
   const assigneeId = String(formData.get("assignee_id") ?? "") || null;
 
@@ -28,10 +33,20 @@ export async function createStory(formData: FormData) {
 
   // Append to the bottom of the backlog. Reading the current max position keeps
   // positions dense without a DB sequence.
-  const { data: existing } = await supabase
-    .from("stories")
-    .select("position")
-    .eq("project_id", projectId);
+  const [{ data: existing }, { data: project }] = await Promise.all([
+    supabase.from("stories").select("position").eq("project_id", projectId),
+    supabase.from("projects").select("point_scale, custom_points").eq("id", projectId).single(),
+  ]);
+
+  if (!project) {
+    throw new Error("Project not found");
+  }
+
+  const points = parsePoints(
+    formData.get("points") as string | null,
+    storyType,
+    pointScaleValues(project.point_scale, project.custom_points),
+  );
 
   const { data: story, error } = await supabase
     .from("stories")
@@ -127,7 +142,7 @@ export async function transitionStory(formData: FormData) {
   const supabase = await createClient();
   const { data: story, error: fetchError } = await supabase
     .from("stories")
-    .select("state")
+    .select("state, story_type, points")
     .eq("id", storyId)
     .single();
 
@@ -136,6 +151,12 @@ export async function transitionStory(formData: FormData) {
   }
 
   const nextState = applyTransition(story.state as StoryState, action);
+
+  // An unestimated feature cannot be started (see spec/features.md) — this
+  // covers both Start and Restart, whose target state is `started`.
+  if (nextState === "started" && isUnestimatedFeature(story.story_type, story.points)) {
+    throw new Error("An unestimated feature cannot be started");
+  }
 
   const { error } = await supabase.from("stories").update({ state: nextState }).eq("id", storyId);
   if (error) {

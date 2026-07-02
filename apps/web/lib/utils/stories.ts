@@ -38,6 +38,36 @@ export function storyTypeUsesPoints(type: string): boolean {
   return type === "feature" || type === "bug";
 }
 
+// Point scales (see spec/features.md "Story Management"): points are chosen
+// from the project's scale, never free numeric input.
+const POINT_SCALES: Record<string, readonly number[]> = {
+  fibonacci: [0, 1, 2, 3, 5, 8, 13],
+  linear: [0, 1, 2, 3],
+};
+
+/**
+ * Resolves a project's selectable point values from its `point_scale` /
+ * `custom_points` columns. Unknown scale names fall back to fibonacci (the
+ * DB default) so a bad row can't leave the UI with no options.
+ */
+export function pointScaleValues(
+  pointScale: string,
+  customPoints: ReadonlyArray<number> | null | undefined,
+): number[] {
+  if (pointScale === "custom") {
+    return [...(customPoints ?? [])];
+  }
+  return [...(POINT_SCALES[pointScale] ?? POINT_SCALES.fibonacci)];
+}
+
+/**
+ * An unestimated `feature` cannot be started (see spec/features.md).
+ * Other types don't use points, so they are never blocked by this rule.
+ */
+export function isUnestimatedFeature(type: string, points: number | null): boolean {
+  return type === "feature" && points === null;
+}
+
 /** Position to append a new story at the bottom of the backlog. */
 export function nextPosition(stories: ReadonlyArray<{ position: number }>): number {
   return stories.reduce((max, story) => Math.max(max, story.position), -1) + 1;
@@ -90,9 +120,15 @@ export function formatPoints(points: number): string {
 
 /**
  * Parses a points form value. Returns null for non-point story types or blank
- * input, and clamps negatives to null so the DB CHECK (points >= 0) holds.
+ * input ("unestimated"). Values not in `allowedPoints` (the project's point
+ * scale — see spec/features.md, no free numeric input) also parse to null so
+ * a tampered or stale form value can't write an off-scale estimate.
  */
-export function parsePoints(rawValue: string | null | undefined, type: string): number | null {
+export function parsePoints(
+  rawValue: string | null | undefined,
+  type: string,
+  allowedPoints: ReadonlyArray<number>,
+): number | null {
   if (!storyTypeUsesPoints(type)) {
     return null;
   }
@@ -101,8 +137,8 @@ export function parsePoints(rawValue: string | null | undefined, type: string): 
     return null;
   }
   const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  if (!allowedPoints.includes(parsed)) {
     return null;
   }
-  return Math.floor(parsed);
+  return parsed;
 }
