@@ -34,6 +34,7 @@
 - When mentioned in a comment
 - When a story you own changes state
 - Web: browser notifications / iOS: push notifications
+- Web 通知のトリガーは Supabase Realtime のイベント購読（Task 11 が Task 10 の前提）
 
 #### Integrations
 - **GitHub**: Link PRs to stories. Auto-update story to `finished` on PR merge

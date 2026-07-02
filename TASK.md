@@ -117,6 +117,7 @@ Tasks 6〜13 は Web → iOS の順で進める。
 ## Task 7 — Epics & Labels
 
 ### Web
+- [ ] テスト基盤: `@testing-library/react` + jsdom を導入（CLAUDE.md のコンポーネントテスト規約を満たす。以降のコンポーネントは Testing Library でテストを書く）
 - [ ] Epic list page (`/projects/[id]/epics`)
 - [ ] Create / edit / delete epic with color picker
 - [ ] Epic progress bar (accepted stories / total stories)
@@ -142,7 +143,13 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 ## Task 9 — Collaboration: Comments & Activity
 
+### 前提（DB — Web 実装の前に行う）
+- [ ] Migration: `profiles.username`（unique）を追加 — 初回サインイン時に自動生成し、@mention のパース対象にする（see spec/data-model.md）
+- [ ] Migration: `activity_logs` 自動記録トリガー — stories / comments の INSERT・UPDATE を Postgres トリガーで記録
+      （`story.created` / `story.state_changed` / `comment.added` 等。Web・iOS・Edge Function 全経路を一箇所でカバーする）
+
 ### Web
+- [ ] Username 変更 UI（プロフィール設定）
 - [ ] Comment thread on story detail page
 - [ ] @mention support (parse `@username` in comment body)
 - [ ] Activity log timeline on project home
@@ -153,7 +160,20 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 ---
 
-## Task 10 — Notifications
+## Task 11 — Realtime Collaboration
+
+> **順序変更（2026-07-02）**: Task 10（通知）より先に実施する。
+> ブラウザ通知のトリガーは Realtime のイベント購読が前提のため（番号は既存参照を壊さないよう維持）。
+
+- [ ] Subscribe to story changes via Supabase Realtime on backlog and iteration views
+- [ ] Reflect story state changes live without page refresh
+- [ ] Show live comment updates on story detail
+
+---
+
+## Task 10 — Notifications（Task 11 の後に実施）
+
+> 通知のイベント源は Task 11 で導入する Realtime 購読を使う（購読したイベントから Notification API を発火する）。
 
 ### Web
 - [ ] Request browser notification permission on sign-in
@@ -170,20 +190,28 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 ---
 
-## Task 11 — Realtime Collaboration
+## Task 11.5 — Deployment（Task 12 の前に実施）
 
-- [ ] Subscribe to story changes via Supabase Realtime on backlog and iteration views
-- [ ] Reflect story state changes live without page refresh
-- [ ] Show live comment updates on story detail
+> Task 12 の Webhook 検証には公開 URL（デプロイ済み Edge Function）が必要なためここで行う。
+> アカウント・手順の詳細は `ACCOUNT_SETUP.md`（gitignore 済み・個人用メモ）を参照。秘密情報はコミットしない。
+
+- [ ] Supabase hosted プロジェクトへ migration を適用（`supabase db push`）
+- [ ] Vercel へ Web をデプロイ（Root Directory `apps/web`、Node 22、環境変数設定）
+- [ ] 本番 URL を Supabase の Site URL / Redirect URLs と OAuth 設定に追加
+- [ ] 本番環境でログイン → プロジェクト作成 → ボード操作の疎通確認
 
 ---
 
 ## Task 12 — Integrations
 
+### 前提（DB — Web 実装の前に行う）
+- [ ] Migration: `stories.number`（プロジェクト毎の連番、採番トリガー）を追加（see spec/data-model.md）
+- [ ] ストーリーカード / 詳細画面に `#123` を表示（PR タイトルに書けるようにする）
+
 ### GitHub
 - [ ] Integration setup in project settings (repo URL, webhook secret)
 - [ ] Supabase Edge Function to receive GitHub webhook
-- [ ] Parse PR title / branch name for story ID (e.g. `[SL-123]`)
+- [ ] Parse PR title / branch name for story ID (e.g. `[SL-123]` — `stories.number` ベース)
 - [ ] Auto-update story state to `finished` on PR merge
 
 ### Slack
@@ -192,16 +220,24 @@ Tasks 6〜13 は Web → iOS の順で進める。
 - [ ] Edge Function to POST to Slack
 
 ### Forgejo
-- [ ] Reuse GitHub webhook handler (same payload format)
+- [ ] Reuse GitHub webhook handler（ペイロードは GitHub 互換だがヘッダー・署名が異なる:
+      `X-Gitea-Event` / `X-Gitea-Signature`、HMAC 形式差に注意 — see spec/integrations.md）
 - [ ] Integration setup in project settings
 
 ---
 
 ## Task 13 — Polish & QA
 
+### Web
 - [ ] Error states and empty states for all views
 - [ ] Loading skeletons on data-fetching screens
-- [ ] Responsive layout for web (mobile and desktop)
+- [ ] Responsive layout (mobile and desktop)
 - [ ] Accessibility audit (keyboard navigation, screen reader labels)
-- [ ] End-to-end test for core flows (create project → add story → complete iteration)
+- [ ] Playwright を導入し、コアフローの E2E テストを作成（create project → add story → complete iteration）
+- [ ] Performance review (query optimization, Realtime subscription cleanup)
+
+### iOS（Web 全タスク完了後に着手）
+- [ ] Error states and empty states for all views
+- [ ] Loading indicators on data-fetching screens
+- [ ] Accessibility audit (VoiceOver labels, Dynamic Type)
 - [ ] Performance review (query optimization, Realtime subscription cleanup)

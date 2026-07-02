@@ -9,6 +9,7 @@ References Supabase Auth `auth.users`. Only profile data is managed in a separat
 profiles (
   id           uuid PRIMARY KEY REFERENCES auth.users(id),
   display_name text NOT NULL,
+  username     text UNIQUE NOT NULL,  -- @mention 用の一意ハンドル。初回サインイン時に自動生成、設定で変更可（Task 9 で追加）
   avatar_url   text,
   created_at   timestamptz DEFAULT now()
 )
@@ -87,6 +88,8 @@ iterations (
 stories (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id   uuid REFERENCES projects(id) ON DELETE CASCADE,
+  number       int  NOT NULL,               -- プロジェクト毎の連番（採番トリガーで自動付与、UNIQUE (project_id, number)）。
+                                            -- UI では #123、PR タイトルでは [SL-123] として使う（Task 12 で追加）
   iteration_id uuid REFERENCES iterations(id) ON DELETE SET NULL,
   epic_id      uuid REFERENCES epics(id) ON DELETE SET NULL,
   title        text NOT NULL,
