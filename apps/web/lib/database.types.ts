@@ -286,18 +286,21 @@ export type Database = {
           created_at: string
           display_name: string
           id: string
+          username: string
         }
         Insert: {
           avatar_url?: string | null
           created_at?: string
           display_name: string
           id: string
+          username: string
         }
         Update: {
           avatar_url?: string | null
           created_at?: string
           display_name?: string
           id?: string
+          username?: string
         }
         Relationships: []
       }
@@ -541,6 +544,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_username: { Args: { base: string }; Returns: string }
       invite_member: {
         Args: { p_email: string; p_project_id: string; p_role?: string }
         Returns: undefined

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isCurrentIteration } from "@/lib/utils/iterations";
 import { StoryCard, type StoryCardData } from "@/components/features/board/story-card";
 import { calculateVelocity } from "@/lib/utils/velocity";
+import { describeActivity } from "@/lib/utils/activity";
 
 function todayDateOnly(): string {
   return new Date().toISOString().slice(0, 10);
@@ -45,22 +46,29 @@ export default async function ProjectHomePage({
   const storySelect =
     "id, title, story_type, state, points, position, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)";
 
-  const [{ data: labels }, { data: currentIterationStories }, { data: backlogRows }] = await Promise.all([
-    supabase.from("labels").select("id, name, color").eq("project_id", project.id),
-    currentIteration
-      ? supabase
-          .from("stories")
-          .select(storySelect)
-          .eq("iteration_id", currentIteration.id)
-          .order("position", { ascending: true })
-      : Promise.resolve({ data: [] }),
-    supabase
-      .from("stories")
-      .select(storySelect)
-      .eq("project_id", project.id)
-      .is("iteration_id", null)
-      .order("position", { ascending: true }),
-  ]);
+  const [{ data: labels }, { data: currentIterationStories }, { data: backlogRows }, { data: activity }] =
+    await Promise.all([
+      supabase.from("labels").select("id, name, color").eq("project_id", project.id),
+      currentIteration
+        ? supabase
+            .from("stories")
+            .select(storySelect)
+            .eq("iteration_id", currentIteration.id)
+            .order("position", { ascending: true })
+        : Promise.resolve({ data: [] }),
+      supabase
+        .from("stories")
+        .select(storySelect)
+        .eq("project_id", project.id)
+        .is("iteration_id", null)
+        .order("position", { ascending: true }),
+      supabase
+        .from("activity_logs")
+        .select("id, action, payload, created_at, actor:profiles(display_name), story:stories(title)")
+        .eq("project_id", project.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
 
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
 
@@ -175,6 +183,35 @@ export default async function ProjectHomePage({
           </ul>
         ) : (
           <p className="text-sm text-gray-500">Backlog is empty.</p>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold">Activity</h2>
+        {(activity ?? []).length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {(activity ?? []).map((log) => {
+              const actor = Array.isArray(log.actor) ? log.actor[0] : log.actor;
+              const storyRow = Array.isArray(log.story) ? log.story[0] : log.story;
+              return (
+                <li key={log.id} className="flex items-center justify-between gap-3 text-sm">
+                  <span>
+                    {describeActivity({
+                      action: log.action,
+                      payload: log.payload,
+                      actorName: actor?.display_name ?? "Someone",
+                      storyTitle: storyRow?.title ?? null,
+                    })}
+                  </span>
+                  <span className="shrink-0 text-xs text-gray-500">
+                    {new Date(log.created_at).toLocaleString()}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">No activity yet.</p>
         )}
       </section>
     </main>

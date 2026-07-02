@@ -1,14 +1,23 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { CreateProjectDialog } from "@/components/features/projects/create-project-dialog";
+import { UsernameEditor } from "@/components/features/projects/username-editor";
 import { signOut } from "./actions";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const { data: projects } = await supabase
-    .from("projects")
-    .select("id, name, description, updated_at")
-    .order("updated_at", { ascending: false });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const [{ data: projects }, { data: profile }] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, name, description, updated_at")
+      .order("updated_at", { ascending: false }),
+    user
+      ? supabase.from("profiles").select("username").eq("id", user.id).single()
+      : Promise.resolve({ data: null }),
+  ]);
 
   return (
     <main className="mx-auto max-w-3xl p-6">
@@ -26,6 +35,12 @@ export default async function DashboardPage() {
           </form>
         </div>
       </header>
+
+      {profile && (
+        <div className="mb-6">
+          <UsernameEditor username={profile.username} />
+        </div>
+      )}
 
       {projects && projects.length > 0 ? (
         <ul className="flex flex-col gap-3">

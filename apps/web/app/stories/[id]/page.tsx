@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { STORY_STATES, STORY_TYPES } from "@/lib/utils/stories";
-import { deleteStory, updateStory } from "./actions";
+import { CommentBody } from "@/components/features/story/comment-body";
+import { addComment, deleteStory, updateStory } from "./actions";
 
 export default async function StoryDetailPage({
   params,
@@ -22,14 +23,20 @@ export default async function StoryDetailPage({
     notFound();
   }
 
-  const [{ data: epics }, { data: labels }, { data: members }] = await Promise.all([
-    supabase.from("epics").select("id, name").eq("project_id", story.project_id).order("position"),
-    supabase.from("labels").select("id, name").eq("project_id", story.project_id).order("name"),
-    supabase
-      .from("project_members")
-      .select("user_id, profiles(display_name)")
-      .eq("project_id", story.project_id),
-  ]);
+  const [{ data: epics }, { data: labels }, { data: members }, { data: comments }] =
+    await Promise.all([
+      supabase.from("epics").select("id, name").eq("project_id", story.project_id).order("position"),
+      supabase.from("labels").select("id, name").eq("project_id", story.project_id).order("name"),
+      supabase
+        .from("project_members")
+        .select("user_id, profiles(display_name)")
+        .eq("project_id", story.project_id),
+      supabase
+        .from("comments")
+        .select("id, body, created_at, author:profiles(display_name)")
+        .eq("story_id", id)
+        .order("created_at", { ascending: true }),
+    ]);
 
   const storyLabelIds = new Set(story.story_labels.map((sl) => sl.label_id));
   const assigneeOptions = (members ?? []).map((m) => {
@@ -165,7 +172,53 @@ export default async function StoryDetailPage({
         </div>
       </form>
 
-      <form action={deleteStory} className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-800">
+      <section className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">
+        <h2 className="mb-3 text-lg font-semibold">Comments</h2>
+
+        {(comments ?? []).length > 0 ? (
+          <ul className="mb-4 flex flex-col gap-3">
+            {(comments ?? []).map((comment) => {
+              const author = Array.isArray(comment.author) ? comment.author[0] : comment.author;
+              return (
+                <li
+                  key={comment.id}
+                  className="rounded-md border border-gray-200 p-3 dark:border-gray-800"
+                >
+                  <div className="mb-1 flex items-center justify-between text-xs text-gray-500">
+                    <span>{author?.display_name ?? "Unknown"}</span>
+                    <span>{new Date(comment.created_at).toLocaleString()}</span>
+                  </div>
+                  <CommentBody body={comment.body} />
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mb-4 text-sm text-gray-500">No comments yet.</p>
+        )}
+
+        <form action={addComment} className="flex flex-col gap-2">
+          <input type="hidden" name="story_id" value={story.id} />
+          <input type="hidden" name="project_id" value={story.project_id} />
+          <textarea
+            name="body"
+            required
+            rows={2}
+            placeholder="Add a comment… use @username to mention someone"
+            className={inputClass}
+          />
+          <div>
+            <button
+              type="submit"
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+            >
+              Comment
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <form action={deleteStory} className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">
         <input type="hidden" name="story_id" value={story.id} />
         <input type="hidden" name="project_id" value={story.project_id} />
         <button

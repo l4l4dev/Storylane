@@ -60,6 +60,28 @@ export async function updateStory(formData: FormData) {
   revalidatePath(`/projects/${projectId}/board`);
 }
 
+export async function addComment(formData: FormData) {
+  const storyId = String(formData.get("story_id"));
+  const projectId = String(formData.get("project_id"));
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (!body) {
+    return;
+  }
+
+  const supabase = await createClient();
+  // author_id defaults to auth.uid() (see comments migration); a trigger
+  // records the comment.added activity log entry.
+  const { error } = await supabase.from("comments").insert({ story_id: storyId, body });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/stories/${storyId}`);
+  revalidatePath(`/projects/${projectId}`);
+}
+
 export async function deleteStory(formData: FormData) {
   const id = String(formData.get("story_id"));
   const projectId = String(formData.get("project_id"));

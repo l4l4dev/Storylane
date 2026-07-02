@@ -143,16 +143,16 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 ## Task 9 — Collaboration: Comments & Activity
 
-### 前提（DB — Web 実装の前に行う）
-- [ ] Migration: `profiles.username`（unique）を追加 — 初回サインイン時に自動生成し、@mention のパース対象にする（see spec/data-model.md）
-- [ ] Migration: `activity_logs` 自動記録トリガー — stories / comments の INSERT・UPDATE を Postgres トリガーで記録
+### 前提（DB — Web 実装の前に行う）✅
+- [x] Migration: `profiles.username`（unique）を追加 — 初回サインイン時に自動生成し、@mention のパース対象にする（see spec/data-model.md）
+- [x] Migration: `activity_logs` 自動記録トリガー — stories / comments の INSERT・UPDATE を Postgres トリガーで記録
       （`story.created` / `story.state_changed` / `comment.added` 等。Web・iOS・Edge Function 全経路を一箇所でカバーする）
 
-### Web
-- [ ] Username 変更 UI（プロフィール設定）
-- [ ] Comment thread on story detail page
-- [ ] @mention support (parse `@username` in comment body)
-- [ ] Activity log timeline on project home
+### Web ✅
+- [x] Username 変更 UI（プロフィール設定）
+- [x] Comment thread on story detail page
+- [x] @mention support (parse `@username` in comment body)
+- [x] Activity log timeline on project home
 
 ### iOS（Web 全タスク完了後に着手）
 - [ ] Comment list and input on `StoryDetailView`
