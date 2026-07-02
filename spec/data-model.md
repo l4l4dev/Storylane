@@ -96,9 +96,12 @@ stories (
   description  text,
   story_type   text NOT NULL DEFAULT 'feature'
                  CHECK (story_type IN ('feature', 'bug', 'chore', 'release')),
-  state        text NOT NULL DEFAULT 'unstarted'
-                 CHECK (state IN ('unstarted', 'started', 'finished', 'delivered', 'accepted', 'rejected')),
-  points       int  CHECK (points >= 0),  -- nullable for chore / release
+  state        text NOT NULL DEFAULT 'unscheduled'
+                 CHECK (state IN ('unscheduled', 'unstarted', 'started', 'finished', 'delivered', 'accepted', 'rejected')),
+                                            -- 'unscheduled' = Icebox（Task 12.5 で追加。新規ストーリーのデフォルト。
+                                            -- 既存行のマイグレーションでは unstarted のまま = Backlog に残す）
+  points       int  CHECK (points >= 0),  -- nullable for chore / release。
+                                          -- 値はプロジェクトの point_scale からの選択のみ（アプリ層で検証、Task 12.5）
   position     int  NOT NULL DEFAULT 0,   -- order within the backlog
   assignee_id  uuid REFERENCES profiles(id) ON DELETE SET NULL,
   created_by   uuid REFERENCES profiles(id),
