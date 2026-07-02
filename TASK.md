@@ -138,9 +138,9 @@ Tasks 6〜13 は Web → iOS の順で進める。
 > 8. タスク（チェックリスト）UI（`components/features/story/` に追加。手順 7 より前倒し可）
 
 ### 前提（DB — Web 実装の前に行う）
-- [ ] Migration: `stories.state` に `'unscheduled'`（Icebox）を追加し、新規ストーリーのデフォルトにする
+- [x] Migration: `stories.state` に `'unscheduled'`（Icebox）を追加し、新規ストーリーのデフォルトにする
       （既存行は `unstarted` のまま Backlog に残す — see spec/data-model.md）
-- [ ] Migration: 未来の `planned` iteration 行を削除し、所属ストーリーを backlog 先頭に相対順を保って戻す
+- [x] Migration: 未来の `planned` iteration 行を削除し、所属ストーリーを backlog 先頭に相対順を保って戻す
       （future iteration は DB 行ではなく仮想マーカーになるため — see spec/velocity.md）
 
 ### Web
