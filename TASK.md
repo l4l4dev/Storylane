@@ -116,13 +116,13 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 ## Task 7 — Epics & Labels
 
-### Web
-- [ ] テスト基盤: `@testing-library/react` + jsdom を導入（CLAUDE.md のコンポーネントテスト規約を満たす。以降のコンポーネントは Testing Library でテストを書く）
-- [ ] Epic list page (`/projects/[id]/epics`)
-- [ ] Create / edit / delete epic with color picker
-- [ ] Epic progress bar (accepted stories / total stories)
-- [ ] Label management in project settings
-- [ ] Apply multiple labels to a story
+### Web ✅
+- [x] テスト基盤: `@testing-library/react` + jsdom を導入（CLAUDE.md のコンポーネントテスト規約を満たす。以降のコンポーネントは Testing Library でテストを書く）
+- [x] Epic list page (`/projects/[id]/epics`)
+- [x] Create / edit / delete epic with color picker
+- [x] Epic progress bar (accepted stories / total stories)
+- [x] Label management in project settings
+- [x] Apply multiple labels to a story
 
 ### iOS（Web 全タスク完了後に着手）
 - [ ] `EpicsView` — epic list with progress

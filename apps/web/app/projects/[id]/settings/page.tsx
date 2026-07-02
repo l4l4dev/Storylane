@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ITERATION_LENGTHS, POINT_SCALES } from "@/lib/types";
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
+import { LabelManager } from "@/components/features/projects/label-manager";
 import { updateProject, updateMemberRole, removeMember } from "./actions";
 
 const ROLES = ["owner", "member", "viewer"] as const;
@@ -36,6 +37,13 @@ export default async function ProjectSettingsPage({
 
   const myRole = members?.find((m) => m.user_id === user?.id)?.role;
   const isOwner = myRole === "owner";
+  const isMember = myRole === "owner" || myRole === "member";
+
+  const { data: labels } = await supabase
+    .from("labels")
+    .select("id, name, color")
+    .eq("project_id", id)
+    .order("name");
 
   return (
     <main className="mx-auto max-w-2xl p-6">
@@ -52,6 +60,12 @@ export default async function ProjectSettingsPage({
             className="text-indigo-600 hover:underline"
           >
             Board
+          </Link>
+          <Link
+            href={`/projects/${project.id}/epics`}
+            className="text-indigo-600 hover:underline"
+          >
+            Epics
           </Link>
         </div>
         <h1 className="mt-2 text-2xl font-bold">{project.name} · Settings</h1>
@@ -207,6 +221,17 @@ export default async function ProjectSettingsPage({
             );
           })}
         </ul>
+      </section>
+
+      {/* Labels */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold">Labels</h2>
+        <LabelManager
+          projectId={project.id}
+          labels={labels ?? []}
+          canCreate={isMember}
+          canDelete={isOwner}
+        />
       </section>
     </main>
   );

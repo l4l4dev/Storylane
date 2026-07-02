@@ -115,6 +115,9 @@ export default async function BoardPage({
           <Link href={`/projects/${project.id}`} className="text-indigo-600 hover:underline">
             Home
           </Link>
+          <Link href={`/projects/${project.id}/epics`} className="text-indigo-600 hover:underline">
+            Epics
+          </Link>
           <Link
             href={`/projects/${project.id}/settings`}
             className="text-indigo-600 hover:underline"

@@ -100,6 +100,12 @@ export default async function ProjectHomePage({
             Board
           </Link>
           <Link
+            href={`/projects/${project.id}/epics`}
+            className="text-indigo-600 hover:underline"
+          >
+            Epics
+          </Link>
+          <Link
             href={`/projects/${project.id}/settings`}
             className="text-indigo-600 hover:underline"
           >
