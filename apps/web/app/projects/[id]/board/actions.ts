@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { autoAssignStoryIds, nextIterationDates, nextIterationNumber } from "@/lib/utils/iterations";
 import { nextPosition, parsePoints, reorderPositions } from "@/lib/utils/stories";
+import { applyTransition, type StoryState, type StoryTransitionAction } from "@/lib/utils/story-state";
 import { acceptedPoints, calculateVelocity } from "@/lib/utils/velocity";
 
 function todayDateOnly(): string {
@@ -110,6 +111,40 @@ export async function moveStory(formData: FormData) {
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);
+}
+
+/**
+ * Applies a one-click state-transition button (Start / Finish / Deliver /
+ * Accept / Reject / Restart — see spec/screens.md "Story card UX"). Reads
+ * the story's current state server-side rather than trusting the client so
+ * a stale card can't force an invalid jump.
+ */
+export async function transitionStory(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const storyId = String(formData.get("story_id"));
+  const action = String(formData.get("action")) as StoryTransitionAction;
+
+  const supabase = await createClient();
+  const { data: story, error: fetchError } = await supabase
+    .from("stories")
+    .select("state")
+    .eq("id", storyId)
+    .single();
+
+  if (fetchError || !story) {
+    throw new Error(fetchError?.message ?? "Story not found");
+  }
+
+  const nextState = applyTransition(story.state as StoryState, action);
+
+  const { error } = await supabase.from("stories").update({ state: nextState }).eq("id", storyId);
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/projects/${projectId}/board`);
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/stories/${storyId}`);
 }
 
 export async function createIteration(formData: FormData) {

@@ -77,6 +77,18 @@ export function filterStories<T extends FilterableStory>(stories: ReadonlyArray<
 }
 
 /**
+ * Formats a points value for card display (see spec/screens.md "Story card
+ * UX"): 1-3 points render as dots (Pivotal Tracker convention), 0 or 4+
+ * render as the numeral since a 0-dot estimate would be invisible.
+ */
+export function formatPoints(points: number): string {
+  if (points > 0 && points <= 3) {
+    return "•".repeat(points);
+  }
+  return String(points);
+}
+
+/**
  * Parses a points form value. Returns null for non-point story types or blank
  * input, and clamps negatives to null so the DB CHECK (points >= 0) holds.
  */

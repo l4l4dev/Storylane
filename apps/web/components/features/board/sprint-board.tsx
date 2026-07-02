@@ -50,7 +50,11 @@ function findContainer(
   return Object.keys(containers).find((key) => containers[key].some((s) => s.id === itemId));
 }
 
-function SortableStoryRow({ story }: { story: StoryCardData }) {
+// The whole card is the drag handle (spec/screens.md "Story card UX": "no
+// dedicated drag handle"). A plain click still opens the story link/buttons
+// normally — dnd-kit only intercepts the click once the pointer has actually
+// moved past its activation threshold, so it doesn't fire for a stationary click.
+function SortableStoryRow({ story, projectId }: { story: StoryCardData; projectId: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: story.id,
   });
@@ -59,22 +63,11 @@ function SortableStoryRow({ story }: { story: StoryCardData }) {
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={isDragging ? "opacity-60" : undefined}
+      className={`cursor-grab active:cursor-grabbing ${isDragging ? "opacity-60" : ""}`}
+      {...attributes}
+      {...listeners}
     >
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          aria-label="Reorder story"
-          className="cursor-grab px-1 text-gray-400 hover:text-gray-600"
-          {...attributes}
-          {...listeners}
-        >
-          ⠿
-        </button>
-        <div className="flex-1">
-          <StoryCard story={story} />
-        </div>
-      </div>
+      <StoryCard story={story} projectId={projectId} />
     </li>
   );
 }
@@ -82,9 +75,11 @@ function SortableStoryRow({ story }: { story: StoryCardData }) {
 function DroppableStoryList({
   containerId,
   stories,
+  projectId,
 }: {
   containerId: string;
   stories: StoryCardData[];
+  projectId: string;
 }) {
   const { setNodeRef } = useDroppable({ id: containerId });
 
@@ -92,7 +87,7 @@ function DroppableStoryList({
     <SortableContext items={stories.map((s) => s.id)} strategy={verticalListSortingStrategy}>
       <ul ref={setNodeRef} className="flex min-h-[2.5rem] flex-col gap-2">
         {stories.map((story) => (
-          <SortableStoryRow key={story.id} story={story} />
+          <SortableStoryRow key={story.id} story={story} projectId={projectId} />
         ))}
       </ul>
     </SortableContext>
@@ -149,7 +144,7 @@ function IterationSection({
       {stories.length === 0 && (
         <p className="mb-3 text-sm text-gray-500">No stories assigned yet.</p>
       )}
-      <DroppableStoryList containerId={iteration.id} stories={stories} />
+      <DroppableStoryList containerId={iteration.id} stories={stories} projectId={projectId} />
 
       <form action={finalizeIteration} className="mt-3">
         <input type="hidden" name="project_id" value={projectId} />
@@ -168,9 +163,11 @@ function IterationSection({
 function DoneIterationSection({
   iteration,
   stories,
+  projectId,
 }: {
   iteration: IterationMeta;
   stories: StoryCardData[];
+  projectId: string;
 }) {
   return (
     <section className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-zinc-900/40">
@@ -194,7 +191,7 @@ function DoneIterationSection({
         <ul className="flex flex-col gap-2">
           {stories.map((story) => (
             <li key={story.id}>
-              <StoryCard story={story} />
+              <StoryCard story={story} projectId={projectId} />
             </li>
           ))}
         </ul>
@@ -341,7 +338,11 @@ export function SprintBoard({
           {backlogStories.length === 0 && (
             <p className="mb-3 text-sm text-gray-500">Backlog is empty.</p>
           )}
-          <DroppableStoryList containerId={BACKLOG_CONTAINER_ID} stories={backlogStories} />
+          <DroppableStoryList
+            containerId={BACKLOG_CONTAINER_ID}
+            stories={backlogStories}
+            projectId={projectId}
+          />
         </section>
 
         {doneIterations.length > 0 && (
@@ -352,6 +353,7 @@ export function SprintBoard({
                 key={iteration.id}
                 iteration={iteration}
                 stories={doneIterationStories[iteration.id] ?? []}
+                projectId={projectId}
               />
             ))}
           </div>

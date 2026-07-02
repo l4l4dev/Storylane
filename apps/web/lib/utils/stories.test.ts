@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterStories,
+  formatPoints,
   nextPosition,
   parsePoints,
   reorderPositions,
@@ -72,6 +73,20 @@ describe("filterStories", () => {
 
   it("treats empty-string criteria as no filter", () => {
     expect(filterStories(stories, { type: "", assigneeId: "", labelId: "" })).toHaveLength(3);
+  });
+});
+
+describe("formatPoints", () => {
+  it("renders 1-3 points as dots", () => {
+    expect(formatPoints(1)).toBe("•");
+    expect(formatPoints(2)).toBe("••");
+    expect(formatPoints(3)).toBe("•••");
+  });
+
+  it("renders 0 and 4+ as numerals", () => {
+    expect(formatPoints(0)).toBe("0");
+    expect(formatPoints(4)).toBe("4");
+    expect(formatPoints(13)).toBe("13");
   });
 });
 
