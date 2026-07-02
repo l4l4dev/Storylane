@@ -149,6 +149,7 @@ Tasks 6〜13 は Web → iOS の順で進める。
 - [ ] Icebox パネル（unscheduled ストーリーの一覧。Backlog へドラッグすると unstarted に昇格）
 - [ ] ストーリーカード上のワンクリック状態遷移ボタン（Start / Finish / Deliver / Accept / Reject / Restart）
       — 次の有効な遷移のみ提示するステートマシン。詳細画面の自由な state select も廃止して置き換える
+      （カード上のボタン実装は完了。`/stories/[id]` の select 廃止はステップ7のインライン展開で行う）
 - [ ] Iteration 自動スケジューリング: velocity に基づき Backlog を iteration 境界マーカーで自動分割
       （「Generate next iteration」ボタンを廃止 — see spec/velocity.md）
 - [ ] Iteration 自動ロールオーバー: end_date 経過後の初回アクセスで velocity を確定し、
@@ -156,10 +157,10 @@ Tasks 6〜13 は Web → iOS の順で進める。
 - [ ] ストーリー詳細のパネル内インライン展開（アコーディオン。`/stories/[id]` はディープリンク用に残す）
 - [ ] ポイント入力をプロジェクトの point scale からの選択式にする（自由数値入力を廃止）
 - [ ] 未見積もりの `feature` は Start 不可にする
-- [ ] `release` ストーリーをマイルストーンマーカー行（旗 + 罫線）として描画
-- [ ] accepted ストーリーのカードを緑背景で表示
-- [ ] カード全体をドラッグ可能にする（⠿ ハンドル限定をやめる）
-- [ ] ポイント表示: 3 以下はドット（•）、それより大きい値は数字
+- [x] `release` ストーリーをマイルストーンマーカー行（旗 + 罫線）として描画
+- [x] accepted ストーリーのカードを緑背景で表示
+- [x] カード全体をドラッグ可能にする（⠿ ハンドル限定をやめる）
+- [x] ポイント表示: 3 以下はドット（•）、それより大きい値は数字
 - [ ] ストーリー詳細にタスク（チェックリスト）UI を追加
       （spec/features.md に Phase 1 として記載済みだが本タスクリストから漏れていた。`tasks` テーブルは作成済み）
 
