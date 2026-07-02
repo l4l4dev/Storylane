@@ -12,5 +12,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
+    // Dot reporter keeps local (AI-driven) runs terse; CI keeps the readable default.
+    reporters: process.env.CI ? "default" : "dot",
   },
 });

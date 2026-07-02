@@ -28,13 +28,7 @@
       "Bash(git checkout *)",
       "Bash(git branch *)",
       "Bash(swift build)",
-      "Bash(swift test)",
-      "mcp__memory__create_entities",
-      "mcp__memory__create_relations",
-      "mcp__memory__add_observations",
-      "mcp__memory__read_graph",
-      "mcp__memory__search_nodes",
-      "mcp__memory__open_nodes"
+      "Bash(swift test)"
     ],
     "deny": [
       "Bash(git add -A)",
@@ -46,7 +40,6 @@
       "Bash(DELETE FROM*)"
     ]
   },
-  "enabledMcpjsonServers": ["memory"],
   "hooks": {
     "SessionStart": [
       {
