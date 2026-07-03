@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { groupStoriesByIteration } from "@/lib/utils/board";
+import { BACKLOG_CONTAINER_ID, groupStoriesByIteration, ICEBOX_CONTAINER_ID, partitionIcebox } from "@/lib/utils/board";
+import { epicProgress } from "@/lib/utils/epics";
 import { filterStories, pointScaleValues } from "@/lib/utils/stories";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { BoardFilters } from "@/components/features/board/board-filters";
 import { CreateStoryDialog } from "@/components/features/board/create-story-dialog";
+import { EpicPanel } from "@/components/features/board/epic-panel";
 import { SprintBoard, type IterationMeta } from "@/components/features/board/sprint-board";
 import type { StoryCardData } from "@/components/features/board/story-card";
 import { createIteration } from "./actions";
@@ -45,11 +47,11 @@ export default async function BoardPage({
       supabase
         .from("stories")
         .select(
-          "id, title, story_type, state, points, position, iteration_id, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+          "id, title, story_type, state, points, position, iteration_id, epic_id, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
         )
         .eq("project_id", id)
         .order("position", { ascending: true }),
-      supabase.from("epics").select("id, name").eq("project_id", id).order("position"),
+      supabase.from("epics").select("id, name, color").eq("project_id", id).order("position"),
       supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
       supabase
         .from("project_members")
@@ -63,13 +65,19 @@ export default async function BoardPage({
   const cards = (stories ?? []).map((story) => {
     const assigneeProfile = Array.isArray(story.assignee) ? story.assignee[0] : story.assignee;
     const labelIds = story.story_labels.map((sl) => sl.label_id);
-    const card: StoryCardData & { labelIds: string[]; assignee_id: string | null; iteration_id: string | null } = {
+    const card: StoryCardData & {
+      labelIds: string[];
+      assignee_id: string | null;
+      iteration_id: string | null;
+      epic_id: string | null;
+    } = {
       id: story.id,
       title: story.title,
       story_type: story.story_type,
       state: story.state,
       points: story.points,
       iteration_id: story.iteration_id,
+      epic_id: story.epic_id,
       assignee_id: story.assignee_id,
       assigneeName: assigneeProfile?.display_name ?? null,
       labels: labelIds
@@ -81,10 +89,14 @@ export default async function BoardPage({
     return card;
   });
 
-  const { byIteration, backlog } = groupStoriesByIteration(cards);
+  const { icebox, rest } = partitionIcebox(cards);
+  const { byIteration, backlog } = groupStoriesByIteration(rest);
   const filteredBacklog = filterStories(backlog, { type, assigneeId: assignee, labelId: label });
 
-  const initialContainers: Record<string, StoryCardData[]> = { backlog: filteredBacklog };
+  const initialContainers: Record<string, StoryCardData[]> = {
+    [BACKLOG_CONTAINER_ID]: filteredBacklog,
+    [ICEBOX_CONTAINER_ID]: icebox,
+  };
   const doneIterationStories: Record<string, StoryCardData[]> = {};
   for (const iteration of allIterations) {
     const bucket = byIteration.get(iteration.id) ?? [];
@@ -105,8 +117,22 @@ export default async function BoardPage({
     return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
   });
 
+  const storiesByEpic = new Map<string, { state: string }[]>();
+  for (const card of cards) {
+    if (!card.epic_id) continue;
+    const bucket = storiesByEpic.get(card.epic_id) ?? [];
+    bucket.push({ state: card.state });
+    storiesByEpic.set(card.epic_id, bucket);
+  }
+  const epicsWithProgress = (epics ?? []).map((epic) => ({
+    id: epic.id,
+    name: epic.name,
+    color: epic.color,
+    progress: epicProgress(storiesByEpic.get(epic.id) ?? []),
+  }));
+
   return (
-    <main className="mx-auto max-w-3xl p-6">
+    <main className="mx-auto max-w-[100rem] p-6">
       <div className="mb-4">
         <div className="flex items-center gap-3 text-sm">
           <Link href="/dashboard" className="text-indigo-600 hover:underline">
@@ -131,29 +157,30 @@ export default async function BoardPage({
         </div>
       </div>
 
-      <form action={createIteration} className="mb-6 flex items-end gap-3">
-        <input type="hidden" name="project_id" value={project.id} />
-        <label className="flex flex-1 flex-col gap-1 text-sm">
-          <span>Sprint goal (optional, for the new iteration)</span>
-          <input
-            name="goal"
-            className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
-          />
-        </label>
-        <button
-          type="submit"
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-        >
-          Generate next iteration
-        </button>
-      </form>
-
       <SprintBoard
         projectId={project.id}
         today={todayDateOnly()}
         iterations={allIterations}
         initialContainers={initialContainers}
         doneIterationStories={doneIterationStories}
+        currentToolbar={
+          <form action={createIteration} className="flex flex-col gap-2">
+            <input type="hidden" name="project_id" value={project.id} />
+            <label className="flex flex-col gap-1 text-sm">
+              <span>Sprint goal (optional, for the new iteration)</span>
+              <input
+                name="goal"
+                className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
+              />
+            </label>
+            <button
+              type="submit"
+              className="self-start rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+            >
+              Generate next iteration
+            </button>
+          </form>
+        }
         backlogToolbar={
           <CreateStoryDialog
             projectId={project.id}
@@ -169,6 +196,7 @@ export default async function BoardPage({
             labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
           />
         }
+        epicsPanel={<EpicPanel projectId={project.id} epics={epicsWithProgress} />}
       />
     </main>
   );

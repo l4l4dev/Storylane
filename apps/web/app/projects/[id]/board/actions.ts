@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID } from "@/lib/utils/board";
 import { autoAssignStoryIds, nextIterationDates, nextIterationNumber } from "@/lib/utils/iterations";
 import {
   isUnestimatedFeature,
@@ -81,19 +82,29 @@ export async function createStory(formData: FormData) {
 }
 
 /**
- * Moves a story to `destination_iteration_id` (empty string = back to the
- * backlog) and persists the resulting order within that destination
+ * Moves a story to `destination_container` — `backlog`, `icebox`, or an
+ * iteration id — and persists the resulting order within that destination
  * container. Handles both cross-container drags and same-container
  * reorders (the iteration_id write is a harmless no-op in the latter case),
  * so the board only ever needs this one action per drag.
+ *
+ * Crossing the Icebox boundary also flips `state` between `unscheduled` and
+ * `unstarted` (see spec/screens.md "Board layout": dragging Icebox -> Backlog
+ * promotes the story; the reverse demotes it). `unscheduled` has no
+ * transition-button path (see story-state.ts), so this drag is the only way
+ * in or out of it.
  */
 export async function moveStory(formData: FormData) {
   const projectId = String(formData.get("project_id"));
   const storyId = String(formData.get("story_id"));
-  const destinationIterationId = String(formData.get("destination_iteration_id") ?? "") || null;
+  const destinationContainer = String(formData.get("destination_container") ?? BACKLOG_CONTAINER_ID);
   const orderedIds = formData.getAll("ordered_ids").map(String).filter(Boolean);
 
   const supabase = await createClient();
+
+  const isIcebox = destinationContainer === ICEBOX_CONTAINER_ID;
+  const destinationIterationId =
+    isIcebox || destinationContainer === BACKLOG_CONTAINER_ID ? null : destinationContainer;
 
   if (destinationIterationId) {
     const { data: iteration } = await supabase
@@ -107,10 +118,18 @@ export async function moveStory(formData: FormData) {
     }
   }
 
-  const { error } = await supabase
-    .from("stories")
-    .update({ iteration_id: destinationIterationId })
-    .eq("id", storyId);
+  const { data: story } = await supabase.from("stories").select("state").eq("id", storyId).single();
+
+  const update: { iteration_id: string | null; state?: StoryState } = {
+    iteration_id: destinationIterationId,
+  };
+  if (isIcebox) {
+    update.state = "unscheduled";
+  } else if (story?.state === "unscheduled") {
+    update.state = "unstarted";
+  }
+
+  const { error } = await supabase.from("stories").update(update).eq("id", storyId);
 
   if (error) {
     throw new Error(error.message);

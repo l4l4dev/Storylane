@@ -22,10 +22,11 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { finalizeIteration, moveStory, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { isCurrentIteration } from "@/lib/utils/iterations";
-import { sumPoints } from "@/lib/utils/board";
+import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID, sumPoints } from "@/lib/utils/board";
+import { BoardSidebar, DEFAULT_BOARD_PANELS, type BoardPanelId } from "./board-sidebar";
 import { StoryCard, type StoryCardData } from "./story-card";
 
-export const BACKLOG_CONTAINER_ID = "backlog";
+export { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID };
 
 export type IterationMeta = {
   id: string;
@@ -94,6 +95,18 @@ function DroppableStoryList({
   );
 }
 
+// Each panel is an independently scrollable column (spec/screens.md "Board
+// layout"). `w-80 shrink-0` keeps columns a fixed width so extra panels grow
+// the board horizontally instead of squeezing existing ones.
+function PanelColumn({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="flex h-[calc(100vh-14rem)] w-80 shrink-0 flex-col gap-3 overflow-y-auto rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+      <h2 className="text-sm font-semibold text-gray-500">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
 function IterationSection({
   iteration,
   stories,
@@ -108,10 +121,10 @@ function IterationSection({
   const isCurrent = isCurrentIteration(iteration, today);
 
   return (
-    <section className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+    <section className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Iteration #{iteration.number}</h2>
+          <h3 className="font-semibold">Iteration #{iteration.number}</h3>
           {isCurrent && (
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
               Current
@@ -119,10 +132,10 @@ function IterationSection({
           )}
           <span className="text-xs text-gray-500">{sumPoints(stories)} pts</span>
         </div>
-        <span className="text-xs text-gray-500">
-          {iteration.start_date} – {iteration.end_date}
-        </span>
       </div>
+      <p className="mb-2 text-xs text-gray-500">
+        {iteration.start_date} – {iteration.end_date}
+      </p>
 
       <form action={updateIterationGoal} className="mb-3 flex items-center gap-2">
         <input type="hidden" name="project_id" value={projectId} />
@@ -131,11 +144,11 @@ function IterationSection({
           name="goal"
           placeholder="Sprint goal"
           defaultValue={iteration.goal ?? ""}
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-700 dark:bg-zinc-800"
+          className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm dark:border-gray-700 dark:bg-zinc-800"
         />
         <button
           type="submit"
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-700"
+          className="rounded-md border border-gray-300 px-2 py-1 text-sm dark:border-gray-700"
         >
           Save
         </button>
@@ -170,22 +183,18 @@ function DoneIterationSection({
   projectId: string;
 }) {
   return (
-    <section className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-zinc-900/40">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-gray-600 dark:text-gray-300">
-            Iteration #{iteration.number}
-          </h2>
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-zinc-800 dark:text-gray-300">
-            Done · {iteration.velocity ?? 0} pts
-          </span>
-        </div>
-        <span className="text-xs text-gray-500">
-          {iteration.start_date} – {iteration.end_date}
+    <section className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-zinc-900/40">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="font-semibold text-gray-600 dark:text-gray-300">Iteration #{iteration.number}</h3>
+        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-zinc-800 dark:text-gray-300">
+          {iteration.velocity ?? 0} pts
         </span>
       </div>
+      <p className="mb-2 text-xs text-gray-500">
+        {iteration.start_date} – {iteration.end_date}
+      </p>
       {iteration.goal && (
-        <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">{iteration.goal}</p>
+        <p className="mb-2 text-sm text-gray-600 dark:text-gray-300">{iteration.goal}</p>
       )}
       {stories.length > 0 ? (
         <ul className="flex flex-col gap-2">
@@ -210,14 +219,19 @@ export function SprintBoard({
   doneIterationStories,
   backlogToolbar,
   backlogFilters,
+  currentToolbar,
+  epicsPanel,
 }: {
   projectId: string;
   today: string;
   iterations: IterationMeta[];
+  // Keyed by BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID, or an iteration id.
   initialContainers: Record<string, StoryCardData[]>;
   doneIterationStories: Record<string, StoryCardData[]>;
   backlogToolbar?: ReactNode;
   backlogFilters?: ReactNode;
+  currentToolbar?: ReactNode;
+  epicsPanel?: ReactNode;
 }) {
   // Local order so drops/reorders reflect instantly; server revalidation
   // re-syncs via props afterwards. Reset during render when the prop changes
@@ -225,10 +239,23 @@ export function SprintBoard({
   const [containers, setContainers] = useState(initialContainers);
   const [synced, setSynced] = useState(initialContainers);
   const [, startTransition] = useTransition();
+  const [enabledPanels, setEnabledPanels] = useState<ReadonlySet<BoardPanelId>>(DEFAULT_BOARD_PANELS);
 
   if (synced !== initialContainers) {
     setSynced(initialContainers);
     setContainers(initialContainers);
+  }
+
+  function togglePanel(panel: BoardPanelId) {
+    setEnabledPanels((prev) => {
+      const next = new Set(prev);
+      if (next.has(panel)) {
+        next.delete(panel);
+      } else {
+        next.add(panel);
+      }
+      return next;
+    });
   }
 
   const sensors = useSensors(
@@ -297,10 +324,7 @@ export function SprintBoard({
     const formData = new FormData();
     formData.set("project_id", projectId);
     formData.set("story_id", String(active.id));
-    formData.set(
-      "destination_iteration_id",
-      overContainer === BACKLOG_CONTAINER_ID ? "" : overContainer,
-    );
+    formData.set("destination_container", overContainer);
     reordered.forEach((s) => formData.append("ordered_ids", s.id));
     startTransition(() => {
       void moveStory(formData);
@@ -310,6 +334,7 @@ export function SprintBoard({
   const editableIterations = iterations.filter((iteration) => iteration.state !== "done");
   const doneIterations = iterations.filter((iteration) => iteration.state === "done");
   const backlogStories = containers[BACKLOG_CONTAINER_ID] ?? [];
+  const iceboxStories = containers[ICEBOX_CONTAINER_ID] ?? [];
 
   return (
     <DndContext
@@ -318,46 +343,78 @@ export function SprintBoard({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex flex-col gap-6">
-        {editableIterations.map((iteration) => (
-          <IterationSection
-            key={iteration.id}
-            iteration={iteration}
-            stories={containers[iteration.id] ?? []}
-            projectId={projectId}
-            today={today}
-          />
-        ))}
+      <div className="flex gap-4">
+        <BoardSidebar enabled={enabledPanels} onToggle={togglePanel} />
 
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Backlog</h2>
-            {backlogToolbar}
-          </div>
-          {backlogFilters && <div className="mb-3">{backlogFilters}</div>}
-          {backlogStories.length === 0 && (
-            <p className="mb-3 text-sm text-gray-500">Backlog is empty.</p>
+        <div className="flex flex-1 gap-4 overflow-x-auto pb-2">
+          {enabledPanels.has("current") && (
+            <PanelColumn title="Current">
+              {currentToolbar}
+              {editableIterations.length === 0 && (
+                <p className="text-sm text-gray-500">No active iteration.</p>
+              )}
+              <div className="flex flex-col gap-4">
+                {editableIterations.map((iteration) => (
+                  <IterationSection
+                    key={iteration.id}
+                    iteration={iteration}
+                    stories={containers[iteration.id] ?? []}
+                    projectId={projectId}
+                    today={today}
+                  />
+                ))}
+              </div>
+            </PanelColumn>
           )}
-          <DroppableStoryList
-            containerId={BACKLOG_CONTAINER_ID}
-            stories={backlogStories}
-            projectId={projectId}
-          />
-        </section>
 
-        {doneIterations.length > 0 && (
-          <div className="flex flex-col gap-6 border-t border-gray-200 pt-6 dark:border-gray-800">
-            <h2 className="text-lg font-semibold text-gray-500">Done</h2>
-            {doneIterations.map((iteration) => (
-              <DoneIterationSection
-                key={iteration.id}
-                iteration={iteration}
-                stories={doneIterationStories[iteration.id] ?? []}
+          {enabledPanels.has("backlog") && (
+            <PanelColumn title="Backlog">
+              {backlogToolbar}
+              {backlogFilters}
+              {backlogStories.length === 0 && (
+                <p className="text-sm text-gray-500">Backlog is empty.</p>
+              )}
+              <DroppableStoryList
+                containerId={BACKLOG_CONTAINER_ID}
+                stories={backlogStories}
                 projectId={projectId}
               />
-            ))}
-          </div>
-        )}
+            </PanelColumn>
+          )}
+
+          {enabledPanels.has("icebox") && (
+            <PanelColumn title="Icebox">
+              {iceboxStories.length === 0 && (
+                <p className="text-sm text-gray-500">Icebox is empty.</p>
+              )}
+              <DroppableStoryList
+                containerId={ICEBOX_CONTAINER_ID}
+                stories={iceboxStories}
+                projectId={projectId}
+              />
+            </PanelColumn>
+          )}
+
+          {enabledPanels.has("done") && (
+            <PanelColumn title="Done">
+              {doneIterations.length === 0 && (
+                <p className="text-sm text-gray-500">No completed iterations yet.</p>
+              )}
+              <div className="flex flex-col gap-4">
+                {doneIterations.map((iteration) => (
+                  <DoneIterationSection
+                    key={iteration.id}
+                    iteration={iteration}
+                    stories={doneIterationStories[iteration.id] ?? []}
+                    projectId={projectId}
+                  />
+                ))}
+              </div>
+            </PanelColumn>
+          )}
+
+          {enabledPanels.has("epics") && <PanelColumn title="Epics">{epicsPanel}</PanelColumn>}
+        </div>
       </div>
     </DndContext>
   );
