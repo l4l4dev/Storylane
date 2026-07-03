@@ -144,9 +144,9 @@ Tasks 6〜13 は Web → iOS の順で進める。
       （future iteration は DB 行ではなく仮想マーカーになるため — see spec/velocity.md）
 
 ### Web
-- [ ] Board をマルチパネル横並びレイアウトに再構築
+- [x] Board をマルチパネル横並びレイアウトに再構築
       （左サイドバーで Current / Backlog / Icebox / Done / Epics パネルをトグル — see spec/screens.md）
-- [ ] Icebox パネル（unscheduled ストーリーの一覧。Backlog へドラッグすると unstarted に昇格）
+- [x] Icebox パネル（unscheduled ストーリーの一覧。Backlog へドラッグすると unstarted に昇格）
 - [ ] ストーリーカード上のワンクリック状態遷移ボタン（Start / Finish / Deliver / Accept / Reject / Restart）
       — 次の有効な遷移のみ提示するステートマシン。詳細画面の自由な state select も廃止して置き換える
       （カード上のボタン実装は完了。`/stories/[id]` の select 廃止はステップ7のインライン展開で行う）
