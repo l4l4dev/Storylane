@@ -35,7 +35,7 @@ export function BoardSidebar({
   return (
     <nav
       aria-label="Toggle board panels"
-      className="flex w-28 shrink-0 flex-col gap-1 border-r border-gray-200 pr-2 dark:border-gray-800"
+      className="flex w-28 shrink-0 flex-col gap-1 border-r border-border pr-2"
     >
       {BOARD_PANEL_IDS.map((panel) => {
         const isEnabled = enabled.has(panel);

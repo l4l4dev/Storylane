@@ -12,6 +12,6 @@ describe("CommentBody", () => {
     render(<CommentBody body="hey @dev_user can you check this?" />);
     const mention = screen.getByText("@dev_user");
     expect(mention).toBeInTheDocument();
-    expect(mention).toHaveClass("text-indigo-600");
+    expect(mention).toHaveClass("text-primary");
   });
 });

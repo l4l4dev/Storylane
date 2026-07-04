@@ -42,11 +42,11 @@ function ReleaseMarkerRow({ story }: { story: StoryCardData }) {
       className="flex items-center gap-2 py-1 text-sm hover:opacity-80"
     >
       <Flag
-        className="h-4 w-4 shrink-0 text-indigo-500"
+        className="h-4 w-4 shrink-0 text-primary"
         aria-label={STORY_TYPE_META.release.label}
       />
       <span className="font-medium">{story.title}</span>
-      <span className="h-px flex-1 bg-indigo-300 dark:bg-indigo-700" />
+      <span className="h-px flex-1 bg-primary/30" />
     </Link>
   );
 }
@@ -118,21 +118,21 @@ export function StoryCard({
       )}
 
       {story.points != null && (
-        <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-zinc-800 dark:text-gray-300">
+        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
           {formatPoints(story.points)}
         </span>
       )}
 
       {story.assigneeName && (
-        <span className="shrink-0 text-xs text-gray-500">{story.assigneeName}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{story.assigneeName}</span>
       )}
     </>
   );
 
   return (
     <div
-      className={`rounded-md border border-gray-200 p-3 dark:border-gray-800 ${
-        isAccepted ? "bg-green-50 dark:bg-green-950/40" : "bg-white dark:bg-zinc-900"
+      className={`rounded-md border border-border p-3 ${
+        isAccepted ? "bg-green-50 dark:bg-green-950/40" : "bg-card"
       }`}
     >
       {/* Clicking a story card expands its detail inline within the panel
@@ -167,11 +167,11 @@ export function StoryCard({
       )}
 
       {projectId && expanded && (
-        <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-800">
+        <div className="mt-3 border-t border-border pt-3">
           {detail ? (
             <StoryDetailPanel detail={detail} onMutated={refreshDetail} />
           ) : (
-            <p className="text-sm text-gray-500">Loading…</p>
+            <p className="text-sm text-muted-foreground">Loading…</p>
           )}
         </div>
       )}

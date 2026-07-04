@@ -4,7 +4,7 @@ export function EpicProgressBar({ progress, color }: { progress: EpicProgress; c
   return (
     <div className="flex items-center gap-3">
       <div
-        className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-zinc-800"
+        className="h-2 flex-1 overflow-hidden rounded-full bg-muted"
         role="progressbar"
         aria-valuenow={progress.percent}
         aria-valuemin={0}
@@ -15,7 +15,7 @@ export function EpicProgressBar({ progress, color }: { progress: EpicProgress; c
           style={{ width: `${progress.percent}%`, backgroundColor: color }}
         />
       </div>
-      <span className="shrink-0 text-xs text-gray-500">
+      <span className="shrink-0 text-xs text-muted-foreground">
         {progress.accepted} / {progress.total} accepted
       </span>
     </div>

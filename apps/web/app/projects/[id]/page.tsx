@@ -114,15 +114,15 @@ export default async function ProjectHomePage({
       <section>
         <h2 className="mb-3 text-lg font-semibold">Current Iteration</h2>
         {currentIteration ? (
-          <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+          <div className="rounded-lg border border-border p-4">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-medium">Iteration #{currentIteration.number}</h3>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-muted-foreground">
                 {currentIteration.start_date} – {currentIteration.end_date}
               </span>
             </div>
             {currentIteration.goal && (
-              <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">{currentIteration.goal}</p>
+              <p className="mb-3 text-sm text-muted-foreground">{currentIteration.goal}</p>
             )}
             {currentStories.length > 0 ? (
               <ul className="flex flex-col gap-2">
@@ -133,11 +133,11 @@ export default async function ProjectHomePage({
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-gray-500">No stories assigned yet.</p>
+              <p className="text-sm text-muted-foreground">No stories assigned yet.</p>
             )}
           </div>
         ) : (
-          <p className="text-sm text-gray-500">No active iteration.</p>
+          <p className="text-sm text-muted-foreground">No active iteration.</p>
         )}
       </section>
 
@@ -146,7 +146,7 @@ export default async function ProjectHomePage({
           <h2 className="text-lg font-semibold">Backlog</h2>
           <Link
             href={`/projects/${project.id}/board`}
-            className="text-sm text-indigo-600 hover:underline"
+            className="text-sm text-primary hover:underline"
           >
             View full board →
           </Link>
@@ -160,7 +160,7 @@ export default async function ProjectHomePage({
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-gray-500">Backlog is empty.</p>
+          <p className="text-sm text-muted-foreground">Backlog is empty.</p>
         )}
       </section>
 
@@ -181,7 +181,7 @@ export default async function ProjectHomePage({
                       storyTitle: storyRow?.title ?? null,
                     })}
                   </span>
-                  <span className="shrink-0 text-xs text-gray-500">
+                  <span className="shrink-0 text-xs text-muted-foreground">
                     {new Date(log.created_at).toLocaleString()}
                   </span>
                 </li>
@@ -189,7 +189,7 @@ export default async function ProjectHomePage({
             })}
           </ul>
         ) : (
-          <p className="text-sm text-gray-500">No activity yet.</p>
+          <p className="text-sm text-muted-foreground">No activity yet.</p>
         )}
       </section>
     </main>

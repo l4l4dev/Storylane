@@ -5,7 +5,7 @@ export function CommentBody({ body }: { body: string }) {
     <p className="whitespace-pre-wrap text-sm">
       {parseCommentBody(body).map((segment, index) =>
         segment.type === "mention" ? (
-          <span key={index} className="font-medium text-indigo-600 dark:text-indigo-400">
+          <span key={index} className="font-medium text-primary">
             @{segment.value}
           </span>
         ) : (
