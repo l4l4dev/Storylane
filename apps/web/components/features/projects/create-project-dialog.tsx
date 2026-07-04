@@ -14,21 +14,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 
 export function CreateProjectDialog() {
   const [open, setOpen] = useState(false);
-  // Radix Select is controlled, so mirror its value into a hidden input for
-  // the server-action form to read from FormData.
-  const [iterationLength, setIterationLength] = useState("14");
-  const [pointScale, setPointScale] = useState("fibonacci");
 
   async function handleCreate(formData: FormData) {
     await createProject(formData);
@@ -57,37 +47,25 @@ export function CreateProjectDialog() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Iteration length (days)</Label>
-            <input type="hidden" name="iteration_length" value={iterationLength} />
-            <Select value={iterationLength} onValueChange={setIterationLength}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ITERATION_LENGTHS.map((d) => (
-                  <SelectItem key={d} value={String(d)}>
-                    {d}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="project-iteration-length">Iteration length (days)</Label>
+            <NativeSelect id="project-iteration-length" name="iteration_length" defaultValue={14}>
+              {ITERATION_LENGTHS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </NativeSelect>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Point scale</Label>
-            <input type="hidden" name="point_scale" value={pointScale} />
-            <Select value={pointScale} onValueChange={setPointScale}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {POINT_SCALES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="project-point-scale">Point scale</Label>
+            <NativeSelect id="project-point-scale" name="point_scale" defaultValue="fibonacci">
+              {POINT_SCALES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </NativeSelect>
           </div>
 
           <DialogFooter>

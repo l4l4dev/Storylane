@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { epicProgress } from "@/lib/utils/epics";
 import { EpicFormDialog } from "@/components/features/epics/epic-form-dialog";
 import { EpicProgressBar } from "@/components/features/epics/epic-progress-bar";
+import { Button } from "@/components/ui/button";
 import { deleteEpic } from "./actions";
 
 export default async function EpicsPage({
@@ -43,14 +44,7 @@ export default async function EpicsPage({
           <h1 className="text-2xl font-bold">Epics</h1>
           <EpicFormDialog
             projectId={project.id}
-            trigger={
-              <button
-                type="button"
-                className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-              >
-                New epic
-              </button>
-            }
+            trigger={<Button size="sm">New epic</Button>}
           />
         </div>
       </div>
@@ -62,7 +56,7 @@ export default async function EpicsPage({
             return (
               <li
                 key={epic.id}
-                className="rounded-lg border border-gray-200 p-4 dark:border-gray-800"
+                className="rounded-lg border border-border p-4"
               >
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
@@ -77,30 +71,22 @@ export default async function EpicsPage({
                       projectId={project.id}
                       epic={epic}
                       trigger={
-                        <button
-                          type="button"
-                          className="rounded-md border border-gray-300 px-2 py-1 text-xs dark:border-gray-700"
-                        >
+                        <Button variant="outline" size="xs">
                           Edit
-                        </button>
+                        </Button>
                       }
                     />
                     <form action={deleteEpic}>
                       <input type="hidden" name="epic_id" value={epic.id} />
                       <input type="hidden" name="project_id" value={project.id} />
-                      <button
-                        type="submit"
-                        className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
-                      >
+                      <Button type="submit" variant="destructive" size="xs">
                         Delete
-                      </button>
+                      </Button>
                     </form>
                   </div>
                 </div>
                 {epic.description && (
-                  <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">
-                    {epic.description}
-                  </p>
+                  <p className="mb-3 text-sm text-muted-foreground">{epic.description}</p>
                 )}
                 <EpicProgressBar progress={progress} color={epic.color} />
               </li>
@@ -108,7 +94,7 @@ export default async function EpicsPage({
           })}
         </ul>
       ) : (
-        <p className="text-sm text-gray-500">No epics yet.</p>
+        <p className="text-sm text-muted-foreground">No epics yet.</p>
       )}
     </main>
   );

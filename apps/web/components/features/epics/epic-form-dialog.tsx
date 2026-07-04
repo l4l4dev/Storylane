@@ -2,6 +2,18 @@
 
 import { useState } from "react";
 import { createEpic, updateEpic } from "@/app/projects/[id]/epics/actions";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 type EpicFormValues = {
   id: string;
@@ -24,71 +36,51 @@ export function EpicFormDialog({
   const action = isEdit ? updateEpic : createEpic;
 
   return (
-    <>
-      <span onClick={() => setOpen(true)}>{trigger}</span>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit epic" : "New epic"}</DialogTitle>
+        </DialogHeader>
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-zinc-900">
-            <h2 className="mb-4 text-lg font-semibold">{isEdit ? "Edit epic" : "New epic"}</h2>
-            <form
-              action={action}
-              onSubmit={() => setOpen(false)}
-              className="flex flex-col gap-4"
-            >
-              <input type="hidden" name="project_id" value={projectId} />
-              {isEdit && <input type="hidden" name="epic_id" value={epic.id} />}
+        <form action={action} onSubmit={() => setOpen(false)} className="flex flex-col gap-4">
+          <input type="hidden" name="project_id" value={projectId} />
+          {isEdit && <input type="hidden" name="epic_id" value={epic.id} />}
 
-              <label className="flex flex-col gap-1 text-sm">
-                <span>Name</span>
-                <input
-                  name="name"
-                  required
-                  autoFocus
-                  defaultValue={epic?.name}
-                  className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-sm">
-                <span>Description</span>
-                <textarea
-                  name="description"
-                  rows={2}
-                  defaultValue={epic?.description ?? ""}
-                  className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
-                />
-              </label>
-
-              <label className="flex items-center gap-3 text-sm">
-                <span>Color</span>
-                <input
-                  name="color"
-                  type="color"
-                  defaultValue={epic?.color ?? "#6366f1"}
-                  className="h-9 w-14 cursor-pointer rounded-md border border-gray-300 dark:border-gray-700"
-                />
-              </label>
-
-              <div className="mt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm dark:border-gray-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-                >
-                  {isEdit ? "Save changes" : "Create"}
-                </button>
-              </div>
-            </form>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="epic-name">Name</Label>
+            <Input id="epic-name" name="name" required autoFocus defaultValue={epic?.name} />
           </div>
-        </div>
-      )}
-    </>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="epic-description">Description</Label>
+            <Textarea
+              id="epic-description"
+              name="description"
+              rows={2}
+              defaultValue={epic?.description ?? ""}
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Label htmlFor="epic-color">Color</Label>
+            <input
+              id="epic-color"
+              name="color"
+              type="color"
+              defaultValue={epic?.color ?? "#6366f1"}
+              className="h-9 w-14 cursor-pointer rounded-md border border-input bg-transparent"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit">{isEdit ? "Save changes" : "Create"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

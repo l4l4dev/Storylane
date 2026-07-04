@@ -3,6 +3,19 @@
 import { useState } from "react";
 import { createStory } from "@/app/projects/[id]/board/actions";
 import { STORY_TYPES, storyTypeUsesPoints } from "@/lib/utils/stories";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 
 type Option = { id: string; name: string };
 
@@ -23,146 +36,118 @@ export function CreateStoryDialog({
   const [storyType, setStoryType] = useState<string>("feature");
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-      >
-        New story
-      </button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="w-full">
+          New story
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New story</DialogTitle>
+        </DialogHeader>
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-zinc-900">
-            <h2 className="mb-4 text-lg font-semibold">New story</h2>
-            <form
-              action={createStory}
-              onSubmit={() => setOpen(false)}
-              className="flex flex-col gap-4"
-            >
-              <input type="hidden" name="project_id" value={projectId} />
+        <form
+          action={createStory}
+          onSubmit={() => setOpen(false)}
+          className="flex flex-col gap-4"
+        >
+          <input type="hidden" name="project_id" value={projectId} />
 
-              <label className="flex flex-col gap-1 text-sm">
-                <span>Title</span>
-                <input
-                  name="title"
-                  required
-                  autoFocus
-                  className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-sm">
-                <span>Description</span>
-                <textarea
-                  name="description"
-                  rows={2}
-                  className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
-                />
-              </label>
-
-              <div className="flex gap-4">
-                <label className="flex flex-1 flex-col gap-1 text-sm">
-                  <span>Type</span>
-                  <select
-                    name="story_type"
-                    value={storyType}
-                    onChange={(e) => setStoryType(e.target.value)}
-                    className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
-                  >
-                    {STORY_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex w-32 flex-col gap-1 text-sm">
-                  <span>Points</span>
-                  {/* Points come from the project's point scale — no free
-                      numeric input (see spec/features.md). */}
-                  <select
-                    name="points"
-                    disabled={!storyTypeUsesPoints(storyType)}
-                    className="rounded-md border border-gray-300 px-3 py-2 disabled:opacity-50 dark:border-gray-700 dark:bg-zinc-800"
-                  >
-                    <option value="">{storyTypeUsesPoints(storyType) ? "Unestimated" : "—"}</option>
-                    {pointScale.map((value) => (
-                      <option key={value} value={value}>
-                        {value}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="flex gap-4">
-                <label className="flex flex-1 flex-col gap-1 text-sm">
-                  <span>Epic</span>
-                  <select
-                    name="epic_id"
-                    className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
-                  >
-                    <option value="">None</option>
-                    {epics.map((epic) => (
-                      <option key={epic.id} value={epic.id}>
-                        {epic.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-1 flex-col gap-1 text-sm">
-                  <span>Assignee</span>
-                  <select
-                    name="assignee_id"
-                    className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
-                  >
-                    <option value="">Unassigned</option>
-                    {members.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              {labels.length > 0 && (
-                <fieldset className="flex flex-col gap-1 text-sm">
-                  <span>Labels</span>
-                  <div className="flex flex-wrap gap-2">
-                    {labels.map((label) => (
-                      <label key={label.id} className="flex items-center gap-1">
-                        <input type="checkbox" name="label_ids" value={label.id} />
-                        {label.name}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-              )}
-
-              <div className="mt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm dark:border-gray-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-                >
-                  Create
-                </button>
-              </div>
-            </form>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="story-title">Title</Label>
+            <Input id="story-title" name="title" required autoFocus />
           </div>
-        </div>
-      )}
-    </>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="story-description">Description</Label>
+            <Textarea id="story-description" name="description" rows={2} />
+          </div>
+
+          <div className="flex gap-4">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor="story-type">Type</Label>
+              <NativeSelect
+                id="story-type"
+                name="story_type"
+                value={storyType}
+                onChange={(e) => setStoryType(e.target.value)}
+              >
+                {STORY_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+
+            <div className="flex w-32 flex-col gap-1.5">
+              <Label htmlFor="story-points">Points</Label>
+              {/* Points come from the project's point scale — no free
+                  numeric input (see spec/features.md). */}
+              <NativeSelect
+                id="story-points"
+                name="points"
+                disabled={!storyTypeUsesPoints(storyType)}
+              >
+                <option value="">{storyTypeUsesPoints(storyType) ? "Unestimated" : "—"}</option>
+                {pointScale.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          </div>
+
+          <div className="flex gap-4">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor="story-epic">Epic</Label>
+              <NativeSelect id="story-epic" name="epic_id">
+                <option value="">None</option>
+                {epics.map((epic) => (
+                  <option key={epic.id} value={epic.id}>
+                    {epic.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor="story-assignee">Assignee</Label>
+              <NativeSelect id="story-assignee" name="assignee_id">
+                <option value="">Unassigned</option>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          </div>
+
+          {labels.length > 0 && (
+            <fieldset className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Labels</span>
+              <div className="flex flex-wrap gap-2">
+                {labels.map((label) => (
+                  <label key={label.id} className="flex items-center gap-1.5 text-sm">
+                    <input type="checkbox" name="label_ids" value={label.id} className="accent-primary" />
+                    {label.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit">Create</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

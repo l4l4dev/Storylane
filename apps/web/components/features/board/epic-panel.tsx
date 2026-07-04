@@ -16,16 +16,16 @@ export function EpicPanel({ projectId, epics }: { projectId: string; epics: Epic
     <div className="flex flex-col gap-3">
       <Link
         href={`/projects/${projectId}/epics`}
-        className="self-end text-xs text-indigo-600 hover:underline"
+        className="self-end text-xs text-primary hover:underline"
       >
         Manage epics
       </Link>
       {epics.length === 0 ? (
-        <p className="text-sm text-gray-500">No epics yet.</p>
+        <p className="text-sm text-muted-foreground">No epics yet.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {epics.map((epic) => (
-            <li key={epic.id} className="rounded-md border border-gray-200 p-2 dark:border-gray-800">
+            <li key={epic.id} className="rounded-md border border-border p-2">
               <div className="mb-1 flex items-center gap-2">
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-full"
