@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BACKLOG_CONTAINER_ID, groupStoriesByIteration, ICEBOX_CONTAINER_ID, partitionIcebox } from "@/lib/utils/board";
@@ -138,28 +137,9 @@ export default async function BoardPage({
 
   return (
     <main className="mx-auto max-w-[100rem] p-6">
-      <div className="mb-4">
-        <div className="flex items-center gap-3 text-sm">
-          <Link href="/dashboard" className="text-indigo-600 hover:underline">
-            ← Projects
-          </Link>
-          <Link href={`/projects/${project.id}`} className="text-indigo-600 hover:underline">
-            Home
-          </Link>
-          <Link href={`/projects/${project.id}/epics`} className="text-indigo-600 hover:underline">
-            Epics
-          </Link>
-          <Link
-            href={`/projects/${project.id}/settings`}
-            className="text-indigo-600 hover:underline"
-          >
-            Settings
-          </Link>
-        </div>
-        <div className="mt-2 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">{project.name} · Board</h1>
-          <span className="text-sm text-gray-500">Current velocity: {currentVelocity} pts</span>
-        </div>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Board</h1>
+        <span className="text-sm text-muted-foreground">Current velocity: {currentVelocity} pts</span>
       </div>
 
       <SprintBoard

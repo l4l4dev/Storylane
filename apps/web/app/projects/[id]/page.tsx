@@ -102,34 +102,13 @@ export default async function ProjectHomePage({
   return (
     <main className="mx-auto max-w-3xl p-6">
       <div className="mb-6">
-        <div className="flex items-center gap-3 text-sm">
-          <Link href="/dashboard" className="text-indigo-600 hover:underline">
-            ← Projects
-          </Link>
-          <Link
-            href={`/projects/${project.id}/board`}
-            className="text-indigo-600 hover:underline"
-          >
-            Board
-          </Link>
-          <Link
-            href={`/projects/${project.id}/epics`}
-            className="text-indigo-600 hover:underline"
-          >
-            Epics
-          </Link>
-          <Link
-            href={`/projects/${project.id}/settings`}
-            className="text-indigo-600 hover:underline"
-          >
-            Settings
-          </Link>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Overview</h1>
+          <span className="text-sm text-muted-foreground">Current velocity: {currentVelocity} pts</span>
         </div>
-        <div className="mt-2 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">{project.name}</h1>
-          <span className="text-sm text-gray-500">Current velocity: {currentVelocity} pts</span>
-        </div>
-        {project.description && <p className="mt-1 text-sm text-gray-500">{project.description}</p>}
+        {project.description && (
+          <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
+        )}
       </div>
 
       <section>

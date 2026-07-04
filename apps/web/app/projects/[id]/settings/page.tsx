@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ITERATION_LENGTHS, POINT_SCALES } from "@/lib/types";
@@ -48,27 +47,7 @@ export default async function ProjectSettingsPage({
   return (
     <main className="mx-auto max-w-2xl p-6">
       <div className="mb-6">
-        <div className="flex items-center gap-3 text-sm">
-          <Link href="/dashboard" className="text-indigo-600 hover:underline">
-            ← Projects
-          </Link>
-          <Link href={`/projects/${project.id}`} className="text-indigo-600 hover:underline">
-            Home
-          </Link>
-          <Link
-            href={`/projects/${project.id}/board`}
-            className="text-indigo-600 hover:underline"
-          >
-            Board
-          </Link>
-          <Link
-            href={`/projects/${project.id}/epics`}
-            className="text-indigo-600 hover:underline"
-          >
-            Epics
-          </Link>
-        </div>
-        <h1 className="mt-2 text-2xl font-bold">{project.name} · Settings</h1>
+        <h1 className="text-2xl font-bold">Settings</h1>
       </div>
 
       {/* Project details */}

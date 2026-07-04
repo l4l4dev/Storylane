@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { epicProgress } from "@/lib/utils/epics";
@@ -40,19 +39,8 @@ export default async function EpicsPage({
   return (
     <main className="mx-auto max-w-2xl p-6">
       <div className="mb-6">
-        <div className="flex items-center gap-3 text-sm">
-          <Link href="/dashboard" className="text-indigo-600 hover:underline">
-            ← Projects
-          </Link>
-          <Link href={`/projects/${project.id}`} className="text-indigo-600 hover:underline">
-            Home
-          </Link>
-          <Link href={`/projects/${project.id}/board`} className="text-indigo-600 hover:underline">
-            Board
-          </Link>
-        </div>
-        <div className="mt-2 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">{project.name} · Epics</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Epics</h1>
           <EpicFormDialog
             projectId={project.id}
             trigger={
