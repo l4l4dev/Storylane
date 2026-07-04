@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { pointScaleValues, STORY_STATES, STORY_TYPES } from "@/lib/utils/stories";
 import { CommentBody } from "@/components/features/story/comment-body";
+import { TaskChecklist } from "@/components/features/story/task-checklist";
 import { addComment, deleteStory, updateStory } from "./actions";
 
 export default async function StoryDetailPage({
@@ -23,7 +24,7 @@ export default async function StoryDetailPage({
     notFound();
   }
 
-  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }] =
+  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }] =
     await Promise.all([
       supabase
         .from("projects")
@@ -41,6 +42,7 @@ export default async function StoryDetailPage({
         .select("id, body, created_at, author:profiles(display_name)")
         .eq("story_id", id)
         .order("created_at", { ascending: true }),
+      supabase.from("tasks").select("id, title, is_done").eq("story_id", id).order("position"),
     ]);
 
   const storyLabelIds = new Set(story.story_labels.map((sl) => sl.label_id));
@@ -180,6 +182,8 @@ export default async function StoryDetailPage({
           </button>
         </div>
       </form>
+
+      <TaskChecklist storyId={story.id} tasks={tasks ?? []} />
 
       <section className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">
         <h2 className="mb-3 text-lg font-semibold">Comments</h2>

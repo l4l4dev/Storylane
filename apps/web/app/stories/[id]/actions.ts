@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { isUnestimatedFeature, parsePoints, pointScaleValues } from "@/lib/utils/stories";
+import { isUnestimatedFeature, nextPosition, parsePoints, pointScaleValues } from "@/lib/utils/stories";
 
 export async function updateStory(formData: FormData) {
   const id = String(formData.get("story_id"));
@@ -102,6 +102,56 @@ export async function addComment(formData: FormData) {
 
   revalidatePath(`/stories/${storyId}`);
   revalidatePath(`/projects/${projectId}`);
+}
+
+export async function addTask(formData: FormData) {
+  const storyId = String(formData.get("story_id"));
+  const title = String(formData.get("title") ?? "").trim();
+
+  if (!title) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase.from("tasks").select("position").eq("story_id", storyId);
+  const { error } = await supabase
+    .from("tasks")
+    .insert({ story_id: storyId, title, position: nextPosition(existing ?? []) });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/stories/${storyId}`);
+}
+
+export async function toggleTask(formData: FormData) {
+  const taskId = String(formData.get("task_id"));
+  const storyId = String(formData.get("story_id"));
+  const isDone = formData.get("is_done") === "true";
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("tasks").update({ is_done: !isDone }).eq("id", taskId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/stories/${storyId}`);
+}
+
+export async function deleteTask(formData: FormData) {
+  const taskId = String(formData.get("task_id"));
+  const storyId = String(formData.get("story_id"));
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/stories/${storyId}`);
 }
 
 export async function deleteStory(formData: FormData) {
