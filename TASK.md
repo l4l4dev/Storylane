@@ -150,9 +150,9 @@ Tasks 6〜13 は Web → iOS の順で進める。
 - [ ] ストーリーカード上のワンクリック状態遷移ボタン（Start / Finish / Deliver / Accept / Reject / Restart）
       — 次の有効な遷移のみ提示するステートマシン。詳細画面の自由な state select も廃止して置き換える
       （カード上のボタン実装は完了。`/stories/[id]` の select 廃止はステップ7のインライン展開で行う）
-- [ ] Iteration 自動スケジューリング: velocity に基づき Backlog を iteration 境界マーカーで自動分割
+- [x] Iteration 自動スケジューリング: velocity に基づき Backlog を iteration 境界マーカーで自動分割
       （「Generate next iteration」ボタンを廃止 — see spec/velocity.md）
-- [ ] Iteration 自動ロールオーバー: end_date 経過後の初回アクセスで velocity を確定し、
+- [x] Iteration 自動ロールオーバー: end_date 経過後の初回アクセスで velocity を確定し、
       未 accepted ストーリーを次 iteration へ持ち越す（「Mark as done」ボタンを廃止）
 - [ ] ストーリー詳細のパネル内インライン展開（アコーディオン。`/stories/[id]` はディープリンク用に残す）
 - [x] ポイント入力をプロジェクトの point scale からの選択式にする（自由数値入力を廃止）
