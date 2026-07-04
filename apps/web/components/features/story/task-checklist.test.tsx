@@ -21,16 +21,18 @@ describe("TaskChecklist", () => {
     expect(screen.getByText("(1/2)")).toBeInTheDocument();
   });
 
-  it("renders a done task with a strikethrough and the checked icon", () => {
+  it("renders a done task with a strikethrough and the checked toggle", () => {
     render(<TaskChecklist storyId="s1" tasks={[{ id: "t1", title: "Write tests", is_done: true }]} />);
     expect(screen.getByText("Write tests")).toHaveClass("line-through");
-    expect(screen.getByLabelText('Mark "Write tests" as not done')).toHaveTextContent("☑");
+    // A done task's toggle renders in the brand color; the aria-label reflects
+    // the action (toggling it back to not-done).
+    expect(screen.getByLabelText('Mark "Write tests" as not done')).toHaveClass("text-primary");
   });
 
-  it("renders a pending task with no strikethrough and the unchecked icon", () => {
+  it("renders a pending task with no strikethrough and the unchecked toggle", () => {
     render(<TaskChecklist storyId="s1" tasks={[{ id: "t1", title: "Ship it", is_done: false }]} />);
     expect(screen.getByText("Ship it")).not.toHaveClass("line-through");
-    expect(screen.getByLabelText('Mark "Ship it" as done')).toHaveTextContent("☐");
+    expect(screen.getByLabelText('Mark "Ship it" as done')).toHaveClass("text-muted-foreground");
   });
 
   it("exposes a delete button for each task", () => {

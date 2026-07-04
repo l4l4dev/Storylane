@@ -8,6 +8,7 @@ import {
   type StoryState as StoryLifecycleState,
 } from "@/lib/utils/story-state";
 import { isUnestimatedFeature } from "@/lib/utils/stories";
+import { Button } from "@/components/ui/button";
 
 // One-click state-transition buttons (Start / Finish / Deliver / Accept /
 // Reject / Restart — see spec/screens.md "Story card UX"). Shared by the
@@ -45,14 +46,15 @@ export function TransitionButtons({
             <input type="hidden" name="project_id" value={projectId} />
             <input type="hidden" name="story_id" value={storyId} />
             <input type="hidden" name="action" value={action} />
-            <button
+            <Button
               type="submit"
+              variant="outline"
+              size="xs"
               disabled={blocked}
               title={blocked ? "Estimate this feature before starting" : undefined}
-              className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-gray-700 dark:hover:bg-zinc-800"
             >
               {transitionLabel(action)}
-            </button>
+            </Button>
           </form>
         );
       })}
