@@ -95,3 +95,34 @@ export async function removeMember(formData: FormData) {
   }
   revalidatePath(`/projects/${id}/settings`);
 }
+
+export async function createLabel(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const name = String(formData.get("name") ?? "").trim();
+  const color = String(formData.get("color") ?? "#6b7280");
+
+  if (!name) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("labels").insert({ project_id: projectId, name, color });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+}
+
+export async function deleteLabel(formData: FormData) {
+  const id = String(formData.get("label_id"));
+  const projectId = String(formData.get("project_id"));
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("labels").delete().eq("id", id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+}

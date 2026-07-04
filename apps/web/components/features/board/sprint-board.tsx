@@ -1,6 +1,7 @@
 "use client";
 
-import { type ReactNode, useState, useTransition } from "react";
+import { Fragment, type ReactNode, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   type DragEndEvent,
@@ -20,12 +21,16 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { finalizeIteration, moveStory, updateIterationGoal } from "@/app/projects/[id]/board/actions";
-import { isCurrentIteration } from "@/lib/utils/iterations";
-import { sumPoints } from "@/lib/utils/board";
+import { moveStory, updateIterationGoal } from "@/app/projects/[id]/board/actions";
+import { isCurrentIteration, splitBacklogIntoVirtualIterations } from "@/lib/utils/iterations";
+import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID, sumPoints } from "@/lib/utils/board";
+import { useProjectStoriesRealtime } from "@/lib/supabase/realtime";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { BoardSidebar, DEFAULT_BOARD_PANELS, type BoardPanelId } from "./board-sidebar";
 import { StoryCard, type StoryCardData } from "./story-card";
 
-export const BACKLOG_CONTAINER_ID = "backlog";
+export { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID };
 
 export type IterationMeta = {
   id: string;
@@ -50,7 +55,11 @@ function findContainer(
   return Object.keys(containers).find((key) => containers[key].some((s) => s.id === itemId));
 }
 
-function SortableStoryRow({ story }: { story: StoryCardData }) {
+// The whole card is the drag handle (spec/screens.md "Story card UX": "no
+// dedicated drag handle"). A plain click still opens the story link/buttons
+// normally — dnd-kit only intercepts the click once the pointer has actually
+// moved past its activation threshold, so it doesn't fire for a stationary click.
+function SortableStoryRow({ story, projectId }: { story: StoryCardData; projectId: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: story.id,
   });
@@ -59,22 +68,11 @@ function SortableStoryRow({ story }: { story: StoryCardData }) {
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={isDragging ? "opacity-60" : undefined}
+      className={`cursor-grab active:cursor-grabbing ${isDragging ? "opacity-60" : ""}`}
+      {...attributes}
+      {...listeners}
     >
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          aria-label="Reorder story"
-          className="cursor-grab px-1 text-gray-400 hover:text-gray-600"
-          {...attributes}
-          {...listeners}
-        >
-          ⠿
-        </button>
-        <div className="flex-1">
-          <StoryCard story={story} />
-        </div>
-      </div>
+      <StoryCard story={story} projectId={projectId} />
     </li>
   );
 }
@@ -82,9 +80,11 @@ function SortableStoryRow({ story }: { story: StoryCardData }) {
 function DroppableStoryList({
   containerId,
   stories,
+  projectId,
 }: {
   containerId: string;
   stories: StoryCardData[];
+  projectId: string;
 }) {
   const { setNodeRef } = useDroppable({ id: containerId });
 
@@ -92,10 +92,69 @@ function DroppableStoryList({
     <SortableContext items={stories.map((s) => s.id)} strategy={verticalListSortingStrategy}>
       <ul ref={setNodeRef} className="flex min-h-[2.5rem] flex-col gap-2">
         {stories.map((story) => (
-          <SortableStoryRow key={story.id} story={story} />
+          <SortableStoryRow key={story.id} story={story} projectId={projectId} />
         ))}
       </ul>
     </SortableContext>
+  );
+}
+
+// Same droppable/sortable behavior as `DroppableStoryList`, but interspersed
+// with iteration boundary dividers between `groups` (see spec/velocity.md
+// "Marker computation") — the virtual future iterations that would be
+// created automatically once the backlog reaches the current one. Dividers
+// are decorative only: every story stays in one flat sortable list so drags
+// across a boundary work exactly like any other reorder.
+function BacklogList({
+  containerId,
+  groups,
+  startingIterationNumber,
+  projectId,
+}: {
+  containerId: string;
+  groups: StoryCardData[][];
+  startingIterationNumber: number;
+  projectId: string;
+}) {
+  const { setNodeRef } = useDroppable({ id: containerId });
+  const allStoryIds = groups.flat().map((s) => s.id);
+
+  return (
+    <SortableContext items={allStoryIds} strategy={verticalListSortingStrategy}>
+      <ul ref={setNodeRef} className="flex min-h-[2.5rem] flex-col gap-2">
+        {groups.map((group, groupIndex) => (
+          <Fragment key={group[0]?.id ?? groupIndex}>
+            {groupIndex > 0 && (
+              <li
+                aria-hidden
+                className="flex items-center gap-2 py-1 text-xs text-muted-foreground"
+              >
+                <span className="h-px flex-1 bg-border" />
+                <span>
+                  Iteration #{startingIterationNumber + groupIndex} · {sumPoints(group)} pts
+                </span>
+                <span className="h-px flex-1 bg-border" />
+              </li>
+            )}
+            {group.map((story) => (
+              <SortableStoryRow key={story.id} story={story} projectId={projectId} />
+            ))}
+          </Fragment>
+        ))}
+      </ul>
+    </SortableContext>
+  );
+}
+
+// Each panel is an independently scrollable column (spec/screens.md "Board
+// layout"). `w-80 shrink-0` keeps columns a fixed width so extra panels grow
+// the board horizontally instead of squeezing existing ones.
+function PanelColumn({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="flex h-[calc(100vh-14rem)] w-80 shrink-0 flex-col gap-3 overflow-y-auto rounded-lg border border-border p-3">
+      <h2 className="text-sm font-semibold text-muted-foreground">{title}</h2>
+      {children}
+    </section>
   );
 }
 
@@ -113,54 +172,35 @@ function IterationSection({
   const isCurrent = isCurrentIteration(iteration, today);
 
   return (
-    <section className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+    <section className="rounded-lg border border-border p-3">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Iteration #{iteration.number}</h2>
+          <h3 className="font-semibold">Iteration #{iteration.number}</h3>
           {isCurrent && (
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
               Current
             </span>
           )}
-          <span className="text-xs text-gray-500">{sumPoints(stories)} pts</span>
+          <span className="text-xs text-muted-foreground">{sumPoints(stories)} pts</span>
         </div>
-        <span className="text-xs text-gray-500">
-          {iteration.start_date} – {iteration.end_date}
-        </span>
       </div>
+      <p className="mb-2 text-xs text-muted-foreground">
+        {iteration.start_date} – {iteration.end_date}
+      </p>
 
       <form action={updateIterationGoal} className="mb-3 flex items-center gap-2">
         <input type="hidden" name="project_id" value={projectId} />
         <input type="hidden" name="iteration_id" value={iteration.id} />
-        <input
-          name="goal"
-          placeholder="Sprint goal"
-          defaultValue={iteration.goal ?? ""}
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-700 dark:bg-zinc-800"
-        />
-        <button
-          type="submit"
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-700"
-        >
+        <Input name="goal" placeholder="Sprint goal" defaultValue={iteration.goal ?? ""} className="flex-1" />
+        <Button type="submit" variant="outline" size="sm">
           Save
-        </button>
+        </Button>
       </form>
 
       {stories.length === 0 && (
-        <p className="mb-3 text-sm text-gray-500">No stories assigned yet.</p>
+        <p className="mb-3 text-sm text-muted-foreground">No stories assigned yet.</p>
       )}
-      <DroppableStoryList containerId={iteration.id} stories={stories} />
-
-      <form action={finalizeIteration} className="mt-3">
-        <input type="hidden" name="project_id" value={projectId} />
-        <input type="hidden" name="iteration_id" value={iteration.id} />
-        <button
-          type="submit"
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-700"
-        >
-          Mark as done
-        </button>
-      </form>
+      <DroppableStoryList containerId={iteration.id} stories={stories} projectId={projectId} />
     </section>
   );
 }
@@ -168,38 +208,36 @@ function IterationSection({
 function DoneIterationSection({
   iteration,
   stories,
+  projectId,
 }: {
   iteration: IterationMeta;
   stories: StoryCardData[];
+  projectId: string;
 }) {
   return (
-    <section className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-zinc-900/40">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-gray-600 dark:text-gray-300">
-            Iteration #{iteration.number}
-          </h2>
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-zinc-800 dark:text-gray-300">
-            Done · {iteration.velocity ?? 0} pts
-          </span>
-        </div>
-        <span className="text-xs text-gray-500">
-          {iteration.start_date} – {iteration.end_date}
+    <section className="rounded-lg border border-border bg-muted/40 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="font-semibold text-muted-foreground">Iteration #{iteration.number}</h3>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          {iteration.velocity ?? 0} pts
         </span>
       </div>
+      <p className="mb-2 text-xs text-muted-foreground">
+        {iteration.start_date} – {iteration.end_date}
+      </p>
       {iteration.goal && (
-        <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">{iteration.goal}</p>
+        <p className="mb-2 text-sm text-muted-foreground">{iteration.goal}</p>
       )}
       {stories.length > 0 ? (
         <ul className="flex flex-col gap-2">
           {stories.map((story) => (
             <li key={story.id}>
-              <StoryCard story={story} />
+              <StoryCard story={story} projectId={projectId} />
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-gray-500">No stories were completed.</p>
+        <p className="text-sm text-muted-foreground">No stories were completed.</p>
       )}
     </section>
   );
@@ -211,16 +249,23 @@ export function SprintBoard({
   iterations,
   initialContainers,
   doneIterationStories,
+  velocity,
   backlogToolbar,
   backlogFilters,
+  epicsPanel,
 }: {
   projectId: string;
   today: string;
   iterations: IterationMeta[];
+  // Keyed by BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID, or an iteration id.
   initialContainers: Record<string, StoryCardData[]>;
   doneIterationStories: Record<string, StoryCardData[]>;
+  // Current velocity, used to segment the Backlog panel into virtual future
+  // iterations (see spec/velocity.md "Marker computation").
+  velocity: number;
   backlogToolbar?: ReactNode;
   backlogFilters?: ReactNode;
+  epicsPanel?: ReactNode;
 }) {
   // Local order so drops/reorders reflect instantly; server revalidation
   // re-syncs via props afterwards. Reset during render when the prop changes
@@ -228,10 +273,30 @@ export function SprintBoard({
   const [containers, setContainers] = useState(initialContainers);
   const [synced, setSynced] = useState(initialContainers);
   const [, startTransition] = useTransition();
+  const [enabledPanels, setEnabledPanels] = useState<ReadonlySet<BoardPanelId>>(DEFAULT_BOARD_PANELS);
+  const router = useRouter();
 
   if (synced !== initialContainers) {
     setSynced(initialContainers);
     setContainers(initialContainers);
+  }
+
+  // Task 11: other users' story changes (state, position, project moves,
+  // creations/deletions) arrive here and re-fetch the board's Server
+  // Component, which flows back in as `initialContainers` and syncs above —
+  // no client-side container-grouping logic is duplicated for this.
+  useProjectStoriesRealtime(projectId, () => router.refresh());
+
+  function togglePanel(panel: BoardPanelId) {
+    setEnabledPanels((prev) => {
+      const next = new Set(prev);
+      if (next.has(panel)) {
+        next.delete(panel);
+      } else {
+        next.add(panel);
+      }
+      return next;
+    });
   }
 
   const sensors = useSensors(
@@ -300,10 +365,7 @@ export function SprintBoard({
     const formData = new FormData();
     formData.set("project_id", projectId);
     formData.set("story_id", String(active.id));
-    formData.set(
-      "destination_iteration_id",
-      overContainer === BACKLOG_CONTAINER_ID ? "" : overContainer,
-    );
+    formData.set("destination_container", overContainer);
     reordered.forEach((s) => formData.append("ordered_ids", s.id));
     startTransition(() => {
       void moveStory(formData);
@@ -313,6 +375,10 @@ export function SprintBoard({
   const editableIterations = iterations.filter((iteration) => iteration.state !== "done");
   const doneIterations = iterations.filter((iteration) => iteration.state === "done");
   const backlogStories = containers[BACKLOG_CONTAINER_ID] ?? [];
+  const iceboxStories = containers[ICEBOX_CONTAINER_ID] ?? [];
+  const backlogMarkerGroups = splitBacklogIntoVirtualIterations(backlogStories, velocity);
+  const nextVirtualIterationNumber =
+    iterations.reduce((max, iteration) => Math.max(max, iteration.number), 0) + 1;
 
   return (
     <DndContext
@@ -321,41 +387,78 @@ export function SprintBoard({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex flex-col gap-6">
-        {editableIterations.map((iteration) => (
-          <IterationSection
-            key={iteration.id}
-            iteration={iteration}
-            stories={containers[iteration.id] ?? []}
-            projectId={projectId}
-            today={today}
-          />
-        ))}
+      <div className="flex gap-4">
+        <BoardSidebar enabled={enabledPanels} onToggle={togglePanel} />
 
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Backlog</h2>
-            {backlogToolbar}
-          </div>
-          {backlogFilters && <div className="mb-3">{backlogFilters}</div>}
-          {backlogStories.length === 0 && (
-            <p className="mb-3 text-sm text-gray-500">Backlog is empty.</p>
+        <div className="flex flex-1 gap-4 overflow-x-auto pb-2">
+          {enabledPanels.has("current") && (
+            <PanelColumn title="Current">
+              {editableIterations.length === 0 && (
+                <p className="text-sm text-muted-foreground">No active iteration.</p>
+              )}
+              <div className="flex flex-col gap-4">
+                {editableIterations.map((iteration) => (
+                  <IterationSection
+                    key={iteration.id}
+                    iteration={iteration}
+                    stories={containers[iteration.id] ?? []}
+                    projectId={projectId}
+                    today={today}
+                  />
+                ))}
+              </div>
+            </PanelColumn>
           )}
-          <DroppableStoryList containerId={BACKLOG_CONTAINER_ID} stories={backlogStories} />
-        </section>
 
-        {doneIterations.length > 0 && (
-          <div className="flex flex-col gap-6 border-t border-gray-200 pt-6 dark:border-gray-800">
-            <h2 className="text-lg font-semibold text-gray-500">Done</h2>
-            {doneIterations.map((iteration) => (
-              <DoneIterationSection
-                key={iteration.id}
-                iteration={iteration}
-                stories={doneIterationStories[iteration.id] ?? []}
+          {enabledPanels.has("backlog") && (
+            <PanelColumn title="Backlog">
+              {backlogToolbar}
+              {backlogFilters}
+              {backlogStories.length === 0 && (
+                <p className="text-sm text-muted-foreground">Backlog is empty.</p>
+              )}
+              <BacklogList
+                containerId={BACKLOG_CONTAINER_ID}
+                groups={backlogMarkerGroups}
+                startingIterationNumber={nextVirtualIterationNumber}
+                projectId={projectId}
               />
-            ))}
-          </div>
-        )}
+            </PanelColumn>
+          )}
+
+          {enabledPanels.has("icebox") && (
+            <PanelColumn title="Icebox">
+              {iceboxStories.length === 0 && (
+                <p className="text-sm text-muted-foreground">Icebox is empty.</p>
+              )}
+              <DroppableStoryList
+                containerId={ICEBOX_CONTAINER_ID}
+                stories={iceboxStories}
+                projectId={projectId}
+              />
+            </PanelColumn>
+          )}
+
+          {enabledPanels.has("done") && (
+            <PanelColumn title="Done">
+              {doneIterations.length === 0 && (
+                <p className="text-sm text-muted-foreground">No completed iterations yet.</p>
+              )}
+              <div className="flex flex-col gap-4">
+                {doneIterations.map((iteration) => (
+                  <DoneIterationSection
+                    key={iteration.id}
+                    iteration={iteration}
+                    stories={doneIterationStories[iteration.id] ?? []}
+                    projectId={projectId}
+                  />
+                ))}
+              </div>
+            </PanelColumn>
+          )}
+
+          {enabledPanels.has("epics") && <PanelColumn title="Epics">{epicsPanel}</PanelColumn>}
+        </div>
       </div>
     </DndContext>
   );

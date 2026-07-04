@@ -5,6 +5,7 @@ import {
   isIterationEditable,
   nextIterationDates,
   nextIterationNumber,
+  splitBacklogIntoVirtualIterations,
 } from "./iterations";
 
 describe("nextIterationNumber", () => {
@@ -112,5 +113,49 @@ describe("autoAssignStoryIds", () => {
 
   it("assigns nothing for an empty backlog", () => {
     expect(autoAssignStoryIds([], 10)).toEqual([]);
+  });
+});
+
+describe("splitBacklogIntoVirtualIterations", () => {
+  it("breaks a new group once the next story would exceed capacity", () => {
+    const backlog = [
+      { points: 3, story_type: "feature" },
+      { points: 5, story_type: "feature" },
+      { points: 2, story_type: "feature" },
+    ];
+    expect(splitBacklogIntoVirtualIterations(backlog, 8)).toEqual([
+      [backlog[0], backlog[1]],
+      [backlog[2]],
+    ]);
+  });
+
+  it("gives a single oversized story its own group", () => {
+    const backlog = [
+      { points: 13, story_type: "feature" },
+      { points: 2, story_type: "feature" },
+    ];
+    expect(splitBacklogIntoVirtualIterations(backlog, 5)).toEqual([[backlog[0]], [backlog[1]]]);
+  });
+
+  it("never breaks a group on a chore/release/unestimated story since they cost 0", () => {
+    const backlog = [
+      { points: 3, story_type: "feature" },
+      { points: null, story_type: "chore" },
+      { points: null, story_type: "release" },
+      { points: 5, story_type: "feature" },
+    ];
+    expect(splitBacklogIntoVirtualIterations(backlog, 8)).toEqual([backlog]);
+  });
+
+  it("floors capacity at 1 point when velocity is 0", () => {
+    const backlog = [
+      { points: 1, story_type: "feature" },
+      { points: 1, story_type: "feature" },
+    ];
+    expect(splitBacklogIntoVirtualIterations(backlog, 0)).toEqual([[backlog[0]], [backlog[1]]]);
+  });
+
+  it("returns no groups for an empty backlog", () => {
+    expect(splitBacklogIntoVirtualIterations([], 8)).toEqual([]);
   });
 });
