@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID } from "@/lib/utils/board";
-import { autoAssignStoryIds, nextIterationDates, nextIterationNumber } from "@/lib/utils/iterations";
+import { isCurrentIteration, nextIterationDates, nextIterationNumber } from "@/lib/utils/iterations";
 import {
   isUnestimatedFeature,
   nextPosition,
@@ -12,7 +12,7 @@ import {
   reorderPositions,
 } from "@/lib/utils/stories";
 import { applyTransition, type StoryState, type StoryTransitionAction } from "@/lib/utils/story-state";
-import { acceptedPoints, calculateVelocity } from "@/lib/utils/velocity";
+import { acceptedPoints } from "@/lib/utils/velocity";
 
 function todayDateOnly(): string {
   return new Date().toISOString().slice(0, 10);
@@ -187,60 +187,101 @@ export async function transitionStory(formData: FormData) {
   revalidatePath(`/stories/${storyId}`);
 }
 
-export async function createIteration(formData: FormData) {
-  const projectId = String(formData.get("project_id"));
-  const goal = String(formData.get("goal") ?? "").trim() || null;
-
+/**
+ * Lazily keeps a project's current iteration row up to date (see
+ * spec/velocity.md "Automatic scheduling & rollover"). Replaces the old
+ * manual "Generate next iteration" / "Mark as done" buttons: called on first
+ * access from every view that reads iterations, before it queries them.
+ *
+ * - A fresh project with no iteration rows gets iteration #1 starting today.
+ * - Once the current row's `end_date` has passed, it's finalized (velocity
+ *   stored, `state` set to `done`) and unaccepted stories are carried into a
+ *   newly created next iteration. This repeats until a row covers today, so
+ *   a project left untouched for more than one `iteration_length` catches up
+ *   in one call instead of getting stuck on a stale iteration.
+ */
+export async function ensureCurrentIteration(projectId: string) {
   const supabase = await createClient();
+  const today = todayDateOnly();
 
-  const [{ data: project }, { data: iterations }, { data: backlog }] = await Promise.all([
-    supabase.from("projects").select("iteration_length, velocity_window").eq("id", projectId).single(),
-    supabase.from("iterations").select("number, end_date, state, velocity").eq("project_id", projectId),
-    supabase
-      .from("stories")
-      .select("id, points, story_type")
-      .eq("project_id", projectId)
-      .is("iteration_id", null)
-      .order("position", { ascending: true }),
-  ]);
-
-  if (!project) {
-    throw new Error("Project not found");
-  }
-
-  const completed = (iterations ?? [])
-    .filter((iteration) => iteration.state === "done")
-    .sort((a, b) => b.number - a.number);
-  const velocity = calculateVelocity(completed, project.velocity_window);
-
-  const { start_date, end_date } = nextIterationDates(
-    iterations ?? [],
-    project.iteration_length,
-    todayDateOnly(),
-  );
-  const number = nextIterationNumber(iterations ?? []);
-
-  const { data: iteration, error } = await supabase
-    .from("iterations")
-    .insert({ project_id: projectId, number, goal, start_date, end_date })
-    .select("id")
+  const { data: project } = await supabase
+    .from("projects")
+    .select("iteration_length")
+    .eq("id", projectId)
     .single();
 
-  if (error) {
-    throw new Error(error.message);
+  if (!project) {
+    return;
   }
 
-  const assignedIds = autoAssignStoryIds(backlog ?? [], velocity);
-  if (iteration && assignedIds.length > 0) {
-    await Promise.all(
-      assignedIds.map((id) =>
-        supabase.from("stories").update({ iteration_id: iteration.id }).eq("id", id),
-      ),
+  for (;;) {
+    const { data: latestRows } = await supabase
+      .from("iterations")
+      .select("id, number, start_date, end_date, state")
+      .eq("project_id", projectId)
+      .order("number", { ascending: false })
+      .limit(1);
+
+    const latest = latestRows?.[0] ?? null;
+
+    if (latest && isCurrentIteration(latest, today)) {
+      return;
+    }
+
+    let carryStoryIds: string[] = [];
+    if (latest && latest.state !== "done") {
+      const { data: stories } = await supabase
+        .from("stories")
+        .select("id, state, points, story_type")
+        .eq("iteration_id", latest.id);
+
+      const velocity = acceptedPoints(stories ?? []);
+      const { error } = await supabase
+        .from("iterations")
+        .update({ velocity, state: "done" })
+        .eq("id", latest.id);
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      carryStoryIds = (stories ?? [])
+        .filter((story) => story.state !== "accepted")
+        .map((story) => story.id);
+    }
+
+    const { start_date, end_date } = nextIterationDates(
+      latest ? [latest] : [],
+      project.iteration_length,
+      today,
     );
-  }
+    const number = nextIterationNumber(latest ? [latest] : []);
 
-  revalidatePath(`/projects/${projectId}/board`);
-  revalidatePath(`/projects/${projectId}`);
+    const { data: nextIteration, error } = await supabase
+      .from("iterations")
+      .insert({ project_id: projectId, number, start_date, end_date })
+      .select("id")
+      .single();
+
+    if (error) {
+      // Two concurrent calls (e.g. the board and project-home pages both
+      // triggering the same rollover) can race on this insert — the loser
+      // hits the (project_id, number) unique constraint. Re-fetch and retry
+      // rather than surfacing an error: the winner already created the row
+      // and, if it had stories to carry, already moved them.
+      if (error.code === "23505") {
+        continue;
+      }
+      throw new Error(error.message);
+    }
+
+    if (nextIteration && carryStoryIds.length > 0) {
+      await Promise.all(
+        carryStoryIds.map((id) =>
+          supabase.from("stories").update({ iteration_id: nextIteration.id }).eq("id", id),
+        ),
+      );
+    }
+  }
 }
 
 export async function updateIterationGoal(formData: FormData) {
@@ -250,30 +291,6 @@ export async function updateIterationGoal(formData: FormData) {
 
   const supabase = await createClient();
   const { error } = await supabase.from("iterations").update({ goal }).eq("id", iterationId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-  revalidatePath(`/projects/${projectId}/board`);
-  revalidatePath(`/projects/${projectId}`);
-}
-
-export async function finalizeIteration(formData: FormData) {
-  const projectId = String(formData.get("project_id"));
-  const iterationId = String(formData.get("iteration_id"));
-
-  const supabase = await createClient();
-  const { data: stories } = await supabase
-    .from("stories")
-    .select("state, points, story_type")
-    .eq("iteration_id", iterationId);
-
-  const velocity = acceptedPoints(stories ?? []);
-
-  const { error } = await supabase
-    .from("iterations")
-    .update({ velocity, state: "done" })
-    .eq("id", iterationId);
 
   if (error) {
     throw new Error(error.message);

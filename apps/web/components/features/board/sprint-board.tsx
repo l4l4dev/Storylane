@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState, useTransition } from "react";
+import { Fragment, type ReactNode, useState, useTransition } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -20,8 +20,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { finalizeIteration, moveStory, updateIterationGoal } from "@/app/projects/[id]/board/actions";
-import { isCurrentIteration } from "@/lib/utils/iterations";
+import { moveStory, updateIterationGoal } from "@/app/projects/[id]/board/actions";
+import { isCurrentIteration, splitBacklogIntoVirtualIterations } from "@/lib/utils/iterations";
 import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID, sumPoints } from "@/lib/utils/board";
 import { BoardSidebar, DEFAULT_BOARD_PANELS, type BoardPanelId } from "./board-sidebar";
 import { StoryCard, type StoryCardData } from "./story-card";
@@ -95,6 +95,53 @@ function DroppableStoryList({
   );
 }
 
+// Same droppable/sortable behavior as `DroppableStoryList`, but interspersed
+// with iteration boundary dividers between `groups` (see spec/velocity.md
+// "Marker computation") — the virtual future iterations that would be
+// created automatically once the backlog reaches the current one. Dividers
+// are decorative only: every story stays in one flat sortable list so drags
+// across a boundary work exactly like any other reorder.
+function BacklogList({
+  containerId,
+  groups,
+  startingIterationNumber,
+  projectId,
+}: {
+  containerId: string;
+  groups: StoryCardData[][];
+  startingIterationNumber: number;
+  projectId: string;
+}) {
+  const { setNodeRef } = useDroppable({ id: containerId });
+  const allStoryIds = groups.flat().map((s) => s.id);
+
+  return (
+    <SortableContext items={allStoryIds} strategy={verticalListSortingStrategy}>
+      <ul ref={setNodeRef} className="flex min-h-[2.5rem] flex-col gap-2">
+        {groups.map((group, groupIndex) => (
+          <Fragment key={group[0]?.id ?? groupIndex}>
+            {groupIndex > 0 && (
+              <li
+                aria-hidden
+                className="flex items-center gap-2 py-1 text-xs text-gray-400 dark:text-gray-500"
+              >
+                <span className="h-px flex-1 bg-gray-300 dark:bg-gray-700" />
+                <span>
+                  Iteration #{startingIterationNumber + groupIndex} · {sumPoints(group)} pts
+                </span>
+                <span className="h-px flex-1 bg-gray-300 dark:bg-gray-700" />
+              </li>
+            )}
+            {group.map((story) => (
+              <SortableStoryRow key={story.id} story={story} projectId={projectId} />
+            ))}
+          </Fragment>
+        ))}
+      </ul>
+    </SortableContext>
+  );
+}
+
 // Each panel is an independently scrollable column (spec/screens.md "Board
 // layout"). `w-80 shrink-0` keeps columns a fixed width so extra panels grow
 // the board horizontally instead of squeezing existing ones.
@@ -158,17 +205,6 @@ function IterationSection({
         <p className="mb-3 text-sm text-gray-500">No stories assigned yet.</p>
       )}
       <DroppableStoryList containerId={iteration.id} stories={stories} projectId={projectId} />
-
-      <form action={finalizeIteration} className="mt-3">
-        <input type="hidden" name="project_id" value={projectId} />
-        <input type="hidden" name="iteration_id" value={iteration.id} />
-        <button
-          type="submit"
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-700"
-        >
-          Mark as done
-        </button>
-      </form>
     </section>
   );
 }
@@ -217,9 +253,9 @@ export function SprintBoard({
   iterations,
   initialContainers,
   doneIterationStories,
+  velocity,
   backlogToolbar,
   backlogFilters,
-  currentToolbar,
   epicsPanel,
 }: {
   projectId: string;
@@ -228,9 +264,11 @@ export function SprintBoard({
   // Keyed by BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID, or an iteration id.
   initialContainers: Record<string, StoryCardData[]>;
   doneIterationStories: Record<string, StoryCardData[]>;
+  // Current velocity, used to segment the Backlog panel into virtual future
+  // iterations (see spec/velocity.md "Marker computation").
+  velocity: number;
   backlogToolbar?: ReactNode;
   backlogFilters?: ReactNode;
-  currentToolbar?: ReactNode;
   epicsPanel?: ReactNode;
 }) {
   // Local order so drops/reorders reflect instantly; server revalidation
@@ -335,6 +373,9 @@ export function SprintBoard({
   const doneIterations = iterations.filter((iteration) => iteration.state === "done");
   const backlogStories = containers[BACKLOG_CONTAINER_ID] ?? [];
   const iceboxStories = containers[ICEBOX_CONTAINER_ID] ?? [];
+  const backlogMarkerGroups = splitBacklogIntoVirtualIterations(backlogStories, velocity);
+  const nextVirtualIterationNumber =
+    iterations.reduce((max, iteration) => Math.max(max, iteration.number), 0) + 1;
 
   return (
     <DndContext
@@ -349,7 +390,6 @@ export function SprintBoard({
         <div className="flex flex-1 gap-4 overflow-x-auto pb-2">
           {enabledPanels.has("current") && (
             <PanelColumn title="Current">
-              {currentToolbar}
               {editableIterations.length === 0 && (
                 <p className="text-sm text-gray-500">No active iteration.</p>
               )}
@@ -374,9 +414,10 @@ export function SprintBoard({
               {backlogStories.length === 0 && (
                 <p className="text-sm text-gray-500">Backlog is empty.</p>
               )}
-              <DroppableStoryList
+              <BacklogList
                 containerId={BACKLOG_CONTAINER_ID}
-                stories={backlogStories}
+                groups={backlogMarkerGroups}
+                startingIterationNumber={nextVirtualIterationNumber}
                 projectId={projectId}
               />
             </PanelColumn>

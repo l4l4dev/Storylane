@@ -5,6 +5,7 @@ import { isCurrentIteration } from "@/lib/utils/iterations";
 import { StoryCard, type StoryCardData } from "@/components/features/board/story-card";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { describeActivity } from "@/lib/utils/activity";
+import { ensureCurrentIteration } from "./board/actions";
 
 function todayDateOnly(): string {
   return new Date().toISOString().slice(0, 10);
@@ -27,6 +28,10 @@ export default async function ProjectHomePage({
   if (!project) {
     notFound();
   }
+
+  // See spec/velocity.md "Automatic scheduling & rollover" — must run before
+  // the iterations query below (same shared rule as the board page).
+  await ensureCurrentIteration(project.id);
 
   const { data: iterations } = await supabase
     .from("iterations")
@@ -153,13 +158,7 @@ export default async function ProjectHomePage({
             )}
           </div>
         ) : (
-          <p className="text-sm text-gray-500">
-            No active iteration.{" "}
-            <Link href={`/projects/${project.id}/board`} className="text-indigo-600 hover:underline">
-              Go to the board to generate one
-            </Link>
-            .
-          </p>
+          <p className="text-sm text-gray-500">No active iteration.</p>
         )}
       </section>
 

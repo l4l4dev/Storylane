@@ -10,7 +10,7 @@ import { CreateStoryDialog } from "@/components/features/board/create-story-dial
 import { EpicPanel } from "@/components/features/board/epic-panel";
 import { SprintBoard, type IterationMeta } from "@/components/features/board/sprint-board";
 import type { StoryCardData } from "@/components/features/board/story-card";
-import { createIteration } from "./actions";
+import { ensureCurrentIteration } from "./actions";
 
 function todayDateOnly(): string {
   return new Date().toISOString().slice(0, 10);
@@ -36,6 +36,11 @@ export default async function BoardPage({
   if (!project) {
     notFound();
   }
+
+  // Lazily creates/rolls over the current iteration before reading it (see
+  // spec/velocity.md "Automatic scheduling & rollover") — must run before the
+  // iterations query below.
+  await ensureCurrentIteration(project.id);
 
   const [{ data: iterations }, { data: stories }, { data: epics }, { data: labels }, { data: members }] =
     await Promise.all([
@@ -163,24 +168,7 @@ export default async function BoardPage({
         iterations={allIterations}
         initialContainers={initialContainers}
         doneIterationStories={doneIterationStories}
-        currentToolbar={
-          <form action={createIteration} className="flex flex-col gap-2">
-            <input type="hidden" name="project_id" value={project.id} />
-            <label className="flex flex-col gap-1 text-sm">
-              <span>Sprint goal (optional, for the new iteration)</span>
-              <input
-                name="goal"
-                className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
-              />
-            </label>
-            <button
-              type="submit"
-              className="self-start rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-            >
-              Generate next iteration
-            </button>
-          </form>
-        }
+        velocity={currentVelocity}
         backlogToolbar={
           <CreateStoryDialog
             projectId={project.id}
