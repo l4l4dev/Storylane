@@ -2,6 +2,8 @@
 // "Board layout"). Purely presentational — panel visibility state lives in
 // the parent `SprintBoard` client component.
 
+import { Button } from "@/components/ui/button";
+
 export type BoardPanelId = "current" | "backlog" | "icebox" | "done" | "epics";
 
 export const BOARD_PANEL_IDS: readonly BoardPanelId[] = [
@@ -38,19 +40,16 @@ export function BoardSidebar({
       {BOARD_PANEL_IDS.map((panel) => {
         const isEnabled = enabled.has(panel);
         return (
-          <button
+          <Button
             key={panel}
-            type="button"
+            variant={isEnabled ? "secondary" : "ghost"}
+            size="sm"
             aria-pressed={isEnabled}
             onClick={() => onToggle(panel)}
-            className={`rounded-md px-2 py-1.5 text-left text-sm font-medium ${
-              isEnabled
-                ? "bg-indigo-600 text-white"
-                : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-zinc-800"
-            }`}
+            className={`w-full justify-start ${isEnabled ? "" : "text-muted-foreground"}`}
           >
             {PANEL_LABELS[panel]}
-          </button>
+          </Button>
         );
       })}
     </nav>
