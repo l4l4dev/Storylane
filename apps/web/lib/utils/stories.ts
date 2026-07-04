@@ -15,19 +15,19 @@ export const STORY_STATES = [
 export type StoryState = (typeof STORY_STATES)[number];
 
 export const STORY_TYPE_META: Record<StoryType, { label: string; className: string }> = {
-  feature: { label: "Feature", className: "bg-amber-100 text-amber-800" },
-  bug: { label: "Bug", className: "bg-red-100 text-red-800" },
-  chore: { label: "Chore", className: "bg-gray-100 text-gray-700" },
-  release: { label: "Release", className: "bg-indigo-100 text-indigo-800" },
+  feature: { label: "Feature", className: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" },
+  bug: { label: "Bug", className: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300" },
+  chore: { label: "Chore", className: "bg-muted text-muted-foreground" },
+  release: { label: "Release", className: "bg-primary/15 text-primary" },
 };
 
 export const STORY_STATE_META: Record<StoryState, { label: string; className: string }> = {
-  unstarted: { label: "Unstarted", className: "bg-gray-100 text-gray-600" },
-  started: { label: "Started", className: "bg-blue-100 text-blue-700" },
-  finished: { label: "Finished", className: "bg-purple-100 text-purple-700" },
-  delivered: { label: "Delivered", className: "bg-cyan-100 text-cyan-700" },
-  accepted: { label: "Accepted", className: "bg-green-100 text-green-700" },
-  rejected: { label: "Rejected", className: "bg-rose-100 text-rose-700" },
+  unstarted: { label: "Unstarted", className: "bg-muted text-muted-foreground" },
+  started: { label: "Started", className: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" },
+  finished: { label: "Finished", className: "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300" },
+  delivered: { label: "Delivered", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300" },
+  accepted: { label: "Accepted", className: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300" },
+  rejected: { label: "Rejected", className: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" },
 };
 
 /**

@@ -1,5 +1,6 @@
 "use client";
 
+import { TriangleAlert } from "lucide-react";
 import { transitionStory } from "@/app/projects/[id]/board/actions";
 import {
   applyTransition,
@@ -52,7 +53,13 @@ export function TransitionButtons({
               size="xs"
               disabled={blocked}
               title={blocked ? "Estimate this feature before starting" : undefined}
+              className={
+                blocked
+                  ? "border-orange-300 text-orange-700 disabled:opacity-100 dark:border-orange-500/40 dark:text-orange-300"
+                  : undefined
+              }
             >
+              {blocked && <TriangleAlert className="text-orange-500 dark:text-orange-400" />}
               {transitionLabel(action)}
             </Button>
           </form>
