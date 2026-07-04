@@ -29,6 +29,8 @@ profiles ──< project_members >── projects ──< integrations
 | Web ⇄ iOS | **No direct relation.** They never call each other. The only shared contract is the Supabase schema + RLS policies in `supabase/migrations/`. | A schema or RLS change must be validated against both repository layers, not just one. |
 | RLS ⇄ role | `spec/rls.md` — `owner` / `member` / `viewer` via `project_members.role` | Every table with a `project_id` column is gated by this; a new table needs its own policy set, not an inherited one. |
 | Velocity ⇄ story state | `spec/velocity.md` — only `accepted` stories count, `chore`/`release` types excluded | Auto-assignment logic (Task 6) and velocity finalization (Task 8) both depend on this rule; keep Web/iOS implementations in sync. |
+| activity_logs ⇄ DB triggers | Postgres triggers in `supabase/migrations/` (added in Task 9) on `stories`/`comments` writes | Clients (Web/iOS/Edge Functions) never insert `activity_logs` directly — the trigger is the single recording path, so every write route is covered without duplicating logic per client. |
+| Iteration rollover ⇄ lazy finalization | `spec/velocity.md` (Task 12.5) — iterations past `end_date` are finalized on first access; no cron in Phase 1 | Web and iOS must apply the identical rollover rule from one shared place per client (or it moves server-side to an Edge Function) — never implement it in only one client or duplicate it per view. |
 
 ## Current phase
 

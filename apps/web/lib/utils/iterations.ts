@@ -83,3 +83,38 @@ export function autoAssignStoryIds(
   }
   return assigned;
 }
+
+export type BacklogStoryForMarkers = { points: number | null; story_type: string };
+
+/**
+ * Segments the backlog (already ordered by position) into the virtual future
+ * iterations drawn as boundary markers in the Backlog panel (see
+ * spec/velocity.md "Marker computation"). Each group's points stay at or
+ * under `max(velocity, 1)`; chore/release/unestimated stories consume 0 points
+ * and never trigger a break by themselves. A single story bigger than the
+ * whole capacity still gets its own group.
+ */
+export function splitBacklogIntoVirtualIterations<T extends BacklogStoryForMarkers>(
+  backlog: ReadonlyArray<T>,
+  velocity: number,
+): T[][] {
+  const capacity = Math.max(velocity, 1);
+  const groups: T[][] = [];
+  let current: T[] = [];
+  let sum = 0;
+
+  for (const story of backlog) {
+    const cost = storyTypeUsesPoints(story.story_type) ? story.points ?? 0 : 0;
+    if (current.length > 0 && sum + cost > capacity) {
+      groups.push(current);
+      current = [];
+      sum = 0;
+    }
+    current.push(story);
+    sum += cost;
+  }
+  if (current.length > 0) {
+    groups.push(current);
+  }
+  return groups;
+}

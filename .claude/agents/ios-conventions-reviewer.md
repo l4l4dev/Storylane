@@ -2,7 +2,7 @@
 name: ios-conventions-reviewer
 description: Reviews Swift/SwiftUI changes under apps/ios/ for MVVM boundaries and project conventions. Invoke after implementing or editing iOS features.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: haiku
 ---
 
 You review Swift/SwiftUI code changes under `apps/ios/Storylane/` against the conventions in `CLAUDE.md`.

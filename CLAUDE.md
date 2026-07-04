@@ -10,8 +10,20 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
 - Always ask before making architectural changes or large-scale refactors
 - Never use `git add -A` or `git add .` — always specify files explicitly
 - Always confirm before irreversible operations (file deletion, overwriting, etc.)
-- Never chain commands with `&&` — run one command at a time
+- Never chain state-changing commands (commit, migration, install, rm, etc.) with `&&` — run them
+  one at a time. Chaining read-only commands (`git status`, `ls`, `grep`, `wc`, ...) is fine
 - Never guess at unspecified behavior — ask when the spec is unclear
+
+## Token Economy
+
+Most work here is done by AI agents — keep context small:
+
+- Never read generated files in full (`apps/web/lib/database.types.ts`, lockfiles) — Grep for the type/entry you need
+- Read only the spec section relevant to the task (via the SPEC.md index) and only the current
+  task's section of TASK.md; completed tasks live in `TASK_ARCHIVE.md`
+- Prefer Grep/Glob or partial reads (offset/limit) over full reads for files longer than ~300 lines
+- Run long-lived commands (`pnpm dev`, `supabase start`) in the background and read only the log tail
+- While iterating, run targeted tests (`pnpm exec vitest run <path>`); run the full `pnpm test` only before commit
 
 ---
 

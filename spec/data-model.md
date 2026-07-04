@@ -9,6 +9,7 @@ References Supabase Auth `auth.users`. Only profile data is managed in a separat
 profiles (
   id           uuid PRIMARY KEY REFERENCES auth.users(id),
   display_name text NOT NULL,
+  username     text UNIQUE NOT NULL,  -- @mention 用の一意ハンドル。初回サインイン時に自動生成、設定で変更可（Task 9 で追加）
   avatar_url   text,
   created_at   timestamptz DEFAULT now()
 )
@@ -87,15 +88,20 @@ iterations (
 stories (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id   uuid REFERENCES projects(id) ON DELETE CASCADE,
+  number       int  NOT NULL,               -- プロジェクト毎の連番（採番トリガーで自動付与、UNIQUE (project_id, number)）。
+                                            -- UI では #123、PR タイトルでは [SL-123] として使う（Task 12 で追加）
   iteration_id uuid REFERENCES iterations(id) ON DELETE SET NULL,
   epic_id      uuid REFERENCES epics(id) ON DELETE SET NULL,
   title        text NOT NULL,
   description  text,
   story_type   text NOT NULL DEFAULT 'feature'
                  CHECK (story_type IN ('feature', 'bug', 'chore', 'release')),
-  state        text NOT NULL DEFAULT 'unstarted'
-                 CHECK (state IN ('unstarted', 'started', 'finished', 'delivered', 'accepted', 'rejected')),
-  points       int  CHECK (points >= 0),  -- nullable for chore / release
+  state        text NOT NULL DEFAULT 'unscheduled'
+                 CHECK (state IN ('unscheduled', 'unstarted', 'started', 'finished', 'delivered', 'accepted', 'rejected')),
+                                            -- 'unscheduled' = Icebox（Task 12.5 で追加。新規ストーリーのデフォルト。
+                                            -- 既存行のマイグレーションでは unstarted のまま = Backlog に残す）
+  points       int  CHECK (points >= 0),  -- nullable for chore / release。
+                                          -- 値はプロジェクトの point_scale からの選択のみ（アプリ層で検証、Task 12.5）
   position     int  NOT NULL DEFAULT 0,   -- order within the backlog
   assignee_id  uuid REFERENCES profiles(id) ON DELETE SET NULL,
   created_by   uuid REFERENCES profiles(id),

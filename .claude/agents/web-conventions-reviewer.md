@@ -2,7 +2,7 @@
 name: web-conventions-reviewer
 description: Reviews Next.js/TypeScript changes under apps/web/ for project conventions. Invoke after implementing or editing web features.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: haiku
 ---
 
 You review TypeScript/Next.js code changes under `apps/web/` against the conventions in `CLAUDE.md`.

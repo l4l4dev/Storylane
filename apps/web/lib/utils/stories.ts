@@ -14,20 +14,20 @@ export const STORY_STATES = [
 ] as const;
 export type StoryState = (typeof STORY_STATES)[number];
 
-export const STORY_TYPE_META: Record<StoryType, { label: string; icon: string; className: string }> = {
-  feature: { label: "Feature", icon: "★", className: "bg-amber-100 text-amber-800" },
-  bug: { label: "Bug", icon: "🐞", className: "bg-red-100 text-red-800" },
-  chore: { label: "Chore", icon: "⚙", className: "bg-gray-100 text-gray-700" },
-  release: { label: "Release", icon: "🚩", className: "bg-indigo-100 text-indigo-800" },
+export const STORY_TYPE_META: Record<StoryType, { label: string; className: string }> = {
+  feature: { label: "Feature", className: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" },
+  bug: { label: "Bug", className: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300" },
+  chore: { label: "Chore", className: "bg-muted text-muted-foreground" },
+  release: { label: "Release", className: "bg-primary/15 text-primary" },
 };
 
 export const STORY_STATE_META: Record<StoryState, { label: string; className: string }> = {
-  unstarted: { label: "Unstarted", className: "bg-gray-100 text-gray-600" },
-  started: { label: "Started", className: "bg-blue-100 text-blue-700" },
-  finished: { label: "Finished", className: "bg-purple-100 text-purple-700" },
-  delivered: { label: "Delivered", className: "bg-cyan-100 text-cyan-700" },
-  accepted: { label: "Accepted", className: "bg-green-100 text-green-700" },
-  rejected: { label: "Rejected", className: "bg-rose-100 text-rose-700" },
+  unstarted: { label: "Unstarted", className: "bg-muted text-muted-foreground" },
+  started: { label: "Started", className: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" },
+  finished: { label: "Finished", className: "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300" },
+  delivered: { label: "Delivered", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300" },
+  accepted: { label: "Accepted", className: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300" },
+  rejected: { label: "Rejected", className: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" },
 };
 
 /**
@@ -36,6 +36,36 @@ export const STORY_STATE_META: Record<StoryState, { label: string; className: st
  */
 export function storyTypeUsesPoints(type: string): boolean {
   return type === "feature" || type === "bug";
+}
+
+// Point scales (see spec/features.md "Story Management"): points are chosen
+// from the project's scale, never free numeric input.
+const POINT_SCALES: Record<string, readonly number[]> = {
+  fibonacci: [0, 1, 2, 3, 5, 8, 13],
+  linear: [0, 1, 2, 3],
+};
+
+/**
+ * Resolves a project's selectable point values from its `point_scale` /
+ * `custom_points` columns. Unknown scale names fall back to fibonacci (the
+ * DB default) so a bad row can't leave the UI with no options.
+ */
+export function pointScaleValues(
+  pointScale: string,
+  customPoints: ReadonlyArray<number> | null | undefined,
+): number[] {
+  if (pointScale === "custom") {
+    return [...(customPoints ?? [])];
+  }
+  return [...(POINT_SCALES[pointScale] ?? POINT_SCALES.fibonacci)];
+}
+
+/**
+ * An unestimated `feature` cannot be started (see spec/features.md).
+ * Other types don't use points, so they are never blocked by this rule.
+ */
+export function isUnestimatedFeature(type: string, points: number | null): boolean {
+  return type === "feature" && points === null;
 }
 
 /** Position to append a new story at the bottom of the backlog. */
@@ -77,10 +107,28 @@ export function filterStories<T extends FilterableStory>(stories: ReadonlyArray<
 }
 
 /**
- * Parses a points form value. Returns null for non-point story types or blank
- * input, and clamps negatives to null so the DB CHECK (points >= 0) holds.
+ * Formats a points value for card display (see spec/screens.md "Story card
+ * UX"): 1-3 points render as dots (Pivotal Tracker convention), 0 or 4+
+ * render as the numeral since a 0-dot estimate would be invisible.
  */
-export function parsePoints(rawValue: string | null | undefined, type: string): number | null {
+export function formatPoints(points: number): string {
+  if (points > 0 && points <= 3) {
+    return "•".repeat(points);
+  }
+  return String(points);
+}
+
+/**
+ * Parses a points form value. Returns null for non-point story types or blank
+ * input ("unestimated"). Values not in `allowedPoints` (the project's point
+ * scale — see spec/features.md, no free numeric input) also parse to null so
+ * a tampered or stale form value can't write an off-scale estimate.
+ */
+export function parsePoints(
+  rawValue: string | null | undefined,
+  type: string,
+  allowedPoints: ReadonlyArray<number>,
+): number | null {
   if (!storyTypeUsesPoints(type)) {
     return null;
   }
@@ -89,8 +137,8 @@ export function parsePoints(rawValue: string | null | undefined, type: string): 
     return null;
   }
   const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  if (!allowedPoints.includes(parsed)) {
     return null;
   }
-  return Math.floor(parsed);
+  return parsed;
 }

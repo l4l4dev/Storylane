@@ -2,6 +2,9 @@
 
 import { useActionState } from "react";
 import { inviteMember, type InviteState } from "@/app/projects/[id]/settings/actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 export function InviteMemberForm({ projectId }: { projectId: string }) {
   const [state, formAction, pending] = useActionState<InviteState, FormData>(
@@ -13,32 +16,24 @@ export function InviteMemberForm({ projectId }: { projectId: string }) {
     <form action={formAction} className="flex flex-col gap-2">
       <input type="hidden" name="project_id" value={projectId} />
       <div className="flex flex-wrap items-center gap-2">
-        <input
+        <Input
           type="email"
           name="email"
           required
           placeholder="email@example.com"
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-700 dark:bg-zinc-800"
+          className="flex-1"
         />
-        <select
-          name="role"
-          defaultValue="member"
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-700 dark:bg-zinc-800"
-        >
+        <NativeSelect name="role" defaultValue="member" className="w-auto">
           <option value="member">member</option>
           <option value="viewer">viewer</option>
           <option value="owner">owner</option>
-        </select>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        </NativeSelect>
+        <Button type="submit" disabled={pending}>
           {pending ? "Inviting…" : "Invite"}
-        </button>
+        </Button>
       </div>
-      {state.error && <p className="text-sm text-red-500">{state.error}</p>}
-      {state.success && <p className="text-sm text-green-600">{state.success}</p>}
+      {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+      {state.success && <p className="text-sm text-primary">{state.success}</p>}
     </form>
   );
 }
