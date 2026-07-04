@@ -4,8 +4,35 @@ import { addTask, deleteTask, toggleTask } from "@/app/stories/[id]/actions";
 
 export type TaskData = { id: string; title: string; is_done: boolean };
 
-export function TaskChecklist({ storyId, tasks }: { storyId: string; tasks: TaskData[] }) {
+export function TaskChecklist({
+  storyId,
+  tasks,
+  onMutated,
+}: {
+  storyId: string;
+  tasks: TaskData[];
+  // Set only by the board's inline expansion (see story-detail-panel.tsx):
+  // that view's task list is fetched once into local state, so it needs an
+  // explicit refetch after each mutation. The standalone `/stories/[id]`
+  // page omits it and relies on the normal server-action revalidation.
+  onMutated?: () => Promise<void> | void;
+}) {
   const doneCount = tasks.filter((task) => task.is_done).length;
+
+  async function handleAdd(formData: FormData) {
+    await addTask(formData);
+    await onMutated?.();
+  }
+
+  async function handleToggle(formData: FormData) {
+    await toggleTask(formData);
+    await onMutated?.();
+  }
+
+  async function handleDelete(formData: FormData) {
+    await deleteTask(formData);
+    await onMutated?.();
+  }
 
   return (
     <section className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">
@@ -22,7 +49,7 @@ export function TaskChecklist({ storyId, tasks }: { storyId: string; tasks: Task
         <ul className="mb-4 flex flex-col gap-2">
           {tasks.map((task) => (
             <li key={task.id} className="flex items-center gap-2">
-              <form action={toggleTask}>
+              <form action={handleToggle}>
                 <input type="hidden" name="task_id" value={task.id} />
                 <input type="hidden" name="story_id" value={storyId} />
                 <input type="hidden" name="is_done" value={String(task.is_done)} />
@@ -37,7 +64,7 @@ export function TaskChecklist({ storyId, tasks }: { storyId: string; tasks: Task
               <span className={`flex-1 text-sm ${task.is_done ? "text-gray-400 line-through" : ""}`}>
                 {task.title}
               </span>
-              <form action={deleteTask}>
+              <form action={handleDelete}>
                 <input type="hidden" name="task_id" value={task.id} />
                 <input type="hidden" name="story_id" value={storyId} />
                 <button
@@ -55,7 +82,7 @@ export function TaskChecklist({ storyId, tasks }: { storyId: string; tasks: Task
         <p className="mb-4 text-sm text-gray-500">No tasks yet.</p>
       )}
 
-      <form action={addTask} className="flex gap-2">
+      <form action={handleAdd} className="flex gap-2">
         <input type="hidden" name="story_id" value={storyId} />
         <input
           name="title"

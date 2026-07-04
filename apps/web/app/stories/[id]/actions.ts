@@ -3,7 +3,97 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { isUnestimatedFeature, nextPosition, parsePoints, pointScaleValues } from "@/lib/utils/stories";
+import { nextPosition, parsePoints, pointScaleValues } from "@/lib/utils/stories";
+
+export type StoryDetail = {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  storyType: string;
+  state: string;
+  points: number | null;
+  epicId: string | null;
+  assigneeId: string | null;
+  labelIds: string[];
+  pointScale: number[];
+  epics: { id: string; name: string }[];
+  labels: { id: string; name: string }[];
+  members: { id: string; name: string }[];
+  comments: { id: string; body: string; createdAt: string; authorName: string }[];
+  tasks: { id: string; title: string; is_done: boolean }[];
+};
+
+/**
+ * Fetches everything the story detail UI needs (fields, comments, tasks).
+ * Shared by the standalone `/stories/[id]` page and the board's inline
+ * expansion (see spec/screens.md "Board layout") so the two stay in sync —
+ * the inline panel calls this directly as a client-invoked server action.
+ */
+export async function getStoryDetail(storyId: string): Promise<StoryDetail | null> {
+  const supabase = await createClient();
+
+  const { data: story } = await supabase
+    .from("stories")
+    .select("*, story_labels(label_id)")
+    .eq("id", storyId)
+    .single();
+
+  if (!story) {
+    return null;
+  }
+
+  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }] =
+    await Promise.all([
+      supabase
+        .from("projects")
+        .select("point_scale, custom_points")
+        .eq("id", story.project_id)
+        .single(),
+      supabase.from("epics").select("id, name").eq("project_id", story.project_id).order("position"),
+      supabase.from("labels").select("id, name").eq("project_id", story.project_id).order("name"),
+      supabase
+        .from("project_members")
+        .select("user_id, profiles(display_name)")
+        .eq("project_id", story.project_id),
+      supabase
+        .from("comments")
+        .select("id, body, created_at, author:profiles(display_name)")
+        .eq("story_id", storyId)
+        .order("created_at", { ascending: true }),
+      supabase.from("tasks").select("id, title, is_done").eq("story_id", storyId).order("position"),
+    ]);
+
+  return {
+    id: story.id,
+    projectId: story.project_id,
+    title: story.title,
+    description: story.description,
+    storyType: story.story_type,
+    state: story.state,
+    points: story.points,
+    epicId: story.epic_id,
+    assigneeId: story.assignee_id,
+    labelIds: story.story_labels.map((sl) => sl.label_id),
+    pointScale: pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points),
+    epics: epics ?? [],
+    labels: labels ?? [],
+    members: (members ?? []).map((m) => {
+      const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+      return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
+    }),
+    comments: (comments ?? []).map((comment) => {
+      const author = Array.isArray(comment.author) ? comment.author[0] : comment.author;
+      return {
+        id: comment.id,
+        body: comment.body,
+        createdAt: comment.created_at,
+        authorName: author?.display_name ?? "Unknown",
+      };
+    }),
+    tasks: tasks ?? [],
+  };
+}
 
 export async function updateStory(formData: FormData) {
   const id = String(formData.get("story_id"));
@@ -11,7 +101,6 @@ export async function updateStory(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
   const storyType = String(formData.get("story_type") ?? "feature");
-  const state = String(formData.get("state") ?? "unstarted");
   const epicId = String(formData.get("epic_id") ?? "") || null;
   const assigneeId = String(formData.get("assignee_id") ?? "") || null;
 
@@ -37,19 +126,15 @@ export async function updateStory(formData: FormData) {
     pointScaleValues(project.point_scale, project.custom_points),
   );
 
-  // An unestimated feature cannot be started (see spec/features.md). The
-  // free-form state select lives here until Task 12.5 step 7 replaces it,
-  // so the invariant is enforced server-side too.
-  if (state === "started" && isUnestimatedFeature(storyType, points)) {
-    throw new Error("An unestimated feature cannot be started");
-  }
+  // `state` is never written here — it's exclusively managed by the
+  // one-click transition buttons (see transitionStory in the board
+  // actions), which also enforce "an unestimated feature cannot be started".
   const { error } = await supabase
     .from("stories")
     .update({
       title,
       description,
       story_type: storyType,
-      state,
       points,
       epic_id: epicId,
       assignee_id: assigneeId,

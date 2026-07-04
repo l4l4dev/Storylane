@@ -1,10 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { pointScaleValues, STORY_STATES, STORY_TYPES } from "@/lib/utils/stories";
-import { CommentBody } from "@/components/features/story/comment-body";
-import { TaskChecklist } from "@/components/features/story/task-checklist";
-import { addComment, deleteStory, updateStory } from "./actions";
+import { StoryDetailPanel } from "@/components/features/story/story-detail-panel";
+import { deleteStory, getStoryDetail } from "./actions";
 
 export default async function StoryDetailPage({
   params,
@@ -12,228 +9,29 @@ export default async function StoryDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const detail = await getStoryDetail(id);
 
-  const { data: story } = await supabase
-    .from("stories")
-    .select("*, story_labels(label_id)")
-    .eq("id", id)
-    .single();
-
-  if (!story) {
+  if (!detail) {
     notFound();
   }
-
-  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }] =
-    await Promise.all([
-      supabase
-        .from("projects")
-        .select("point_scale, custom_points")
-        .eq("id", story.project_id)
-        .single(),
-      supabase.from("epics").select("id, name").eq("project_id", story.project_id).order("position"),
-      supabase.from("labels").select("id, name").eq("project_id", story.project_id).order("name"),
-      supabase
-        .from("project_members")
-        .select("user_id, profiles(display_name)")
-        .eq("project_id", story.project_id),
-      supabase
-        .from("comments")
-        .select("id, body, created_at, author:profiles(display_name)")
-        .eq("story_id", id)
-        .order("created_at", { ascending: true }),
-      supabase.from("tasks").select("id, title, is_done").eq("story_id", id).order("position"),
-    ]);
-
-  const storyLabelIds = new Set(story.story_labels.map((sl) => sl.label_id));
-  const pointScale = pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points);
-  const assigneeOptions = (members ?? []).map((m) => {
-    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-    return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
-  });
-
-  const inputClass =
-    "rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800";
 
   return (
     <main className="mx-auto max-w-2xl p-6">
       <div className="mb-6">
         <Link
-          href={`/projects/${story.project_id}/board`}
+          href={`/projects/${detail.projectId}/board`}
           className="text-sm text-indigo-600 hover:underline"
         >
           ← Board
         </Link>
-        <h1 className="mt-2 text-2xl font-bold">{story.title}</h1>
+        <h1 className="mt-2 text-2xl font-bold">{detail.title}</h1>
       </div>
 
-      <form action={updateStory} className="flex flex-col gap-4">
-        <input type="hidden" name="story_id" value={story.id} />
-        <input type="hidden" name="project_id" value={story.project_id} />
-
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Title</span>
-          <input name="title" defaultValue={story.title} required className={inputClass} />
-        </label>
-
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Description</span>
-          <textarea
-            name="description"
-            defaultValue={story.description ?? ""}
-            rows={4}
-            className={inputClass}
-          />
-        </label>
-
-        <div className="flex gap-4">
-          <label className="flex flex-1 flex-col gap-1 text-sm">
-            <span>Type</span>
-            <select name="story_type" defaultValue={story.story_type} className={inputClass}>
-              {STORY_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-1 flex-col gap-1 text-sm">
-            <span>State</span>
-            <select name="state" defaultValue={story.state} className={inputClass}>
-              {STORY_STATES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex w-32 flex-col gap-1 text-sm">
-            <span>Points</span>
-            {/* Points come from the project's point scale — no free numeric
-                input (see spec/features.md). */}
-            <select name="points" defaultValue={story.points ?? ""} className={inputClass}>
-              <option value="">Unestimated</option>
-              {pointScale.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="flex gap-4">
-          <label className="flex flex-1 flex-col gap-1 text-sm">
-            <span>Epic</span>
-            <select name="epic_id" defaultValue={story.epic_id ?? ""} className={inputClass}>
-              <option value="">None</option>
-              {(epics ?? []).map((epic) => (
-                <option key={epic.id} value={epic.id}>
-                  {epic.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-1 flex-col gap-1 text-sm">
-            <span>Assignee</span>
-            <select
-              name="assignee_id"
-              defaultValue={story.assignee_id ?? ""}
-              className={inputClass}
-            >
-              <option value="">Unassigned</option>
-              {assigneeOptions.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {(labels ?? []).length > 0 && (
-          <fieldset className="flex flex-col gap-1 text-sm">
-            <span>Labels</span>
-            <div className="flex flex-wrap gap-2">
-              {(labels ?? []).map((label) => (
-                <label key={label.id} className="flex items-center gap-1">
-                  <input
-                    type="checkbox"
-                    name="label_ids"
-                    value={label.id}
-                    defaultChecked={storyLabelIds.has(label.id)}
-                  />
-                  {label.name}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-        )}
-
-        <div className="mt-2 flex items-center justify-between">
-          <button
-            type="submit"
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-          >
-            Save changes
-          </button>
-        </div>
-      </form>
-
-      <TaskChecklist storyId={story.id} tasks={tasks ?? []} />
-
-      <section className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">
-        <h2 className="mb-3 text-lg font-semibold">Comments</h2>
-
-        {(comments ?? []).length > 0 ? (
-          <ul className="mb-4 flex flex-col gap-3">
-            {(comments ?? []).map((comment) => {
-              const author = Array.isArray(comment.author) ? comment.author[0] : comment.author;
-              return (
-                <li
-                  key={comment.id}
-                  className="rounded-md border border-gray-200 p-3 dark:border-gray-800"
-                >
-                  <div className="mb-1 flex items-center justify-between text-xs text-gray-500">
-                    <span>{author?.display_name ?? "Unknown"}</span>
-                    <span>{new Date(comment.created_at).toLocaleString()}</span>
-                  </div>
-                  <CommentBody body={comment.body} />
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="mb-4 text-sm text-gray-500">No comments yet.</p>
-        )}
-
-        <form action={addComment} className="flex flex-col gap-2">
-          <input type="hidden" name="story_id" value={story.id} />
-          <input type="hidden" name="project_id" value={story.project_id} />
-          <textarea
-            name="body"
-            required
-            rows={2}
-            placeholder="Add a comment… use @username to mention someone"
-            className={inputClass}
-          />
-          <div>
-            <button
-              type="submit"
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-            >
-              Comment
-            </button>
-          </div>
-        </form>
-      </section>
+      <StoryDetailPanel detail={detail} />
 
       <form action={deleteStory} className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">
-        <input type="hidden" name="story_id" value={story.id} />
-        <input type="hidden" name="project_id" value={story.project_id} />
+        <input type="hidden" name="story_id" value={detail.id} />
+        <input type="hidden" name="project_id" value={detail.projectId} />
         <button
           type="submit"
           className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
