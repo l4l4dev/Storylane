@@ -1,6 +1,10 @@
 "use client";
 
+import { X } from "lucide-react";
 import { createLabel, deleteLabel } from "@/app/projects/[id]/settings/actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type LabelData = { id: string; name: string; color: string };
 
@@ -27,49 +31,45 @@ export function LabelManager({
               {label.name}
             </span>
             {canDelete && (
-              <form action={deleteLabel}>
+              <form action={deleteLabel} className="flex">
                 <input type="hidden" name="label_id" value={label.id} />
                 <input type="hidden" name="project_id" value={projectId} />
-                <button
+                <Button
                   type="submit"
+                  variant="ghost"
+                  size="icon-xs"
                   aria-label={`Delete label ${label.name}`}
-                  className="text-xs text-gray-400 hover:text-red-600"
+                  className="text-muted-foreground hover:text-destructive"
                 >
-                  ×
-                </button>
+                  <X />
+                </Button>
               </form>
             )}
           </li>
         ))}
-        {labels.length === 0 && <li className="text-sm text-gray-500">No labels yet.</li>}
+        {labels.length === 0 && <li className="text-sm text-muted-foreground">No labels yet.</li>}
       </ul>
 
       {canCreate && (
         <form action={createLabel} className="flex items-end gap-2">
           <input type="hidden" name="project_id" value={projectId} />
-          <label className="flex flex-1 flex-col gap-1 text-sm">
-            <span>New label</span>
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Label htmlFor="new-label-name">New label</Label>
+            <Input id="new-label-name" name="name" required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-label-color">Color</Label>
             <input
-              name="name"
-              required
-              className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-zinc-800"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span>Color</span>
-            <input
+              id="new-label-color"
               name="color"
               type="color"
               defaultValue="#6b7280"
-              className="h-9 w-14 cursor-pointer rounded-md border border-gray-300 dark:border-gray-700"
+              className="h-9 w-14 cursor-pointer rounded-md border border-input bg-transparent"
             />
-          </label>
-          <button
-            type="submit"
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm dark:border-gray-700"
-          >
+          </div>
+          <Button type="submit" variant="outline">
             Add
-          </button>
+          </Button>
         </form>
       )}
     </div>

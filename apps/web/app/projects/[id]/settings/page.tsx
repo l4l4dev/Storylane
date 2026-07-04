@@ -3,6 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { ITERATION_LENGTHS, POINT_SCALES } from "@/lib/types";
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
 import { LabelManager } from "@/components/features/projects/label-manager";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import { updateProject, updateMemberRole, removeMember } from "./actions";
 
 const ROLES = ["owner", "member", "viewer"] as const;
@@ -55,77 +60,66 @@ export default async function ProjectSettingsPage({
         <h2 className="mb-3 text-lg font-semibold">Details</h2>
         <form action={updateProject} className="flex flex-col gap-4">
           <input type="hidden" name="project_id" value={project.id} />
-          <label className="flex flex-col gap-1 text-sm">
-            <span>Name</span>
-            <input
-              name="name"
-              defaultValue={project.name}
-              required
-              disabled={!isOwner}
-              className="rounded-md border border-gray-300 px-3 py-2 disabled:opacity-60 dark:border-gray-700 dark:bg-zinc-800"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span>Description</span>
-            <textarea
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="settings-name">Name</Label>
+            <Input id="settings-name" name="name" defaultValue={project.name} required disabled={!isOwner} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="settings-description">Description</Label>
+            <Textarea
+              id="settings-description"
               name="description"
               defaultValue={project.description ?? ""}
               rows={2}
               disabled={!isOwner}
-              className="rounded-md border border-gray-300 px-3 py-2 disabled:opacity-60 dark:border-gray-700 dark:bg-zinc-800"
             />
-          </label>
+          </div>
           <div className="flex gap-4">
-            <label className="flex flex-1 flex-col gap-1 text-sm">
-              <span>Iteration length (days)</span>
-              <select
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor="settings-iteration-length">Iteration length (days)</Label>
+              <NativeSelect
+                id="settings-iteration-length"
                 name="iteration_length"
                 defaultValue={project.iteration_length}
                 disabled={!isOwner}
-                className="rounded-md border border-gray-300 px-3 py-2 disabled:opacity-60 dark:border-gray-700 dark:bg-zinc-800"
               >
                 {ITERATION_LENGTHS.map((d) => (
                   <option key={d} value={d}>
                     {d}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label className="flex flex-1 flex-col gap-1 text-sm">
-              <span>Point scale</span>
-              <select
+              </NativeSelect>
+            </div>
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor="settings-point-scale">Point scale</Label>
+              <NativeSelect
+                id="settings-point-scale"
                 name="point_scale"
                 defaultValue={project.point_scale}
                 disabled={!isOwner}
-                className="rounded-md border border-gray-300 px-3 py-2 disabled:opacity-60 dark:border-gray-700 dark:bg-zinc-800"
               >
                 {POINT_SCALES.map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label className="flex w-32 flex-col gap-1 text-sm">
-              <span>Velocity window</span>
-              <input
+              </NativeSelect>
+            </div>
+            <div className="flex w-32 flex-col gap-1.5">
+              <Label htmlFor="settings-velocity-window">Velocity window</Label>
+              <Input
+                id="settings-velocity-window"
                 name="velocity_window"
                 type="number"
                 min={1}
                 defaultValue={project.velocity_window}
                 disabled={!isOwner}
-                className="rounded-md border border-gray-300 px-3 py-2 disabled:opacity-60 dark:border-gray-700 dark:bg-zinc-800"
               />
-            </label>
+            </div>
           </div>
           {isOwner && (
             <div>
-              <button
-                type="submit"
-                className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-              >
-                Save changes
-              </button>
+              <Button type="submit">Save changes</Button>
             </div>
           )}
         </form>
@@ -141,7 +135,7 @@ export default async function ProjectSettingsPage({
           </div>
         )}
 
-        <ul className="flex flex-col divide-y divide-gray-200 dark:divide-gray-800">
+        <ul className="flex flex-col divide-y divide-border">
           {members?.map((member) => {
             const profile = Array.isArray(member.profiles)
               ? member.profiles[0]
@@ -154,7 +148,7 @@ export default async function ProjectSettingsPage({
               >
                 <span className="text-sm">
                   {profile?.display_name ?? member.user_id.slice(0, 8)}
-                  {isSelf && <span className="ml-1 text-gray-400">(you)</span>}
+                  {isSelf && <span className="ml-1 text-muted-foreground">(you)</span>}
                 </span>
 
                 {isOwner ? (
@@ -162,39 +156,34 @@ export default async function ProjectSettingsPage({
                     <form action={updateMemberRole} className="flex items-center gap-2">
                       <input type="hidden" name="project_id" value={project.id} />
                       <input type="hidden" name="user_id" value={member.user_id} />
-                      <select
+                      <NativeSelect
                         name="role"
                         defaultValue={member.role}
-                        className="rounded-md border border-gray-300 px-2 py-1 text-sm dark:border-gray-700 dark:bg-zinc-800"
+                        aria-label={`Role for ${profile?.display_name ?? "member"}`}
+                        className="h-8 w-auto"
                       >
                         {ROLES.map((r) => (
                           <option key={r} value={r}>
                             {r}
                           </option>
                         ))}
-                      </select>
-                      <button
-                        type="submit"
-                        className="rounded-md border border-gray-300 px-2 py-1 text-sm dark:border-gray-700"
-                      >
+                      </NativeSelect>
+                      <Button type="submit" variant="outline" size="sm">
                         Save
-                      </button>
+                      </Button>
                     </form>
                     {!isSelf && (
                       <form action={removeMember}>
                         <input type="hidden" name="project_id" value={project.id} />
                         <input type="hidden" name="user_id" value={member.user_id} />
-                        <button
-                          type="submit"
-                          className="rounded-md border border-red-300 px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
-                        >
+                        <Button type="submit" variant="destructive" size="sm">
                           Remove
-                        </button>
+                        </Button>
                       </form>
                     )}
                   </div>
                 ) : (
-                  <span className="text-sm text-gray-500">{member.role}</span>
+                  <span className="text-sm text-muted-foreground">{member.role}</span>
                 )}
               </li>
             );
