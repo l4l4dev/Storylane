@@ -14,11 +14,11 @@ export const STORY_STATES = [
 ] as const;
 export type StoryState = (typeof STORY_STATES)[number];
 
-export const STORY_TYPE_META: Record<StoryType, { label: string; icon: string; className: string }> = {
-  feature: { label: "Feature", icon: "★", className: "bg-amber-100 text-amber-800" },
-  bug: { label: "Bug", icon: "🐞", className: "bg-red-100 text-red-800" },
-  chore: { label: "Chore", icon: "⚙", className: "bg-gray-100 text-gray-700" },
-  release: { label: "Release", icon: "🚩", className: "bg-indigo-100 text-indigo-800" },
+export const STORY_TYPE_META: Record<StoryType, { label: string; className: string }> = {
+  feature: { label: "Feature", className: "bg-amber-100 text-amber-800" },
+  bug: { label: "Bug", className: "bg-red-100 text-red-800" },
+  chore: { label: "Chore", className: "bg-gray-100 text-gray-700" },
+  release: { label: "Release", className: "bg-indigo-100 text-indigo-800" },
 };
 
 export const STORY_STATE_META: Record<StoryState, { label: string; className: string }> = {

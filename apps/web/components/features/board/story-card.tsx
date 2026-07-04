@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Bug, Flag, Star, Wrench, type LucideIcon } from "lucide-react";
 import { getStoryDetail, type StoryDetail } from "@/app/stories/[id]/actions";
 import { StoryDetailPanel } from "@/components/features/story/story-detail-panel";
 import { TransitionButtons } from "@/components/features/story/transition-buttons";
@@ -23,6 +24,15 @@ export type StoryCardData = {
   labels: { id: string; name: string; color: string }[];
 };
 
+// Story-type glyphs live here (client) rather than in the framework-free
+// stories.ts data module, keeping that util React-free (see its header note).
+const STORY_TYPE_ICON: Record<StoryType, LucideIcon> = {
+  feature: Star,
+  bug: Bug,
+  chore: Wrench,
+  release: Flag,
+};
+
 // `release` stories render as a milestone marker row (flag + horizontal
 // rule) instead of a regular card — see spec/screens.md "Story card UX".
 function ReleaseMarkerRow({ story }: { story: StoryCardData }) {
@@ -31,7 +41,10 @@ function ReleaseMarkerRow({ story }: { story: StoryCardData }) {
       href={`/stories/${story.id}`}
       className="flex items-center gap-2 py-1 text-sm hover:opacity-80"
     >
-      <span title={STORY_TYPE_META.release.label}>{STORY_TYPE_META.release.icon}</span>
+      <Flag
+        className="h-4 w-4 shrink-0 text-indigo-500"
+        aria-label={STORY_TYPE_META.release.label}
+      />
       <span className="font-medium">{story.title}</span>
       <span className="h-px flex-1 bg-indigo-300 dark:bg-indigo-700" />
     </Link>
@@ -58,6 +71,7 @@ export function StoryCard({
   }
 
   const typeMeta = STORY_TYPE_META[story.story_type as StoryType];
+  const TypeIcon = STORY_TYPE_ICON[story.story_type as StoryType];
   const stateMeta = STORY_STATE_META[story.state as StoryState];
   const isAccepted = story.state === "accepted";
 
@@ -76,12 +90,12 @@ export function StoryCard({
 
   const headerContent = (
     <>
-      {typeMeta && (
+      {typeMeta && TypeIcon && (
         <span
-          className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${typeMeta.className}`}
+          className={`inline-flex shrink-0 items-center rounded px-1.5 py-1 ${typeMeta.className}`}
           title={typeMeta.label}
         >
-          {typeMeta.icon}
+          <TypeIcon className="h-3.5 w-3.5" aria-label={typeMeta.label} />
         </span>
       )}
 
