@@ -35,9 +35,12 @@ export function AppHeader({
   const base = `/projects/${project.id}`;
 
   const tabs = [
-    { label: "Overview", href: base, active: pathname === base },
-    { label: "Board", href: `${base}/board`, active: pathname.startsWith(`${base}/board`) },
+    // The board is the project's home view — pathname === base covers the
+    // instant before the /board redirect resolves, so the tab doesn't flash
+    // inactive.
+    { label: "Board", href: `${base}/board`, active: pathname === base || pathname.startsWith(`${base}/board`) },
     { label: "Epics", href: `${base}/epics`, active: pathname.startsWith(`${base}/epics`) },
+    { label: "Activity", href: `${base}/activity`, active: pathname.startsWith(`${base}/activity`) },
     { label: "Settings", href: `${base}/settings`, active: pathname.startsWith(`${base}/settings`) },
   ];
 

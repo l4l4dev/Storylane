@@ -8,9 +8,10 @@
 /                         Login / top page
 /auth/login               Login (OAuth)
 /dashboard                Project list
-/projects/[id]            Project home (backlog + current iteration, read-only summary)
+/projects/[id]            Redirects to the board (see below) — the board is the project's home view
 /projects/[id]/board      Board (multi-panel workspace — see "Board layout" below)
 /projects/[id]/epics      Epic list
+/projects/[id]/activity   Project activity log (read-only feed of recent story/comment changes)
 /projects/[id]/settings   Project settings (members, integrations, point scale, etc.)
 /stories/[id]             Story detail (standalone deep-link page; primary editing happens
                           inline on the board — see "Board layout" below)
