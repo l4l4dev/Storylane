@@ -25,6 +25,8 @@ import { moveStory, updateIterationGoal } from "@/app/projects/[id]/board/action
 import { isCurrentIteration, splitBacklogIntoVirtualIterations } from "@/lib/utils/iterations";
 import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID, sumPoints } from "@/lib/utils/board";
 import { useProjectStoriesRealtime } from "@/lib/supabase/realtime";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { BoardSidebar, DEFAULT_BOARD_PANELS, type BoardPanelId } from "./board-sidebar";
 import { StoryCard, type StoryCardData } from "./story-card";
 
@@ -125,13 +127,13 @@ function BacklogList({
             {groupIndex > 0 && (
               <li
                 aria-hidden
-                className="flex items-center gap-2 py-1 text-xs text-gray-400 dark:text-gray-500"
+                className="flex items-center gap-2 py-1 text-xs text-muted-foreground"
               >
-                <span className="h-px flex-1 bg-gray-300 dark:bg-gray-700" />
+                <span className="h-px flex-1 bg-border" />
                 <span>
                   Iteration #{startingIterationNumber + groupIndex} · {sumPoints(group)} pts
                 </span>
-                <span className="h-px flex-1 bg-gray-300 dark:bg-gray-700" />
+                <span className="h-px flex-1 bg-border" />
               </li>
             )}
             {group.map((story) => (
@@ -149,8 +151,8 @@ function BacklogList({
 // the board horizontally instead of squeezing existing ones.
 function PanelColumn({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="flex h-[calc(100vh-14rem)] w-80 shrink-0 flex-col gap-3 overflow-y-auto rounded-lg border border-gray-200 p-3 dark:border-gray-800">
-      <h2 className="text-sm font-semibold text-gray-500">{title}</h2>
+    <section className="flex h-[calc(100vh-14rem)] w-80 shrink-0 flex-col gap-3 overflow-y-auto rounded-lg border border-border p-3">
+      <h2 className="text-sm font-semibold text-muted-foreground">{title}</h2>
       {children}
     </section>
   );
@@ -170,41 +172,33 @@ function IterationSection({
   const isCurrent = isCurrentIteration(iteration, today);
 
   return (
-    <section className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+    <section className="rounded-lg border border-border p-3">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold">Iteration #{iteration.number}</h3>
           {isCurrent && (
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
               Current
             </span>
           )}
-          <span className="text-xs text-gray-500">{sumPoints(stories)} pts</span>
+          <span className="text-xs text-muted-foreground">{sumPoints(stories)} pts</span>
         </div>
       </div>
-      <p className="mb-2 text-xs text-gray-500">
+      <p className="mb-2 text-xs text-muted-foreground">
         {iteration.start_date} – {iteration.end_date}
       </p>
 
       <form action={updateIterationGoal} className="mb-3 flex items-center gap-2">
         <input type="hidden" name="project_id" value={projectId} />
         <input type="hidden" name="iteration_id" value={iteration.id} />
-        <input
-          name="goal"
-          placeholder="Sprint goal"
-          defaultValue={iteration.goal ?? ""}
-          className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm dark:border-gray-700 dark:bg-zinc-800"
-        />
-        <button
-          type="submit"
-          className="rounded-md border border-gray-300 px-2 py-1 text-sm dark:border-gray-700"
-        >
+        <Input name="goal" placeholder="Sprint goal" defaultValue={iteration.goal ?? ""} className="flex-1" />
+        <Button type="submit" variant="outline" size="sm">
           Save
-        </button>
+        </Button>
       </form>
 
       {stories.length === 0 && (
-        <p className="mb-3 text-sm text-gray-500">No stories assigned yet.</p>
+        <p className="mb-3 text-sm text-muted-foreground">No stories assigned yet.</p>
       )}
       <DroppableStoryList containerId={iteration.id} stories={stories} projectId={projectId} />
     </section>
@@ -221,18 +215,18 @@ function DoneIterationSection({
   projectId: string;
 }) {
   return (
-    <section className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-zinc-900/40">
+    <section className="rounded-lg border border-border bg-muted/40 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="font-semibold text-gray-600 dark:text-gray-300">Iteration #{iteration.number}</h3>
-        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-zinc-800 dark:text-gray-300">
+        <h3 className="font-semibold text-muted-foreground">Iteration #{iteration.number}</h3>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
           {iteration.velocity ?? 0} pts
         </span>
       </div>
-      <p className="mb-2 text-xs text-gray-500">
+      <p className="mb-2 text-xs text-muted-foreground">
         {iteration.start_date} – {iteration.end_date}
       </p>
       {iteration.goal && (
-        <p className="mb-2 text-sm text-gray-600 dark:text-gray-300">{iteration.goal}</p>
+        <p className="mb-2 text-sm text-muted-foreground">{iteration.goal}</p>
       )}
       {stories.length > 0 ? (
         <ul className="flex flex-col gap-2">
@@ -243,7 +237,7 @@ function DoneIterationSection({
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-gray-500">No stories were completed.</p>
+        <p className="text-sm text-muted-foreground">No stories were completed.</p>
       )}
     </section>
   );
@@ -400,7 +394,7 @@ export function SprintBoard({
           {enabledPanels.has("current") && (
             <PanelColumn title="Current">
               {editableIterations.length === 0 && (
-                <p className="text-sm text-gray-500">No active iteration.</p>
+                <p className="text-sm text-muted-foreground">No active iteration.</p>
               )}
               <div className="flex flex-col gap-4">
                 {editableIterations.map((iteration) => (
@@ -421,7 +415,7 @@ export function SprintBoard({
               {backlogToolbar}
               {backlogFilters}
               {backlogStories.length === 0 && (
-                <p className="text-sm text-gray-500">Backlog is empty.</p>
+                <p className="text-sm text-muted-foreground">Backlog is empty.</p>
               )}
               <BacklogList
                 containerId={BACKLOG_CONTAINER_ID}
@@ -435,7 +429,7 @@ export function SprintBoard({
           {enabledPanels.has("icebox") && (
             <PanelColumn title="Icebox">
               {iceboxStories.length === 0 && (
-                <p className="text-sm text-gray-500">Icebox is empty.</p>
+                <p className="text-sm text-muted-foreground">Icebox is empty.</p>
               )}
               <DroppableStoryList
                 containerId={ICEBOX_CONTAINER_ID}
@@ -448,7 +442,7 @@ export function SprintBoard({
           {enabledPanels.has("done") && (
             <PanelColumn title="Done">
               {doneIterations.length === 0 && (
-                <p className="text-sm text-gray-500">No completed iterations yet.</p>
+                <p className="text-sm text-muted-foreground">No completed iterations yet.</p>
               )}
               <div className="flex flex-col gap-4">
                 {doneIterations.map((iteration) => (

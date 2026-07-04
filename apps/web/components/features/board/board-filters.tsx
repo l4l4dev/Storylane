@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { STORY_TYPES } from "@/lib/utils/stories";
+import { NativeSelect } from "@/components/ui/native-select";
 
 type Option = { id: string; name: string };
 
@@ -26,16 +27,13 @@ export function BoardFilters({
     router.replace(`${pathname}?${params.toString()}`);
   }
 
-  const selectClass =
-    "rounded-md border border-gray-300 px-2 py-1 text-sm dark:border-gray-700 dark:bg-zinc-800";
-
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <select
+      <NativeSelect
         aria-label="Filter by type"
         value={searchParams.get("type") ?? ""}
         onChange={(e) => setParam("type", e.target.value)}
-        className={selectClass}
+        className="h-8 w-auto"
       >
         <option value="">All types</option>
         {STORY_TYPES.map((t) => (
@@ -43,13 +41,13 @@ export function BoardFilters({
             {t}
           </option>
         ))}
-      </select>
+      </NativeSelect>
 
-      <select
+      <NativeSelect
         aria-label="Filter by assignee"
         value={searchParams.get("assignee") ?? ""}
         onChange={(e) => setParam("assignee", e.target.value)}
-        className={selectClass}
+        className="h-8 w-auto"
       >
         <option value="">All assignees</option>
         {assignees.map((a) => (
@@ -57,13 +55,13 @@ export function BoardFilters({
             {a.name}
           </option>
         ))}
-      </select>
+      </NativeSelect>
 
-      <select
+      <NativeSelect
         aria-label="Filter by label"
         value={searchParams.get("label") ?? ""}
         onChange={(e) => setParam("label", e.target.value)}
-        className={selectClass}
+        className="h-8 w-auto"
       >
         <option value="">All labels</option>
         {labels.map((l) => (
@@ -71,7 +69,7 @@ export function BoardFilters({
             {l.name}
           </option>
         ))}
-      </select>
+      </NativeSelect>
     </div>
   );
 }
