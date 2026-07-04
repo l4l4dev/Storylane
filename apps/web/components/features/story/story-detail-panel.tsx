@@ -1,6 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { updateStory, type StoryDetail } from "@/app/stories/[id]/actions";
+import { useStoryRealtime } from "@/lib/supabase/realtime";
 import { STORY_TYPES } from "@/lib/utils/stories";
 import { CommentThread } from "./comment-thread";
 import { TaskChecklist } from "./task-checklist";
@@ -21,10 +23,20 @@ export function StoryDetailPanel({
   detail: StoryDetail;
   onMutated?: () => Promise<void> | void;
 }) {
+  const router = useRouter();
+
   async function handleUpdate(formData: FormData) {
     await updateStory(formData);
     await onMutated?.();
   }
+
+  // Task 11: picks up other users' edits to this story's fields or comment
+  // thread. The board's inline expansion re-fetches just this story's detail
+  // via `onMutated` (`refreshDetail` in story-card.tsx); the standalone
+  // `/stories/[id]` page has no such local state, so it refreshes the route.
+  useStoryRealtime(detail.id, () => {
+    void (onMutated?.() ?? router.refresh());
+  });
 
   return (
     <div className="flex flex-col gap-4">

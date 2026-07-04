@@ -1,7 +1,17 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { StoryDetail } from "@/app/stories/[id]/actions";
 import { StoryDetailPanel } from "./story-detail-panel";
+
+// These tests only exercise rendering, not the Task 11 realtime wiring or
+// routing — stub both so `useRouter()` doesn't need an App Router context
+// and `useStoryRealtime` doesn't need a real Supabase client/env vars.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+vi.mock("@/lib/supabase/realtime", () => ({
+  useStoryRealtime: () => {},
+}));
 
 const baseDetail: StoryDetail = {
   id: "s1",

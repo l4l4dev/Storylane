@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, type ReactNode, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   type DragEndEvent,
@@ -23,6 +24,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { moveStory, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { isCurrentIteration, splitBacklogIntoVirtualIterations } from "@/lib/utils/iterations";
 import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID, sumPoints } from "@/lib/utils/board";
+import { useProjectStoriesRealtime } from "@/lib/supabase/realtime";
 import { BoardSidebar, DEFAULT_BOARD_PANELS, type BoardPanelId } from "./board-sidebar";
 import { StoryCard, type StoryCardData } from "./story-card";
 
@@ -278,11 +280,18 @@ export function SprintBoard({
   const [synced, setSynced] = useState(initialContainers);
   const [, startTransition] = useTransition();
   const [enabledPanels, setEnabledPanels] = useState<ReadonlySet<BoardPanelId>>(DEFAULT_BOARD_PANELS);
+  const router = useRouter();
 
   if (synced !== initialContainers) {
     setSynced(initialContainers);
     setContainers(initialContainers);
   }
+
+  // Task 11: other users' story changes (state, position, project moves,
+  // creations/deletions) arrive here and re-fetch the board's Server
+  // Component, which flows back in as `initialContainers` and syncs above —
+  // no client-side container-grouping logic is duplicated for this.
+  useProjectStoriesRealtime(projectId, () => router.refresh());
 
   function togglePanel(panel: BoardPanelId) {
     setEnabledPanels((prev) => {

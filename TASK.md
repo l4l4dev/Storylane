@@ -50,9 +50,9 @@ Tasks 6〜13 は Web → iOS の順で進める。
 > また **Task 12.5（board 再構築）の後に実施する** — 購読を配線する board のビューが
 > Task 12.5 で作り直されるため、先に配線すると手戻りになる。
 
-- [ ] Subscribe to story changes via Supabase Realtime on backlog and iteration views
-- [ ] Reflect story state changes live without page refresh
-- [ ] Show live comment updates on story detail
+- [x] Subscribe to story changes via Supabase Realtime on backlog and iteration views
+- [x] Reflect story state changes live without page refresh
+- [x] Show live comment updates on story detail
 
 ---
 
