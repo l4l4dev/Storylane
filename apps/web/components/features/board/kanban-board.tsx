@@ -305,7 +305,10 @@ export function KanbanBoard({
   useProjectStoriesRealtime(projectId, () => router.refresh());
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    // The distance threshold keeps plain clicks working on the cards (they
+    // open the side peek): without it dnd-kit starts a drag on pointerdown
+    // and swallows the click event entirely.
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
