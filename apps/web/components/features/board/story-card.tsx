@@ -1,10 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bug, Flag, Star, Wrench, type LucideIcon } from "lucide-react";
-import { getStoryDetail, type StoryDetail } from "@/app/stories/[id]/actions";
-import { StoryDetailPanel } from "@/components/features/story/story-detail-panel";
 import {
   formatPoints,
   STORY_TYPE_META,
@@ -33,18 +31,35 @@ const STORY_TYPE_ICON: Record<StoryType, LucideIcon> = {
 
 // `release` stories render as a milestone marker row (flag + horizontal
 // rule) instead of a regular card — see spec/screens.md "Story card UX".
-function ReleaseMarkerRow({ story }: { story: StoryCardData }) {
-  return (
-    <Link
-      href={`/stories/${story.id}`}
-      className="flex items-center gap-2 py-1 text-sm hover:opacity-80"
-    >
+function ReleaseMarkerRow({ story, onOpen }: { story: StoryCardData; onOpen?: () => void }) {
+  const content = (
+    <>
       <Flag
         className="h-4 w-4 shrink-0 text-primary"
         aria-label={STORY_TYPE_META.release.label}
       />
       <span className="font-medium">{story.title}</span>
       <span className="h-px flex-1 bg-primary/30" />
+    </>
+  );
+
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex w-full items-center gap-2 py-1 text-left text-sm hover:opacity-80"
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <Link
+      href={`/stories/${story.id}`}
+      className="flex items-center gap-2 py-1 text-sm hover:opacity-80"
+    >
+      {content}
     </Link>
   );
 }
@@ -62,6 +77,8 @@ function initials(name: string): string {
 // Multica-style story card (spec/screens.md "Story card UX"): type icon,
 // title, one-line description, then a meta row of points / labels / assignee.
 // State transitions happen by dragging between columns — no buttons here.
+// On the board (`projectId` given) a click opens the side peek by setting
+// `?story=<id>`; elsewhere the card links to the standalone `/stories/[id]`.
 export function StoryCard({
   story,
   projectId,
@@ -69,30 +86,24 @@ export function StoryCard({
   story: StoryCardData;
   projectId?: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [detail, setDetail] = useState<StoryDetail | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  function openPeek() {
+    const params = new URLSearchParams(searchParams);
+    params.set("story", story.id);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
 
   if (story.story_type === "release") {
-    return <ReleaseMarkerRow story={story} />;
+    return <ReleaseMarkerRow story={story} onOpen={projectId ? openPeek : undefined} />;
   }
 
   const typeMeta = STORY_TYPE_META[story.story_type as StoryType];
   const TypeIcon = STORY_TYPE_ICON[story.story_type as StoryType];
   const isAccepted = story.state === "accepted";
   const hasMetaRow = story.points != null || story.labels.length > 0 || story.assigneeName;
-
-  async function refreshDetail() {
-    const fresh = await getStoryDetail(story.id);
-    setDetail(fresh);
-  }
-
-  function handleToggle() {
-    const next = !expanded;
-    setExpanded(next);
-    if (next && !detail) {
-      void refreshDetail();
-    }
-  }
 
   const cardContent = (
     <>
@@ -150,28 +161,14 @@ export function StoryCard({
         isAccepted ? "bg-green-50 dark:bg-green-950/40" : "bg-card"
       }`}
     >
-      {/* Clicking a story card opens its detail without leaving the board —
-          see spec/screens.md "Board layout". `/stories/[id]` remains a
-          standalone page for deep links, so cards without a `projectId`
-          keep the plain link behavior. */}
       {projectId ? (
-        <button type="button" onClick={handleToggle} className="block w-full text-left hover:opacity-80">
+        <button type="button" onClick={openPeek} className="block w-full text-left hover:opacity-80">
           {cardContent}
         </button>
       ) : (
         <Link href={`/stories/${story.id}`} className="block hover:opacity-80">
           {cardContent}
         </Link>
-      )}
-
-      {projectId && expanded && (
-        <div className="mt-3 border-t border-border pt-3">
-          {detail ? (
-            <StoryDetailPanel detail={detail} onMutated={refreshDetail} />
-          ) : (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          )}
-        </div>
       )}
     </div>
   );

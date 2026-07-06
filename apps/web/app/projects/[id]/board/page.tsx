@@ -8,8 +8,10 @@ import {
 import { isCurrentIteration } from "@/lib/utils/iterations";
 import { filterStories } from "@/lib/utils/stories";
 import { calculateVelocity } from "@/lib/utils/velocity";
+import { getStoryDetail } from "@/app/stories/[id]/actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
+import { StoryPeek } from "@/components/features/board/story-peek";
 import { ensureCurrentIteration } from "./actions";
 
 function todayDateOnly(): string {
@@ -21,10 +23,10 @@ export default async function BoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ type?: string; assignee?: string; label?: string }>;
+  searchParams: Promise<{ type?: string; assignee?: string; label?: string; story?: string }>;
 }) {
   const { id } = await params;
-  const { type, assignee, label } = await searchParams;
+  const { type, assignee, label, story: peekStoryId } = await searchParams;
   const supabase = await createClient();
 
   const { data: project } = await supabase
@@ -129,6 +131,11 @@ export default async function BoardPage({
     return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
   });
 
+  // Side peek (spec/screens.md "Board layout"): ?story=<id> opens the story
+  // detail over the board's right edge. Fetched server-side so the peek
+  // renders in the same pass as the board.
+  const peekDetail = peekStoryId ? await getStoryDetail(peekStoryId) : null;
+
   return (
     <main className="p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -149,6 +156,8 @@ export default async function BoardPage({
           />
         }
       />
+
+      {peekDetail && <StoryPeek detail={peekDetail} />}
     </main>
   );
 }
