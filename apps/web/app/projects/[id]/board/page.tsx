@@ -6,10 +6,9 @@ import {
   columnForStory,
 } from "@/lib/utils/kanban";
 import { isCurrentIteration } from "@/lib/utils/iterations";
-import { filterStories, pointScaleValues } from "@/lib/utils/stories";
+import { filterStories } from "@/lib/utils/stories";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { BoardFilters } from "@/components/features/board/board-filters";
-import { CreateStoryDialog } from "@/components/features/board/create-story-dialog";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { ensureCurrentIteration } from "./actions";
 
@@ -30,7 +29,7 @@ export default async function BoardPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, velocity_window, point_scale, custom_points")
+    .select("id, name, velocity_window")
     .eq("id", id)
     .single();
 
@@ -43,7 +42,7 @@ export default async function BoardPage({
   // iterations query below.
   await ensureCurrentIteration(project.id);
 
-  const [{ data: iterations }, { data: stories }, { data: epics }, { data: labels }, { data: members }] =
+  const [{ data: iterations }, { data: stories }, { data: labels }, { data: members }] =
     await Promise.all([
       supabase
         .from("iterations")
@@ -57,7 +56,6 @@ export default async function BoardPage({
         )
         .eq("project_id", id)
         .order("position", { ascending: true }),
-      supabase.from("epics").select("id, name, color").eq("project_id", id).order("position"),
       supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
       supabase
         .from("project_members")
@@ -145,19 +143,10 @@ export default async function BoardPage({
         velocity={currentVelocity}
         nextVirtualIterationNumber={nextVirtualIterationNumber}
         toolbar={
-          <>
-            <BoardFilters
-              assignees={assigneeOptions}
-              labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
-            />
-            <CreateStoryDialog
-              projectId={project.id}
-              pointScale={pointScaleValues(project.point_scale, project.custom_points)}
-              epics={epics ?? []}
-              labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
-              members={assigneeOptions}
-            />
-          </>
+          <BoardFilters
+            assignees={assigneeOptions}
+            labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
+          />
         }
       />
     </main>

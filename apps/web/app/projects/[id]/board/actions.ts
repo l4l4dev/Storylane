@@ -5,81 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID } from "@/lib/utils/board";
 import { columnForStory, evaluateDrop, type KanbanColumnId } from "@/lib/utils/kanban";
 import { isCurrentIteration, nextIterationDates, nextIterationNumber } from "@/lib/utils/iterations";
-import {
-  isUnestimatedFeature,
-  nextPosition,
-  parsePoints,
-  pointScaleValues,
-  reorderPositions,
-} from "@/lib/utils/stories";
+import { isUnestimatedFeature, nextPosition, reorderPositions } from "@/lib/utils/stories";
 import { applyTransition, type StoryState, type StoryTransitionAction } from "@/lib/utils/story-state";
 import { acceptedPoints } from "@/lib/utils/velocity";
 
 function todayDateOnly(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-export async function createStory(formData: FormData) {
-  const projectId = String(formData.get("project_id"));
-  const title = String(formData.get("title") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim() || null;
-  const storyType = String(formData.get("story_type") ?? "feature");
-  const epicId = String(formData.get("epic_id") ?? "") || null;
-  const assigneeId = String(formData.get("assignee_id") ?? "") || null;
-
-  if (!title) {
-    return;
-  }
-
-  const supabase = await createClient();
-
-  // Append to the bottom of the backlog. Reading the current max position keeps
-  // positions dense without a DB sequence.
-  const [{ data: existing }, { data: project }] = await Promise.all([
-    supabase.from("stories").select("position").eq("project_id", projectId),
-    supabase.from("projects").select("point_scale, custom_points").eq("id", projectId).single(),
-  ]);
-
-  if (!project) {
-    throw new Error("Project not found");
-  }
-
-  const points = parsePoints(
-    formData.get("points") as string | null,
-    storyType,
-    pointScaleValues(project.point_scale, project.custom_points),
-  );
-
-  const { data: story, error } = await supabase
-    .from("stories")
-    .insert({
-      project_id: projectId,
-      title,
-      description,
-      story_type: storyType,
-      points,
-      epic_id: epicId,
-      assignee_id: assigneeId,
-      position: nextPosition(existing ?? []),
-    })
-    .select("id")
-    .single();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const labelIds = formData.getAll("label_ids").map(String).filter(Boolean);
-  if (story && labelIds.length > 0) {
-    const { error: labelError } = await supabase
-      .from("story_labels")
-      .insert(labelIds.map((labelId) => ({ story_id: story.id, label_id: labelId })));
-    if (labelError) {
-      throw new Error(labelError.message);
-    }
-  }
-
-  revalidatePath(`/projects/${projectId}/board`);
 }
 
 /**
@@ -146,6 +77,61 @@ export async function moveStory(formData: FormData) {
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);
+}
+
+/**
+ * Creates a story from a column's inline quick-add composer (see
+ * spec/screens.md "Board layout": title only, defaults for everything else —
+ * type `feature`, unestimated, unassigned). `target` decides where it lands:
+ * `backlog` (unstarted, no iteration), `icebox` (unscheduled), or
+ * `unstarted` (scheduled into the current iteration).
+ */
+export async function quickCreateStory(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const title = String(formData.get("title") ?? "").trim();
+  const target = String(formData.get("target"));
+
+  if (!title) {
+    return;
+  }
+
+  const supabase = await createClient();
+
+  const [{ data: existing }, { data: currentRows }] = await Promise.all([
+    supabase.from("stories").select("position").eq("project_id", projectId),
+    target === "unstarted"
+      ? supabase
+          .from("iterations")
+          .select("id")
+          .eq("project_id", projectId)
+          .neq("state", "done")
+          .order("number", { ascending: false })
+          .limit(1)
+      : Promise.resolve({ data: null }),
+  ]);
+
+  let iterationId: string | null = null;
+  if (target === "unstarted") {
+    iterationId = currentRows?.[0]?.id ?? null;
+    if (!iterationId) {
+      throw new Error("No active iteration");
+    }
+  }
+
+  const { error } = await supabase.from("stories").insert({
+    project_id: projectId,
+    title,
+    story_type: "feature",
+    state: target === "icebox" ? "unscheduled" : "unstarted",
+    iteration_id: iterationId,
+    position: nextPosition(existing ?? []),
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/projects/${projectId}/board`);
 }
 
 /**
