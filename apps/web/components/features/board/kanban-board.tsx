@@ -4,8 +4,10 @@ import { Fragment, type ReactNode, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
+  DragOverlay,
   type DragEndEvent,
   type DragOverEvent,
+  type DragStartEvent,
   PointerSensor,
   KeyboardSensor,
   closestCenter,
@@ -291,6 +293,7 @@ export function KanbanBoard({
   const [containers, setContainers] = useState(initialContainers);
   const [synced, setSynced] = useState(initialContainers);
   const [showIcebox, setShowIcebox] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();
 
@@ -323,6 +326,10 @@ export function KanbanBoard({
     }
     const from = columnForStory(story, currentIteration?.id ?? null);
     return evaluateDrop(story, from, targetContainer as KanbanColumnId).ok;
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -362,6 +369,7 @@ export function KanbanBoard({
   }
 
   function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
     const { active, over } = event;
     if (!over) {
       setContainers(synced);
@@ -405,13 +413,16 @@ export function KanbanBoard({
   const backlogMarkerGroups = splitBacklogIntoVirtualIterations(backlogStories, velocity);
   const iterationStories = STATE_COLUMNS.flatMap((column) => containers[column] ?? []);
   const showRejected = (containers.rejected ?? []).length > 0;
+  const activeStory = activeId ? storyById(containers, activeId) : undefined;
 
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveId(null)}
     >
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
         {currentIteration && (
@@ -506,6 +517,18 @@ export function KanbanBoard({
           </KanbanColumn>
         ))}
       </div>
+
+      {/* Renders the dragged card in a top-level portal (see @dnd-kit docs)
+          so it floats above every column instead of being clipped by their
+          `overflow-y-auto` bodies — without this the card visually vanished
+          behind the target column while dragging. */}
+      <DragOverlay>
+        {activeStory && (
+          <div className="w-64 rotate-1 cursor-grabbing">
+            <StoryCard story={activeStory} projectId={projectId} />
+          </div>
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }
