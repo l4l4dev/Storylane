@@ -1,6 +1,14 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StoryCard, type StoryCardData } from "./story-card";
+
+const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock, refresh: vi.fn() }),
+  usePathname: () => "/projects/p1/board",
+  useSearchParams: () => new URLSearchParams("type=feature"),
+}));
 
 const baseStory: StoryCardData = {
   id: "s1",
@@ -14,21 +22,30 @@ const baseStory: StoryCardData = {
 };
 
 describe("StoryCard", () => {
-  it("renders a release story as a milestone marker row, not a card", () => {
-    render(<StoryCard story={{ ...baseStory, story_type: "release", title: "v1.0" }} projectId="p1" />);
-    expect(screen.getByText("v1.0")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  beforeEach(() => {
+    pushMock.mockClear();
   });
 
-  it("renders as a link (not an expand toggle) when no projectId is given", () => {
+  it("renders a release story as a milestone marker row that opens the peek", () => {
+    render(<StoryCard story={{ ...baseStory, story_type: "release", title: "v1.0" }} projectId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: /v1.0/ }));
+    expect(pushMock).toHaveBeenCalledWith("/projects/p1/board?type=feature&story=s1", {
+      scroll: false,
+    });
+  });
+
+  it("renders as a link (not a peek trigger) when no projectId is given", () => {
     render(<StoryCard story={baseStory} />);
     expect(screen.getByRole("link", { name: /Add login/ })).toHaveAttribute("href", "/stories/s1");
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("renders as a clickable toggle without transition buttons when projectId is given", () => {
+  it("opens the side peek via ?story= (preserving other params) on the board", () => {
     render(<StoryCard story={baseStory} projectId="p1" />);
-    expect(screen.getByRole("button", { name: /Add login/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Add login/ }));
+    expect(pushMock).toHaveBeenCalledWith("/projects/p1/board?type=feature&story=s1", {
+      scroll: false,
+    });
     // State transitions happen by dragging between columns (spec/screens.md
     // "Story card UX") — the card no longer offers a Start button.
     expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();

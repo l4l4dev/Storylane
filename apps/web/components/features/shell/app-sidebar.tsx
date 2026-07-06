@@ -6,6 +6,7 @@ import {
   Activity,
   Check,
   ChevronsUpDown,
+  History,
   Layers,
   LogOut,
   Settings,
@@ -34,6 +35,7 @@ type NavItem = { label: string; segment: string; icon: LucideIcon };
 const NAV_ITEMS: NavItem[] = [
   { label: "Board", segment: "board", icon: SquareKanban },
   { label: "Epics", segment: "epics", icon: Layers },
+  { label: "Iterations", segment: "iterations", icon: History },
   { label: "Activity", segment: "activity", icon: Activity },
   { label: "Settings", segment: "settings", icon: Settings },
 ];
