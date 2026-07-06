@@ -186,3 +186,41 @@ Tasks 6〜13 は Web → iOS の順で進める。
 - [ ] Loading indicators on data-fetching screens
 - [ ] Accessibility audit (VoiceOver labels, Dynamic Type)
 - [ ] Performance review (query optimization, Realtime subscription cleanup)
+
+---
+
+## Task 14 — Custom Workflow Modes（2026-07-07 依頼、未着手・要スコープ確定）
+
+> 2026-07-06 のカンバン UI 刷新（状態カンバン化、`spec/screens.md` "Board layout"）の直後に
+> owner から依頼。**プロジェクト作成時にワークフローモードを選択**できるようにする:
+>
+> - **Pivotal Tracker モード（既定・現状維持）**: 固定ステートマシン
+>   (`lib/utils/story-state.ts` / `lib/utils/kanban.ts` の `evaluateDrop`)。前進遷移のみ、
+>   飛び級不可。今回のカンバン UI はこのモードの実装。
+> - **Free モード（新規）**: Trello ライクに **ステータス（カラム）を自由に追加・削除・並び替え・
+>   リネーム**でき、**カード移動も任意のステータス間で自由**（前進/後退/飛び級すべて許可）。
+>
+> 規模が大きく（新テーブル + migration + RLS、board のレンダリングをモード分岐、velocity/
+> iteration 計算との整合、Settings のステータス管理 UI 一式）、今回のカンバン刷新セッションとは
+> 別タスクとして切り出す。着手前に以下を確定させること（**推測で実装しない** — CLAUDE.md）。
+
+### 未決事項（着手前に owner と確定）
+- [ ] Free モードでも velocity / iteration（sprint）の概念は維持するか？
+      それとも Free モードは iteration 抜きの純粋な Trello ボード（カード無限・締切なし）か？
+- [ ] Free モードでも points / velocity 計算は行うか（story_type 別の点数除外ルールは維持するか）？
+- [ ] ワークフローモードはプロジェクト作成後に変更可能か、作成時に固定か？
+      （今回の依頼文面は「作成時に設定」なので固定を既定と仮置き）
+- [ ] Free モードのカスタムステータスに「done 相当」のようなカテゴリ/フラグを持たせるか
+      （Activity ログや将来のレポート機能で「完了扱い」を判定する必要が出た場合に必要）
+- [ ] 既存の「逆方向遷移だけ許可」という当初案（Settings トグル、Pivotal モードの部分緩和）は
+      Free モードに包含されて不要になるという理解でよいか、それとも別途 Pivotal モード内の
+      オプションとしても欲しいか
+
+### 想定スコープ（未決事項確定後に設計）
+- DB: `projects.workflow_mode`（`pivotal` / `free`）+ プロジェクト毎カスタムステータス用の
+  新テーブル（名前・色・並び順）、migration、RLS ポリシー
+- Web: board のカラム描画をモードで分岐（Pivotal ＝現状の `STATE_COLUMNS` 固定、
+  Free ＝ DB 駆動の可変カラム）。`evaluateDrop`（`lib/utils/kanban.ts`）は Pivotal 用の現行実装を
+  維持しつつ、Free 用に「同一プロジェクト内なら任意遷移許可」の別ルートを用意
+- Web: Settings にステータス管理 UI（追加・削除・並び替え・リネーム・色）— Free モードのみ表示
+- iOS: Web 実装確定後に追随（Web 先行方針、[[project-scope-decisions]]）
