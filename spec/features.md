@@ -12,9 +12,11 @@
 - Story types: feature / bug / chore / release
   (`release` stories act as milestone markers in the backlog — see spec/screens.md)
 - Story states: unscheduled → unstarted → started → finished → delivered → accepted / rejected
-- One-click state transitions on the story card (Start / Finish / Deliver /
-  Accept / Reject / Restart) — only the next valid transition is offered;
-  arbitrary state jumps are not allowed
+- State transitions (Start / Finish / Deliver / Accept / Reject / Restart) —
+  only the next valid transition is allowed; arbitrary state jumps are not
+  allowed. On the Web board a transition is performed by dragging the card to
+  the target state column (or via buttons in the story side peek); on iOS via
+  one-click buttons (see spec/screens.md)
 - Point estimation — points are chosen from the project's point scale, no free numeric input
   - `fibonacci`: 0, 1, 2, 3, 5, 8, 13 / `linear`: 0, 1, 2, 3 / `custom`: values from `projects.custom_points`
   - An unestimated `feature` cannot be started
