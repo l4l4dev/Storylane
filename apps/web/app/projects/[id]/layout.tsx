@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { AppHeader } from "@/components/features/shell/app-header";
+import { AppSidebar } from "@/components/features/shell/app-sidebar";
 
 // Shared shell for every project page. Fetches the navigation context once
 // (current project, the switcher's project list, the signed-in username) so
@@ -32,9 +32,9 @@ export default async function ProjectLayout({
   }
 
   return (
-    <div className="flex min-h-full flex-col">
-      <AppHeader project={project} projects={projects ?? []} username={profile?.username ?? null} />
-      <div className="flex-1">{children}</div>
+    <div className="flex min-h-dvh">
+      <AppSidebar project={project} projects={projects ?? []} username={profile?.username ?? null} />
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
