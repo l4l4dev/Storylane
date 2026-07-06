@@ -40,8 +40,9 @@ navigation and no blocking modals.
   header shows a state icon, the story count, and the column's point sum.
 - The **Backlog** column lists unstarted stories not yet in the current
   iteration, in priority order, with velocity-based iteration boundary
-  markers (spec/velocity.md). A toggle at the top of the column switches it
-  to the **Icebox** (unscheduled stories).
+  markers (spec/velocity.md). An **Icebox** toggle in the board toolbar
+  shows/hides an Icebox column (unscheduled stories) to the left of the
+  Backlog — shown as a column (not a swap) so Backlog ⇄ Icebox drags work.
 - The state columns show only the **current iteration's** stories. Past
   (done) iterations are not on the board — they live on
   `/projects/[id]/iterations`.

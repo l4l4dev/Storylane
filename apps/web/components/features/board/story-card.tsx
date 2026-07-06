@@ -5,18 +5,16 @@ import { useState } from "react";
 import { Bug, Flag, Star, Wrench, type LucideIcon } from "lucide-react";
 import { getStoryDetail, type StoryDetail } from "@/app/stories/[id]/actions";
 import { StoryDetailPanel } from "@/components/features/story/story-detail-panel";
-import { TransitionButtons } from "@/components/features/story/transition-buttons";
 import {
   formatPoints,
-  STORY_STATE_META,
   STORY_TYPE_META,
-  type StoryState,
   type StoryType,
 } from "@/lib/utils/stories";
 
 export type StoryCardData = {
   id: string;
   title: string;
+  description: string | null;
   story_type: string;
   state: string;
   points: number | null;
@@ -51,11 +49,19 @@ function ReleaseMarkerRow({ story }: { story: StoryCardData }) {
   );
 }
 
-// `projectId` is optional because the project home page (spec/screens.md:
-// "backlog + current iteration, read-only summary") renders cards without
-// the one-click transition buttons — omitting it suppresses them and keeps
-// the card a plain link to the standalone detail page rather than an inline
-// expansion trigger.
+// Initials for the assignee avatar chip: first letter of the first two words
+// ("Mika Enna" -> "ME"), or the first two characters of a single-word name.
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
+
+// Multica-style story card (spec/screens.md "Story card UX"): type icon,
+// title, one-line description, then a meta row of points / labels / assignee.
+// State transitions happen by dragging between columns — no buttons here.
 export function StoryCard({
   story,
   projectId,
@@ -72,8 +78,8 @@ export function StoryCard({
 
   const typeMeta = STORY_TYPE_META[story.story_type as StoryType];
   const TypeIcon = STORY_TYPE_ICON[story.story_type as StoryType];
-  const stateMeta = STORY_STATE_META[story.state as StoryState];
   const isAccepted = story.state === "accepted";
+  const hasMetaRow = story.points != null || story.labels.length > 0 || story.assigneeName;
 
   async function refreshDetail() {
     const fresh = await getStoryDetail(story.id);
@@ -88,82 +94,74 @@ export function StoryCard({
     }
   }
 
-  const headerContent = (
+  const cardContent = (
     <>
-      {typeMeta && TypeIcon && (
-        <span
-          className={`inline-flex shrink-0 items-center rounded px-1.5 py-1 ${typeMeta.className}`}
-          title={typeMeta.label}
-        >
-          <TypeIcon className="h-3.5 w-3.5" aria-label={typeMeta.label} />
+      <div className="flex items-start gap-2">
+        {typeMeta && TypeIcon && (
+          <span
+            className={`mt-0.5 inline-flex shrink-0 items-center rounded p-1 ${typeMeta.className}`}
+            title={typeMeta.label}
+          >
+            <TypeIcon className="h-3.5 w-3.5" aria-label={typeMeta.label} />
+          </span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium leading-snug">{story.title}</span>
+          {story.description && (
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+              {story.description}
+            </span>
+          )}
         </span>
-      )}
+      </div>
 
-      <span className="flex-1 truncate text-sm">{story.title}</span>
-
-      {story.labels.map((label) => (
-        <span
-          key={label.id}
-          className="shrink-0 rounded px-1.5 py-0.5 text-xs"
-          style={{ backgroundColor: `${label.color}22`, color: label.color }}
-        >
-          {label.name}
-        </span>
-      ))}
-
-      {stateMeta && (
-        <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${stateMeta.className}`}>
-          {stateMeta.label}
-        </span>
-      )}
-
-      {story.points != null && (
-        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-          {formatPoints(story.points)}
-        </span>
-      )}
-
-      {story.assigneeName && (
-        <span className="shrink-0 text-xs text-muted-foreground">{story.assigneeName}</span>
+      {hasMetaRow && (
+        <div className="mt-2 flex items-center gap-1.5">
+          {story.points != null && (
+            <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+              {formatPoints(story.points)}
+            </span>
+          )}
+          {story.labels.map((label) => (
+            <span
+              key={label.id}
+              className="min-w-0 truncate rounded px-1.5 py-0.5 text-xs"
+              style={{ backgroundColor: `${label.color}22`, color: label.color }}
+            >
+              {label.name}
+            </span>
+          ))}
+          {story.assigneeName && (
+            <span
+              className="ml-auto flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-medium text-secondary-foreground"
+              title={story.assigneeName}
+            >
+              {initials(story.assigneeName)}
+            </span>
+          )}
+        </div>
       )}
     </>
   );
 
   return (
     <div
-      className={`rounded-md border border-border p-3 ${
+      className={`rounded-lg border border-border p-3 shadow-xs ${
         isAccepted ? "bg-green-50 dark:bg-green-950/40" : "bg-card"
       }`}
     >
-      {/* Clicking a story card expands its detail inline within the panel
-          (accordion) instead of navigating — see spec/screens.md "Board
-          layout". `/stories/[id]` remains a standalone page for deep links,
-          so cards without a `projectId` (the read-only project home summary)
-          keep the old link-to-full-page behavior instead. */}
+      {/* Clicking a story card opens its detail without leaving the board —
+          see spec/screens.md "Board layout". `/stories/[id]` remains a
+          standalone page for deep links, so cards without a `projectId`
+          keep the plain link behavior. */}
       {projectId ? (
-        <button
-          type="button"
-          onClick={handleToggle}
-          className="flex w-full items-center gap-3 text-left hover:opacity-80"
-        >
-          {headerContent}
+        <button type="button" onClick={handleToggle} className="block w-full text-left hover:opacity-80">
+          {cardContent}
         </button>
       ) : (
-        <Link href={`/stories/${story.id}`} className="flex items-center gap-3 hover:opacity-80">
-          {headerContent}
+        <Link href={`/stories/${story.id}`} className="block hover:opacity-80">
+          {cardContent}
         </Link>
-      )}
-
-      {projectId && !expanded && (
-        <div className="mt-2">
-          <TransitionButtons
-            storyId={story.id}
-            projectId={projectId}
-            state={story.state}
-            storyType={story.story_type}
-            points={story.points}
-          />
-        </div>
       )}
 
       {projectId && expanded && (

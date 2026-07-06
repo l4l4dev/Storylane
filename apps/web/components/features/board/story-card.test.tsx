@@ -5,6 +5,7 @@ import { StoryCard, type StoryCardData } from "./story-card";
 const baseStory: StoryCardData = {
   id: "s1",
   title: "Add login",
+  description: null,
   story_type: "feature",
   state: "unstarted",
   points: 3,
@@ -25,14 +26,26 @@ describe("StoryCard", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("renders as a clickable toggle with transition buttons when projectId is given", () => {
+  it("renders as a clickable toggle without transition buttons when projectId is given", () => {
     render(<StoryCard story={baseStory} projectId="p1" />);
     expect(screen.getByRole("button", { name: /Add login/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start" })).toBeInTheDocument();
+    // State transitions happen by dragging between columns (spec/screens.md
+    // "Story card UX") — the card no longer offers a Start button.
+    expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
   });
 
-  it("shows the points dot notation on the collapsed card", () => {
+  it("shows a one-line description under the title when present", () => {
+    render(<StoryCard story={{ ...baseStory, description: "Support OAuth login" }} projectId="p1" />);
+    expect(screen.getByText("Support OAuth login")).toBeInTheDocument();
+  });
+
+  it("shows the points dot notation on the card", () => {
     render(<StoryCard story={baseStory} projectId="p1" />);
     expect(screen.getByText("•••")).toBeInTheDocument();
+  });
+
+  it("shows assignee initials in the meta row", () => {
+    render(<StoryCard story={{ ...baseStory, assigneeName: "Mika Enna" }} projectId="p1" />);
+    expect(screen.getByTitle("Mika Enna")).toHaveTextContent("ME");
   });
 });
