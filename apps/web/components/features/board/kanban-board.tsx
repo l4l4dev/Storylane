@@ -46,6 +46,7 @@ import { splitBacklogIntoVirtualIterations } from "@/lib/utils/iterations";
 import { useProjectStoriesRealtime } from "@/lib/supabase/realtime";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard, type StoryCardData } from "./story-card";
 
 export { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID };
@@ -236,12 +237,14 @@ function KanbanColumn({
   columnId,
   stories,
   children,
-  headerExtra,
+  composer,
 }: {
   columnId: KanbanColumnId;
   stories: BoardStory[];
   children: ReactNode;
-  headerExtra?: ReactNode;
+  // Quick-add composer, pinned above the scrollable card list so it stays
+  // reachable however long the column grows.
+  composer?: ReactNode;
 }) {
   const meta = COLUMN_META[columnId];
   const Icon = meta.icon;
@@ -256,8 +259,8 @@ function KanbanColumn({
         <h2 className="text-sm font-semibold">{meta.label}</h2>
         <span className="text-xs text-muted-foreground">{stories.length}</span>
         {points > 0 && <span className="text-xs text-muted-foreground">· {points} pts</span>}
-        {headerExtra && <span className="ml-auto">{headerExtra}</span>}
       </header>
+      {composer && <div className="px-3 pb-2">{composer}</div>}
       <div className="flex flex-1 flex-col overflow-y-auto px-3 pb-3">{children}</div>
     </section>
   );
@@ -456,7 +459,11 @@ export function KanbanBoard({
 
       <div className="flex gap-3 overflow-x-auto pb-2">
         {showIcebox && (
-          <KanbanColumn columnId={ICEBOX_COLUMN_ID} stories={iceboxStories}>
+          <KanbanColumn
+            columnId={ICEBOX_COLUMN_ID}
+            stories={iceboxStories}
+            composer={<QuickAddComposer projectId={projectId} target="icebox" />}
+          >
             <DroppableStoryList
               containerId={ICEBOX_COLUMN_ID}
               stories={iceboxStories}
@@ -465,7 +472,11 @@ export function KanbanBoard({
           </KanbanColumn>
         )}
 
-        <KanbanColumn columnId={BACKLOG_COLUMN_ID} stories={backlogStories}>
+        <KanbanColumn
+          columnId={BACKLOG_COLUMN_ID}
+          stories={backlogStories}
+          composer={<QuickAddComposer projectId={projectId} target="backlog" />}
+        >
           <BacklogList
             groups={backlogMarkerGroups}
             startingIterationNumber={nextVirtualIterationNumber}
@@ -474,7 +485,16 @@ export function KanbanBoard({
         </KanbanColumn>
 
         {STATE_COLUMNS.filter((column) => column !== "rejected" || showRejected).map((column) => (
-          <KanbanColumn key={column} columnId={column} stories={containers[column] ?? []}>
+          <KanbanColumn
+            key={column}
+            columnId={column}
+            stories={containers[column] ?? []}
+            composer={
+              column === "unstarted" ? (
+                <QuickAddComposer projectId={projectId} target="unstarted" />
+              ) : undefined
+            }
+          >
             <DroppableStoryList
               containerId={column}
               stories={containers[column] ?? []}
