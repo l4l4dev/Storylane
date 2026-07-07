@@ -79,3 +79,12 @@ supabase/.temp/
 *.swp
 *.swo
 *~
+
+# ============================================================
+# Local agent/tooling artifacts (owner-managed, never commit)
+# ============================================================
+# Backlog.md: tasks/docs are tracked, personal config and lock files are not
+.backlog/config.yml
+.backlog/.locks
+# Superpowers plugin planning artifacts (session working memos)
+docs/superpowers/
