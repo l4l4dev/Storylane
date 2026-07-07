@@ -1,8 +1,18 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import type {
+  RealtimeChannel,
+  RealtimePostgresInsertPayload,
+  RealtimePostgresUpdatePayload,
+} from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import {
+  mentionNotification,
+  storyChangeNotification,
+  type NotificationContent,
+  type StoryNotificationRow,
+} from "@/lib/utils/notifications";
 
 // Task 11 (Realtime Collaboration): subscribes to Postgres Changes so other
 // users' edits are reflected without a manual page refresh. Both hooks debounce
@@ -88,4 +98,68 @@ export function useStoryRealtime(storyId: string, onChange: () => void) {
       )
       .subscribe(),
   );
+}
+
+// Task 10 (Notifications): fires `onNotify` for the two Realtime-driven
+// triggers (see spec/features.md) — assigned to a story / a story you own
+// changes state, and mentioned in a comment. Unlike the hooks above this
+// isn't debounced: each qualifying row change is its own notification, not a
+// "something changed, go refetch" signal.
+//
+// `assignee_id=eq.${userId}` scopes the stories subscription so only rows
+// relevant to this user's two triggers arrive at all; RLS further limits it
+// to projects the user is a member of. The comments subscription has no
+// server-side filter (Postgres Changes filters don't support text search),
+// so every comment insert the user can see (per RLS) arrives and mentions
+// are matched client-side against their username.
+export function useNotificationsRealtime(
+  userId: string | null,
+  username: string | null,
+  onNotify: (notification: NotificationContent) => void,
+) {
+  useRealtimeChannel(`notifications-${userId ?? "anon"}-${username ?? "anon"}`, (channel) => {
+    if (userId) {
+      channel = channel
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "stories", filter: `assignee_id=eq.${userId}` },
+          (payload: RealtimePostgresInsertPayload<StoryNotificationRow>) => {
+            const notification = storyChangeNotification(null, payload.new, userId);
+            if (notification) {
+              onNotify(notification);
+            }
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "stories", filter: `assignee_id=eq.${userId}` },
+          (payload: RealtimePostgresUpdatePayload<StoryNotificationRow>) => {
+            // REPLICA IDENTITY FULL (see the realtime-publication migration)
+            // guarantees `old` carries the full previous row, not just the
+            // primary key — the `"id" in` check only guards against a
+            // misconfigured environment where that isn't the case.
+            const oldRow = "id" in payload.old ? (payload.old as StoryNotificationRow) : null;
+            const notification = storyChangeNotification(oldRow, payload.new, userId);
+            if (notification) {
+              onNotify(notification);
+            }
+          },
+        );
+    }
+
+    if (username) {
+      channel = channel.on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "comments" },
+        (payload: RealtimePostgresInsertPayload<{ body: string }>) => {
+          const notification = mentionNotification(payload.new.body, username);
+          if (notification) {
+            onNotify(notification);
+          }
+        },
+      );
+    }
+
+    return channel.subscribe();
+  });
 }
