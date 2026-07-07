@@ -53,3 +53,36 @@ export function sumPoints(stories: ReadonlyArray<PointedStory>): number {
     .filter((story) => storyTypeUsesPoints(story.story_type))
     .reduce((total, story) => total + (story.points ?? 0), 0);
 }
+
+// Shared cross-container drag helpers — used by both the Kanban and List
+// board views, whose containers are keyed differently (state columns vs.
+// current/backlog/icebox zones) but behave identically during a drag.
+
+/**
+ * Finds which container currently holds `itemId` — either a container being
+ * hovered directly (its droppable id equals itemId, relevant for empty
+ * containers) or the container whose list contains it.
+ */
+export function findContainer<T extends { id: string }>(
+  containers: Record<string, T[]>,
+  itemId: string,
+): string | undefined {
+  if (itemId in containers) {
+    return itemId;
+  }
+  return Object.keys(containers).find((key) => containers[key].some((item) => item.id === itemId));
+}
+
+/** Finds the item with `id` across every container, regardless of which one holds it. */
+export function storyById<T extends { id: string }>(
+  containers: Record<string, T[]>,
+  id: string,
+): T | undefined {
+  for (const items of Object.values(containers)) {
+    const match = items.find((item) => item.id === id);
+    if (match) {
+      return match;
+    }
+  }
+  return undefined;
+}

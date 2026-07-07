@@ -133,6 +133,69 @@ export function evaluateDrop(
   return { ok: true, state: targetState, iteration: "keep" };
 }
 
+// List view (see spec/screens.md "Board layout: List view") merges all
+// current-iteration state columns into one "current" zone so state renders
+// as a badge instead of a physical column — priority is a single position
+// order spanning every state, matching Pivotal Tracker's backlog list.
+export type ListZoneId = "current" | typeof BACKLOG_COLUMN_ID | typeof ICEBOX_COLUMN_ID;
+
+export function zoneForStory(story: KanbanStory, currentIterationId: string | null): ListZoneId {
+  if (story.state === "unscheduled") {
+    return ICEBOX_COLUMN_ID;
+  }
+  if (currentIterationId && story.iteration_id === currentIterationId) {
+    return "current";
+  }
+  return BACKLOG_COLUMN_ID;
+}
+
+export type ListDropEvaluation =
+  | { ok: true; state?: StoryState; iteration: "current" | "none" | "keep" }
+  | { ok: false; reason: string };
+
+/**
+ * Validates a List-view drop across zones. Unlike `evaluateDrop`, a
+ * same-zone drop is always a plain reorder regardless of the individual
+ * stories' states (the zone doesn't encode state) — only crossing a zone
+ * boundary can change state/iteration, and only for `unstarted` stories,
+ * mirroring the Icebox/Backlog/Unstarted rules in `evaluateDrop`.
+ */
+export function evaluateListDrop(
+  story: KanbanStory,
+  from: ListZoneId,
+  to: ListZoneId,
+): ListDropEvaluation {
+  if (from === to) {
+    return { ok: true, iteration: "keep" };
+  }
+
+  if (to === ICEBOX_COLUMN_ID) {
+    if (from === BACKLOG_COLUMN_ID || (from === "current" && story.state === "unstarted")) {
+      return { ok: true, state: "unscheduled", iteration: "none" };
+    }
+    return { ok: false, reason: "Only unstarted stories can move to the icebox" };
+  }
+
+  if (to === BACKLOG_COLUMN_ID) {
+    if (from === ICEBOX_COLUMN_ID) {
+      return { ok: true, state: "unstarted", iteration: "none" };
+    }
+    if (from === "current" && story.state === "unstarted") {
+      return { ok: true, iteration: "none" };
+    }
+    return { ok: false, reason: "Only unstarted stories can move back to the backlog" };
+  }
+
+  // to === "current"
+  if (from === ICEBOX_COLUMN_ID) {
+    return { ok: true, state: "unstarted", iteration: "current" };
+  }
+  if (from === BACKLOG_COLUMN_ID) {
+    return { ok: true, iteration: "current" };
+  }
+  return { ok: false, reason: `Cannot move a ${from} story to ${to}` };
+}
+
 /** Buckets current-iteration stories into their state columns, preserving input order. */
 export function groupByStateColumn<T extends { state: string }>(
   stories: ReadonlyArray<T>,

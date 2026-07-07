@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupStoriesByIteration, partitionIcebox, sumPoints } from "./board";
+import { findContainer, groupStoriesByIteration, partitionIcebox, storyById, sumPoints } from "./board";
 
 describe("groupStoriesByIteration", () => {
   it("separates backlog stories from iteration-assigned ones", () => {
@@ -63,5 +63,41 @@ describe("sumPoints", () => {
 
   it("returns 0 for an empty list", () => {
     expect(sumPoints([])).toBe(0);
+  });
+});
+
+describe("findContainer", () => {
+  const containers = {
+    backlog: [{ id: "1" }, { id: "2" }],
+    current: [{ id: "3" }],
+    icebox: [] as { id: string }[],
+  };
+
+  it("finds the container whose list holds the item", () => {
+    expect(findContainer(containers, "2")).toBe("backlog");
+    expect(findContainer(containers, "3")).toBe("current");
+  });
+
+  it("returns the container id itself when hovering an empty container directly", () => {
+    expect(findContainer(containers, "icebox")).toBe("icebox");
+  });
+
+  it("returns undefined for an id that matches nothing", () => {
+    expect(findContainer(containers, "missing")).toBeUndefined();
+  });
+});
+
+describe("storyById", () => {
+  const containers = {
+    backlog: [{ id: "1", title: "a" }],
+    current: [{ id: "2", title: "b" }],
+  };
+
+  it("finds an item across every container", () => {
+    expect(storyById(containers, "2")).toEqual({ id: "2", title: "b" });
+  });
+
+  it("returns undefined when no container has the id", () => {
+    expect(storyById(containers, "missing")).toBeUndefined();
   });
 });

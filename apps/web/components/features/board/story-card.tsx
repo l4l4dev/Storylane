@@ -31,7 +31,8 @@ const STORY_TYPE_ICON: Record<StoryType, LucideIcon> = {
 
 // `release` stories render as a milestone marker row (flag + horizontal
 // rule) instead of a regular card — see spec/screens.md "Story card UX".
-function ReleaseMarkerRow({ story, onOpen }: { story: StoryCardData; onOpen?: () => void }) {
+// Exported so the List view's compact row can reuse the same treatment.
+export function ReleaseMarkerRow({ story, onOpen }: { story: StoryCardData; onOpen?: () => void }) {
   const content = (
     <>
       <Flag
@@ -66,7 +67,8 @@ function ReleaseMarkerRow({ story, onOpen }: { story: StoryCardData; onOpen?: ()
 
 // Initials for the assignee avatar chip: first letter of the first two words
 // ("Mary Evans" -> "ME"), or the first two characters of a single-word name.
-function initials(name: string): string {
+// Exported so the List view's compact row can reuse the same treatment.
+export function initials(name: string): string {
   const words = name.trim().split(/\s+/);
   if (words.length >= 2) {
     return (words[0][0] + words[1][0]).toUpperCase();
