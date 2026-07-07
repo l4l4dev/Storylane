@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type ReactNode, useState, useTransition } from "react";
+import { type ReactNode, useState, useTransition } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -28,22 +28,12 @@ import {
   CircleCheckBig,
   CirclePlay,
   CircleX,
-  ListTodo,
   PackageCheck,
-  Snowflake,
   type LucideIcon,
 } from "lucide-react";
 import { dropStory } from "@/app/projects/[id]/board/actions";
 import { findContainer, storyById, sumPoints } from "@/lib/utils/board";
-import {
-  BACKLOG_COLUMN_ID,
-  ICEBOX_COLUMN_ID,
-  STATE_COLUMNS,
-  columnForStory,
-  evaluateDrop,
-  type KanbanColumnId,
-} from "@/lib/utils/kanban";
-import { splitBacklogIntoVirtualIterations } from "@/lib/utils/iterations";
+import { STATE_COLUMNS, columnForStory, evaluateDrop, type KanbanColumnId, type StateColumnId } from "@/lib/utils/kanban";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard } from "./story-card";
 import type { BoardStory, IterationMeta } from "./kanban-board";
@@ -52,19 +42,7 @@ type ColumnMeta = { label: string; icon: LucideIcon; iconClass: string; tintClas
 
 // Column headers and tints follow the state hues already used by
 // STORY_STATE_META (lib/utils/stories.ts) so badges and columns agree.
-const COLUMN_META: Record<KanbanColumnId, ColumnMeta> = {
-  [ICEBOX_COLUMN_ID]: {
-    label: "Icebox",
-    icon: Snowflake,
-    iconClass: "text-sky-600 dark:text-sky-400",
-    tintClass: "bg-sky-50/50 dark:bg-sky-950/20",
-  },
-  [BACKLOG_COLUMN_ID]: {
-    label: "Backlog",
-    icon: ListTodo,
-    iconClass: "text-muted-foreground",
-    tintClass: "bg-muted/40",
-  },
+const COLUMN_META: Record<StateColumnId, ColumnMeta> = {
   unstarted: {
     label: "Unstarted",
     icon: Circle,
@@ -147,51 +125,6 @@ function DroppableStoryList({
   );
 }
 
-// Same droppable/sortable behavior as `DroppableStoryList`, but interspersed
-// with iteration boundary dividers between `groups` (see spec/velocity.md
-// "Marker computation") — the virtual future iterations that would be
-// created automatically once the backlog reaches the current one. Dividers
-// are decorative only: every story stays in one flat sortable list so drags
-// across a boundary work exactly like any other reorder.
-function BacklogList({
-  groups,
-  startingIterationNumber,
-  projectId,
-}: {
-  groups: BoardStory[][];
-  startingIterationNumber: number;
-  projectId: string;
-}) {
-  const { setNodeRef } = useDroppable({ id: BACKLOG_COLUMN_ID });
-  const allStoryIds = groups.flat().map((s) => s.id);
-
-  return (
-    <SortableContext items={allStoryIds} strategy={verticalListSortingStrategy}>
-      <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-2">
-        {groups.map((group, groupIndex) => (
-          <Fragment key={group[0]?.id ?? groupIndex}>
-            {groupIndex > 0 && (
-              <li
-                aria-hidden
-                className="flex items-center gap-2 py-1 text-xs text-muted-foreground"
-              >
-                <span className="h-px flex-1 bg-border" />
-                <span>
-                  Iteration #{startingIterationNumber + groupIndex} · {sumPoints(group)} pts
-                </span>
-                <span className="h-px flex-1 bg-border" />
-              </li>
-            )}
-            {group.map((story) => (
-              <SortableStoryRow key={story.id} story={story} projectId={projectId} />
-            ))}
-          </Fragment>
-        ))}
-      </ul>
-    </SortableContext>
-  );
-}
-
 // One kanban column: tinted surface, header with state icon / count / point
 // sum, independently scrollable body (spec/screens.md "Board layout").
 function KanbanColumn({
@@ -200,7 +133,7 @@ function KanbanColumn({
   children,
   composer,
 }: {
-  columnId: KanbanColumnId;
+  columnId: StateColumnId;
   stories: BoardStory[];
   children: ReactNode;
   // Quick-add composer, pinned above the scrollable card list so it stays
@@ -227,27 +160,21 @@ function KanbanColumn({
   );
 }
 
-// State-based kanban layout (see spec/screens.md "Board layout": Kanban
-// view). Extracted from the top-level `KanbanBoard`, which now only owns the
-// shared header (iteration bar, filters, view toggle) and delegates the
-// story area to this component or `BoardListView`.
+// State-based kanban layout, scoped to the current iteration only (see
+// spec/screens.md "Board layout": Kanban view — Backlog/Icebox management
+// lives exclusively in the List view now). Extracted from the top-level
+// `KanbanBoard`, which owns the shared header (iteration bar, filters, view
+// toggle) and delegates the story area to this component or `BoardListView`.
 export function KanbanColumnsBoard({
   projectId,
   currentIteration,
   initialContainers,
-  velocity,
-  nextVirtualIterationNumber,
-  showIcebox,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
-  // Keyed by KanbanColumnId: backlog, icebox, and one bucket per state column.
+  // Keyed by KanbanColumnId: only the state-column buckets are read here —
+  // this same object's backlog/icebox buckets are what `BoardListView` reads.
   initialContainers: Record<string, BoardStory[]>;
-  // Current velocity, used to segment the Backlog column into virtual future
-  // iterations (see spec/velocity.md "Marker computation").
-  velocity: number;
-  nextVirtualIterationNumber: number;
-  showIcebox: boolean;
 }) {
   // Local order so drops/reorders reflect instantly; server revalidation
   // re-syncs via props afterwards. Reset during render when the prop changes
@@ -363,9 +290,6 @@ export function KanbanColumnsBoard({
     });
   }
 
-  const backlogStories = containers[BACKLOG_COLUMN_ID] ?? [];
-  const iceboxStories = containers[ICEBOX_COLUMN_ID] ?? [];
-  const backlogMarkerGroups = splitBacklogIntoVirtualIterations(backlogStories, velocity);
   const showRejected = (containers.rejected ?? []).length > 0;
   const activeStory = activeId ? storyById(containers, activeId) : undefined;
 
@@ -379,32 +303,6 @@ export function KanbanColumnsBoard({
       onDragCancel={() => setActiveId(null)}
     >
       <div className="flex gap-3 overflow-x-auto pb-2">
-        {showIcebox && (
-          <KanbanColumn
-            columnId={ICEBOX_COLUMN_ID}
-            stories={iceboxStories}
-            composer={<QuickAddComposer projectId={projectId} target="icebox" />}
-          >
-            <DroppableStoryList
-              containerId={ICEBOX_COLUMN_ID}
-              stories={iceboxStories}
-              projectId={projectId}
-            />
-          </KanbanColumn>
-        )}
-
-        <KanbanColumn
-          columnId={BACKLOG_COLUMN_ID}
-          stories={backlogStories}
-          composer={<QuickAddComposer projectId={projectId} target="backlog" />}
-        >
-          <BacklogList
-            groups={backlogMarkerGroups}
-            startingIterationNumber={nextVirtualIterationNumber}
-            projectId={projectId}
-          />
-        </KanbanColumn>
-
         {STATE_COLUMNS.filter((column) => column !== "rejected" || showRejected).map((column) => (
           <KanbanColumn
             key={column}

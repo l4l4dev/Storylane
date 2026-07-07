@@ -2,6 +2,7 @@
 // Dates are handled as plain "YYYY-MM-DD" strings (matching the DB `date`
 // type) to avoid local-timezone drift when comparing against "today".
 
+import { sumPoints } from "./board";
 import { storyTypeUsesPoints } from "./stories";
 
 const MS_PER_DAY = 86_400_000;
@@ -117,4 +118,53 @@ export function splitBacklogIntoVirtualIterations<T extends BacklogStoryForMarke
     groups.push(current);
   }
   return groups;
+}
+
+export type BacklogDivider = { id: string; label: string };
+
+export type BacklogRowItem<T> = { kind: "story"; story: T } | { kind: "divider"; divider: BacklogDivider };
+
+export type BacklogRow<T> =
+  | { kind: "story"; story: T }
+  | { kind: "divider"; divider: BacklogDivider }
+  | { kind: "iteration-marker"; number: number; points: number };
+
+/**
+ * Interleaves the backlog's stories and freeform planning dividers (Task 15
+ * follow-up: `backlog_dividers` — user-created labeled rows for grouping,
+ * distinct from the automatic markers below) into one render-ready row
+ * sequence, inserting the velocity-based "Iteration #N" markers at the point
+ * where a story crosses into the next virtual iteration (see
+ * `splitBacklogIntoVirtualIterations`). Dividers never affect point
+ * accounting — they pass through at their own position unchanged.
+ */
+export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string }>(
+  items: ReadonlyArray<BacklogRowItem<T>>,
+  velocity: number,
+  startingIterationNumber: number,
+): BacklogRow<T>[] {
+  const stories = items.flatMap((item) => (item.kind === "story" ? [item.story] : []));
+  const groups = splitBacklogIntoVirtualIterations(stories, velocity);
+  const groupIndexById = new Map<string, number>();
+  groups.forEach((group, index) => {
+    for (const story of group) {
+      groupIndexById.set(story.id, index);
+    }
+  });
+
+  const rows: BacklogRow<T>[] = [];
+  let lastGroupIndex = 0;
+  for (const item of items) {
+    if (item.kind === "divider") {
+      rows.push({ kind: "divider", divider: item.divider });
+      continue;
+    }
+    const groupIndex = groupIndexById.get(item.story.id) ?? 0;
+    for (let g = lastGroupIndex + 1; g <= groupIndex; g++) {
+      rows.push({ kind: "iteration-marker", number: startingIterationNumber + g, points: sumPoints(groups[g] ?? []) });
+    }
+    lastGroupIndex = Math.max(lastGroupIndex, groupIndex);
+    rows.push({ kind: "story", story: item.story });
+  }
+  return rows;
 }

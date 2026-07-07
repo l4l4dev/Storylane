@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID } from "@/lib/utils/board";
 import {
+  BACKLOG_COLUMN_ID,
   columnForStory,
   evaluateDrop,
   evaluateListDrop,
@@ -222,72 +223,149 @@ export async function dropStory(formData: FormData) {
  * persist across the whole destination zone rather than a single state's
  * column — otherwise a reorder spanning two states would look like an
  * (invalid) attempted state transition to `evaluateDrop`.
+ *
+ * The dragged item can be a story or a freeform backlog divider
+ * (`item_kind`) — a divider never changes state/iteration, only its
+ * position, and can only be reordered within the Backlog zone. `ordered_ids`
+ * entries are `"story:<id>"` / `"divider:<id>"` pairs (Backlog can mix both;
+ * Current/Icebox only ever contain stories) so positions are written to the
+ * right table — see `lib/utils/iterations.ts` "buildBacklogRows" for why the
+ * two tables' positions must interleave consistently.
  */
 export async function dropStoryInList(formData: FormData) {
   const projectId = String(formData.get("project_id"));
-  const storyId = String(formData.get("story_id"));
+  const itemKind = String(formData.get("item_kind") ?? "story");
+  const itemId = String(formData.get("item_id"));
   const targetZone = String(formData.get("target_zone")) as ListZoneId;
-  const orderedIds = formData.getAll("ordered_ids").map(String).filter(Boolean);
+  const orderedItems = formData.getAll("ordered_ids").map(String).filter(Boolean);
 
   const supabase = await createClient();
 
-  const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
-    supabase
-      .from("stories")
-      .select("state, story_type, points, iteration_id")
-      .eq("id", storyId)
-      .single(),
-    supabase
-      .from("iterations")
-      .select("id")
-      .eq("project_id", projectId)
-      .neq("state", "done")
-      .order("number", { ascending: false })
-      .limit(1),
-  ]);
+  if (itemKind === "divider") {
+    if (targetZone !== BACKLOG_COLUMN_ID) {
+      throw new Error("Dividers can only be reordered within the backlog");
+    }
+  } else {
+    const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
+      supabase
+        .from("stories")
+        .select("state, story_type, points, iteration_id")
+        .eq("id", itemId)
+        .single(),
+      supabase
+        .from("iterations")
+        .select("id")
+        .eq("project_id", projectId)
+        .neq("state", "done")
+        .order("number", { ascending: false })
+        .limit(1),
+    ]);
 
-  if (fetchError || !story) {
-    throw new Error(fetchError?.message ?? "Story not found");
-  }
+    if (fetchError || !story) {
+      throw new Error(fetchError?.message ?? "Story not found");
+    }
 
-  const currentIterationId = currentRows?.[0]?.id ?? null;
-  if (!currentIterationId) {
-    throw new Error("No active iteration");
-  }
+    const currentIterationId = currentRows?.[0]?.id ?? null;
+    if (!currentIterationId) {
+      throw new Error("No active iteration");
+    }
 
-  const from = zoneForStory(story, currentIterationId);
-  const evaluation = evaluateListDrop(story, from, targetZone);
-  if (!evaluation.ok) {
-    throw new Error(evaluation.reason);
-  }
+    const from = zoneForStory(story, currentIterationId);
+    const evaluation = evaluateListDrop(story, from, targetZone);
+    if (!evaluation.ok) {
+      throw new Error(evaluation.reason);
+    }
 
-  const update: { state?: string; iteration_id?: string | null } = {};
-  if (evaluation.state) {
-    update.state = evaluation.state;
-  }
-  if (evaluation.iteration === "current") {
-    update.iteration_id = currentIterationId;
-  } else if (evaluation.iteration === "none") {
-    update.iteration_id = null;
-  }
+    const update: { state?: string; iteration_id?: string | null } = {};
+    if (evaluation.state) {
+      update.state = evaluation.state;
+    }
+    if (evaluation.iteration === "current") {
+      update.iteration_id = currentIterationId;
+    } else if (evaluation.iteration === "none") {
+      update.iteration_id = null;
+    }
 
-  if (Object.keys(update).length > 0) {
-    const { error } = await supabase.from("stories").update(update).eq("id", storyId);
-    if (error) {
-      throw new Error(error.message);
+    if (Object.keys(update).length > 0) {
+      const { error } = await supabase.from("stories").update(update).eq("id", itemId);
+      if (error) {
+        throw new Error(error.message);
+      }
     }
   }
 
-  if (orderedIds.length > 0) {
-    await Promise.all(
-      reorderPositions(orderedIds).map(({ id, position }) =>
-        supabase.from("stories").update({ position }).eq("id", id),
+  if (orderedItems.length > 0) {
+    const storyUpdates: { id: string; position: number }[] = [];
+    const dividerUpdates: { id: string; position: number }[] = [];
+    orderedItems.forEach((entry, position) => {
+      const separator = entry.indexOf(":");
+      const kind = entry.slice(0, separator);
+      const id = entry.slice(separator + 1);
+      (kind === "divider" ? dividerUpdates : storyUpdates).push({ id, position });
+    });
+
+    await Promise.all([
+      ...storyUpdates.map(({ id, position }) => supabase.from("stories").update({ position }).eq("id", id)),
+      ...dividerUpdates.map(({ id, position }) =>
+        supabase.from("backlog_dividers").update({ position }).eq("id", id),
       ),
-    );
+    ]);
   }
 
   revalidatePath(`/projects/${projectId}/board`);
-  revalidatePath(`/stories/${storyId}`);
+  if (itemKind !== "divider") {
+    revalidatePath(`/stories/${itemId}`);
+  }
+}
+
+/**
+ * Creates a freeform planning divider (see spec/screens.md "Board layout:
+ * List view") at the end of the backlog — the PO then drags it to the
+ * desired spot via the same reorder as any other backlog item
+ * (`dropStoryInList`). Distinct from the automatic, velocity-based
+ * "Iteration #N" markers, which aren't stored rows at all.
+ */
+export async function createBacklogDivider(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const label = String(formData.get("label") ?? "").trim();
+
+  if (!label) {
+    return;
+  }
+
+  const supabase = await createClient();
+
+  const [{ data: stories }, { data: dividers }] = await Promise.all([
+    supabase
+      .from("stories")
+      .select("position")
+      .eq("project_id", projectId)
+      .eq("state", "unstarted")
+      .is("iteration_id", null),
+    supabase.from("backlog_dividers").select("position").eq("project_id", projectId),
+  ]);
+
+  const position = nextPosition([...(stories ?? []), ...(dividers ?? [])]);
+
+  const { error } = await supabase.from("backlog_dividers").insert({ project_id: projectId, label, position });
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+export async function deleteBacklogDivider(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const dividerId = String(formData.get("divider_id"));
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("backlog_dividers").delete().eq("id", dividerId);
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/projects/${projectId}/board`);
 }
 
 /**

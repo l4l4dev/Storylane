@@ -6,6 +6,7 @@ import { LayoutGrid, List as ListIcon, Snowflake } from "lucide-react";
 import { updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { sumPoints } from "@/lib/utils/board";
 import { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
+import type { BacklogRowItem } from "@/lib/utils/iterations";
 import { useProjectStoriesRealtime } from "@/lib/supabase/realtime";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,7 @@ export function KanbanBoard({
   projectId,
   currentIteration,
   initialContainers,
+  initialBacklogItems,
   velocity,
   nextVirtualIterationNumber,
   toolbar,
@@ -48,6 +50,9 @@ export function KanbanBoard({
   currentIteration: IterationMeta | null;
   // Keyed by KanbanColumnId: backlog, icebox, and one bucket per state column.
   initialContainers: Record<string, BoardStory[]>;
+  // Backlog stories + freeform planning dividers, pre-merged/ordered
+  // server-side — List-view-only (see BoardListView).
+  initialBacklogItems: BacklogRowItem<BoardStory>[];
   // Current velocity, used to segment the Backlog column into virtual future
   // iterations (see spec/velocity.md "Marker computation").
   velocity: number;
@@ -55,7 +60,7 @@ export function KanbanBoard({
   // Filters / new-story controls supplied by the server component.
   toolbar?: ReactNode;
 }) {
-  const [view, setView] = useState<BoardView>("kanban");
+  const [view, setView] = useState<BoardView>("list");
   const [showIcebox, setShowIcebox] = useState(false);
   const router = useRouter();
 
@@ -121,18 +126,20 @@ export function KanbanBoard({
               Kanban
             </Button>
           </div>
-          <Button
-            type="button"
-            variant={showIcebox ? "secondary" : "outline"}
-            size="sm"
-            onClick={() => setShowIcebox((v) => !v)}
-          >
-            <Snowflake className="text-sky-600 dark:text-sky-400" />
-            Icebox
-            {iceboxStories.length > 0 && (
-              <span className="text-xs text-muted-foreground">{iceboxStories.length}</span>
-            )}
-          </Button>
+          {view === "list" && (
+            <Button
+              type="button"
+              variant={showIcebox ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setShowIcebox((v) => !v)}
+            >
+              <Snowflake className="text-sky-600 dark:text-sky-400" />
+              Icebox
+              {iceboxStories.length > 0 && (
+                <span className="text-xs text-muted-foreground">{iceboxStories.length}</span>
+              )}
+            </Button>
+          )}
           {toolbar}
         </div>
       </div>
@@ -142,15 +149,13 @@ export function KanbanBoard({
           projectId={projectId}
           currentIteration={currentIteration}
           initialContainers={initialContainers}
-          velocity={velocity}
-          nextVirtualIterationNumber={nextVirtualIterationNumber}
-          showIcebox={showIcebox}
         />
       ) : (
         <BoardListView
           projectId={projectId}
           currentIteration={currentIteration}
           initialContainers={initialContainers}
+          initialBacklogItems={initialBacklogItems}
           velocity={velocity}
           nextVirtualIterationNumber={nextVirtualIterationNumber}
           showIcebox={showIcebox}

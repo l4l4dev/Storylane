@@ -67,6 +67,23 @@ labels (
 )
 ```
 
+### backlog_dividers
+Freeform planning dividers for the List view's Backlog section (Task 15
+follow-up, 2026-07-07) — user-created labeled rows for grouping backlog
+stories, distinct from the automatic velocity-based "Iteration #N" markers
+(spec/velocity.md), which aren't stored rows at all.
+```sql
+backlog_dividers (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
+  label      text NOT NULL,
+  position   int  NOT NULL DEFAULT 0,   -- shares one dense sequence with stories.position
+                                        -- within the project's backlog (see spec/screens.md
+                                        -- "Board layout: List view")
+  created_at timestamptz DEFAULT now()
+)
+```
+
 ### iterations
 ```sql
 iterations (
