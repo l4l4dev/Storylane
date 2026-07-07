@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID } from "@/lib/utils/board";
-import { columnForStory, evaluateDrop, type KanbanColumnId } from "@/lib/utils/kanban";
+import {
+  columnForStory,
+  evaluateDrop,
+  evaluateListDrop,
+  zoneForStory,
+  type KanbanColumnId,
+  type ListZoneId,
+} from "@/lib/utils/kanban";
 import { isCurrentIteration, nextIterationDates, nextIterationNumber } from "@/lib/utils/iterations";
 import { isUnestimatedFeature, nextPosition, reorderPositions } from "@/lib/utils/stories";
 import { applyTransition, type StoryState, type StoryTransitionAction } from "@/lib/utils/story-state";
@@ -175,6 +182,81 @@ export async function dropStory(formData: FormData) {
 
   const from = columnForStory(story, currentIterationId);
   const evaluation = evaluateDrop(story, from, targetColumn);
+  if (!evaluation.ok) {
+    throw new Error(evaluation.reason);
+  }
+
+  const update: { state?: string; iteration_id?: string | null } = {};
+  if (evaluation.state) {
+    update.state = evaluation.state;
+  }
+  if (evaluation.iteration === "current") {
+    update.iteration_id = currentIterationId;
+  } else if (evaluation.iteration === "none") {
+    update.iteration_id = null;
+  }
+
+  if (Object.keys(update).length > 0) {
+    const { error } = await supabase.from("stories").update(update).eq("id", storyId);
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  if (orderedIds.length > 0) {
+    await Promise.all(
+      reorderPositions(orderedIds).map(({ id, position }) =>
+        supabase.from("stories").update({ position }).eq("id", id),
+      ),
+    );
+  }
+
+  revalidatePath(`/projects/${projectId}/board`);
+  revalidatePath(`/stories/${storyId}`);
+}
+
+/**
+ * Handles a List-view drop (see spec/screens.md "Board layout: List view"),
+ * the flat-list counterpart to `dropStory`. List view merges every
+ * current-iteration state into one "current" zone, so reorders always
+ * persist across the whole destination zone rather than a single state's
+ * column — otherwise a reorder spanning two states would look like an
+ * (invalid) attempted state transition to `evaluateDrop`.
+ */
+export async function dropStoryInList(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const storyId = String(formData.get("story_id"));
+  const targetZone = String(formData.get("target_zone")) as ListZoneId;
+  const orderedIds = formData.getAll("ordered_ids").map(String).filter(Boolean);
+
+  const supabase = await createClient();
+
+  const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
+    supabase
+      .from("stories")
+      .select("state, story_type, points, iteration_id")
+      .eq("id", storyId)
+      .single(),
+    supabase
+      .from("iterations")
+      .select("id")
+      .eq("project_id", projectId)
+      .neq("state", "done")
+      .order("number", { ascending: false })
+      .limit(1),
+  ]);
+
+  if (fetchError || !story) {
+    throw new Error(fetchError?.message ?? "Story not found");
+  }
+
+  const currentIterationId = currentRows?.[0]?.id ?? null;
+  if (!currentIterationId) {
+    throw new Error("No active iteration");
+  }
+
+  const from = zoneForStory(story, currentIterationId);
+  const evaluation = evaluateListDrop(story, from, targetZone);
   if (!evaluation.ok) {
     throw new Error(evaluation.reason);
   }

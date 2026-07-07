@@ -60,9 +60,12 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 > 通知のイベント源は Task 11 で導入する Realtime 購読を使う（購読したイベントから Notification API を発火する）。
 
-### Web
-- [ ] Request browser notification permission on sign-in
-- [ ] Trigger notification on: assigned to story, @mentioned, story state changed
+### Web ✅
+- [x] Request browser notification permission on sign-in
+- [x] Trigger notification on: assigned to story, @mentioned, story state changed
+      （`lib/utils/notifications.ts` の純関数 + `useNotificationsRealtime`
+      〈`lib/supabase/realtime.ts`〉+ `NotificationListener`〈root layout に配置〉。
+      既知の簡略化: 自分自身の操作による変更も通知される — actor 判定は行っていない）
 
 ### iOS（Web 全タスク完了後に着手）
 > **保留（当面なし）**: iOS プッシュ通知(APNs)は当面実装しない（シミュレータのみで開発するため）。
@@ -224,3 +227,42 @@ Tasks 6〜13 は Web → iOS の順で進める。
   維持しつつ、Free 用に「同一プロジェクト内なら任意遷移許可」の別ルートを用意
 - Web: Settings にステータス管理 UI（追加・削除・並び替え・リネーム・色）— Free モードのみ表示
 - iOS: Web 実装確定後に追随（Web 先行方針、[[project-scope-decisions]]）
+
+---
+
+## Task 15 — Board List View（Pivotal Tracker 本家パリティ、2026-07-07 依頼）
+
+> [dev.classmethod.jp の Pivotal Tracker 紹介記事](https://dev.classmethod.jp/articles/pivotal-tracker-is-good/)
+> を踏まえた乖離調査から着手。2026-07-06 のカンバン UI 刷新で、進行中イテレーションのストーリーが
+> `Unstarted/Started/Finished/Delivered/Accepted` の物理カラムに分割された結果、本家 Pivotal の
+> 「Current + Backlog が1本の縦リストで、状態はカード上のバッジ表現、優先順位＝リスト内の位置」
+> という視認性の高い体験が失われた。Task 14（Pivotal モード / Free モード）とは別軸
+> （あちらはステータス集合のカスタマイズ、こちらは表示形式）のため別タスクとして切り出す。
+> 実装は Sonnet 5。
+>
+> スコープ外（別件として扱う。着手しない）:
+> - リリース目標日に対する遅延警告の可視化
+> - ストーリーテンプレート機能
+
+### Web
+- [x] ボードツールバーに List / Kanban 表示切替を追加（Kanban が既定）。カンバン描画ロジックは
+      `kanban-board.tsx` から `kanban-columns-board.tsx` へ抽出し、`kanban-board.tsx` は
+      ヘッダー共通部 + 表示切替のみを持つオーケストレーターに変更（挙動は無改変）
+- [x] 新規 `board-list-view.tsx`: 進行中イテレーションの全ストーリー（状態問わず）+ Backlog を
+      1本の縦リストで表示。イテレーション区切り線は Current 側にも拡張
+      （既存の `splitBacklogIntoVirtualIterations` を流用）
+- [x] 新規 `story-list-row.tsx`: 横長・低背のコンパクト行。状態はバッジ（`STORY_STATE_META`）で表現
+      （カラム移動なし）
+- [x] List 表示用の状態遷移: カラムドロップに依存できないため、行にワンクリック遷移ボタンを表示
+      （既存の `TransitionButtons`／`transitionStory` action をそのまま再利用 — 2026-07-02 実装が
+      side peek 用に現存していたため新規実装は不要だった）
+- [x] List 表示用の並び替え: Current/Backlog/Icebox をゾーンとして扱う DnD ロジック
+      （`lib/utils/kanban.ts` に `zoneForStory`/`evaluateListDrop` を追加、`board/actions.ts` に
+      `dropStoryInList` を追加。Kanban 用の `evaluateDrop`/`dropStory` は無改変）
+- [x] `board-filters.tsx` のフィルタは両表示で共通適用（サーバー側で絞り込み後に両表示へ渡すため自然に共通化）
+- [x] `spec/screens.md`「Board layout」に List/Kanban 両表示の仕様を追記
+- [x] テスト: `zoneForStory`/`evaluateListDrop`（区切り線ロジックは既存 `splitBacklogIntoVirtualIterations`
+      を流用のため既存テストで担保）、`findContainer`/`storyById` 共通ヘルパーの vitest テスト
+
+### iOS（Web 全タスク完了後に着手）
+- [ ] 検討事項なし（Web 確定後にスコープ確認）

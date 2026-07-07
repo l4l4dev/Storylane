@@ -4,7 +4,9 @@ import {
   ICEBOX_COLUMN_ID,
   columnForStory,
   evaluateDrop,
+  evaluateListDrop,
   groupByStateColumn,
+  zoneForStory,
   type KanbanStory,
 } from "./kanban";
 
@@ -110,6 +112,70 @@ describe("evaluateDrop", () => {
     const result = evaluateDrop(story({ iteration_id: CURRENT }), "unstarted", BACKLOG_COLUMN_ID);
     expect(result).toEqual({ ok: true, iteration: "none" });
     expect(evaluateDrop(story({ state: "started", iteration_id: CURRENT }), "started", BACKLOG_COLUMN_ID).ok).toBe(false);
+  });
+});
+
+describe("zoneForStory", () => {
+  it("puts unscheduled stories in the icebox regardless of iteration", () => {
+    expect(zoneForStory(story({ state: "unscheduled" }), CURRENT)).toBe(ICEBOX_COLUMN_ID);
+  });
+
+  it("puts any current-iteration state in the current zone", () => {
+    expect(zoneForStory(story({ state: "started", iteration_id: CURRENT }), CURRENT)).toBe("current");
+    expect(zoneForStory(story({ state: "accepted", iteration_id: CURRENT }), CURRENT)).toBe("current");
+  });
+
+  it("puts stories without an iteration, or of another iteration, in the backlog", () => {
+    expect(zoneForStory(story(), CURRENT)).toBe(BACKLOG_COLUMN_ID);
+    expect(zoneForStory(story({ iteration_id: "iter-9" }), CURRENT)).toBe(BACKLOG_COLUMN_ID);
+  });
+});
+
+describe("evaluateListDrop", () => {
+  it("treats a same-zone drop as a reorder regardless of state", () => {
+    expect(evaluateListDrop(story(), "current", "current")).toEqual({ ok: true, iteration: "keep" });
+    expect(
+      evaluateListDrop(story({ state: "started", iteration_id: CURRENT }), "current", "current"),
+    ).toEqual({ ok: true, iteration: "keep" });
+  });
+
+  it("schedules a backlog story dropped into the current zone as unstarted", () => {
+    expect(evaluateListDrop(story(), BACKLOG_COLUMN_ID, "current")).toEqual({ ok: true, iteration: "current" });
+  });
+
+  it("un-schedules only an unstarted current-zone story back to the backlog", () => {
+    expect(evaluateListDrop(story({ iteration_id: CURRENT }), "current", BACKLOG_COLUMN_ID)).toEqual({
+      ok: true,
+      iteration: "none",
+    });
+    expect(
+      evaluateListDrop(story({ state: "started", iteration_id: CURRENT }), "current", BACKLOG_COLUMN_ID).ok,
+    ).toBe(false);
+  });
+
+  it("promotes an icebox story to the backlog or into the current zone", () => {
+    expect(evaluateListDrop(story({ state: "unscheduled" }), ICEBOX_COLUMN_ID, BACKLOG_COLUMN_ID)).toEqual({
+      ok: true,
+      state: "unstarted",
+      iteration: "none",
+    });
+    expect(evaluateListDrop(story({ state: "unscheduled" }), ICEBOX_COLUMN_ID, "current")).toEqual({
+      ok: true,
+      state: "unstarted",
+      iteration: "current",
+    });
+  });
+
+  it("demotes only an unstarted story to the icebox", () => {
+    expect(evaluateListDrop(story(), BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID)).toEqual({
+      ok: true,
+      state: "unscheduled",
+      iteration: "none",
+    });
+    expect(evaluateListDrop(story({ iteration_id: CURRENT }), "current", ICEBOX_COLUMN_ID).ok).toBe(true);
+    expect(
+      evaluateListDrop(story({ state: "started", iteration_id: CURRENT }), "current", ICEBOX_COLUMN_ID).ok,
+    ).toBe(false);
   });
 });
 
