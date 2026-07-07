@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ITERATION_LENGTHS, POINT_SCALES } from "@/lib/types";
+import { IntegrationSettings, type IntegrationRow } from "@/components/features/projects/integration-settings";
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
 import { LabelManager } from "@/components/features/projects/label-manager";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,11 @@ export default async function ProjectSettingsPage({
     .select("id, name, color")
     .eq("project_id", id)
     .order("name");
+
+  // RLS returns integrations only to owners — empty for everyone else.
+  const { data: integrations } = isOwner
+    ? await supabase.from("integrations").select("id, provider, config, is_active").eq("project_id", id)
+    : { data: null };
 
   return (
     <main className="mx-auto max-w-2xl p-6">
@@ -201,6 +207,18 @@ export default async function ProjectSettingsPage({
           canDelete={isOwner}
         />
       </section>
+
+      {/* Integrations (owner-only: config holds secrets — see spec/integrations.md) */}
+      {isOwner && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-lg font-semibold">Integrations</h2>
+          <IntegrationSettings
+            projectId={project.id}
+            integrations={(integrations ?? []) as IntegrationRow[]}
+            functionsBaseUrl={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`}
+          />
+        </section>
+      )}
     </main>
   );
 }

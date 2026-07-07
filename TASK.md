@@ -90,27 +90,35 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 ---
 
-## Task 12 — Integrations
+## Task 12 — Integrations（Web 実装・ローカル検証 2026-07-07 完了。本番 Webhook 実検証は Task 11.5 後）
 
 ### 前提（DB — Web 実装の前に行う）
-- [ ] Migration: `stories.number`（プロジェクト毎の連番、採番トリガー）を追加（see spec/data-model.md）
-- [ ] ストーリーカード / 詳細画面に `#123` を表示（PR タイトルに書けるようにする）
+- [x] Migration: `stories.number`（プロジェクト毎の連番、採番トリガー + UPDATE 不変ピン）を追加
+      （see spec/data-model.md。service_role への DML grant 漏れも `20260707000006` で修正）
+- [x] ストーリーカード / 詳細画面に `#123` を表示（PR タイトルに書けるようにする）
 
 ### GitHub
-- [ ] Integration setup in project settings (repo URL, webhook secret)
-- [ ] Supabase Edge Function to receive GitHub webhook
-- [ ] Parse PR title / branch name for story ID (e.g. `[SL-123]` — `stories.number` ベース)
-- [ ] Auto-update story state to `finished` on PR merge
+- [x] Integration setup in project settings (repo URL, webhook secret) — owner 専用セクション、
+      コピー用 Webhook URL 表示付き（`integration-settings.tsx`）
+- [x] Supabase Edge Function to receive GitHub webhook（`supabase/functions/git-webhook/`、
+      HMAC-SHA256 署名検証・timing-safe 比較・`verify_jwt = false`）
+- [x] Parse PR title / branch name for story ID（`[SL-123]` / `storylane/123`）
+- [x] Auto-update story state to `finished` on PR merge（強制遷移 + iteration 未所属なら
+      current へアサイン — 決定事項は spec/integrations.md）
+- [ ] 本番デプロイ後、実リポジトリの Webhook で疎通確認（Task 11.5 で実施）
 
 ### Slack
-- [ ] Integration setup in project settings (Incoming Webhook URL)
-- [ ] Notify on: story state change, iteration start/done
-- [ ] Edge Function to POST to Slack
+- [x] Integration setup in project settings (Incoming Webhook URL)
+- [x] Notify on: story state change, iteration start/done（`after()` + `lib/integrations/slack.ts`、
+      fire-and-forget。ローカル HTTP リスナーで受信確認済み）
+- [x] ~~Edge Function to POST to Slack~~ → **server action から直接 POST に変更**
+      （2026-07-07 owner 決定 — spec/integrations.md 参照。owner 専用の integrations 行は
+      `lib/supabase/admin.ts`〈service role〉で読む）
 
 ### Forgejo
-- [ ] Reuse GitHub webhook handler（ペイロードは GitHub 互換だがヘッダー・署名が異なる:
-      `X-Gitea-Event` / `X-Gitea-Signature`、HMAC 形式差に注意 — see spec/integrations.md）
-- [ ] Integration setup in project settings
+- [x] Reuse GitHub webhook handler（`X-Gitea-Event` / `X-Gitea-Signature`〈プレフィックスなし HMAC〉で
+      provider 判別・検証分岐 — curl でローカル検証済み）
+- [x] Integration setup in project settings
 
 ---
 

@@ -126,3 +126,65 @@ export async function deleteLabel(formData: FormData) {
   }
   revalidatePath(`/projects/${projectId}/settings`);
 }
+
+const INTEGRATION_PROVIDERS = ["github", "forgejo", "slack"] as const;
+type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
+
+/**
+ * Creates or updates a project's integration for one provider (Task 12 —
+ * see spec/integrations.md for the config shape per provider). RLS limits
+ * this to project owners; one row per (project_id, provider).
+ */
+export async function saveIntegration(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const provider = String(formData.get("provider")) as IntegrationProvider;
+  const isActive = formData.get("is_active") === "on";
+
+  if (!INTEGRATION_PROVIDERS.includes(provider)) {
+    throw new Error(`Unknown provider: ${provider}`);
+  }
+
+  const config =
+    provider === "slack"
+      ? { webhook_url: String(formData.get("webhook_url") ?? "").trim() }
+      : {
+          repo_url: String(formData.get("repo_url") ?? "").trim(),
+          webhook_secret: String(formData.get("webhook_secret") ?? "").trim(),
+        };
+
+  // Server-side mirror of the form's `required` fields — an integration
+  // without its secret/URL can only ever no-op (git-webhook 422s, the Slack
+  // helper skips), so reject it here instead of storing a dud row.
+  if (provider === "slack" && !("webhook_url" in config && config.webhook_url)) {
+    throw new Error("webhook_url is required");
+  }
+  if (provider !== "slack" && !("webhook_secret" in config && config.webhook_secret)) {
+    throw new Error("webhook_secret is required");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("integrations")
+    .upsert(
+      { project_id: projectId, provider, config, is_active: isActive },
+      { onConflict: "project_id,provider" },
+    );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+}
+
+export async function deleteIntegration(formData: FormData) {
+  const id = String(formData.get("integration_id"));
+  const projectId = String(formData.get("project_id"));
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("integrations").delete().eq("id", id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+}
