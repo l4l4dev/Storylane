@@ -184,13 +184,27 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 ## Task 13 — Polish & QA
 
+> 2026-07-07: Backlog TASK-2 の AC は本セクションの6項目のうち3つ（エラー/空状態・
+> スケルトン・Playwright E2E）に絞られていることを owner に確認済み。以下その3つを実施。
+> レスポンシブ・a11y監査・パフォーマンスレビューは本ラウンドでは未着手（別途スコープ判断）。
+
 ### Web
-- [ ] Error states and empty states for all views
-- [ ] Loading skeletons on data-fetching screens
+- [x] Error states and empty states for all views（`components/ui/error-state.tsx` +
+      `error.tsx` を app/・app/projects/・app/projects/[id]/・app/stories/[id]/ に配置。
+      board の「ゼロストーリー/ゼロカラム」空状態も追加。既存の empty state 文言はそのまま）
+- [x] Loading skeletons on data-fetching screens（`components/ui/skeleton.tsx` + 7ルートに
+      `loading.tsx`）
 - [ ] Responsive layout (mobile and desktop)
 - [ ] Accessibility audit (keyboard navigation, screen reader labels)
-- [ ] Playwright を導入し、コアフローの E2E テストを作成（create project → add story → complete iteration）
+- [x] Playwright を導入し、コアフローの E2E テストを作成（create project → add story →
+      complete iteration）。`apps/web/e2e/core-flow.spec.ts`、`pnpm test:e2e`。ローカルで
+      1回はクリーンに成功（16.8秒）を確認済みだが、この開発機は load average が高いタイミングが
+      あり、その際は dev サーバー側の応答が大きく遅延することがある（アプリのバグではなく環境要因、
+      playwright.config.ts にコメントあり）
 - [ ] Performance review (query optimization, Realtime subscription cleanup)
+- [x] （Task 13 送りだった）dnd-kit の hydration mismatch 警告を修正（`DndContext` に
+      安定した `id` を付与 — `kanban-columns-board.tsx` / `board-list-view.tsx` /
+      `free-board.tsx`）
 
 ### iOS（Web 全タスク完了後に着手）
 - [ ] Error states and empty states for all views
