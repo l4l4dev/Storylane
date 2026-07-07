@@ -15,6 +15,12 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   reporter: "list",
+  // Next.js dev mode compiles each route on first request (Turbopack), and
+  // the iteration-rollover request in particular does several sequential
+  // DB round-trips plus a Slack-notify attempt — both can comfortably
+  // exceed Playwright's 30s/5s defaults on a cold local dev server.
+  timeout: 120_000,
+  expect: { timeout: 15_000 },
   use: {
     baseURL: "http://localhost:3000",
     trace: "retain-on-failure",
