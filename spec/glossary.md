@@ -13,3 +13,9 @@
 | Epic | A large feature grouping that spans multiple stories |
 | Points | A numeric estimate of a story's scope, chosen from the project's point scale |
 | Accepted | A story that has been reviewed and marked as complete |
+| Tracker mode | Workflow mode with the fixed state machine, iterations, and velocity (`workflow_mode = 'tracker'`). Never called "Pivotal Tracker" in the UI |
+| Free mode | Workflow mode with user-defined board columns and no iterations/velocity (`workflow_mode = 'free'`) |
+| Focus view | Tracker-mode board view bucketing current-iteration stories into Todo / This week / Today / In progress / Done |
+| Virtual iteration | A future iteration shown as a numbered backlog group — computed from velocity at render time, no DB row |
+| Swimlane | Optional horizontal lane on a free-mode board, crossing all columns |
+| WIP limit | Soft per-column card limit on a free-mode board; exceeding it warns but never blocks |

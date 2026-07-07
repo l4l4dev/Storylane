@@ -30,19 +30,31 @@ Replaces the manual "Generate next iteration" / "Mark as done" operations from T
   deletes existing future `planned` rows and returns their stories to the
   top of the backlog, preserving relative order.
 
-### Marker computation (pure function, shared per client)
+### Virtual-group computation (pure function, shared per client)
 
 - Capacity per virtual iteration = `max(current velocity, 1)` points.
 - Walk the backlog top-down accumulating points (`chore` / `release` /
   unestimated stories consume 0); when adding the next story would exceed the
-  remaining capacity, close the marker and start the next one.
+  remaining capacity, close the group and start the next one.
 - A single story larger than the full capacity occupies a virtual iteration
   by itself.
+- A manual `iteration_break` divider (spec/data-model.md) closes the group
+  at that exact spot regardless of remaining capacity.
+- **Numbering & rendering (2026-07-07):** the first group is
+  `current iteration number + 1` and each group renders **under its own
+  header** (number, dates, goal, point sum, collapse toggle — see
+  spec/screens.md "Backlog groups"). The former boundary-marker rendering,
+  where the first group had no label and a break appeared to "skip" a
+  number, is replaced.
+- Goals for these virtual numbers live in `iteration_goals`
+  (spec/data-model.md) and are edited inline on the group header.
 
 ### Rollover (lazy, on first access after end_date)
 
 1. Finalize the ended iteration: store its velocity, set `state = 'done'`.
-2. Create the next iteration row (dates continue from `end_date`).
+2. Create the next iteration row (dates continue from `end_date`). If
+   `iteration_goals` has a goal for the new number, adopt it into
+   `iterations.goal` and delete the `iteration_goals` row (2026-07-07).
 3. Move unaccepted stories from the ended iteration into the new current
    iteration (accepted stories stay on the done iteration).
 4. Repeat if more than one `iteration_length` has passed since last access.
@@ -50,3 +62,18 @@ Replaces the manual "Generate next iteration" / "Mark as done" operations from T
 Phase 1 trigger is **lazy on first access** (no cron dependency). It may later
 move to a scheduled Edge Function; either way the rule must live in one shared
 place per client — never duplicated per view (see ARCHITECTURE.md).
+
+### Manual finish (2026-07-07)
+
+"Finish iteration" in the iteration bar lets an owner or member close the
+current iteration before its `end_date` (confirmation dialog — the action
+is irreversible):
+
+1. Truncate the iteration's `end_date` to today, so history reflects the
+   actual duration.
+2. Run the same finalization steps as rollover (velocity, `done`, next row
+   starting tomorrow, goal adoption, unaccepted-story carry-over).
+
+Automatic rollover stays in place — manual finish is an early-exit on top
+of it, not a replacement. The iteration bar always shows
+"auto-finishes on <end_date>" so the automatic behavior is discoverable.
