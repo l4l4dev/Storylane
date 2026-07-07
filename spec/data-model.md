@@ -25,12 +25,17 @@ projects (
   iteration_length  int  DEFAULT 14,      -- sprint length in days: 7 / 14 / 21 / 28
   point_scale       text DEFAULT 'fibonacci', -- 'fibonacci' | 'linear' | 'custom'
   custom_points     int[],                -- array used when point_scale='custom'
-  workflow_mode     text NOT NULL DEFAULT 'pivotal'
-                      CHECK (workflow_mode IN ('pivotal', 'free')),
+  workflow_mode     text NOT NULL DEFAULT 'tracker'
+                      CHECK (workflow_mode IN ('tracker', 'free')),
                                           -- Task 14, fixed at creation, never changed after:
-                                          -- 'pivotal' = existing state machine + iterations/velocity;
+                                          -- 'tracker' = state machine + iterations/velocity
+                                          --   (renamed from 'pivotal' 2026-07-07 — one migration
+                                          --   updates the CHECK and existing rows);
                                           -- 'free' = pure Trello board via custom_statuses, no
                                           -- iterations/velocity (see spec/screens.md "Free mode board")
+  archived_at       timestamptz,          -- 2026-07-07: set = archived (owner only), NULL = active.
+                                          -- Archived projects are hidden behind an "Archived"
+                                          -- filter on the Projects page; unarchive sets NULL
   created_by        uuid REFERENCES profiles(id),
   created_at        timestamptz DEFAULT now(),
   updated_at        timestamptz DEFAULT now()
@@ -43,6 +48,8 @@ project_members (
   project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
   user_id     uuid REFERENCES profiles(id) ON DELETE CASCADE,
   role        text NOT NULL CHECK (role IN ('owner', 'member', 'viewer')),
+  is_favorite bool NOT NULL DEFAULT false, -- 2026-07-07: per-user pin — favorited projects sort
+                                           -- first on the Projects page and in the sidebar switcher
   joined_at   timestamptz DEFAULT now(),
   PRIMARY KEY (project_id, user_id)
 )
@@ -75,7 +82,7 @@ labels (
 
 ### custom_statuses
 Board columns for `workflow_mode = 'free'` projects (Task 14, 2026-07-07) —
-freely added/renamed/reordered/deleted in Settings, unlike pivotal's fixed
+freely added/renamed/reordered/deleted in Settings, unlike tracker's fixed
 state machine. Same RLS pattern as labels/epics (members read/write,
 owner-only delete). Delete is blocked at the DB level (plain FK, no cascade)
 while any story still references the status — the app converts the FK
@@ -87,9 +94,57 @@ custom_statuses (
   name       text NOT NULL,
   color      text NOT NULL DEFAULT '#6b7280',
   position   int  NOT NULL DEFAULT 0,
-  is_done    boolean NOT NULL DEFAULT false, -- counts as "done" for activity log / future reports
+  is_done    boolean NOT NULL DEFAULT false, -- counts as "done" for activity log / future reports;
+                                             -- also drives stories.completed_at in free mode
+  wip_limit  int CHECK (wip_limit > 0),      -- 2026-07-07: soft WIP limit — column header shows
+                                             -- count/limit and turns warning-colored when exceeded;
+                                             -- drops are never blocked. NULL = no limit
   created_at timestamptz DEFAULT now(),
   UNIQUE (id, project_id) -- composite target for stories.custom_status_id, see below
+)
+```
+
+### swimlanes
+Optional horizontal lanes for free-mode boards (KanbanFlow parity,
+2026-07-07). When a project has swimlane rows, the board renders lanes ×
+columns, plus a "no lane" band for unassigned stories. Same RLS pattern as
+custom_statuses. Delete follows the custom_statuses pattern: plain FK from
+stories, `23503` converted into a "move the stories off this lane first"
+message.
+```sql
+swimlanes (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
+  name       text NOT NULL,
+  position   int  NOT NULL DEFAULT 0,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE (id, project_id) -- composite target for stories.swimlane_id
+)
+```
+
+### recurring_stories
+Recurrence rules for free-mode boards (KanbanFlow parity, 2026-07-07),
+managed in project Settings. Generation is **lazy on board access** (no
+cron, same principle as iteration rollover): for each active rule whose
+next due date ≤ today, create one story instance (title/description copied,
+placed in `custom_status_id` / `swimlane_id`) and advance
+`last_generated_on`. Only the most recent missed occurrence is generated —
+a board untouched for a month must not flood with 30 daily cards.
+```sql
+recurring_stories (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id       uuid REFERENCES projects(id) ON DELETE CASCADE,
+  title            text NOT NULL,
+  description      text,
+  custom_status_id uuid,               -- target column; composite FK like stories.custom_status_id.
+                                       -- NULL = leftmost column at generation time
+  swimlane_id      uuid,               -- composite FK; NULL = no lane
+  cadence          text NOT NULL CHECK (cadence IN ('daily', 'weekly', 'monthly')),
+  weekday          int CHECK (weekday BETWEEN 0 AND 6),        -- weekly: 0=Sun … 6=Sat
+  day_of_month     int CHECK (day_of_month BETWEEN 1 AND 31),  -- monthly (>28 clamps to month end)
+  is_active        bool NOT NULL DEFAULT true,
+  last_generated_on date,
+  created_at       timestamptz DEFAULT now()
 )
 ```
 
@@ -100,9 +155,9 @@ exact position in the backlog. Two kinds:
 - `note`: cosmetic label only, no effect on iteration numbering.
 - `iteration_break`: forces the current virtual iteration to close at this
   exact point regardless of remaining velocity capacity (see
-  spec/velocity.md "Marker computation" and `lib/utils/iterations.ts`
+  spec/velocity.md "Virtual-group computation" and `lib/utils/iterations.ts`
   "buildBacklogRows") — an escape hatch on top of the automatic,
-  velocity-based "Iteration #N" markers, which aren't stored rows at all.
+  velocity-based virtual iteration groups, which aren't stored rows at all.
 ```sql
 backlog_dividers (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -132,6 +187,24 @@ iterations (
 )
 ```
 
+### iteration_goals
+Goals for **future (virtual) iterations** (2026-07-07) — future iterations
+have no `iterations` row (see spec/velocity.md), so their goals are keyed
+by iteration number. When rollover (or manual finish) creates the real
+iteration row for a number that has a goal here, the goal is adopted into
+`iterations.goal` and this row is deleted. Same RLS pattern as stories
+(members read/write). Edited inline on the backlog group headers (see
+spec/screens.md "Backlog groups").
+```sql
+iteration_goals (
+  project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
+  number     int  NOT NULL,   -- virtual iteration number (> current iteration's number)
+  goal       text NOT NULL,
+  updated_at timestamptz DEFAULT now(),
+  PRIMARY KEY (project_id, number)
+)
+```
+
 ### stories
 ```sql
 stories (
@@ -141,7 +214,7 @@ stories (
                                             -- UI では #123、PR タイトルでは [SL-123] として使う（Task 12 で追加）
   iteration_id uuid REFERENCES iterations(id) ON DELETE SET NULL,
   epic_id      uuid REFERENCES epics(id) ON DELETE SET NULL,
-  custom_status_id uuid,                  -- free-mode column (Task 14); ignored in pivotal mode.
+  custom_status_id uuid,                  -- free-mode column (Task 14); ignored in tracker mode.
                                           -- Composite FK (custom_status_id, project_id) REFERENCES
                                           -- custom_statuses(id, project_id) — prevents a story from
                                           -- pointing at another project's status
@@ -156,6 +229,19 @@ stories (
                                             -- free-mode projects leave this at its default and
                                             -- ignore it entirely — custom_status_id drives the
                                             -- board column instead (Task 14)
+  focus        text CHECK (focus IN ('today', 'this_week')),
+                                            -- 2026-07-07: Focus-view bucket (tracker mode only,
+                                            -- see spec/screens.md "Focus view"). NULL = plain Todo.
+                                            -- Shared per story (not per user) in Phase 1
+  completed_at timestamptz,                 -- 2026-07-07: when the story was completed.
+                                            -- Tracker: set on the transition to 'accepted' and
+                                            -- cleared whenever the state leaves 'accepted'.
+                                            -- Free: set when moved into an is_done column, cleared
+                                            -- when moved out. Drives date grouping in the Focus
+                                            -- view Done column and free-mode done columns
+  swimlane_id  uuid,                        -- 2026-07-07, free mode only; composite FK
+                                            -- (swimlane_id, project_id) REFERENCES
+                                            -- swimlanes(id, project_id). NULL = no lane
   points       int  CHECK (points >= 0),  -- nullable for chore / release。
                                           -- 値はプロジェクトの point_scale からの選択のみ（アプリ層で検証、Task 12.5）
   position     int  NOT NULL DEFAULT 0,   -- order within the backlog
