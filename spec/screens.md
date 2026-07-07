@@ -214,6 +214,31 @@ Applies to the side peek and `/stories/[id]`; there are no Save buttons.
   in-flight state; a failed save keeps the local value, shows an error,
   and offers retry. Realtime updates from other users must not clobber a
   field the user is actively editing.
+
+Conflict & failure rules (2026-07-08):
+
+- Saves are **serialized per story**: at most one in-flight save; edits
+  arriving during flight mark the story dirty and trigger one trailing
+  save when it returns. Full field values are sent (no diffs), so the
+  last applied save wins deterministically even if requests raced.
+- **Field-level lock**: a text field is *locked* while focused or dirty.
+  Remote (Realtime) updates apply immediately to unlocked fields; for a
+  locked field the local value stays and the next save overwrites —
+  last-write-wins per field, no merging (Phase 1, accepted trade-off).
+  The self-echo of your own save must be ignored.
+- An **empty title is never saved** (`title` is NOT NULL): inline
+  validation while typing, revert to last-saved on blur.
+- Pending debounced edits **flush on blur, on peek close, and on route
+  change** — closing the peek never discards typed text. "Last saved
+  value" (the Esc target) means the last server-acknowledged value.
+- If the story was **deleted remotely**, the failed save switches the
+  peek to a "story was deleted" state that keeps the unsaved text visible
+  and copyable instead of silently closing.
+- Autosave must not spam collaboration surfaces: the activity-log
+  trigger records state/assignment events — title/description edits must
+  not produce a row per save — and Slack notifications stay
+  state-change-only. Verify this against the existing trigger before
+  shipping.
 - The overflow (⋯) menu in the peek header hosts **Promote to Epic** and
   **Move / Copy to another project** (behavior in spec/features.md
   "Story Management"), alongside Delete.

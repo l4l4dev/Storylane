@@ -4,6 +4,7 @@ title: Story detail autosave
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:26'
+updated_date: '2026-07-07 15:34'
 labels:
   - web
 dependencies: []
@@ -26,4 +27,7 @@ Per spec/screens.md 'Story detail editing': remove Save buttons from the side pe
 - [ ] #3 Saving/Saved indicator reflects in-flight state; save failure shows an error, keeps local value, and offers retry
 - [ ] #4 An incoming Realtime update does not overwrite a field with uncommitted local edits
 - [ ] #5 Tests cover debounce save, blur save, Esc revert, and failure retry
+- [ ] #6 Conflict rules per spec/screens.md 'Conflict & failure rules': saves serialized per story with one trailing save, field-level lock vs Realtime (last-write-wins per field, self-echo ignored)
+- [ ] #7 Pending edits flush on blur / peek close / route change; empty title is never saved; a remotely deleted story shows a state that keeps unsaved text copyable
+- [ ] #8 Autosave produces no per-save activity-log rows or Slack notifications (verified against the existing trigger)
 <!-- AC:END -->

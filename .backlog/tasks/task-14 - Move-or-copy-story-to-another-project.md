@@ -4,6 +4,7 @@ title: Move or copy story to another project
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:27'
+updated_date: '2026-07-07 15:34'
 labels:
   - web
   - db
@@ -29,4 +30,7 @@ Per spec/features.md 'Move / Copy to another project' and spec/rls.md: side peek
 - [ ] #4 Both are atomic SECURITY DEFINER RPCs verifying the caller is a member of source and target; rls-security-reviewer has reviewed the migration
 - [ ] #5 Activity log entries created in both projects on Move (and target on Copy)
 - [ ] #6 Tests cover tracker→free, free→tracker, point-scale mismatch, and non-member assignee cases
+- [ ] #7 RPCs re-check inside: caller is owner/member in BOTH projects (viewer rejected), source != target, neither project archived; SECURITY DEFINER with fixed search_path, granted to authenticated only
+- [ ] #8 Move = insert-into-target + re-parent tasks/comments/labels + delete-source in one transaction — never UPDATE project_id (numbering trigger pins number on UPDATE); focus/completed_at cleared on landing; lands at bottom of Icebox / leftmost column
+- [ ] #9 Activity rows (story.moved_out / story.moved_in / story.copied_in) are inserted by the RPC itself; tests cover viewer-caller rejection, archived-project rejection, and a concurrent edit during Move failing as story-deleted
 <!-- AC:END -->
