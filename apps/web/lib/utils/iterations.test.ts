@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   autoAssignStoryIds,
+  buildBacklogRows,
   isCurrentIteration,
   isIterationEditable,
   nextIterationDates,
   nextIterationNumber,
   splitBacklogIntoVirtualIterations,
+  type BacklogRowItem,
 } from "./iterations";
 
 describe("nextIterationNumber", () => {
@@ -157,5 +159,53 @@ describe("splitBacklogIntoVirtualIterations", () => {
 
   it("returns no groups for an empty backlog", () => {
     expect(splitBacklogIntoVirtualIterations([], 8)).toEqual([]);
+  });
+});
+
+type Story = { id: string; points: number | null; story_type: string };
+
+function storyItem(story: Story): BacklogRowItem<Story> {
+  return { kind: "story", story };
+}
+
+function dividerItem(id: string, label: string): BacklogRowItem<Story> {
+  return { kind: "divider", divider: { id, label } };
+}
+
+describe("buildBacklogRows", () => {
+  it("inserts an iteration marker only when a story crosses into the next group", () => {
+    const a = { id: "a", points: 5, story_type: "feature" };
+    const b = { id: "b", points: 5, story_type: "feature" };
+    const rows = buildBacklogRows([storyItem(a), storyItem(b)], 8, 3);
+    expect(rows).toEqual([
+      { kind: "story", story: a },
+      { kind: "iteration-marker", number: 4, points: 5 },
+      { kind: "story", story: b },
+    ]);
+  });
+
+  it("passes dividers through at their own position without affecting point accounting", () => {
+    const a = { id: "a", points: 5, story_type: "feature" };
+    const b = { id: "b", points: 5, story_type: "feature" };
+    const rows = buildBacklogRows([storyItem(a), dividerItem("d1", "Phase 2"), storyItem(b)], 8, 3);
+    expect(rows).toEqual([
+      { kind: "story", story: a },
+      { kind: "divider", divider: { id: "d1", label: "Phase 2" } },
+      { kind: "iteration-marker", number: 4, points: 5 },
+      { kind: "story", story: b },
+    ]);
+  });
+
+  it("returns an empty list for an empty backlog", () => {
+    expect(buildBacklogRows([], 8, 3)).toEqual([]);
+  });
+
+  it("emits no iteration marker when everything fits in the first group", () => {
+    const a = { id: "a", points: 1, story_type: "feature" };
+    const rows = buildBacklogRows([dividerItem("d1", "Notes"), storyItem(a)], 8, 3);
+    expect(rows).toEqual([
+      { kind: "divider", divider: { id: "d1", label: "Notes" } },
+      { kind: "story", story: a },
+    ]);
   });
 });

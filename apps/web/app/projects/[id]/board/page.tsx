@@ -5,7 +5,7 @@ import {
   ICEBOX_COLUMN_ID,
   columnForStory,
 } from "@/lib/utils/kanban";
-import { isCurrentIteration } from "@/lib/utils/iterations";
+import { isCurrentIteration, type BacklogRowItem } from "@/lib/utils/iterations";
 import { filterStories } from "@/lib/utils/stories";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
@@ -44,7 +44,7 @@ export default async function BoardPage({
   // iterations query below.
   await ensureCurrentIteration(project.id);
 
-  const [{ data: iterations }, { data: stories }, { data: labels }, { data: members }] =
+  const [{ data: iterations }, { data: stories }, { data: labels }, { data: members }, { data: dividers }] =
     await Promise.all([
       supabase
         .from("iterations")
@@ -63,7 +63,12 @@ export default async function BoardPage({
         .from("project_members")
         .select("user_id, profiles(display_name)")
         .eq("project_id", id),
+      // List view only (see components/features/board/board-list-view.tsx) —
+      // freeform planning dividers for the Backlog section.
+      supabase.from("backlog_dividers").select("id, label, position").eq("project_id", id),
     ]);
+
+  const storyPositionById = new Map((stories ?? []).map((s) => [s.id, s.position]));
 
   const allIterations: IterationMeta[] = iterations ?? [];
   const today = todayDateOnly();
@@ -119,6 +124,23 @@ export default async function BoardPage({
     initialContainers[column].push(card);
   }
 
+  // Merges backlog stories and freeform planning dividers by their shared
+  // `position` sequence (see spec/data-model.md "backlog_dividers") into one
+  // render-ready order for the List view — only the server has both tables'
+  // raw position values needed to interleave them correctly.
+  const initialBacklogItems: BacklogRowItem<BoardStory>[] = [
+    ...initialContainers[BACKLOG_COLUMN_ID].map((card) => ({
+      position: storyPositionById.get(card.id) ?? 0,
+      item: { kind: "story", story: card } as BacklogRowItem<BoardStory>,
+    })),
+    ...(dividers ?? []).map((divider) => ({
+      position: divider.position,
+      item: { kind: "divider", divider: { id: divider.id, label: divider.label } } as BacklogRowItem<BoardStory>,
+    })),
+  ]
+    .sort((a, b) => a.position - b.position)
+    .map((entry) => entry.item);
+
   const completed = allIterations
     .filter((iteration) => iteration.state === "done")
     .sort((a, b) => b.number - a.number);
@@ -147,6 +169,7 @@ export default async function BoardPage({
         projectId={project.id}
         currentIteration={currentIteration}
         initialContainers={initialContainers}
+        initialBacklogItems={initialBacklogItems}
         velocity={currentVelocity}
         nextVirtualIterationNumber={nextVirtualIterationNumber}
         toolbar={

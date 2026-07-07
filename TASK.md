@@ -264,5 +264,23 @@ Tasks 6〜13 は Web → iOS の順で進める。
 - [x] テスト: `zoneForStory`/`evaluateListDrop`（区切り線ロジックは既存 `splitBacklogIntoVirtualIterations`
       を流用のため既存テストで担保）、`findContainer`/`storyById` 共通ヘルパーの vitest テスト
 
+### Web — 追加改善（2026-07-07 Mika 依頼、上記コミット後）
+- [x] デフォルト表示を List に変更（`kanban-board.tsx`）
+- [x] Kanban 表示を現在の iteration のみに縮小（Backlog 列・Icebox トグル/列を撤去。
+      `kanban-columns-board.tsx` から `velocity`/`nextVirtualIterationNumber`/`showIcebox` props も削除。
+      `evaluateDrop`/`columnForStory` 自体は無改変）
+- [x] List 表示に自由な区切り（divider）機能を追加:
+      新規テーブル `backlog_dividers`（migration + RLS、rls-security-reviewer 実施・問題なし）、
+      `lib/utils/iterations.ts` に `buildBacklogRows`（ストーリー＋区切り＋自動 Iteration 境界線を
+      1本のrow列に補間する純粋関数）、`board/actions.ts` に `createBacklogDivider`/`deleteBacklogDivider`、
+      `dropStoryInList` を拡張して divider の並び替え（backlog ゾーン内限定）にも対応
+- [x] backlog からイテレーションへ入れた後も戻せる挙動を確認（既存 `evaluateListDrop` の
+      「unstarted のみ zone 境界を自由に行き来できる」ルールで対応済み、追加実装なし）
+- [x] List 表示の Icebox を独立したサイドカラム表示に変更（`IceboxColumn`、優先順位に集中できるよう
+      メインリストから分離）
+- [x] spec/data-model.md に `backlog_dividers` を追記
+- [ ] （任意フォロー）`backlog_dividers` を Realtime publication に追加（他ユーザーの区切り追加/削除の
+      リアルタイム反映）。`apps/web/lib/supabase/realtime.ts` が別作業（通知機能）で編集中だったため今回は見送り
+
 ### iOS（Web 全タスク完了後に着手）
 - [ ] 検討事項なし（Web 確定後にスコープ確認）
