@@ -73,6 +73,10 @@ export function KanbanBoard({
 
   const iceboxStories = initialContainers[ICEBOX_COLUMN_ID] ?? [];
   const iterationStories = STATE_COLUMNS.flatMap((column) => initialContainers[column] ?? []);
+  const totalStoryCount =
+    iterationStories.length +
+    iceboxStories.length +
+    initialBacklogItems.filter((item) => item.kind === "story").length;
 
   return (
     <div>
@@ -145,6 +149,11 @@ export function KanbanBoard({
         </div>
       </div>
 
+      {totalStoryCount === 0 && (
+        <p className="mb-3 text-sm text-muted-foreground">
+          No stories yet. Use &quot;+ Add story&quot; below to create the first one.
+        </p>
+      )}
       {view === "kanban" ? (
         <KanbanColumnsBoard
           projectId={projectId}

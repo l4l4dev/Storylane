@@ -137,6 +137,7 @@ export function FreeBoard({
 
   return (
     <DndContext
+      id="free-board"
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
@@ -146,16 +147,22 @@ export function FreeBoard({
     >
       {toolbar && <div className="mb-4 flex items-center justify-end gap-2">{toolbar}</div>}
 
-      <div className="flex gap-3 overflow-x-auto pb-2">
-        {statuses.map((status) => (
-          <FreeColumn
-            key={status.id}
-            status={status}
-            stories={containers[status.id] ?? []}
-            projectId={projectId}
-          />
-        ))}
-      </div>
+      {statuses.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          No board columns yet. Add one in Settings → Board statuses.
+        </p>
+      ) : (
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {statuses.map((status) => (
+            <FreeColumn
+              key={status.id}
+              status={status}
+              stories={containers[status.id] ?? []}
+              projectId={projectId}
+            />
+          ))}
+        </div>
+      )}
 
       <DragOverlay>
         {activeStory && (
