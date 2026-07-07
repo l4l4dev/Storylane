@@ -295,6 +295,7 @@ export function KanbanColumnsBoard({
 
   return (
     <DndContext
+      id="kanban-columns-board"
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
