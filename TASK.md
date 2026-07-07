@@ -192,40 +192,36 @@ Tasks 6〜13 は Web → iOS の順で進める。
 
 ---
 
-## Task 14 — Custom Workflow Modes（2026-07-07 依頼、未着手・要スコープ確定）
+## Task 14 — Custom Workflow Modes（2026-07-07 依頼、スコープ確定済み・実装待ち）
 
 > 2026-07-06 のカンバン UI 刷新（状態カンバン化、`spec/screens.md` "Board layout"）の直後に
 > Mika から依頼。**プロジェクト作成時にワークフローモードを選択**できるようにする:
 >
 > - **Pivotal Tracker モード（既定・現状維持）**: 固定ステートマシン
 >   (`lib/utils/story-state.ts` / `lib/utils/kanban.ts` の `evaluateDrop`)。前進遷移のみ、
->   飛び級不可。今回のカンバン UI はこのモードの実装。
+>   飛び級不可。List/Kanban 両ビュー（Task 15）はこのモードの実装。
 > - **Free モード（新規）**: Trello ライクに **ステータス（カラム）を自由に追加・削除・並び替え・
 >   リネーム**でき、**カード移動も任意のステータス間で自由**（前進/後退/飛び級すべて許可）。
->
-> 規模が大きく（新テーブル + migration + RLS、board のレンダリングをモード分岐、velocity/
-> iteration 計算との整合、Settings のステータス管理 UI 一式）、今回のカンバン刷新セッションとは
-> 別タスクとして切り出す。着手前に以下を確定させること（**推測で実装しない** — CLAUDE.md）。
 
-### 未決事項（着手前に Mika と確定）
-- [ ] Free モードでも velocity / iteration（sprint）の概念は維持するか？
-      それとも Free モードは iteration 抜きの純粋な Trello ボード（カード無限・締切なし）か？
-- [ ] Free モードでも points / velocity 計算は行うか（story_type 別の点数除外ルールは維持するか）？
-- [ ] ワークフローモードはプロジェクト作成後に変更可能か、作成時に固定か？
-      （今回の依頼文面は「作成時に設定」なので固定を既定と仮置き）
-- [ ] Free モードのカスタムステータスに「done 相当」のようなカテゴリ/フラグを持たせるか
-      （Activity ログや将来のレポート機能で「完了扱い」を判定する必要が出た場合に必要）
-- [ ] 既存の「逆方向遷移だけ許可」という当初案（Settings トグル、Pivotal モードの部分緩和）は
-      Free モードに包含されて不要になるという理解でよいか、それとも別途 Pivotal モード内の
-      オプションとしても欲しいか
+### スコープ決定（2026-07-07 Mika 確定）
+- Free モードは **iteration / velocity なしの純粋な Trello ボード**
+  （iteration bar・自動ロールオーバー・velocity 計算・backlog 自動分割はすべて非表示/非動作）
+- Free モードでも **points は使う（任意入力）** — カードにバッジ表示のみ、velocity 計算はしない
+- ワークフローモードは**プロジェクト作成時に固定**（後から変更不可）
+- カスタムステータスに**「完了扱い」フラグ（is_done boolean）を持たせる**
+  （Activity ログ・将来のレポートで完了判定に使う）
+- 「逆方向遷移だけ許可」の当初案は Free モードに包含され、Pivotal モード内のオプションは作らない
+  （仮定として確定 — 異論が出たら再検討）
 
-### 想定スコープ（未決事項確定後に設計）
-- DB: `projects.workflow_mode`（`pivotal` / `free`）+ プロジェクト毎カスタムステータス用の
-  新テーブル（名前・色・並び順）、migration、RLS ポリシー
-- Web: board のカラム描画をモードで分岐（Pivotal ＝現状の `STATE_COLUMNS` 固定、
-  Free ＝ DB 駆動の可変カラム）。`evaluateDrop`（`lib/utils/kanban.ts`）は Pivotal 用の現行実装を
-  維持しつつ、Free 用に「同一プロジェクト内なら任意遷移許可」の別ルートを用意
-- Web: Settings にステータス管理 UI（追加・削除・並び替え・リネーム・色）— Free モードのみ表示
+### 実装スコープ（Web）
+- [ ] DB: `projects.workflow_mode`（`pivotal` / `free`、default `pivotal`）+
+      `custom_statuses` テーブル（project_id・name・color・position・is_done）、migration、RLS
+- [ ] プロジェクト作成ダイアログにモード選択を追加（作成後は変更不可）
+- [ ] Web: board のレンダリングをモードで分岐 — Pivotal ＝現状の List/Kanban（無改変）、
+      Free ＝ DB 駆動の可変カラムのカンバンのみ（List ビュー・iteration bar・Icebox なし）
+- [ ] Free 用ドラッグ: 同一プロジェクト内なら任意ステータス間の移動を許可（`evaluateDrop` とは別ルート）
+- [ ] Web: Settings にステータス管理 UI（追加・削除・並び替え・リネーム・色・is_done）— Free のみ表示
+- [ ] Free モードのストーリー: points バッジ表示は維持、状態遷移ボタン・iteration 関連 UI は非表示
 - iOS: Web 実装確定後に追随（Web 先行方針、[[project-scope-decisions]]）
 
 ---
@@ -279,8 +275,9 @@ Tasks 6〜13 は Web → iOS の順で進める。
 - [x] List 表示の Icebox を独立したサイドカラム表示に変更（`IceboxColumn`、優先順位に集中できるよう
       メインリストから分離）
 - [x] spec/data-model.md に `backlog_dividers` を追記
-- [ ] （任意フォロー）`backlog_dividers` を Realtime publication に追加（他ユーザーの区切り追加/削除の
-      リアルタイム反映）。`apps/web/lib/supabase/realtime.ts` が別作業（通知機能）で編集中だったため今回は見送り
+- [x] （フォロー実施 2026-07-07）`backlog_dividers` を Realtime publication に追加し、
+      board の購読フックを `useProjectBoardRealtime` に改名して dividers も購読
+      （Task 10 のコミット後に `realtime.ts` が解放されたため実施）
 
 ### Web — 区切り挿入 UX 改善（2026-07-07 Mika フィードバック、上記コミット後）
 

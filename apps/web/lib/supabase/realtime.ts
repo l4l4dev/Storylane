@@ -61,17 +61,23 @@ function useRealtimeChannel(topic: string, register: (channel: RealtimeChannel) 
   }, [topic]);
 }
 
-// Subscribes to all story changes within a project — used by the board to
-// keep its panels (Current / Backlog / Icebox / Done) in sync with other
-// users' moves, state transitions, and creations/deletions.
-export function useProjectStoriesRealtime(projectId: string, onChange: () => void) {
+// Subscribes to all story and planning-divider changes within a project —
+// used by the board to keep its views (List zones / Kanban columns) in sync
+// with other users' moves, state transitions, creations/deletions, and
+// backlog divider edits (Task 15).
+export function useProjectBoardRealtime(projectId: string, onChange: () => void) {
   const debouncedOnChange = useDebouncedCallback(onChange, 400);
 
-  useRealtimeChannel(`stories-project-${projectId}`, (channel) =>
+  useRealtimeChannel(`board-project-${projectId}`, (channel) =>
     channel
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "stories", filter: `project_id=eq.${projectId}` },
+        debouncedOnChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "backlog_dividers", filter: `project_id=eq.${projectId}` },
         debouncedOnChange,
       )
       .subscribe(),

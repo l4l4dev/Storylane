@@ -7,7 +7,7 @@ import { updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { sumPoints } from "@/lib/utils/board";
 import { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
-import { useProjectStoriesRealtime } from "@/lib/supabase/realtime";
+import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BoardListView } from "./board-list-view";
@@ -64,11 +64,12 @@ export function KanbanBoard({
   const [showIcebox, setShowIcebox] = useState(false);
   const router = useRouter();
 
-  // Task 11: other users' story changes arrive here and re-fetch the board's
-  // Server Component, which flows back in as `initialContainers` and syncs
-  // in each view's own state — no client-side grouping logic is duplicated
-  // for this, and it covers both views since only one is ever mounted.
-  useProjectStoriesRealtime(projectId, () => router.refresh());
+  // Task 11: other users' story/divider changes arrive here and re-fetch the
+  // board's Server Component, which flows back in as `initialContainers` /
+  // `initialBacklogItems` and syncs in each view's own state — no client-side
+  // grouping logic is duplicated for this, and it covers both views since
+  // only one is ever mounted.
+  useProjectBoardRealtime(projectId, () => router.refresh());
 
   const iceboxStories = initialContainers[ICEBOX_COLUMN_ID] ?? [];
   const iterationStories = STATE_COLUMNS.flatMap((column) => initialContainers[column] ?? []);
