@@ -2,17 +2,20 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QuickAddComposer } from "./quick-add-composer";
 
-const { quickCreateStoryMock } = vi.hoisted(() => ({
+const { quickCreateStoryMock, quickCreateStoryFreeMock } = vi.hoisted(() => ({
   quickCreateStoryMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  quickCreateStoryFreeMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
 }));
 
 vi.mock("@/app/projects/[id]/board/actions", () => ({
   quickCreateStory: quickCreateStoryMock,
+  quickCreateStoryFree: quickCreateStoryFreeMock,
 }));
 
 describe("QuickAddComposer", () => {
   beforeEach(() => {
     quickCreateStoryMock.mockClear();
+    quickCreateStoryFreeMock.mockClear();
   });
 
   it("starts as an Add story button and opens an input in place", () => {
@@ -48,6 +51,25 @@ describe("QuickAddComposer", () => {
     fireEvent.change(input, { target: { value: "   " } });
     fireEvent.submit(input.closest("form") as HTMLFormElement);
     expect(quickCreateStoryMock).not.toHaveBeenCalled();
+  });
+
+  it("creates via the free-mode action for a custom status column target", () => {
+    render(<QuickAddComposer projectId="p1" target={{ customStatusId: "cs1" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
+
+    const input = screen.getByRole("textbox", { name: "New story title" });
+    fireEvent.change(input, { target: { value: "Free mode story" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    expect(quickCreateStoryFreeMock).toHaveBeenCalledTimes(1);
+    expect(quickCreateStoryMock).not.toHaveBeenCalled();
+    const formData = quickCreateStoryFreeMock.mock.calls[0]?.[0];
+    if (!formData) {
+      throw new Error("quickCreateStoryFree was not called with FormData");
+    }
+    expect(formData.get("project_id")).toBe("p1");
+    expect(formData.get("title")).toBe("Free mode story");
+    expect(formData.get("status_id")).toBe("cs1");
   });
 
   it("closes on Escape and discards the draft", () => {

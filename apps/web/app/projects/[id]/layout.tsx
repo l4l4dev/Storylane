@@ -20,7 +20,7 @@ export default async function ProjectLayout({
   } = await supabase.auth.getUser();
 
   const [{ data: project }, { data: projects }, { data: profile }] = await Promise.all([
-    supabase.from("projects").select("id, name").eq("id", id).single(),
+    supabase.from("projects").select("id, name, workflow_mode").eq("id", id).single(),
     supabase.from("projects").select("id, name").order("updated_at", { ascending: false }),
     user
       ? supabase.from("profiles").select("username").eq("id", user.id).single()
@@ -33,7 +33,13 @@ export default async function ProjectLayout({
 
   return (
     <div className="flex min-h-dvh">
-      <AppSidebar project={project} projects={projects ?? []} username={profile?.username ?? null} />
+      <AppSidebar
+        project={project}
+        projects={projects ?? []}
+        username={profile?.username ?? null}
+        // Free-mode projects have no iterations (Task 14) — hide that nav item.
+        showIterations={project.workflow_mode !== "free"}
+      />
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );

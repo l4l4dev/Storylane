@@ -146,6 +146,101 @@ export async function quickCreateStory(formData: FormData) {
 }
 
 /**
+ * Free-mode quick-add (Task 14): creates a story directly in a custom
+ * status column. `stories.state` stays at its default and is ignored in
+ * free mode — the column is `custom_status_id`.
+ */
+export async function quickCreateStoryFree(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const title = String(formData.get("title") ?? "").trim();
+  const statusId = String(formData.get("status_id"));
+
+  if (!title) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase.from("stories").select("position").eq("project_id", projectId);
+
+  // The composite FK also rejects a status of another project — this check
+  // just turns that into a readable error.
+  const { data: status } = await supabase
+    .from("custom_statuses")
+    .select("id")
+    .eq("id", statusId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (!status) {
+    throw new Error("Unknown status for this project");
+  }
+
+  const { error } = await supabase.from("stories").insert({
+    project_id: projectId,
+    title,
+    story_type: "feature",
+    custom_status_id: statusId,
+    position: nextPosition(existing ?? []),
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+/**
+ * Free-mode drop (Task 14): any story may move to any of the project's
+ * custom statuses — there is no state machine to validate against. Also
+ * persists the order within the target column, and notifies Slack with the
+ * status name (the free-mode equivalent of a state change).
+ */
+export async function dropStoryFree(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const storyId = String(formData.get("story_id"));
+  const statusId = String(formData.get("status_id"));
+  const orderedIds = formData.getAll("ordered_ids").map(String).filter(Boolean);
+
+  const supabase = await createClient();
+
+  const [{ data: story, error: fetchError }, { data: status }] = await Promise.all([
+    supabase
+      .from("stories")
+      .select("number, title, custom_status_id")
+      .eq("id", storyId)
+      .eq("project_id", projectId)
+      .single(),
+    supabase.from("custom_statuses").select("id, name").eq("id", statusId).eq("project_id", projectId).maybeSingle(),
+  ]);
+
+  if (fetchError || !story) {
+    throw new Error(fetchError?.message ?? "Story not found");
+  }
+  if (!status) {
+    throw new Error("Unknown status for this project");
+  }
+
+  if (story.custom_status_id !== statusId) {
+    const { error } = await supabase.from("stories").update({ custom_status_id: statusId }).eq("id", storyId);
+    if (error) {
+      throw new Error(error.message);
+    }
+    after(() => notifySlack(projectId, storyStateChangeMessage(story, status.name)));
+  }
+
+  if (orderedIds.length > 0) {
+    await Promise.all(
+      reorderPositions(orderedIds).map(({ id, position }) =>
+        supabase.from("stories").update({ position }).eq("id", id),
+      ),
+    );
+  }
+
+  revalidatePath(`/projects/${projectId}/board`);
+  revalidatePath(`/stories/${storyId}`);
+}
+
+/**
  * Handles a kanban drop (see spec/screens.md "Board layout": drag = state
  * transition). Re-derives the story's source column and re-validates the
  * move server-side with the same pure `evaluateDrop` the client uses, so a

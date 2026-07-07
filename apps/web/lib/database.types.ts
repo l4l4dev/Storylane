@@ -163,6 +163,44 @@ export type Database = {
           },
         ]
       }
+      custom_statuses: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          is_done: boolean
+          name: string
+          position: number
+          project_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          is_done?: boolean
+          name: string
+          position?: number
+          project_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          is_done?: boolean
+          name?: string
+          position?: number
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_statuses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       epics: {
         Row: {
           color: string
@@ -387,6 +425,7 @@ export type Database = {
           point_scale: string
           updated_at: string
           velocity_window: number
+          workflow_mode: string
         }
         Insert: {
           created_at?: string
@@ -399,6 +438,7 @@ export type Database = {
           point_scale?: string
           updated_at?: string
           velocity_window?: number
+          workflow_mode?: string
         }
         Update: {
           created_at?: string
@@ -411,6 +451,7 @@ export type Database = {
           point_scale?: string
           updated_at?: string
           velocity_window?: number
+          workflow_mode?: string
         }
         Relationships: [
           {
@@ -427,6 +468,7 @@ export type Database = {
           assignee_id: string | null
           created_at: string
           created_by: string
+          custom_status_id: string | null
           description: string | null
           epic_id: string | null
           id: string
@@ -444,6 +486,7 @@ export type Database = {
           assignee_id?: string | null
           created_at?: string
           created_by?: string
+          custom_status_id?: string | null
           description?: string | null
           epic_id?: string | null
           id?: string
@@ -461,6 +504,7 @@ export type Database = {
           assignee_id?: string | null
           created_at?: string
           created_by?: string
+          custom_status_id?: string | null
           description?: string | null
           epic_id?: string | null
           id?: string
@@ -487,6 +531,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stories_custom_status_id_fkey"
+            columns: ["custom_status_id"]
+            isOneToOne: false
+            referencedRelation: "custom_statuses"
             referencedColumns: ["id"]
           },
           {

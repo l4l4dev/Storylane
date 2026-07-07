@@ -43,17 +43,34 @@ export function StoryDetailPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      <TransitionButtons
-        storyId={detail.id}
-        projectId={detail.projectId}
-        state={detail.state}
-        storyType={detail.storyType}
-        points={detail.points}
-      />
+      {/* Task 14: free-mode projects have no state machine — the status is
+          a plain select in the form below instead of transition buttons. */}
+      {detail.workflowMode === "pivotal" && (
+        <TransitionButtons
+          storyId={detail.id}
+          projectId={detail.projectId}
+          state={detail.state}
+          storyType={detail.storyType}
+          points={detail.points}
+        />
+      )}
 
       <form action={handleUpdate} className="flex flex-col gap-4">
         <input type="hidden" name="story_id" value={detail.id} />
         <input type="hidden" name="project_id" value={detail.projectId} />
+
+        {detail.workflowMode === "free" && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="detail-status">Status</Label>
+            <NativeSelect id="detail-status" name="custom_status_id" defaultValue={detail.customStatusId ?? ""}>
+              {detail.customStatuses.map((status) => (
+                <option key={status.id} value={status.id}>
+                  {status.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="detail-title">Title</Label>

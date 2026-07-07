@@ -4,6 +4,7 @@ import { ITERATION_LENGTHS, POINT_SCALES } from "@/lib/types";
 import { IntegrationSettings, type IntegrationRow } from "@/components/features/projects/integration-settings";
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
 import { LabelManager } from "@/components/features/projects/label-manager";
+import { StatusManager } from "@/components/features/projects/status-manager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,6 +56,16 @@ export default async function ProjectSettingsPage({
     ? await supabase.from("integrations").select("id, provider, config, is_active").eq("project_id", id)
     : { data: null };
 
+  // Task 14: free-mode projects manage their board columns here.
+  const isFree = project.workflow_mode === "free";
+  const { data: customStatuses } = isFree
+    ? await supabase
+        .from("custom_statuses")
+        .select("id, name, color, position, is_done")
+        .eq("project_id", id)
+        .order("position", { ascending: true })
+    : { data: null };
+
   return (
     <main className="mx-auto max-w-2xl p-6">
       <div className="mb-6">
@@ -81,21 +92,24 @@ export default async function ProjectSettingsPage({
             />
           </div>
           <div className="flex gap-4">
-            <div className="flex flex-1 flex-col gap-1.5">
-              <Label htmlFor="settings-iteration-length">Iteration length (days)</Label>
-              <NativeSelect
-                id="settings-iteration-length"
-                name="iteration_length"
-                defaultValue={project.iteration_length}
-                disabled={!isOwner}
-              >
-                {ITERATION_LENGTHS.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
+            {/* Task 14: free-mode projects have no iterations/velocity. */}
+            {!isFree && (
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor="settings-iteration-length">Iteration length (days)</Label>
+                <NativeSelect
+                  id="settings-iteration-length"
+                  name="iteration_length"
+                  defaultValue={project.iteration_length}
+                  disabled={!isOwner}
+                >
+                  {ITERATION_LENGTHS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+            )}
             <div className="flex flex-1 flex-col gap-1.5">
               <Label htmlFor="settings-point-scale">Point scale</Label>
               <NativeSelect
@@ -111,17 +125,19 @@ export default async function ProjectSettingsPage({
                 ))}
               </NativeSelect>
             </div>
-            <div className="flex w-32 flex-col gap-1.5">
-              <Label htmlFor="settings-velocity-window">Velocity window</Label>
-              <Input
-                id="settings-velocity-window"
-                name="velocity_window"
-                type="number"
-                min={1}
-                defaultValue={project.velocity_window}
-                disabled={!isOwner}
-              />
-            </div>
+            {!isFree && (
+              <div className="flex w-32 flex-col gap-1.5">
+                <Label htmlFor="settings-velocity-window">Velocity window</Label>
+                <Input
+                  id="settings-velocity-window"
+                  name="velocity_window"
+                  type="number"
+                  min={1}
+                  defaultValue={project.velocity_window}
+                  disabled={!isOwner}
+                />
+              </div>
+            )}
           </div>
           {isOwner && (
             <div>
@@ -196,6 +212,19 @@ export default async function ProjectSettingsPage({
           })}
         </ul>
       </section>
+
+      {/* Board statuses (Task 14 — free-mode projects only) */}
+      {isFree && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-lg font-semibold">Board statuses</h2>
+          <StatusManager
+            projectId={project.id}
+            statuses={customStatuses ?? []}
+            canEdit={isMember}
+            canDelete={isOwner}
+          />
+        </section>
+      )}
 
       {/* Labels */}
       <section className="mt-8">

@@ -20,6 +20,10 @@ export type StoryDetail = {
   assigneeId: string | null;
   labelIds: string[];
   pointScale: number[];
+  // Task 14: free-mode projects swap the state machine for custom statuses.
+  workflowMode: "pivotal" | "free";
+  customStatusId: string | null;
+  customStatuses: { id: string; name: string }[];
   epics: { id: string; name: string }[];
   labels: { id: string; name: string }[];
   members: { id: string; name: string }[];
@@ -46,11 +50,11 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     return null;
   }
 
-  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }] =
+  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: customStatuses }] =
     await Promise.all([
       supabase
         .from("projects")
-        .select("point_scale, custom_points")
+        .select("point_scale, custom_points, workflow_mode")
         .eq("id", story.project_id)
         .single(),
       supabase.from("epics").select("id, name").eq("project_id", story.project_id).order("position"),
@@ -65,6 +69,11 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .eq("story_id", storyId)
         .order("created_at", { ascending: true }),
       supabase.from("tasks").select("id, title, is_done").eq("story_id", storyId).order("position"),
+      supabase
+        .from("custom_statuses")
+        .select("id, name")
+        .eq("project_id", story.project_id)
+        .order("position", { ascending: true }),
     ]);
 
   return {
@@ -80,6 +89,9 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     assigneeId: story.assignee_id,
     labelIds: story.story_labels.map((sl) => sl.label_id),
     pointScale: pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points),
+    workflowMode: project?.workflow_mode === "free" ? "free" : "pivotal",
+    customStatusId: story.custom_status_id,
+    customStatuses: customStatuses ?? [],
     epics: epics ?? [],
     labels: labels ?? [],
     members: (members ?? []).map((m) => {
@@ -133,17 +145,31 @@ export async function updateStory(formData: FormData) {
   // `state` is never written here — it's exclusively managed by the
   // one-click transition buttons (see transitionStory in the board
   // actions), which also enforce "an unestimated feature cannot be started".
-  const { error } = await supabase
-    .from("stories")
-    .update({
-      title,
-      description,
-      story_type: storyType,
-      points,
-      epic_id: epicId,
-      assignee_id: assigneeId,
-    })
-    .eq("id", id);
+  // Free-mode projects (Task 14) instead submit `custom_status_id` from the
+  // detail panel's status select; the composite FK rejects a status of
+  // another project.
+  const update: {
+    title: string;
+    description: string | null;
+    story_type: string;
+    points: number | null;
+    epic_id: string | null;
+    assignee_id: string | null;
+    custom_status_id?: string;
+  } = {
+    title,
+    description,
+    story_type: storyType,
+    points,
+    epic_id: epicId,
+    assignee_id: assigneeId,
+  };
+  const customStatusId = String(formData.get("custom_status_id") ?? "");
+  if (customStatusId) {
+    update.custom_status_id = customStatusId;
+  }
+
+  const { error } = await supabase.from("stories").update(update).eq("id", id);
 
   if (error) {
     throw new Error(error.message);

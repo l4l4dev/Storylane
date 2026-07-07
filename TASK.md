@@ -222,14 +222,16 @@ Tasks 6〜13 は Web → iOS の順で進める。
   （仮定として確定 — 異論が出たら再検討）
 
 ### 実装スコープ（Web）
-- [ ] DB: `projects.workflow_mode`（`pivotal` / `free`、default `pivotal`）+
+- [x] DB: `projects.workflow_mode`（`pivotal` / `free`、default `pivotal`）+
       `custom_statuses` テーブル（project_id・name・color・position・is_done）、migration、RLS
-- [ ] プロジェクト作成ダイアログにモード選択を追加（作成後は変更不可）
-- [ ] Web: board のレンダリングをモードで分岐 — Pivotal ＝現状の List/Kanban（無改変）、
+- [x] プロジェクト作成ダイアログにモード選択を追加（作成後は変更不可）
+- [x] Web: board のレンダリングをモードで分岐 — Pivotal ＝現状の List/Kanban（無改変）、
       Free ＝ DB 駆動の可変カラムのカンバンのみ（List ビュー・iteration bar・Icebox なし）
-- [ ] Free 用ドラッグ: 同一プロジェクト内なら任意ステータス間の移動を許可（`evaluateDrop` とは別ルート）
-- [ ] Web: Settings にステータス管理 UI（追加・削除・並び替え・リネーム・色・is_done）— Free のみ表示
-- [ ] Free モードのストーリー: points バッジ表示は維持、状態遷移ボタン・iteration 関連 UI は非表示
+- [x] Free 用ドラッグ: 同一プロジェクト内なら任意ステータス間の移動を許可（`evaluateDrop` とは別ルート）
+- [x] Web: Settings にステータス管理 UI（追加・削除・並び替え・リネーム・色・is_done）— Free のみ表示
+- [x] Free モードのストーリー: points バッジ表示は維持、状態遷移ボタン・iteration 関連 UI は非表示
+- [x] tsc / eslint / vitest / pnpm build 通過、ブラウザ実機確認済み（2026-07-07）、
+      spec/screens.md・spec/data-model.md 更新済み
 - iOS: Web 実装確定後に追随（Web 先行方針、[[project-scope-decisions]]）
 
 ---

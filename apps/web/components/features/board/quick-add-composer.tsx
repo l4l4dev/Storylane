@@ -2,10 +2,15 @@
 
 import { useRef, useState, useTransition, type FormEvent, type KeyboardEvent } from "react";
 import { Plus } from "lucide-react";
-import { quickCreateStory } from "@/app/projects/[id]/board/actions";
+import { quickCreateStory, quickCreateStoryFree } from "@/app/projects/[id]/board/actions";
 import { Input } from "@/components/ui/input";
 
-export type QuickAddTarget = "backlog" | "icebox" | "unstarted";
+// Pivotal-mode targets, or a free-mode custom status column (Task 14).
+export type QuickAddTarget =
+  | "backlog"
+  | "icebox"
+  | "unstarted"
+  | { customStatusId: string };
 
 // Inline quick-add composer (spec/screens.md "Board layout"): a `+ Add
 // story` row that turns into a title input in place. Enter creates the
@@ -41,12 +46,19 @@ export function QuickAddComposer({
     const formData = new FormData();
     formData.set("project_id", projectId);
     formData.set("title", trimmed);
-    formData.set("target", target);
 
     setTitle("");
-    startTransition(() => {
-      void quickCreateStory(formData);
-    });
+    if (typeof target === "string") {
+      formData.set("target", target);
+      startTransition(() => {
+        void quickCreateStory(formData);
+      });
+    } else {
+      formData.set("status_id", target.customStatusId);
+      startTransition(() => {
+        void quickCreateStoryFree(formData);
+      });
+    }
     inputRef.current?.focus();
   }
 

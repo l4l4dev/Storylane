@@ -19,6 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 
 export function CreateProjectDialog() {
   const [open, setOpen] = useState(false);
+  // Task 14: chosen at creation and fixed afterwards — pivotal keeps the
+  // iteration/velocity workflow, free is a plain Trello-style board.
+  const [mode, setMode] = useState<"pivotal" | "free">("pivotal");
 
   async function handleCreate(formData: FormData) {
     await createProject(formData);
@@ -46,16 +49,57 @@ export function CreateProjectDialog() {
             <Textarea id="project-description" name="description" rows={2} />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="project-iteration-length">Iteration length (days)</Label>
-            <NativeSelect id="project-iteration-length" name="iteration_length" defaultValue={14}>
-              {ITERATION_LENGTHS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="text-sm font-medium">Workflow</legend>
+            <div className="flex flex-col gap-1 text-sm">
+              <label className="flex items-start gap-2">
+                <input
+                  type="radio"
+                  name="workflow_mode"
+                  value="pivotal"
+                  checked={mode === "pivotal"}
+                  onChange={() => setMode("pivotal")}
+                  className="mt-1"
+                />
+                <span>
+                  Pivotal Tracker
+                  <span className="block text-xs text-muted-foreground">
+                    Fixed story states, iterations, and velocity
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2">
+                <input
+                  type="radio"
+                  name="workflow_mode"
+                  value="free"
+                  checked={mode === "free"}
+                  onChange={() => setMode("free")}
+                  className="mt-1"
+                />
+                <span>
+                  Free
+                  <span className="block text-xs text-muted-foreground">
+                    Trello-style board with your own columns — no iterations
+                  </span>
+                </span>
+              </label>
+            </div>
+            <p className="text-xs text-muted-foreground">The workflow can&apos;t be changed after creation.</p>
+          </fieldset>
+
+          {mode === "pivotal" && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="project-iteration-length">Iteration length (days)</Label>
+              <NativeSelect id="project-iteration-length" name="iteration_length" defaultValue={14}>
+                {ITERATION_LENGTHS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="project-point-scale">Point scale</Label>
