@@ -16,6 +16,7 @@ vi.mock("@/lib/supabase/realtime", () => ({
 const baseDetail: StoryDetail = {
   id: "s1",
   projectId: "p1",
+  number: 42,
   title: "Add login",
   description: "Let users sign in",
   storyType: "feature",

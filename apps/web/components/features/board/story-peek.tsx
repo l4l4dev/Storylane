@@ -39,7 +39,10 @@ export function StoryPeek({ detail }: { detail: StoryDetail }) {
       className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-border bg-background shadow-xl"
     >
       <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <h2 className="truncate text-sm font-semibold">{detail.title}</h2>
+        <h2 className="truncate text-sm font-semibold">
+          <span className="mr-1.5 font-normal text-muted-foreground">#{detail.number}</span>
+          {detail.title}
+        </h2>
         <Button variant="ghost" size="icon-sm" onClick={close} aria-label="Close story detail">
           <X />
         </Button>

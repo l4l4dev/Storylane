@@ -25,7 +25,10 @@ export default async function StoryDetailPage({
         >
           ← Board
         </Link>
-        <h1 className="mt-2 text-2xl font-bold">{detail.title}</h1>
+        <h1 className="mt-2 text-2xl font-bold">
+          <span className="mr-2 font-normal text-muted-foreground">#{detail.number}</span>
+          {detail.title}
+        </h1>
       </div>
 
       <StoryDetailPanel detail={detail} />

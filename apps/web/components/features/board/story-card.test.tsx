@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
 
 const baseStory: StoryCardData = {
   id: "s1",
+  number: 42,
   title: "Add login",
   description: null,
   story_type: "feature",
@@ -59,6 +60,11 @@ describe("StoryCard", () => {
   it("shows the points dot notation on the card", () => {
     render(<StoryCard story={baseStory} projectId="p1" />);
     expect(screen.getByText("•••")).toBeInTheDocument();
+  });
+
+  it("shows the per-project story number on the card", () => {
+    render(<StoryCard story={baseStory} projectId="p1" />);
+    expect(screen.getByText("#42")).toBeInTheDocument();
   });
 
   it("shows assignee initials in the meta row", () => {
