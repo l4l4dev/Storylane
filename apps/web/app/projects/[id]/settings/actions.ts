@@ -127,6 +127,104 @@ export async function deleteLabel(formData: FormData) {
   revalidatePath(`/projects/${projectId}/settings`);
 }
 
+// ---- Custom statuses (Task 14, free-mode projects only) ----
+
+export async function createCustomStatus(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const name = String(formData.get("name") ?? "").trim();
+  const color = String(formData.get("color") ?? "#6b7280");
+
+  if (!name) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("custom_statuses")
+    .select("position")
+    .eq("project_id", projectId);
+  const position = (existing ?? []).reduce((max, s) => Math.max(max, s.position), -1) + 1;
+
+  const { error } = await supabase
+    .from("custom_statuses")
+    .insert({ project_id: projectId, name, color, position });
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+export async function updateCustomStatus(formData: FormData) {
+  const id = String(formData.get("status_id"));
+  const projectId = String(formData.get("project_id"));
+  const name = String(formData.get("name") ?? "").trim();
+  const color = String(formData.get("color") ?? "#6b7280");
+  const isDone = formData.get("is_done") === "on";
+
+  if (!name) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("custom_statuses")
+    .update({ name, color, is_done: isDone })
+    .eq("id", id);
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+export async function deleteCustomStatus(formData: FormData) {
+  const id = String(formData.get("status_id"));
+  const projectId = String(formData.get("project_id"));
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("custom_statuses").delete().eq("id", id);
+  if (error) {
+    // 23503 = the stories.custom_status FK — a column with cards on it
+    // can't be removed (see the workflow_modes migration).
+    if (error.code === "23503") {
+      throw new Error("Move the stories off this status before deleting it");
+    }
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+/** Swaps the status with its neighbor above/below — one step per click. */
+export async function moveCustomStatus(formData: FormData) {
+  const id = String(formData.get("status_id"));
+  const projectId = String(formData.get("project_id"));
+  const direction = String(formData.get("direction")) === "up" ? "up" : "down";
+
+  const supabase = await createClient();
+  const { data: statuses } = await supabase
+    .from("custom_statuses")
+    .select("id, position")
+    .eq("project_id", projectId)
+    .order("position", { ascending: true });
+
+  const list = statuses ?? [];
+  const index = list.findIndex((s) => s.id === id);
+  const swapWith = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || swapWith < 0 || swapWith >= list.length) {
+    return;
+  }
+
+  await Promise.all([
+    supabase.from("custom_statuses").update({ position: list[swapWith].position }).eq("id", list[index].id),
+    supabase.from("custom_statuses").update({ position: list[index].position }).eq("id", list[swapWith].id),
+  ]);
+
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
 const INTEGRATION_PROVIDERS = ["github", "forgejo", "slack"] as const;
 type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 

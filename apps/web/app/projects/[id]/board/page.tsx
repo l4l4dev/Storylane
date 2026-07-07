@@ -10,6 +10,7 @@ import { filterStories } from "@/lib/utils/stories";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
+import { FreeBoard, type CustomStatus } from "@/components/features/board/free-board";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { StoryPeek } from "@/components/features/board/story-peek";
 import { ensureCurrentIteration } from "./actions";
@@ -31,12 +32,20 @@ export default async function BoardPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, velocity_window")
+    .select("id, name, velocity_window, workflow_mode")
     .eq("id", id)
     .single();
 
   if (!project) {
     notFound();
+  }
+
+  // Task 14: free-mode projects get the Trello-style board — no iterations,
+  // so the lazy rollover below must never run for them.
+  if (project.workflow_mode === "free") {
+    return (
+      <FreeBoardPage projectId={project.id} type={type} assignee={assignee} label={label} peekStoryId={peekStoryId} />
+    );
   }
 
   // Lazily creates/rolls over the current iteration before reading it (see
@@ -177,6 +186,112 @@ export default async function BoardPage({
         initialBacklogItems={initialBacklogItems}
         velocity={currentVelocity}
         nextVirtualIterationNumber={nextVirtualIterationNumber}
+        toolbar={
+          <BoardFilters
+            assignees={assigneeOptions}
+            labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
+          />
+        }
+      />
+
+      {peekDetail && <StoryPeek detail={peekDetail} />}
+    </main>
+  );
+}
+
+// Free-mode board page (Task 14): columns are the project's custom
+// statuses; stories are grouped by `custom_status_id`. No iterations,
+// velocity, backlog, or Icebox. Filters and the side peek work the same.
+async function FreeBoardPage({
+  projectId,
+  type,
+  assignee,
+  label,
+  peekStoryId,
+}: {
+  projectId: string;
+  type?: string;
+  assignee?: string;
+  label?: string;
+  peekStoryId?: string;
+}) {
+  const supabase = await createClient();
+
+  const [{ data: statuses }, { data: stories }, { data: labels }, { data: members }] = await Promise.all([
+    supabase
+      .from("custom_statuses")
+      .select("id, name, color, position, is_done")
+      .eq("project_id", projectId)
+      .order("position", { ascending: true }),
+    supabase
+      .from("stories")
+      .select(
+        "id, number, title, description, story_type, state, points, position, custom_status_id, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+      )
+      .eq("project_id", projectId)
+      .order("position", { ascending: true }),
+    supabase.from("labels").select("id, name, color").eq("project_id", projectId).order("name"),
+    supabase.from("project_members").select("user_id, profiles(display_name)").eq("project_id", projectId),
+  ]);
+
+  const statusList: CustomStatus[] = statuses ?? [];
+  const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
+
+  const cards = (stories ?? []).map((story) => {
+    const assigneeProfile = Array.isArray(story.assignee) ? story.assignee[0] : story.assignee;
+    const labelIds = story.story_labels.map((sl) => sl.label_id);
+    return {
+      id: story.id,
+      number: story.number,
+      title: story.title,
+      description: story.description,
+      story_type: story.story_type,
+      state: story.state,
+      points: story.points,
+      custom_status_id: story.custom_status_id,
+      assignee_id: story.assignee_id,
+      assigneeName: assigneeProfile?.display_name ?? null,
+      labels: labelIds
+        .map((labelId) => labelById.get(labelId))
+        .filter((l): l is NonNullable<typeof l> => l != null)
+        .map((l) => ({ id: l.id, name: l.name, color: l.color })),
+      labelIds,
+    };
+  });
+
+  const visible = filterStories(cards, { type, assigneeId: assignee, labelId: label });
+  const initialContainers: Record<string, typeof cards> = {};
+  for (const status of statusList) {
+    initialContainers[status.id] = [];
+  }
+  const firstStatusId = statusList[0]?.id;
+  for (const card of visible) {
+    // A story with no (or an unknown) status lands in the first column so
+    // it can't silently disappear from the board.
+    const columnId =
+      card.custom_status_id && card.custom_status_id in initialContainers ? card.custom_status_id : firstStatusId;
+    if (columnId) {
+      initialContainers[columnId].push(card);
+    }
+  }
+
+  const assigneeOptions = (members ?? []).map((m) => {
+    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+    return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
+  });
+
+  const peekDetail = peekStoryId ? await getStoryDetail(peekStoryId) : null;
+
+  return (
+    <main className="p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Board</h1>
+      </div>
+
+      <FreeBoard
+        projectId={projectId}
+        statuses={statusList}
+        initialContainers={initialContainers}
         toolbar={
           <BoardFilters
             assignees={assigneeOptions}

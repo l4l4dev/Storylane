@@ -26,6 +26,9 @@ const baseDetail: StoryDetail = {
   assigneeId: null,
   labelIds: [],
   pointScale: [0, 1, 2, 3, 5, 8, 13],
+  workflowMode: "pivotal",
+  customStatusId: null,
+  customStatuses: [],
   epics: [],
   labels: [],
   members: [],
@@ -50,5 +53,20 @@ describe("StoryDetailPanel", () => {
     render(<StoryDetailPanel detail={baseDetail} />);
     expect(screen.getByText("Tasks")).toBeInTheDocument();
     expect(screen.getByText("Comments")).toBeInTheDocument();
+  });
+
+  it("renders a status select instead of transition buttons for free-mode projects", () => {
+    const freeDetail: StoryDetail = {
+      ...baseDetail,
+      workflowMode: "free",
+      customStatusId: "cs1",
+      customStatuses: [
+        { id: "cs1", name: "To do" },
+        { id: "cs2", name: "Done" },
+      ],
+    };
+    render(<StoryDetailPanel detail={freeDetail} />);
+    expect(screen.getByLabelText("Status")).toHaveValue("cs1");
+    expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
   });
 });

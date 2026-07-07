@@ -48,13 +48,17 @@ export function AppSidebar({
   project,
   projects,
   username,
+  showIterations = true,
 }: {
   project: ProjectRef;
   projects: ProjectRef[];
   username: string | null;
+  // Free-mode projects have no iterations (Task 14).
+  showIterations?: boolean;
 }) {
   const pathname = usePathname();
   const base = `/projects/${project.id}`;
+  const navItems = NAV_ITEMS.filter((item) => showIterations || item.segment !== "iterations");
 
   return (
     <aside className="sticky top-0 flex h-dvh w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -90,7 +94,7 @@ export function AppSidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 px-3">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const href = `${base}/${item.segment}`;
           // pathname === base covers the instant before the /board redirect
           // resolves, so the Board item doesn't flash inactive.

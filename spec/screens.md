@@ -27,7 +27,14 @@ Storylane brand (links to `/dashboard`), the project switcher, the section nav
 and at the bottom the theme toggle and the account menu (sign out). Pages
 outside a project (dashboard, login) keep their own minimal headers.
 
-### Board layout (Web) — updated 2026-07-07: Kanban / List view toggle
+### Board layout (Web) — updated 2026-07-07: Kanban / List view toggle, Free mode
+
+`/projects/[id]/board` branches on `projects.workflow_mode` (Task 14, fixed
+at project creation — see spec/data-model.md): **pivotal** renders the
+List/Kanban board described below unchanged; **free** renders the separate
+DB-driven board described in "Free mode board" further down. The rest of
+this section (List/Kanban toggle, iteration bar, Icebox) applies to
+**pivotal mode only**.
 
 The board toolbar has a **List / Kanban** toggle (**List is the default**).
 Both views read and write the same stories — the toggle only changes how
@@ -113,6 +120,28 @@ a physical column.
   full-width story-shaped button, so the list itself stays visually
   dominant.
 - The side peek works the same as Kanban.
+
+#### Free mode board (Task 14, added 2026-07-07)
+
+A pure Trello-style board for `workflow_mode = 'free'` projects — no
+iteration bar, no Icebox, no List/Kanban toggle, no auto-rollover, no
+velocity. `ensureCurrentIteration` never runs for these projects.
+
+- **Columns are `custom_statuses` rows** (project-scoped, managed in
+  Settings — see below), ordered by `position`. A story with no
+  `custom_status_id` (or one that no longer exists) renders in the
+  leftmost column.
+- **Any-to-any drag:** dropping a card on any column moves it there —
+  forward, backward, or skipping columns, unlike pivotal's state machine.
+  Dragging within a column reorders.
+- **Per-column quick-add:** each column has its own `+` composer (same
+  inline create-on-Enter UX as pivotal's Unstarted composer).
+- **Points** are shown as a badge and freely editable, but never feed a
+  velocity calculation (there is none in this mode).
+- **Side peek** works the same as pivotal, except the story detail shows a
+  **Status select** (the project's custom statuses) instead of one-click
+  state transition buttons — see "Story detail (Free mode)" below.
+- The left sidebar hides the **Iterations** nav item for free projects.
 
 ### Story card UX (Kanban view)
 
