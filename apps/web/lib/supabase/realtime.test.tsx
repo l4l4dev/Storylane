@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useProjectStoriesRealtime, useStoryRealtime } from "./realtime";
+import { useProjectBoardRealtime, useStoryRealtime } from "./realtime";
 
 const onFn = vi.fn().mockReturnThis();
 const subscribeFn = vi.fn().mockReturnValue({ channel: true });
@@ -30,16 +30,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("useProjectStoriesRealtime", () => {
-  it("subscribes to stories filtered by project_id and cleans up on unmount", async () => {
+describe("useProjectBoardRealtime", () => {
+  it("subscribes to stories and dividers filtered by project_id and cleans up on unmount", async () => {
     const onChange = vi.fn();
-    const { unmount } = renderHook(() => useProjectStoriesRealtime("proj-1", onChange));
+    const { unmount } = renderHook(() => useProjectBoardRealtime("proj-1", onChange));
     await flushSessionCheck();
 
-    expect(channelFn).toHaveBeenCalledWith("stories-project-proj-1");
+    expect(channelFn).toHaveBeenCalledWith("board-project-proj-1");
     expect(onFn).toHaveBeenCalledWith(
       "postgres_changes",
       { event: "*", schema: "public", table: "stories", filter: "project_id=eq.proj-1" },
+      expect.any(Function),
+    );
+    expect(onFn).toHaveBeenCalledWith(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "backlog_dividers", filter: "project_id=eq.proj-1" },
       expect.any(Function),
     );
     expect(subscribeFn).toHaveBeenCalled();
@@ -50,7 +55,7 @@ describe("useProjectStoriesRealtime", () => {
 
   it("debounces bursts of changes into a single onChange call", async () => {
     const onChange = vi.fn();
-    renderHook(() => useProjectStoriesRealtime("proj-1", onChange));
+    renderHook(() => useProjectBoardRealtime("proj-1", onChange));
     await flushSessionCheck();
     vi.useFakeTimers();
 
