@@ -591,6 +591,7 @@ export function BoardListView({
 
   return (
     <DndContext
+      id="board-list-view"
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
