@@ -1,7 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { notifySlack } from "@/lib/integrations/slack";
+import { iterationDoneMessage, iterationStartedMessage, storyStateChangeMessage } from "@/lib/utils/slack";
 import { BACKLOG_CONTAINER_ID, ICEBOX_CONTAINER_ID } from "@/lib/utils/board";
 import {
   BACKLOG_COLUMN_ID,
@@ -160,7 +163,7 @@ export async function dropStory(formData: FormData) {
   const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
     supabase
       .from("stories")
-      .select("state, story_type, points, iteration_id")
+      .select("number, title, state, story_type, points, iteration_id")
       .eq("id", storyId)
       .single(),
     supabase
@@ -201,6 +204,10 @@ export async function dropStory(formData: FormData) {
     const { error } = await supabase.from("stories").update(update).eq("id", storyId);
     if (error) {
       throw new Error(error.message);
+    }
+    if (evaluation.state) {
+      const newState = evaluation.state;
+      after(() => notifySlack(projectId, storyStateChangeMessage(story, newState)));
     }
   }
 
@@ -249,7 +256,7 @@ export async function dropStoryInList(formData: FormData) {
     const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
       supabase
         .from("stories")
-        .select("state, story_type, points, iteration_id")
+        .select("number, title, state, story_type, points, iteration_id")
         .eq("id", itemId)
         .single(),
       supabase
@@ -290,6 +297,10 @@ export async function dropStoryInList(formData: FormData) {
       const { error } = await supabase.from("stories").update(update).eq("id", itemId);
       if (error) {
         throw new Error(error.message);
+      }
+      if (evaluation.state) {
+        const newState = evaluation.state;
+        after(() => notifySlack(projectId, storyStateChangeMessage(story, newState)));
       }
     }
   }
@@ -424,7 +435,7 @@ export async function transitionStory(formData: FormData) {
   const supabase = await createClient();
   const { data: story, error: fetchError } = await supabase
     .from("stories")
-    .select("state, story_type, points")
+    .select("number, title, state, story_type, points")
     .eq("id", storyId)
     .single();
 
@@ -444,6 +455,8 @@ export async function transitionStory(formData: FormData) {
   if (error) {
     throw new Error(error.message);
   }
+
+  after(() => notifySlack(projectId, storyStateChangeMessage(story, nextState)));
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);
@@ -507,6 +520,9 @@ export async function ensureCurrentIteration(projectId: string) {
         throw new Error(error.message);
       }
 
+      const doneNumber = latest.number;
+      after(() => notifySlack(projectId, iterationDoneMessage(doneNumber, velocity)));
+
       carryStoryIds = (stories ?? [])
         .filter((story) => story.state !== "accepted")
         .map((story) => story.id);
@@ -536,6 +552,8 @@ export async function ensureCurrentIteration(projectId: string) {
       }
       throw new Error(error.message);
     }
+
+    after(() => notifySlack(projectId, iterationStartedMessage(number, start_date, end_date)));
 
     if (nextIteration && carryStoryIds.length > 0) {
       await Promise.all(
