@@ -77,3 +77,36 @@ is irreversible):
 Automatic rollover stays in place — manual finish is an early-exit on top
 of it, not a replacement. The iteration bar always shows
 "auto-finishes on <end_date>" so the automatic behavior is discoverable.
+
+### Finalization concurrency & permissions (2026-07-08)
+
+Rollover and manual finish share **one finalization RPC**, and several
+clients can race into it (two tabs loading after `end_date`, Finish
+clicked twice, Finish racing a page-load rollover). Rules:
+
+- The RPC takes a per-project advisory lock
+  (`pg_advisory_xact_lock` keyed on the project id) so only one
+  finalization per project runs at a time.
+- It is **idempotent**: the done-transition is
+  `UPDATE iterations SET state = 'done' … WHERE id = … AND state <> 'done'`;
+  zero rows updated means another caller already finalized — return the
+  refreshed current iteration instead of erroring. The next-iteration
+  INSERT additionally relies on `UNIQUE (project_id, number)`.
+- Manual finish sets `end_date = LEAST(end_date, today)` — finishing an
+  already-overdue iteration must not extend it (the overdue catch-up then
+  proceeds as normal rollover).
+- The RPC is SECURITY DEFINER with explicit membership checks inside:
+  **lazy rollover** fires for any project member *including viewers* —
+  it is system maintenance triggered by reads, and viewers could never
+  perform its writes under plain RLS. **Manual finish** requires role
+  owner or member.
+- A DB trigger rejects setting `stories.iteration_id` to an iteration
+  whose `state = 'done'` — this closes the TOCTOU gap where a drag lands
+  just after a concurrent finalization (the app's pre-check stays as UX;
+  the trigger is the authoritative guard). The finalization path itself
+  only moves stories *out* of the done iteration, so it is unaffected.
+- Clients that raced and lost see the refreshed board via Realtime /
+  revalidation; a rejected drop surfaces the existing
+  "finalized iteration" error message.
+- A manually shortened iteration counts in the velocity window like any
+  other done iteration — no proration (Pivotal behavior).

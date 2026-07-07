@@ -130,6 +130,21 @@ next due date ≤ today, create one story instance (title/description copied,
 placed in `custom_status_id` / `swimlane_id`) and advance
 `last_generated_on`. Only the most recent missed occurrence is generated —
 a board untouched for a month must not flood with 30 daily cards.
+
+Double-generation guard (2026-07-08): generation runs in a single RPC that
+**claims** each due rule first —
+`UPDATE recurring_stories SET last_generated_on = <due> WHERE id = <id>
+AND (last_generated_on IS NULL OR last_generated_on < <due>) RETURNING id`
+— and inserts the story instance only when the claim returned a row, so
+two clients loading the board simultaneously cannot double-insert. The RPC
+is SECURITY DEFINER with a membership check inside (any role, including
+viewer — same reasoning as lazy rollover, see spec/velocity.md
+"Finalization concurrency"). Deleting a generated instance does not
+regenerate it (the claim already advanced `last_generated_on`). Due dates
+are computed in UTC in Phase 1, the same convention as iteration rollover;
+a per-project timezone is a possible Phase 2 addition. The UI does not
+offer `is_done` columns as generation targets (a card must not be born
+completed).
 ```sql
 recurring_stories (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),

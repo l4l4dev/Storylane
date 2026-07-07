@@ -4,6 +4,7 @@ title: Manual iteration finish and auto-finish visibility
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:26'
+updated_date: '2026-07-07 15:34'
 labels:
   - web
 dependencies:
@@ -28,4 +29,7 @@ Per spec/velocity.md 'Manual finish' and spec/screens.md 'Board layout': add a F
 - [ ] #3 Iteration bar always shows the auto-finish date
 - [ ] #4 Goal input commits on Enter with visible confirmation, Esc reverts; Save button removed
 - [ ] #5 Tests cover manual finish (velocity finalized, carry-over, goal adoption) and the goal commit UX
+- [ ] #6 Finalization RPC is advisory-locked per project and idempotent (state<>'done' guard + UNIQUE(project_id,number)); concurrent Finish/rollover cannot double-finalize or double-create the next iteration — see spec/velocity.md 'Finalization concurrency'
+- [ ] #7 Manual finish sets end_date = LEAST(end_date, today); lazy rollover fires for any member including viewers, manual finish requires owner/member (checked inside the SECURITY DEFINER RPC)
+- [ ] #8 DB trigger rejects setting stories.iteration_id to a done iteration; a test covers a drop racing a finalization
 <!-- AC:END -->

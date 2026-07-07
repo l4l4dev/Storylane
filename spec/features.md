@@ -57,6 +57,25 @@
   - **Copy** duplicates content only (title, description, type, tasks,
     labels) — no comments, no history. Same landing rules as Move.
   - Implemented as a single Postgres RPC per operation for atomicity.
+  - Hardening (2026-07-08): the RPCs are SECURITY DEFINER (fixed
+    `search_path`, granted to `authenticated` only) and re-check
+    everything explicitly inside: caller has role **owner or member in
+    both projects** (viewer is not enough), source ≠ target, and neither
+    project is archived. Move is implemented as **insert-into-target +
+    re-parent tasks/comments/labels + delete-source in one
+    transaction** — never `UPDATE stories SET project_id`: the
+    per-project numbering trigger pins `number` on UPDATE, so only a
+    fresh INSERT gets a correct target-project number. `focus` and
+    `completed_at` are cleared on landing (the story arrives
+    unscheduled / leftmost). Labels are recreated by lookup-then-insert
+    inside the transaction (`labels` has no `UNIQUE(project_id, name)`;
+    a concurrent duplicate is benign). Move/Copy land at the **bottom**
+    of the target Icebox / leftmost column. The RPC inserts the
+    `story.moved_out` / `story.moved_in` / `story.copied_in` activity
+    rows itself — in-database, single path, consistent with the trigger
+    rule in ARCHITECTURE.md. A concurrent editor of the moved story sees
+    their save fail as "story deleted" (handled by the autosave rules in
+    spec/screens.md).
 
 #### Iteration Management (Tracker mode)
 - Automatic iteration scheduling: the backlog is divided into upcoming
