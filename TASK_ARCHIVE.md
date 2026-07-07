@@ -141,3 +141,119 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] Comment thread on story detail page
 - [x] @mention support (parse `@username` in comment body)
 - [x] Activity log timeline on project home
+
+---
+
+## Task 11 — Realtime Collaboration（Web ✅ 2026-07-07 移設）
+
+> 順序変更（2026-07-02）: Task 10（通知）より先、Task 12.5（board 再構築）の後に実施。
+
+- [x] Subscribe to story changes via Supabase Realtime on backlog and iteration views
+- [x] Reflect story state changes live without page refresh
+- [x] Show live comment updates on story detail
+
+---
+
+## Task 10 — Notifications（Web ✅ 2026-07-07 移設）
+
+> 通知のイベント源は Task 11 の Realtime 購読（購読したイベントから Notification API を発火）。
+
+- [x] Request browser notification permission on sign-in
+- [x] Trigger notification on: assigned to story, @mentioned, story state changed
+      （`lib/utils/notifications.ts` の純関数 + `useNotificationsRealtime`
+      〈`lib/supabase/realtime.ts`〉+ `NotificationListener`〈root layout に配置〉。
+      既知の簡略化: 自分自身の操作による変更も通知される — actor 判定は行っていない）
+
+---
+
+## Task 12 — Integrations（Web ✅ ローカル検証まで 2026-07-07。本番 Webhook 実検証は Backlog TASK-3）
+
+### 前提（DB）
+- [x] Migration: `stories.number`（プロジェクト毎の連番、採番トリガー + UPDATE 不変ピン）
+      （see spec/data-model.md。service_role への DML grant 漏れも `20260707000006` で修正）
+- [x] ストーリーカード / 詳細画面に `#123` を表示
+
+### GitHub / Forgejo
+- [x] Integration setup in project settings（owner 専用、コピー用 Webhook URL 表示付き
+      `integration-settings.tsx`）
+- [x] Edge Function `supabase/functions/git-webhook/`（HMAC-SHA256 署名検証・timing-safe 比較・
+      `verify_jwt = false`。Forgejo は `X-Gitea-Event` / `X-Gitea-Signature`〈プレフィックスなし HMAC〉で判別）
+- [x] Parse PR title / branch name for story ID（`[SL-123]` / `storylane/123`）
+- [x] PR マージで story を `finished` に強制遷移 + iteration 未所属なら current へ
+      （決定事項は spec/integrations.md）
+
+### Slack
+- [x] Integration setup（Incoming Webhook URL）
+- [x] story state change / iteration start・done を通知（Edge Function 案から変更し
+      server action から直接 POST — `after()` + `lib/integrations/slack.ts`、fire-and-forget。
+      owner 専用の integrations 行は `lib/supabase/admin.ts`〈service role〉で読む）
+
+---
+
+## Task 12.5 — Pivotal Tracker UX Parity（Web ✅ 2026-07-07 移設）
+
+> 2026-07-02 の本家乖離調査に基づく修正。仕様は spec/screens.md / spec/features.md /
+> spec/velocity.md。Task 6 の手動 iteration 運用をここで置き換えた。
+
+### 前提（DB）
+- [x] Migration: `stories.state` に `'unscheduled'`（Icebox）を追加、新規デフォルトに
+- [x] Migration: 未来の `planned` iteration 行を削除し、ストーリーを backlog 先頭へ相対順維持で戻す
+
+### Web
+- [x] Board をマルチパネル横並びレイアウトに再構築（Current / Backlog / Icebox / Done / Epics）
+- [x] Icebox パネル（Backlog へドラッグで unstarted に昇格）
+- [x] カード上のワンクリック状態遷移ボタン（次の有効な遷移のみ提示するステートマシン
+      `lib/utils/story-state.ts`。詳細画面の自由な state select は廃止）
+- [x] velocity に基づく Backlog 自動分割（「Generate next iteration」廃止）
+- [x] 自動ロールオーバー（end_date 経過後の初回アクセスで確定。「Mark as done」廃止）
+- [x] ストーリー詳細のパネル内インライン展開（`/stories/[id]` はディープリンク用に残す）
+- [x] ポイントを point scale からの選択式に / 未見積もり feature は Start 不可
+- [x] `release` ストーリーのマイルストーンマーカー行 / accepted の緑背景 /
+      カード全体ドラッグ / ポイントのドット表示（3以下）
+- [x] タスク（チェックリスト）UI
+
+---
+
+## Task 14 — Custom Workflow Modes（Web ✅ 2026-07-07、コミット f57f362）
+
+> スコープ決定（Mika 確定）: Free モードは iteration/velocity なしの純 Trello ボード。
+> points は任意入力の表示のみ。モードは作成時固定。custom status に is_done フラグ。
+> ※ 2026-07-07 の要件改訂で「Pivotal モード」は「Tracker モード」に改名（Backlog TASK-4）。
+
+- [x] DB: `projects.workflow_mode` + `custom_statuses`（migration、RLS、
+      `stories.custom_status_id` は複合FKでクロスプロジェクト参照を防止）
+- [x] プロジェクト作成ダイアログにモード選択（作成後変更不可）
+- [x] board のモード分岐（Free ＝ DB 駆動カラムのカンバンのみ、iteration UI なし）
+- [x] Free 用ドラッグ（任意ステータス間の移動を許可、`evaluateDrop` とは別ルート）
+- [x] Settings にステータス管理 UI（Free のみ表示）
+- [x] tsc / eslint / vitest / build 通過、ブラウザ実機確認、spec 更新
+
+---
+
+## Task 15 — Board List View（Web ✅ 2026-07-07 移設）
+
+> 本家 Pivotal の「Current + Backlog が1本の縦リスト」体験の復元。実装は Sonnet 5。
+> スコープ外（着手しない）: リリース目標日の遅延警告 / ストーリーテンプレート。
+
+- [x] List / Kanban 表示切替（後に List を既定に変更、Kanban は current iteration のみに縮小）
+- [x] `board-list-view.tsx` / `story-list-row.tsx`（状態はバッジ、行にワンクリック遷移ボタン）
+- [x] ゾーン DnD（`zoneForStory` / `evaluateListDrop`、Kanban 用ロジックは無改変）
+- [x] 自由な区切り: `backlog_dividers`（note / iteration_break、migration + RLS レビュー済み、
+      `buildBacklogRows`、Realtime 購読は `useProjectBoardRealtime` に統合）
+- [x] ホバー挿入 UI（行間に + Note / + Iteration break）
+- [x] Icebox を独立サイドカラム化 / Add Story をヘッダー内テキストリンク化
+- [x] spec/screens.md・spec/data-model.md 更新、vitest テスト
+- ※ 区切り表示は 2026-07-07 要件改訂でグループヘッダー方式に刷新予定（Backlog TASK-9）
+
+---
+
+## Task 13 — Polish & QA（Web ✅ 2026-07-07、Backlog TASK-2 で管理・完了）
+
+> スコープは 3 項目に絞ることを Mika 確認済み（レスポンシブ / a11y 監査 /
+> パフォーマンスレビューは対象外 — 残スコープは TASK.md 参照）。詳細な実装ノートと
+> 検証結果は `backlog task view TASK-2 --plain`。
+
+- [x] 全ビューのエラー・空状態（`error-state.tsx` + 各ルート `error.tsx`、board の空状態）
+- [x] ローディングスケルトン（`skeleton.tsx` + 7ルートの `loading.tsx`）
+- [x] Playwright E2E（create project → add story → complete iteration、`e2e/core-flow.spec.ts`）
+- [x] dnd-kit hydration 警告修正（`DndContext` に安定 id）

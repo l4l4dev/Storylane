@@ -19,8 +19,9 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
 Most work here is done by AI agents — keep context small:
 
 - Never read generated files in full (`apps/web/lib/database.types.ts`, lockfiles) — Grep for the type/entry you need
-- Read only the spec section relevant to the task (via the SPEC.md index) and only the current
-  task's section of TASK.md; completed tasks live in `TASK_ARCHIVE.md`
+- Read only the spec section relevant to the task (via the SPEC.md index). Work items live in
+  Backlog.md — read only the current task (`backlog task view <id> --plain`); TASK.md is just a
+  short remaining-work index, and completed history lives in `TASK_ARCHIVE.md` (read on demand only)
 - Prefer Grep/Glob or partial reads (offset/limit) over full reads for files longer than ~300 lines
 - Run long-lived commands (`pnpm dev`, `supabase start`) in the background and read only the log tail
 - While iterating, run targeted tests (`pnpm exec vitest run <path>`); run the full `pnpm test` only before commit
@@ -170,3 +171,26 @@ chore/update-supabase-client
 - Mark a feature complete without writing tests
 - Include `console.log` in commits (debug use only)
 - Use force unwrap (`!`) in Swift — use `guard let` or `if let` instead
+
+<!-- BACKLOG.MD GUIDELINES START -->
+<CRITICAL_INSTRUCTION>
+
+## Backlog.md Workflow
+
+This project uses Backlog.md for task and project management.
+
+**For every user request in this project, run `backlog instructions overview` before answering or taking action.**
+
+Use the overview to decide whether to search, read, create, or update Backlog tasks.
+
+Use the detailed guides when needed:
+- `backlog instructions task-creation` for creating or splitting tasks
+- `backlog instructions task-execution` for planning and implementation workflow
+- `backlog instructions task-finalization` for completion and handoff
+
+Use `backlog <command> --help` before running unfamiliar commands. Help shows options, fields, and examples.
+
+Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use the `backlog` CLI so metadata, relationships, and history stay consistent.
+
+</CRITICAL_INSTRUCTION>
+<!-- BACKLOG.MD GUIDELINES END -->
