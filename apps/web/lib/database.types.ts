@@ -431,6 +431,7 @@ export type Database = {
           epic_id: string | null
           id: string
           iteration_id: string | null
+          number: number
           points: number | null
           position: number
           project_id: string
@@ -447,6 +448,7 @@ export type Database = {
           epic_id?: string | null
           id?: string
           iteration_id?: string | null
+          number?: number
           points?: number | null
           position?: number
           project_id: string
@@ -463,6 +465,7 @@ export type Database = {
           epic_id?: string | null
           id?: string
           iteration_id?: string | null
+          number?: number
           points?: number | null
           position?: number
           project_id?: string

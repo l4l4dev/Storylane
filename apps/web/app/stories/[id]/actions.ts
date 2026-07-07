@@ -8,6 +8,9 @@ import { nextPosition, parsePoints, pointScaleValues } from "@/lib/utils/stories
 export type StoryDetail = {
   id: string;
   projectId: string;
+  // Per-project sequential story number — shown as #123, referenced as
+  // [SL-123] in PR titles (see spec/integrations.md).
+  number: number;
   title: string;
   description: string | null;
   storyType: string;
@@ -67,6 +70,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
   return {
     id: story.id,
     projectId: story.project_id,
+    number: story.number,
     title: story.title,
     description: story.description,
     storyType: story.story_type,

@@ -58,6 +58,7 @@ export function StoryListRow({
             <TypeIcon className="h-3.5 w-3.5" aria-label={typeMeta.label} />
           </span>
         )}
+        <span className="shrink-0 text-xs text-muted-foreground">#{story.number}</span>
         <span className="truncate text-sm font-medium">{story.title}</span>
       </button>
 

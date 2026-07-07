@@ -11,6 +11,8 @@ import {
 
 export type StoryCardData = {
   id: string;
+  // Per-project sequential story number — shown as #123 (see spec/integrations.md).
+  number: number;
   title: string;
   description: string | null;
   story_type: string;
@@ -105,7 +107,6 @@ export function StoryCard({
   const typeMeta = STORY_TYPE_META[story.story_type as StoryType];
   const TypeIcon = STORY_TYPE_ICON[story.story_type as StoryType];
   const isAccepted = story.state === "accepted";
-  const hasMetaRow = story.points != null || story.labels.length > 0 || story.assigneeName;
 
   const cardContent = (
     <>
@@ -128,32 +129,32 @@ export function StoryCard({
         </span>
       </div>
 
-      {hasMetaRow && (
-        <div className="mt-2 flex items-center gap-1.5">
-          {story.points != null && (
-            <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-              {formatPoints(story.points)}
-            </span>
-          )}
-          {story.labels.map((label) => (
-            <span
-              key={label.id}
-              className="min-w-0 truncate rounded px-1.5 py-0.5 text-xs"
-              style={{ backgroundColor: `${label.color}22`, color: label.color }}
-            >
-              {label.name}
-            </span>
-          ))}
-          {story.assigneeName && (
-            <span
-              className="ml-auto flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-medium text-secondary-foreground"
-              title={story.assigneeName}
-            >
-              {initials(story.assigneeName)}
-            </span>
-          )}
-        </div>
-      )}
+      {/* The number always renders, so the meta row is unconditional. */}
+      <div className="mt-2 flex items-center gap-1.5">
+        <span className="shrink-0 text-xs text-muted-foreground">#{story.number}</span>
+        {story.points != null && (
+          <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+            {formatPoints(story.points)}
+          </span>
+        )}
+        {story.labels.map((label) => (
+          <span
+            key={label.id}
+            className="min-w-0 truncate rounded px-1.5 py-0.5 text-xs"
+            style={{ backgroundColor: `${label.color}22`, color: label.color }}
+          >
+            {label.name}
+          </span>
+        ))}
+        {story.assigneeName && (
+          <span
+            className="ml-auto flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-medium text-secondary-foreground"
+            title={story.assigneeName}
+          >
+            {initials(story.assigneeName)}
+          </span>
+        )}
+      </div>
     </>
   );
 

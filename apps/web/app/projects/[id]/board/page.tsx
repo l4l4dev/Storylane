@@ -54,7 +54,7 @@ export default async function BoardPage({
       supabase
         .from("stories")
         .select(
-          "id, title, description, story_type, state, points, position, iteration_id, epic_id, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+          "id, number, title, description, story_type, state, points, position, iteration_id, epic_id, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
         )
         .eq("project_id", id)
         .order("position", { ascending: true }),
@@ -89,6 +89,7 @@ export default async function BoardPage({
       const labelIds = story.story_labels.map((sl) => sl.label_id);
       const card: BoardStory & { labelIds: string[]; assignee_id: string | null } = {
         id: story.id,
+        number: story.number,
         title: story.title,
         description: story.description,
         story_type: story.story_type,

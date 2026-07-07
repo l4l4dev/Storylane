@@ -45,7 +45,7 @@ export default async function IterationsPage({
           supabase
             .from("stories")
             .select(
-              "id, title, description, story_type, state, points, position, iteration_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+              "id, number, title, description, story_type, state, points, position, iteration_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
             )
             .in("iteration_id", doneIds)
             .order("position", { ascending: true }),
@@ -58,6 +58,7 @@ export default async function IterationsPage({
     const assigneeProfile = Array.isArray(story.assignee) ? story.assignee[0] : story.assignee;
     const card: StoryCardData & { iteration_id: string | null } = {
       id: story.id,
+      number: story.number,
       title: story.title,
       description: story.description,
       story_type: story.story_type,
