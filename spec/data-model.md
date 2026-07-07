@@ -68,15 +68,21 @@ labels (
 ```
 
 ### backlog_dividers
-Freeform planning dividers for the List view's Backlog section (Task 15
-follow-up, 2026-07-07) — user-created labeled rows for grouping backlog
-stories, distinct from the automatic velocity-based "Iteration #N" markers
-(spec/velocity.md), which aren't stored rows at all.
+Freeform planning rows for the List view's Backlog section (Task 15
+follow-up, 2026-07-07) — user-created, deletable rows a PO can insert at any
+exact position in the backlog. Two kinds:
+- `note`: cosmetic label only, no effect on iteration numbering.
+- `iteration_break`: forces the current virtual iteration to close at this
+  exact point regardless of remaining velocity capacity (see
+  spec/velocity.md "Marker computation" and `lib/utils/iterations.ts`
+  "buildBacklogRows") — an escape hatch on top of the automatic,
+  velocity-based "Iteration #N" markers, which aren't stored rows at all.
 ```sql
 backlog_dividers (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
-  label      text NOT NULL,
+  label      text NOT NULL,             -- empty string allowed, mainly used by 'note'
+  kind       text NOT NULL DEFAULT 'note' CHECK (kind IN ('note', 'iteration_break')),
   position   int  NOT NULL DEFAULT 0,   -- shares one dense sequence with stories.position
                                         -- within the project's backlog (see spec/screens.md
                                         -- "Board layout: List view")

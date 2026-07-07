@@ -282,5 +282,26 @@ Tasks 6〜13 は Web → iOS の順で進める。
 - [ ] （任意フォロー）`backlog_dividers` を Realtime publication に追加（他ユーザーの区切り追加/削除の
       リアルタイム反映）。`apps/web/lib/supabase/realtime.ts` が別作業（通知機能）で編集中だったため今回は見送り
 
+### Web — 区切り挿入 UX 改善（2026-07-07 Mika フィードバック、上記コミット後）
+
+> フィードバック 3 点: ①区切りが末尾追加→ドラッグでしか置けず任意の場所に追加できない
+> ②次の Iteration の追加方法がわかりにくい（手動でも Iteration 区切りを挿入したい）
+> ③Add Story ボタンがストーリー行のように見えて主張が強く、アイテム群に集中できない
+
+- [x] ホバー挿入 UI: Backlog の行と行の間にホバーすると「+ Note / + Iteration break」ボタンが
+      現れ、その場に挿入できる（`board-list-view.tsx` の `InsertBetweenRows`。
+      `createBacklogDivider` に `before_item_id` を追加し、挿入位置で backlog 全体を再採番）
+- [x] 手動 Iteration 区切り: `backlog_dividers.kind`（`note`/`iteration_break`）を migration で追加
+      （rls-security-reviewer 実施・問題なし）。iteration break を置くとその位置で仮想 iteration が
+      強制的に閉じ、以降の番号が振り直される（`buildBacklogRows` を点数累積ウォークに書き換え。
+      自動境界線と同じ「Iteration #N」線で描画されるが、手動分はドラッグ・削除（✕）可能）
+- [x] Add Story を各セクションヘッダー内の小さなテキストリンクに変更
+      （`quick-add-composer.tsx` に `compact` prop。破線ボックスの Kanban 用表示は従来どおり）
+- [x] バグ修正: `board/page.tsx` の dividers クエリに `kind` 列が漏れており List 表示が壊れていた
+- [x] spec/screens.md「Board layout」を全面更新（List 既定・Kanban 縮小・挿入 UI・手動 break）、
+      spec/data-model.md に `kind` 列を追記
+- [ ] （Task 13 送り）dnd-kit の hydration mismatch 警告（`aria-describedby` の ID カウンタが
+      SSR/クライアントでずれる。aria 属性のみで機能への実害なし。dnd-kit 利用箇所全体の問題）
+
 ### iOS（Web 全タスク完了後に着手）
 - [ ] 検討事項なし（Web 確定後にスコープ確認）

@@ -168,8 +168,12 @@ function storyItem(story: Story): BacklogRowItem<Story> {
   return { kind: "story", story };
 }
 
-function dividerItem(id: string, label: string): BacklogRowItem<Story> {
-  return { kind: "divider", divider: { id, label } };
+function noteItem(id: string, label: string): BacklogRowItem<Story> {
+  return { kind: "divider", divider: { id, label, kind: "note" } };
+}
+
+function iterationBreakItem(id: string): BacklogRowItem<Story> {
+  return { kind: "divider", divider: { id, label: "", kind: "iteration_break" } };
 }
 
 describe("buildBacklogRows", () => {
@@ -184,13 +188,13 @@ describe("buildBacklogRows", () => {
     ]);
   });
 
-  it("passes dividers through at their own position without affecting point accounting", () => {
+  it("passes a note through at its own position without affecting point accounting", () => {
     const a = { id: "a", points: 5, story_type: "feature" };
     const b = { id: "b", points: 5, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), dividerItem("d1", "Phase 2"), storyItem(b)], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], 8, 3);
     expect(rows).toEqual([
       { kind: "story", story: a },
-      { kind: "divider", divider: { id: "d1", label: "Phase 2" } },
+      { kind: "note", divider: { id: "d1", label: "Phase 2", kind: "note" } },
       { kind: "iteration-marker", number: 4, points: 5 },
       { kind: "story", story: b },
     ]);
@@ -202,9 +206,45 @@ describe("buildBacklogRows", () => {
 
   it("emits no iteration marker when everything fits in the first group", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([dividerItem("d1", "Notes"), storyItem(a)], 8, 3);
+    const rows = buildBacklogRows([noteItem("d1", "Notes"), storyItem(a)], 8, 3);
     expect(rows).toEqual([
-      { kind: "divider", divider: { id: "d1", label: "Notes" } },
+      { kind: "note", divider: { id: "d1", label: "Notes", kind: "note" } },
+      { kind: "story", story: a },
+    ]);
+  });
+
+  it("forces a group boundary at a manual iteration break regardless of remaining capacity", () => {
+    const a = { id: "a", points: 1, story_type: "feature" };
+    const b = { id: "b", points: 1, story_type: "feature" };
+    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk"), storyItem(b)], 8, 3);
+    expect(rows).toEqual([
+      { kind: "story", story: a },
+      { kind: "iteration-marker", number: 4, points: 1, divider: { id: "brk", label: "", kind: "iteration_break" } },
+      { kind: "story", story: b },
+    ]);
+  });
+
+  it("a manual break right after an automatic split still advances the group number", () => {
+    const a = { id: "a", points: 5, story_type: "feature" };
+    const b = { id: "b", points: 5, story_type: "feature" };
+    const c = { id: "c", points: 1, story_type: "feature" };
+    // a+b exceed capacity 8 -> automatic split before b; then a manual break
+    // right after b forces a third group for c even though b+c (=6) would fit.
+    const rows = buildBacklogRows([storyItem(a), storyItem(b), iterationBreakItem("brk"), storyItem(c)], 8, 3);
+    expect(rows).toEqual([
+      { kind: "story", story: a },
+      { kind: "iteration-marker", number: 4, points: 5 },
+      { kind: "story", story: b },
+      { kind: "iteration-marker", number: 5, points: 5, divider: { id: "brk", label: "", kind: "iteration_break" } },
+      { kind: "story", story: c },
+    ]);
+  });
+
+  it("a break with nothing accumulated yet still renders as its own (empty) iteration", () => {
+    const a = { id: "a", points: 1, story_type: "feature" };
+    const rows = buildBacklogRows([iterationBreakItem("brk"), storyItem(a)], 8, 3);
+    expect(rows).toEqual([
+      { kind: "iteration-marker", number: 4, points: 0, divider: { id: "brk", label: "", kind: "iteration_break" } },
       { kind: "story", story: a },
     ]);
   });

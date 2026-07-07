@@ -65,7 +65,7 @@ export default async function BoardPage({
         .eq("project_id", id),
       // List view only (see components/features/board/board-list-view.tsx) —
       // freeform planning dividers for the Backlog section.
-      supabase.from("backlog_dividers").select("id, label, position").eq("project_id", id),
+      supabase.from("backlog_dividers").select("id, label, kind, position").eq("project_id", id),
     ]);
 
   const storyPositionById = new Map((stories ?? []).map((s) => [s.id, s.position]));
@@ -129,14 +129,18 @@ export default async function BoardPage({
   // render-ready order for the List view — only the server has both tables'
   // raw position values needed to interleave them correctly.
   const initialBacklogItems: BacklogRowItem<BoardStory>[] = [
-    ...initialContainers[BACKLOG_COLUMN_ID].map((card) => ({
-      position: storyPositionById.get(card.id) ?? 0,
-      item: { kind: "story", story: card } as BacklogRowItem<BoardStory>,
-    })),
-    ...(dividers ?? []).map((divider) => ({
-      position: divider.position,
-      item: { kind: "divider", divider: { id: divider.id, label: divider.label } } as BacklogRowItem<BoardStory>,
-    })),
+    ...initialContainers[BACKLOG_COLUMN_ID].map((card) => {
+      const item: BacklogRowItem<BoardStory> = { kind: "story", story: card };
+      return { position: storyPositionById.get(card.id) ?? 0, item };
+    }),
+    ...(dividers ?? []).map((divider) => {
+      const kind: "note" | "iteration_break" = divider.kind === "iteration_break" ? "iteration_break" : "note";
+      const item: BacklogRowItem<BoardStory> = {
+        kind: "divider",
+        divider: { id: divider.id, label: divider.label, kind },
+      };
+      return { position: divider.position, item };
+    }),
   ]
     .sort((a, b) => a.position - b.position)
     .map((entry) => entry.item);
