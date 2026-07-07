@@ -295,21 +295,7 @@ export async function dropStoryInList(formData: FormData) {
   }
 
   if (orderedItems.length > 0) {
-    const storyUpdates: { id: string; position: number }[] = [];
-    const dividerUpdates: { id: string; position: number }[] = [];
-    orderedItems.forEach((entry, position) => {
-      const separator = entry.indexOf(":");
-      const kind = entry.slice(0, separator);
-      const id = entry.slice(separator + 1);
-      (kind === "divider" ? dividerUpdates : storyUpdates).push({ id, position });
-    });
-
-    await Promise.all([
-      ...storyUpdates.map(({ id, position }) => supabase.from("stories").update({ position }).eq("id", id)),
-      ...dividerUpdates.map(({ id, position }) =>
-        supabase.from("backlog_dividers").update({ position }).eq("id", id),
-      ),
-    ]);
+    await persistBacklogOrder(supabase, orderedItems);
   }
 
   revalidatePath(`/projects/${projectId}/board`);
@@ -319,38 +305,94 @@ export async function dropStoryInList(formData: FormData) {
 }
 
 /**
- * Creates a freeform planning divider (see spec/screens.md "Board layout:
- * List view") at the end of the backlog — the PO then drags it to the
- * desired spot via the same reorder as any other backlog item
- * (`dropStoryInList`). Distinct from the automatic, velocity-based
- * "Iteration #N" markers, which aren't stored rows at all.
+ * Writes positions for a full ordered backlog sequence — `entries` are
+ * `"story:<id>"` / `"divider:<id>"` pairs, in final display order — to the
+ * right table per item. Shared by `dropStoryInList` (drag reorder) and
+ * `createBacklogDivider` (inserting a new row at an exact spot), since both
+ * need to resequence the *entire* zone together (see
+ * `lib/utils/iterations.ts` "buildBacklogRows": stories and dividers share
+ * one dense position sequence within the backlog).
+ */
+async function persistBacklogOrder(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  entries: ReadonlyArray<string>,
+) {
+  const storyUpdates: { id: string; position: number }[] = [];
+  const dividerUpdates: { id: string; position: number }[] = [];
+  entries.forEach((entry, position) => {
+    const separator = entry.indexOf(":");
+    const kind = entry.slice(0, separator);
+    const id = entry.slice(separator + 1);
+    (kind === "divider" ? dividerUpdates : storyUpdates).push({ id, position });
+  });
+
+  await Promise.all([
+    ...storyUpdates.map(({ id, position }) => supabase.from("stories").update({ position }).eq("id", id)),
+    ...dividerUpdates.map(({ id, position }) => supabase.from("backlog_dividers").update({ position }).eq("id", id)),
+  ]);
+}
+
+/**
+ * Fetches the backlog's current stories + dividers together, sorted by
+ * their shared position sequence — the same merge `board/page.tsx` does
+ * server-side to build the List view's initial row order (see
+ * `lib/utils/iterations.ts` "buildBacklogRows").
+ */
+async function fetchBacklogOrder(supabase: Awaited<ReturnType<typeof createClient>>, projectId: string) {
+  const [{ data: stories }, { data: dividers }] = await Promise.all([
+    supabase
+      .from("stories")
+      .select("id, position")
+      .eq("project_id", projectId)
+      .eq("state", "unstarted")
+      .is("iteration_id", null),
+    supabase.from("backlog_dividers").select("id, position").eq("project_id", projectId),
+  ]);
+
+  return [
+    ...(stories ?? []).map((s) => ({ kind: "story" as const, id: s.id, position: s.position })),
+    ...(dividers ?? []).map((d) => ({ kind: "divider" as const, id: d.id, position: d.position })),
+  ].sort((a, b) => a.position - b.position);
+}
+
+/**
+ * Creates a freeform planning row (see spec/screens.md "Board layout: List
+ * view") at an exact spot in the backlog — immediately before
+ * `before_item_id` (a `"story:<id>"` / `"divider:<id>"` pair), or at the end
+ * if omitted — rather than always appending and relying on a follow-up drag.
+ * `kind` distinguishes a cosmetic `note` (needs a label) from an
+ * `iteration_break` (forces a velocity-group boundary there, see
+ * `lib/utils/iterations.ts` "buildBacklogRows"; no label required).
  */
 export async function createBacklogDivider(formData: FormData) {
   const projectId = String(formData.get("project_id"));
   const label = String(formData.get("label") ?? "").trim();
+  const kind = String(formData.get("kind") ?? "note") as "note" | "iteration_break";
+  const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
 
-  if (!label) {
+  if (kind === "note" && !label) {
     return;
   }
 
   const supabase = await createClient();
+  const merged = await fetchBacklogOrder(supabase, projectId);
 
-  const [{ data: stories }, { data: dividers }] = await Promise.all([
-    supabase
-      .from("stories")
-      .select("position")
-      .eq("project_id", projectId)
-      .eq("state", "unstarted")
-      .is("iteration_id", null),
-    supabase.from("backlog_dividers").select("position").eq("project_id", projectId),
-  ]);
+  const { data: created, error: insertError } = await supabase
+    .from("backlog_dividers")
+    .insert({ project_id: projectId, label, kind, position: merged.length })
+    .select("id")
+    .single();
 
-  const position = nextPosition([...(stories ?? []), ...(dividers ?? [])]);
-
-  const { error } = await supabase.from("backlog_dividers").insert({ project_id: projectId, label, position });
-  if (error) {
-    throw new Error(error.message);
+  if (insertError || !created) {
+    throw new Error(insertError?.message ?? "Failed to create divider");
   }
+
+  const beforeIndex = beforeItemId ? merged.findIndex((item) => `${item.kind}:${item.id}` === beforeItemId) : -1;
+  const insertAt = beforeIndex >= 0 ? beforeIndex : merged.length;
+  const ordered = merged.map((item) => `${item.kind}:${item.id}`);
+  ordered.splice(insertAt, 0, `divider:${created.id}`);
+
+  await persistBacklogOrder(supabase, ordered);
 
   revalidatePath(`/projects/${projectId}/board`);
 }

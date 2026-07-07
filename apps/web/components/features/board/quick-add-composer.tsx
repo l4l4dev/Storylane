@@ -12,12 +12,19 @@ export type QuickAddTarget = "backlog" | "icebox" | "unstarted";
 // story with defaults and keeps the composer open for consecutive adds;
 // Esc (or blurring while empty) closes it. No modal, no navigation —
 // every other field is edited afterwards in the story detail.
+//
+// `compact` (List view — Task 15 follow-up) renders a small text link
+// instead of the full dashed box: in a continuous list of rows, a
+// full-width "story-shaped" button competed for attention with the actual
+// stories, so List view's sections place this in the header instead.
 export function QuickAddComposer({
   projectId,
   target,
+  compact = false,
 }: {
   projectId: string;
   target: QuickAddTarget;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -51,6 +58,18 @@ export function QuickAddComposer({
   }
 
   if (!open) {
+    if (compact) {
+      return (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Plus className="size-3.5" aria-hidden />
+          Add story
+        </button>
+      );
+    }
     return (
       <button
         type="button"
@@ -64,7 +83,7 @@ export function QuickAddComposer({
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className={compact ? "max-w-64" : undefined}>
       <Input
         ref={inputRef}
         autoFocus
@@ -78,7 +97,7 @@ export function QuickAddComposer({
         }}
         placeholder="Story title — Enter to add"
         aria-label="New story title"
-        className="h-8 bg-card"
+        className={compact ? "h-7 bg-card text-xs" : "h-8 bg-card"}
       />
     </form>
   );

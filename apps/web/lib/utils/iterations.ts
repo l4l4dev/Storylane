@@ -2,7 +2,6 @@
 // Dates are handled as plain "YYYY-MM-DD" strings (matching the DB `date`
 // type) to avoid local-timezone drift when comparing against "today".
 
-import { sumPoints } from "./board";
 import { storyTypeUsesPoints } from "./stories";
 
 const MS_PER_DAY = 86_400_000;
@@ -120,51 +119,66 @@ export function splitBacklogIntoVirtualIterations<T extends BacklogStoryForMarke
   return groups;
 }
 
-export type BacklogDivider = { id: string; label: string };
+// Two kinds of freeform backlog row (Task 15 follow-up: `backlog_dividers`).
+// `note` is purely cosmetic. `iteration_break` forces a velocity-group
+// boundary at that exact point — an escape hatch on top of the automatic,
+// capacity-based split below, for when the PO wants "iteration 2 ends here"
+// regardless of remaining points.
+export type BacklogDivider = { id: string; label: string; kind: "note" | "iteration_break" };
 
 export type BacklogRowItem<T> = { kind: "story"; story: T } | { kind: "divider"; divider: BacklogDivider };
 
 export type BacklogRow<T> =
   | { kind: "story"; story: T }
-  | { kind: "divider"; divider: BacklogDivider }
-  | { kind: "iteration-marker"; number: number; points: number };
+  | { kind: "note"; divider: BacklogDivider }
+  // `divider` is set only for a manually-placed break (so the UI can offer
+  // to delete it) — absent for an automatic, capacity-triggered one.
+  | { kind: "iteration-marker"; number: number; points: number; divider?: BacklogDivider };
 
 /**
- * Interleaves the backlog's stories and freeform planning dividers (Task 15
- * follow-up: `backlog_dividers` — user-created labeled rows for grouping,
- * distinct from the automatic markers below) into one render-ready row
- * sequence, inserting the velocity-based "Iteration #N" markers at the point
- * where a story crosses into the next virtual iteration (see
- * `splitBacklogIntoVirtualIterations`). Dividers never affect point
- * accounting — they pass through at their own position unchanged.
+ * Interleaves the backlog's stories and freeform rows (Task 15 follow-up)
+ * into one render-ready row sequence. Walks the list accumulating points
+ * per virtual iteration exactly like `splitBacklogIntoVirtualIterations`,
+ * but a `note` passes through untouched (no effect on the count) and an
+ * `iteration_break` unconditionally closes the current group, whether or
+ * not the automatic capacity would have triggered a split there.
  */
 export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string }>(
   items: ReadonlyArray<BacklogRowItem<T>>,
   velocity: number,
   startingIterationNumber: number,
 ): BacklogRow<T>[] {
-  const stories = items.flatMap((item) => (item.kind === "story" ? [item.story] : []));
-  const groups = splitBacklogIntoVirtualIterations(stories, velocity);
-  const groupIndexById = new Map<string, number>();
-  groups.forEach((group, index) => {
-    for (const story of group) {
-      groupIndexById.set(story.id, index);
-    }
-  });
-
+  const capacity = Math.max(velocity, 1);
   const rows: BacklogRow<T>[] = [];
-  let lastGroupIndex = 0;
+  let groupIndex = 0;
+  let sum = 0;
+  let groupHasItem = false;
+
+  function closeGroup(divider?: BacklogDivider) {
+    groupIndex += 1;
+    rows.push({ kind: "iteration-marker", number: startingIterationNumber + groupIndex, points: sum, divider });
+    sum = 0;
+    groupHasItem = false;
+  }
+
   for (const item of items) {
     if (item.kind === "divider") {
-      rows.push({ kind: "divider", divider: item.divider });
+      if (item.divider.kind === "note") {
+        rows.push({ kind: "note", divider: item.divider });
+      } else {
+        closeGroup(item.divider);
+      }
       continue;
     }
-    const groupIndex = groupIndexById.get(item.story.id) ?? 0;
-    for (let g = lastGroupIndex + 1; g <= groupIndex; g++) {
-      rows.push({ kind: "iteration-marker", number: startingIterationNumber + g, points: sumPoints(groups[g] ?? []) });
+
+    const cost = storyTypeUsesPoints(item.story.story_type) ? item.story.points ?? 0 : 0;
+    if (groupHasItem && sum + cost > capacity) {
+      closeGroup();
     }
-    lastGroupIndex = Math.max(lastGroupIndex, groupIndex);
     rows.push({ kind: "story", story: item.story });
+    sum += cost;
+    groupHasItem = true;
   }
+
   return rows;
 }
