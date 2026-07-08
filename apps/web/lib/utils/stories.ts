@@ -90,20 +90,23 @@ type FilterableStory = {
   labelIds?: ReadonlyArray<string>;
 };
 
+/** Whether a single story matches type/assignee/label criteria. Empty/undefined criteria match everything. */
+export function matchesStoryFilter<T extends FilterableStory>(story: T, filter: StoryFilter): boolean {
+  if (filter.type && story.story_type !== filter.type) {
+    return false;
+  }
+  if (filter.assigneeId && story.assignee_id !== filter.assigneeId) {
+    return false;
+  }
+  if (filter.labelId && !(story.labelIds ?? []).includes(filter.labelId)) {
+    return false;
+  }
+  return true;
+}
+
 /** Filters by story type, assignee, and label. Empty/undefined criteria match everything. */
 export function filterStories<T extends FilterableStory>(stories: ReadonlyArray<T>, filter: StoryFilter): T[] {
-  return stories.filter((story) => {
-    if (filter.type && story.story_type !== filter.type) {
-      return false;
-    }
-    if (filter.assigneeId && story.assignee_id !== filter.assigneeId) {
-      return false;
-    }
-    if (filter.labelId && !(story.labelIds ?? []).includes(filter.labelId)) {
-      return false;
-    }
-    return true;
-  });
+  return stories.filter((story) => matchesStoryFilter(story, filter));
 }
 
 /**

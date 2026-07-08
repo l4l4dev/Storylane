@@ -16,7 +16,6 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -24,7 +23,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Snowflake, X } from "lucide-react";
 import { createBacklogDivider, deleteBacklogDivider, dropStoryInList } from "@/app/projects/[id]/board/actions";
-import { findContainer, storyById, sumPoints } from "@/lib/utils/board";
+import { findContainer, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
 import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
@@ -34,6 +33,7 @@ import {
   type ListZoneId,
 } from "@/lib/utils/kanban";
 import { buildBacklogRows, type BacklogDivider, type BacklogRow, type BacklogRowItem } from "@/lib/utils/iterations";
+import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QuickAddComposer } from "./quick-add-composer";
@@ -379,12 +379,17 @@ function BacklogSection({
   velocity,
   startingIterationNumber,
   projectId,
+  filter,
   composer,
 }: {
+  // Full, unfiltered backlog (stories + dividers) — TASK-20: the virtual-
+  // iteration groups/point sums/dates below must reflect the true backlog
+  // regardless of `filter`, which only decides which *rows* get rendered.
   items: ListItem[];
   velocity: number;
   startingIterationNumber: number;
   projectId: string;
+  filter: StoryFilter;
   composer?: ReactNode;
 }) {
   const { setNodeRef } = useDroppable({ id: BACKLOG_COLUMN_ID });
@@ -393,6 +398,9 @@ function BacklogSection({
     item.kind === "story" ? { kind: "story", story: item.story } : { kind: "divider", divider: item.divider },
   );
   const rows = buildBacklogRows(rowItems, velocity, startingIterationNumber);
+  const visibleIds = items
+    .filter((item) => item.kind !== "story" || matchesStoryFilter(item.story, filter))
+    .map((item) => item.id);
 
   return (
     <section className="flex flex-col gap-2">
@@ -401,14 +409,14 @@ function BacklogSection({
         {composer}
         <span className="h-px flex-1 bg-border" />
       </header>
-      <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+      <SortableContext items={visibleIds} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-10 flex-col gap-1.5">
           <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, 0)} />
           {rows.map((row, index) => (
             <Fragment key={rowKey(row, index)}>
               {row.kind === "iteration-marker" && !row.divider ? (
                 <IterationMarkerRow number={row.number} points={row.points} />
-              ) : (
+              ) : row.kind === "story" && !matchesStoryFilter(row.story, filter) ? null : (
                 <SortableBacklogRow row={row} projectId={projectId} />
               )}
               <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
@@ -465,9 +473,11 @@ export function BoardListView({
   velocity,
   nextVirtualIterationNumber,
   showIcebox,
+  filter,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
+  // Unfiltered (TASK-20) — see `filter` below, applied only at render.
   initialContainers: Record<string, BoardStory[]>;
   // Backlog stories and freeform planning rows, pre-merged and ordered
   // server-side (see board/page.tsx) since only the server has both tables'
@@ -476,6 +486,7 @@ export function BoardListView({
   velocity: number;
   nextVirtualIterationNumber: number;
   showIcebox: boolean;
+  filter: StoryFilter;
 }) {
   const [containers, setContainers] = useState(() => toListItemContainers(initialContainers, initialBacklogItems));
   const [synced, setSynced] = useState(initialContainers);
@@ -567,11 +578,12 @@ export function BoardListView({
       return;
     }
 
+    // Reorders against the *full* zone (containers), not just what's
+    // rendered under the active filter — active.id/over.id always belong to
+    // visible rows, but relocating them within the full list is what keeps a
+    // hidden row's relative position intact (TASK-20).
     const items = containers[overContainer];
-    const oldIndex = items.findIndex((item) => item.id === active.id);
-    const newIndex = items.findIndex((item) => item.id === over.id);
-    const reordered =
-      oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex ? arrayMove(items, oldIndex, newIndex) : items;
+    const reordered = reorderContainer(items, String(active.id), String(over.id));
 
     setContainers((prev) => ({ ...prev, [overContainer]: reordered }));
 
@@ -590,8 +602,16 @@ export function BoardListView({
   const iceboxItems = containers[ICEBOX_COLUMN_ID] ?? [];
   const currentItems = containers.current ?? [];
   const backlogItems = containers[BACKLOG_COLUMN_ID] ?? [];
+  // Point sum uses the full (unfiltered) current-zone items (TASK-20) — the
+  // iteration bar's committed points must not shift with the active filter.
   const currentStoryItems = currentItems.filter((item): item is Extract<ListItem, { kind: "story" }> => item.kind === "story");
   const activeItem = activeId ? storyById(containers, activeId) : undefined;
+
+  // Rendered (visible) views only — passed to the presentational sections
+  // below; `containers` itself (above) stays the full, unfiltered set.
+  const isVisible = (item: ListItem) => item.kind !== "story" || matchesStoryFilter(item.story, filter);
+  const visibleCurrentItems = currentItems.filter(isVisible);
+  const visibleIceboxItems = iceboxItems.filter(isVisible);
 
   return (
     <DndContext
@@ -613,7 +633,7 @@ export function BoardListView({
                 {sumPoints(currentStoryItems.map((item) => item.story))} pts
               </span>
             }
-            items={currentItems}
+            items={visibleCurrentItems}
             projectId={projectId}
             composer={<QuickAddComposer projectId={projectId} target="unstarted" compact />}
           />
@@ -623,11 +643,12 @@ export function BoardListView({
             velocity={velocity}
             startingIterationNumber={nextVirtualIterationNumber}
             projectId={projectId}
+            filter={filter}
             composer={<QuickAddComposer projectId={projectId} target="backlog" compact />}
           />
         </div>
 
-        {showIcebox && <IceboxColumn items={iceboxItems} projectId={projectId} />}
+        {showIcebox && <IceboxColumn items={visibleIceboxItems} projectId={projectId} />}
       </div>
 
       <DragOverlay>
