@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Storylane",
-  description: "Agile project management, inspired by Pivotal Tracker.",
+  description: "Agile project management with backlog, iterations, and velocity tracking.",
 };
 
 export default function RootLayout({

@@ -45,7 +45,7 @@ export function StoryDetailPanel({
     <div className="flex flex-col gap-4">
       {/* Task 14: free-mode projects have no state machine — the status is
           a plain select in the form below instead of transition buttons. */}
-      {detail.workflowMode === "pivotal" && (
+      {detail.workflowMode === "tracker" && (
         <TransitionButtons
           storyId={detail.id}
           projectId={detail.projectId}
