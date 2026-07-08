@@ -630,9 +630,19 @@ export async function ensureCurrentIteration(projectId: string) {
     );
     const number = nextIterationNumber(latest ? [latest] : []);
 
+    // Task 9: a goal set on the Backlog's virtual-iteration group header
+    // (spec/screens.md "Backlog groups") for this number, if any, is adopted
+    // straight into the new row instead of a separate update.
+    const { data: pendingGoal } = await supabase
+      .from("iteration_goals")
+      .select("goal")
+      .eq("project_id", projectId)
+      .eq("number", number)
+      .maybeSingle();
+
     const { data: nextIteration, error } = await supabase
       .from("iterations")
-      .insert({ project_id: projectId, number, start_date, end_date })
+      .insert({ project_id: projectId, number, start_date, end_date, goal: pendingGoal?.goal ?? null })
       .select("id")
       .single();
 
@@ -649,6 +659,27 @@ export async function ensureCurrentIteration(projectId: string) {
     }
 
     after(() => notifySlack(projectId, iterationStartedMessage(number, start_date, end_date)));
+
+    if (pendingGoal) {
+      // Cleanup only — the goal is already on the new row above, so this
+      // failing must never fail the rollover itself. iteration_goals write
+      // policies require owner/member (spec/rls.md), so a rollover
+      // triggered by a *viewer's* page load can't delete this row — a
+      // known, temporary gap closed once Task 10's SECURITY DEFINER
+      // finalization RPC runs this same adoption with elevated
+      // permissions. An orphaned row here is harmless: the UI never shows
+      // a goal for a number at or below the current iteration, and the
+      // iteration_goals_check_number trigger stops it from ever being
+      // rewritten onto a still-future number either.
+      const { error: deleteError } = await supabase
+        .from("iteration_goals")
+        .delete()
+        .eq("project_id", projectId)
+        .eq("number", number);
+      if (deleteError) {
+        console.error(`Failed to delete adopted iteration_goals row (#${number}):`, deleteError.message);
+      }
+    }
 
     if (nextIteration && carryStoryIds.length > 0) {
       await Promise.all(
@@ -673,4 +704,29 @@ export async function updateIterationGoal(formData: FormData) {
   }
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);
+}
+
+/**
+ * Sets or clears the goal for a *virtual* (not-yet-real) future iteration,
+ * edited inline on its Backlog group header (Task 9, spec/screens.md
+ * "Backlog groups"). `iteration_goals.goal` is NOT NULL, so an empty commit
+ * deletes the row outright rather than storing an empty string — adopted
+ * into the real `iterations.goal` on rollover (see `ensureCurrentIteration`
+ * above) once that number's row is created.
+ */
+export async function upsertIterationGoal(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const number = Number(formData.get("number"));
+  const goal = String(formData.get("goal") ?? "").trim();
+
+  const supabase = await createClient();
+
+  const { error } = goal
+    ? await supabase.from("iteration_goals").upsert({ project_id: projectId, number, goal })
+    : await supabase.from("iteration_goals").delete().eq("project_id", projectId).eq("number", number);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/board`);
 }

@@ -277,6 +277,35 @@ export type Database = {
           },
         ]
       }
+      iteration_goals: {
+        Row: {
+          goal: string
+          number: number
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          goal: string
+          number: number
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          goal?: string
+          number?: number
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "iteration_goals_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       iterations: {
         Row: {
           created_at: string

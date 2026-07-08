@@ -6,6 +6,7 @@ import {
   isIterationEditable,
   nextIterationDates,
   nextIterationNumber,
+  projectedIterationDates,
   splitBacklogIntoVirtualIterations,
   type BacklogRowItem,
 } from "./iterations";
@@ -177,25 +178,31 @@ function iterationBreakItem(id: string): BacklogRowItem<Story> {
 }
 
 describe("buildBacklogRows", () => {
-  it("inserts an iteration marker only when a story crosses into the next group", () => {
+  // TASK-9: every group renders under its own header, starting at
+  // current+1 — replaces the old boundary-marker-after-the-group scheme,
+  // where the first group had no label at all (spec/screens.md "Backlog
+  // groups").
+  it("headers every group, including the first, with its own number and point sum", () => {
     const a = { id: "a", points: 5, story_type: "feature" };
     const b = { id: "b", points: 5, story_type: "feature" };
     const rows = buildBacklogRows([storyItem(a), storyItem(b)], 8, 3);
     expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 5 },
       { kind: "story", story: a },
-      { kind: "iteration-marker", number: 4, points: 5 },
+      { kind: "iteration-header", number: 4, points: 5 },
       { kind: "story", story: b },
     ]);
   });
 
-  it("passes a note through at its own position without affecting point accounting", () => {
+  it("passes a note through inside whichever group it falls in, without affecting point accounting", () => {
     const a = { id: "a", points: 5, story_type: "feature" };
     const b = { id: "b", points: 5, story_type: "feature" };
     const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], 8, 3);
     expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 5 },
       { kind: "story", story: a },
       { kind: "note", divider: { id: "d1", label: "Phase 2", kind: "note" } },
-      { kind: "iteration-marker", number: 4, points: 5 },
+      { kind: "iteration-header", number: 4, points: 5 },
       { kind: "story", story: b },
     ]);
   });
@@ -204,10 +211,11 @@ describe("buildBacklogRows", () => {
     expect(buildBacklogRows([], 8, 3)).toEqual([]);
   });
 
-  it("emits no iteration marker when everything fits in the first group", () => {
+  it("still headers a single group that never splits, numbered current+1", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
     const rows = buildBacklogRows([noteItem("d1", "Notes"), storyItem(a)], 8, 3);
     expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 1 },
       { kind: "note", divider: { id: "d1", label: "Notes", kind: "note" } },
       { kind: "story", story: a },
     ]);
@@ -218,13 +226,15 @@ describe("buildBacklogRows", () => {
     const b = { id: "b", points: 1, story_type: "feature" };
     const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk"), storyItem(b)], 8, 3);
     expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 1 },
       { kind: "story", story: a },
-      { kind: "iteration-marker", number: 4, points: 1, divider: { id: "brk", label: "", kind: "iteration_break" } },
+      { kind: "iteration-break", divider: { id: "brk", label: "", kind: "iteration_break" } },
+      { kind: "iteration-header", number: 4, points: 1 },
       { kind: "story", story: b },
     ]);
   });
 
-  it("a manual break right after an automatic split still advances the group number", () => {
+  it("a manual break right after an automatic split still advances the group number, and the trailing group also gets a header", () => {
     const a = { id: "a", points: 5, story_type: "feature" };
     const b = { id: "b", points: 5, story_type: "feature" };
     const c = { id: "c", points: 1, story_type: "feature" };
@@ -232,20 +242,87 @@ describe("buildBacklogRows", () => {
     // right after b forces a third group for c even though b+c (=6) would fit.
     const rows = buildBacklogRows([storyItem(a), storyItem(b), iterationBreakItem("brk"), storyItem(c)], 8, 3);
     expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 5 },
       { kind: "story", story: a },
-      { kind: "iteration-marker", number: 4, points: 5 },
+      { kind: "iteration-header", number: 4, points: 5 },
       { kind: "story", story: b },
-      { kind: "iteration-marker", number: 5, points: 5, divider: { id: "brk", label: "", kind: "iteration_break" } },
+      { kind: "iteration-break", divider: { id: "brk", label: "", kind: "iteration_break" } },
+      { kind: "iteration-header", number: 5, points: 1 },
       { kind: "story", story: c },
     ]);
   });
 
-  it("a break with nothing accumulated yet still renders as its own (empty) iteration", () => {
+  it("a break with nothing accumulated yet still renders its own (empty) header before the break row", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
     const rows = buildBacklogRows([iterationBreakItem("brk"), storyItem(a)], 8, 3);
     expect(rows).toEqual([
-      { kind: "iteration-marker", number: 4, points: 0, divider: { id: "brk", label: "", kind: "iteration_break" } },
+      { kind: "iteration-header", number: 3, points: 0 },
+      { kind: "iteration-break", divider: { id: "brk", label: "", kind: "iteration_break" } },
+      { kind: "iteration-header", number: 4, points: 1 },
       { kind: "story", story: a },
     ]);
+  });
+
+  it("numbering has no gaps across multiple automatic and manual splits", () => {
+    const a = { id: "a", points: 1, story_type: "feature" };
+    const b = { id: "b", points: 1, story_type: "feature" };
+    const c = { id: "c", points: 1, story_type: "feature" };
+    const rows = buildBacklogRows(
+      [storyItem(a), iterationBreakItem("brk1"), storyItem(b), iterationBreakItem("brk2"), storyItem(c)],
+      1,
+      3,
+    );
+    const numbers = rows.filter((r) => r.kind === "iteration-header").map((r) => r.number);
+    expect(numbers).toEqual([3, 4, 5]);
+  });
+
+  // A manual break as the very last item still opens a (possibly empty)
+  // group after it, symmetric with a *leading* break's empty group before
+  // it — otherwise dropping a break at the bottom of the backlog would look
+  // like it did nothing, and there'd be no header to drop the next story
+  // under.
+  it("a manual break as the very last item still renders an (empty) header for the group after it", () => {
+    const a = { id: "a", points: 1, story_type: "feature" };
+    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk")], 8, 3);
+    expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 1 },
+      { kind: "story", story: a },
+      { kind: "iteration-break", divider: { id: "brk", label: "", kind: "iteration_break" } },
+      { kind: "iteration-header", number: 4, points: 0 },
+    ]);
+  });
+
+  it("consecutive manual breaks each still get their own (empty) header", () => {
+    const rows = buildBacklogRows([iterationBreakItem("brk1"), iterationBreakItem("brk2")], 8, 3);
+    expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 0 },
+      { kind: "iteration-break", divider: { id: "brk1", label: "", kind: "iteration_break" } },
+      { kind: "iteration-header", number: 4, points: 0 },
+      { kind: "iteration-break", divider: { id: "brk2", label: "", kind: "iteration_break" } },
+      { kind: "iteration-header", number: 5, points: 0 },
+    ]);
+  });
+});
+
+describe("projectedIterationDates", () => {
+  it("offset 1 starts the day after the current iteration ends", () => {
+    expect(projectedIterationDates("2026-07-20", 14, 1)).toEqual({
+      start_date: "2026-07-21",
+      end_date: "2026-08-03",
+    });
+  });
+
+  it("later offsets stack full iteration lengths after the first", () => {
+    expect(projectedIterationDates("2026-07-20", 14, 2)).toEqual({
+      start_date: "2026-08-04",
+      end_date: "2026-08-17",
+    });
+  });
+
+  it("handles month/year boundaries", () => {
+    expect(projectedIterationDates("2026-12-28", 7, 1)).toEqual({
+      start_date: "2026-12-29",
+      end_date: "2027-01-04",
+    });
   });
 });

@@ -32,7 +32,7 @@ export default async function BoardPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, velocity_window, workflow_mode")
+    .select("id, name, velocity_window, workflow_mode, iteration_length")
     .eq("id", id)
     .single();
 
@@ -53,7 +53,7 @@ export default async function BoardPage({
   // iterations query below.
   await ensureCurrentIteration(project.id);
 
-  const [{ data: iterations }, { data: stories }, { data: labels }, { data: members }, { data: dividers }] =
+  const [{ data: iterations }, { data: stories }, { data: labels }, { data: members }, { data: dividers }, { data: pendingGoals }] =
     await Promise.all([
       supabase
         .from("iterations")
@@ -75,6 +75,12 @@ export default async function BoardPage({
       // List view only (see components/features/board/board-list-view.tsx) —
       // freeform planning dividers for the Backlog section.
       supabase.from("backlog_dividers").select("id, label, kind, position").eq("project_id", id),
+      // Draft goals for virtual (not-yet-real) future iterations, edited
+      // inline on the Backlog's group headers (Task 9). Small table (at
+      // most one row per virtual iteration with a goal set) — cheaper to
+      // fetch everything and filter to `number > currentIteration.number`
+      // below than to await `currentIteration` first for a second query.
+      supabase.from("iteration_goals").select("number, goal").eq("project_id", id),
     ]);
 
   const storyPositionById = new Map((stories ?? []).map((s) => [s.id, s.position]));
@@ -167,6 +173,16 @@ export default async function BoardPage({
   const nextVirtualIterationNumber =
     allIterations.reduce((max, iteration) => Math.max(max, iteration.number), 0) + 1;
 
+  // Ignore any row at or below the current iteration's number (the UI never
+  // shows one — see the iteration_goals_check_number DB trigger, which stops
+  // new/updated rows from landing there but doesn't retroactively clean up
+  // one a rollover already adopted and could not delete under plain RLS).
+  const iterationGoals = Object.fromEntries(
+    (pendingGoals ?? [])
+      .filter((row) => row.number > (currentIteration?.number ?? 0))
+      .map((row) => [row.number, row.goal]),
+  );
+
   const assigneeOptions = (members ?? []).map((m) => {
     const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
     return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
@@ -191,6 +207,8 @@ export default async function BoardPage({
         initialBacklogItems={initialBacklogItems}
         velocity={currentVelocity}
         nextVirtualIterationNumber={nextVirtualIterationNumber}
+        iterationLength={project.iteration_length}
+        iterationGoals={iterationGoals}
         filter={filter}
         toolbar={
           <BoardFilters
