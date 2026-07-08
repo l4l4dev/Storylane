@@ -17,7 +17,10 @@ import type { StoryCardData } from "./story-card";
 export { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID };
 
 // Card data plus the fields the drop validation needs (see lib/utils/kanban).
-export type BoardStory = StoryCardData & { iteration_id: string | null };
+// `position` is the shared cross-state ordinal the List view's current zone
+// sorts on (TASK-21) — it's meaningless for the Kanban view's own per-column
+// order, which never reads it.
+export type BoardStory = StoryCardData & { iteration_id: string | null; position: number };
 
 export type IterationMeta = {
   id: string;

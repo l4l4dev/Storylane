@@ -28,8 +28,8 @@ import { findContainer, storyById, sumPoints } from "@/lib/utils/board";
 import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
-  STATE_COLUMNS,
   evaluateListDrop,
+  flattenCurrentZone,
   zoneForStory,
   type ListZoneId,
 } from "@/lib/utils/kanban";
@@ -60,7 +60,11 @@ function toListItemContainers(
 ): Record<string, ListItem[]> {
   return {
     [ICEBOX_COLUMN_ID]: (source[ICEBOX_COLUMN_ID] ?? []).map(wrapStory),
-    current: STATE_COLUMNS.flatMap((column) => source[column] ?? []).map(wrapStory),
+    // Flattened by `position`, not by state (TASK-21) — the List view's
+    // current zone is one flat, priority-ordered list spanning every state
+    // (see spec/screens.md "List view"); concatenating the physical Kanban
+    // columns in state order would bucket by state instead.
+    current: flattenCurrentZone(source).map(wrapStory),
     [BACKLOG_COLUMN_ID]: backlogItems.map((item) =>
       item.kind === "story" ? wrapStory(item.story) : { kind: "divider", id: item.divider.id, divider: item.divider },
     ),
