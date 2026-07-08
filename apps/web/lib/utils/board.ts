@@ -86,3 +86,29 @@ export function storyById<T extends { id: string }>(
   }
   return undefined;
 }
+
+/**
+ * Moves the item `activeId` to sit where `overId` currently sits — the same
+ * single-element relocation dnd-kit's own `arrayMove` performs (replicated
+ * here to keep this module framework-free), exposed as a pure helper so
+ * callers always run it against a container's *full*, unfiltered item list
+ * (TASK-20). `activeId`/`overId` only ever come from currently-rendered
+ * (visible) rows, but indexing into the full list still finds them
+ * correctly, and relocating just the dragged item leaves every other item —
+ * hidden by an active filter or not — in the same relative order, so no two
+ * rows can ever collide on the dense position written afterwards.
+ */
+export function reorderContainer<T extends { id: string }>(
+  items: ReadonlyArray<T>,
+  activeId: string,
+  overId: string,
+): T[] {
+  const oldIndex = items.findIndex((item) => item.id === activeId);
+  const newIndex = items.findIndex((item) => item.id === overId);
+  if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
+    return [...items];
+  }
+  const result = items.slice();
+  result.splice(newIndex, 0, result.splice(oldIndex, 1)[0]);
+  return result;
+}

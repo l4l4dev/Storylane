@@ -16,7 +16,6 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -32,8 +31,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { dropStory } from "@/app/projects/[id]/board/actions";
-import { findContainer, storyById, sumPoints } from "@/lib/utils/board";
+import { findContainer, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
 import { STATE_COLUMNS, columnForStory, evaluateDrop, type KanbanColumnId, type StateColumnId } from "@/lib/utils/kanban";
+import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard } from "./story-card";
 import type { BoardStory, IterationMeta } from "./kanban-board";
@@ -169,12 +169,16 @@ export function KanbanColumnsBoard({
   projectId,
   currentIteration,
   initialContainers,
+  filter,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
   // Keyed by KanbanColumnId: only the state-column buckets are read here —
   // this same object's backlog/icebox buckets are what `BoardListView` reads.
+  // Unfiltered (TASK-20) — see `visibleContainers` below for the rendered,
+  // filtered view.
   initialContainers: Record<string, BoardStory[]>;
+  filter: StoryFilter;
 }) {
   // Local order so drops/reorders reflect instantly; server revalidation
   // re-syncs via props afterwards. Reset during render when the prop changes
@@ -187,6 +191,14 @@ export function KanbanColumnsBoard({
   if (synced !== initialContainers) {
     setSynced(initialContainers);
     setContainers(initialContainers);
+  }
+
+  // Rendered (visible) view only — `containers` itself stays the full,
+  // unfiltered set so drag math (below) and the top bar's committed points
+  // (KanbanBoard) never depend on which filter is active (TASK-20).
+  const visibleContainers: Record<string, BoardStory[]> = {};
+  for (const [column, stories] of Object.entries(containers)) {
+    visibleContainers[column] = stories.filter((story) => matchesStoryFilter(story, filter));
   }
 
   const sensors = useSensors(
@@ -265,18 +277,12 @@ export function KanbanColumnsBoard({
       return;
     }
 
+    // Reorders against the *full* column (containers), not just what's
+    // rendered under the active filter — active.id/over.id always belong to
+    // visible rows, but relocating them within the full list is what keeps a
+    // hidden row's relative position intact (TASK-20).
     const items = containers[overContainer];
-    const oldIndex = items.findIndex((s) => s.id === active.id);
-    const newIndex = items.findIndex((s) => s.id === over.id);
-    // oldIndex can be -1 if `containers` hasn't caught up with the latest
-    // active/over pair yet (rapid pointer events during onDragOver's own state
-    // updates). arrayMove treats negative indices as wrap-around rather than a
-    // no-op, so guard against it explicitly instead of silently relocating an
-    // unrelated story.
-    const reordered =
-      oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex
-        ? arrayMove(items, oldIndex, newIndex)
-        : items;
+    const reordered = reorderContainer(items, String(active.id), String(over.id));
 
     setContainers((prev) => ({ ...prev, [overContainer]: reordered }));
 
@@ -290,7 +296,9 @@ export function KanbanColumnsBoard({
     });
   }
 
-  const showRejected = (containers.rejected ?? []).length > 0;
+  // Based on the visible set — an empty column that only has content hidden
+  // by the active filter shouldn't clutter the board (TASK-20).
+  const showRejected = (visibleContainers.rejected ?? []).length > 0;
   const activeStory = activeId ? storyById(containers, activeId) : undefined;
 
   return (
@@ -308,7 +316,7 @@ export function KanbanColumnsBoard({
           <KanbanColumn
             key={column}
             columnId={column}
-            stories={containers[column] ?? []}
+            stories={visibleContainers[column] ?? []}
             composer={
               column === "unstarted" ? (
                 <QuickAddComposer projectId={projectId} target="unstarted" />
@@ -317,7 +325,7 @@ export function KanbanColumnsBoard({
           >
             <DroppableStoryList
               containerId={column}
-              stories={containers[column] ?? []}
+              stories={visibleContainers[column] ?? []}
               projectId={projectId}
             />
           </KanbanColumn>

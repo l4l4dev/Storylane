@@ -96,7 +96,7 @@ export default async function BoardPage({
     .map((story) => {
       const assigneeProfile = Array.isArray(story.assignee) ? story.assignee[0] : story.assignee;
       const labelIds = story.story_labels.map((sl) => sl.label_id);
-      const card: BoardStory & { labelIds: string[]; assignee_id: string | null } = {
+      const card: BoardStory = {
         id: story.id,
         number: story.number,
         title: story.title,
@@ -117,9 +117,13 @@ export default async function BoardPage({
       return card;
     });
 
-  // Filters apply board-wide (kanban convention), then stories are bucketed
-  // into their columns.
-  const visible = filterStories(cards, { type, assigneeId: assignee, labelId: label });
+  // Containers are built from every card, unfiltered (TASK-20): filters only
+  // hide rows visually (applied client-side — see KanbanBoard/BoardListView).
+  // Bucketing the pre-filtered set here used to make a filtered drag persist
+  // a dense 0..n-1 position across only the visible subset, corrupting
+  // hidden stories' positions, and made the virtual-iteration groups/point
+  // sums/committed-points shift with whatever filter happened to be active.
+  const filter = { type, assigneeId: assignee, labelId: label };
   const initialContainers: Record<string, BoardStory[]> = {
     [BACKLOG_COLUMN_ID]: [],
     [ICEBOX_COLUMN_ID]: [],
@@ -130,7 +134,7 @@ export default async function BoardPage({
     accepted: [],
     rejected: [],
   };
-  for (const card of visible) {
+  for (const card of cards) {
     const column = columnForStory(card, currentIteration?.id ?? null);
     initialContainers[column].push(card);
   }
@@ -187,6 +191,7 @@ export default async function BoardPage({
         initialBacklogItems={initialBacklogItems}
         velocity={currentVelocity}
         nextVirtualIterationNumber={nextVirtualIterationNumber}
+        filter={filter}
         toolbar={
           <BoardFilters
             assignees={assigneeOptions}

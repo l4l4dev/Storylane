@@ -13,6 +13,8 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
 - Never chain state-changing commands (commit, migration, install, rm, etc.) with `&&` — run them
   one at a time. Chaining read-only commands (`git status`, `ls`, `grep`, `wc`, ...) is fine
 - Never guess at unspecified behavior — ask when the spec is unclear
+- Destructive DB operations (DELETE/TRUNCATE/UPDATE without a primary-key filter) on rows you did
+  not create in the current session require explicit user approval first
 
 ## Token Economy
 

@@ -7,6 +7,7 @@ import { updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { sumPoints } from "@/lib/utils/board";
 import { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
+import type { StoryFilter } from "@/lib/utils/stories";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,11 +17,19 @@ import type { StoryCardData } from "./story-card";
 
 export { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID };
 
-// Card data plus the fields the drop validation needs (see lib/utils/kanban).
-// `position` is the shared cross-state ordinal the List view's current zone
-// sorts on (TASK-21) — it's meaningless for the Kanban view's own per-column
-// order, which never reads it.
-export type BoardStory = StoryCardData & { iteration_id: string | null; position: number };
+// Card data plus the fields the drop validation and filters need (see
+// lib/utils/kanban, lib/utils/stories "matchesStoryFilter"). `position` is
+// the shared cross-state ordinal the List view's current zone sorts on
+// (TASK-21) — it's meaningless for the Kanban view's own per-column order,
+// which never reads it. `assignee_id`/`labelIds` are the raw ids filters
+// match on, alongside `assigneeName`/`labels` (from `StoryCardData`), which
+// are only ever used for display.
+export type BoardStory = StoryCardData & {
+  iteration_id: string | null;
+  position: number;
+  assignee_id: string | null;
+  labelIds: string[];
+};
 
 export type IterationMeta = {
   id: string;
@@ -47,11 +56,15 @@ export function KanbanBoard({
   initialBacklogItems,
   velocity,
   nextVirtualIterationNumber,
+  filter,
   toolbar,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
   // Keyed by KanbanColumnId: backlog, icebox, and one bucket per state column.
+  // Unfiltered (TASK-20) — `filter` is applied client-side, at render only,
+  // so drag persistence and virtual-iteration/point-sum math never see a
+  // filtered-down subset.
   initialContainers: Record<string, BoardStory[]>;
   // Backlog stories + freeform planning dividers, pre-merged/ordered
   // server-side — List-view-only (see BoardListView).
@@ -60,6 +73,9 @@ export function KanbanBoard({
   // iterations (see spec/velocity.md "Marker computation").
   velocity: number;
   nextVirtualIterationNumber: number;
+  // Type/assignee/label criteria from the URL — hides non-matching rows in
+  // both views without ever touching the underlying (unfiltered) data.
+  filter: StoryFilter;
   // Filters / new-story controls supplied by the server component.
   toolbar?: ReactNode;
 }) {
@@ -162,6 +178,7 @@ export function KanbanBoard({
           projectId={projectId}
           currentIteration={currentIteration}
           initialContainers={initialContainers}
+          filter={filter}
         />
       ) : (
         <BoardListView
@@ -172,6 +189,7 @@ export function KanbanBoard({
           velocity={velocity}
           nextVirtualIterationNumber={nextVirtualIterationNumber}
           showIcebox={showIcebox}
+          filter={filter}
         />
       )}
     </div>
