@@ -12,7 +12,7 @@ import { getStoryDetail } from "@/app/stories/[id]/actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
 import { FreeBoard, type CustomStatus } from "@/components/features/board/free-board";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
-import { StoryPeek } from "@/components/features/board/story-peek";
+import { StoryPeekHost } from "@/components/features/board/story-peek-host";
 import { ensureCurrentIteration } from "./actions";
 
 function todayDateOnly(): string {
@@ -218,7 +218,7 @@ export default async function BoardPage({
         }
       />
 
-      {peekDetail && <StoryPeek detail={peekDetail} />}
+      <StoryPeekHost peekStoryId={peekStoryId} detail={peekDetail} />
     </main>
   );
 }
@@ -324,7 +324,7 @@ async function FreeBoardPage({
         }
       />
 
-      {peekDetail && <StoryPeek detail={peekDetail} />}
+      <StoryPeekHost peekStoryId={peekStoryId} detail={peekDetail} />
     </main>
   );
 }

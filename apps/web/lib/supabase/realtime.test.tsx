@@ -71,15 +71,22 @@ describe("useProjectBoardRealtime", () => {
 });
 
 describe("useStoryRealtime", () => {
-  it("subscribes to both the story row and its comments on one channel", async () => {
-    const onChange = vi.fn();
-    renderHook(() => useStoryRealtime("story-1", onChange));
+  it("subscribes to the story row's UPDATE/DELETE and the comments thread on one channel", async () => {
+    const onFieldsChanged = vi.fn();
+    const onDeleted = vi.fn();
+    const onCommentsChanged = vi.fn();
+    renderHook(() => useStoryRealtime("story-1", onFieldsChanged, onDeleted, onCommentsChanged));
     await flushSessionCheck();
 
     expect(channelFn).toHaveBeenCalledWith("story-detail-story-1");
     expect(onFn).toHaveBeenCalledWith(
       "postgres_changes",
-      { event: "*", schema: "public", table: "stories", filter: "id=eq.story-1" },
+      { event: "UPDATE", schema: "public", table: "stories", filter: "id=eq.story-1" },
+      expect.any(Function),
+    );
+    expect(onFn).toHaveBeenCalledWith(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "stories", filter: "id=eq.story-1" },
       expect.any(Function),
     );
     expect(onFn).toHaveBeenCalledWith(
@@ -87,5 +94,33 @@ describe("useStoryRealtime", () => {
       { event: "*", schema: "public", table: "comments", filter: "story_id=eq.story-1" },
       expect.any(Function),
     );
+  });
+
+  it("debounces a burst of UPDATE payloads into one merge call carrying the latest row", async () => {
+    const onFieldsChanged = vi.fn();
+    renderHook(() => useStoryRealtime("story-1", onFieldsChanged, vi.fn(), vi.fn()));
+    await flushSessionCheck();
+    vi.useFakeTimers();
+
+    const updateHandler = onFn.mock.calls.find(
+      (call) => call[1].event === "UPDATE",
+    )?.[2] as (payload: { new: { title: string } }) => void;
+    updateHandler({ new: { title: "first" } });
+    updateHandler({ new: { title: "second" } });
+    expect(onFieldsChanged).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(150);
+    expect(onFieldsChanged).toHaveBeenCalledTimes(1);
+    expect(onFieldsChanged).toHaveBeenCalledWith({ title: "second" });
+  });
+
+  it("fires onDeleted immediately (not debounced) on a DELETE event", async () => {
+    const onDeleted = vi.fn();
+    renderHook(() => useStoryRealtime("story-1", vi.fn(), onDeleted, vi.fn()));
+    await flushSessionCheck();
+
+    const deleteHandler = onFn.mock.calls.find((call) => call[1].event === "DELETE")?.[2] as () => void;
+    deleteHandler();
+    expect(onDeleted).toHaveBeenCalledTimes(1);
   });
 });
