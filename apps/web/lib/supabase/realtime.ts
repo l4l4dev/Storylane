@@ -15,11 +15,21 @@ import {
 } from "@/lib/utils/notifications";
 
 // Task 11 (Realtime Collaboration): subscribes to Postgres Changes so other
-// users' edits are reflected without a manual page refresh. Both hooks debounce
-// `onChange` (default 400ms) so a burst of related row changes — e.g. a drag
+// users' edits are reflected without a manual page refresh. Debounces
+// `callback` (default 400ms) so a burst of related row changes — e.g. a drag
 // reorder touching many `stories.position` values — triggers one refresh
 // instead of one per row.
-function useDebouncedCallback(callback: () => void, delayMs: number) {
+//
+// Overloaded (Task 12) rather than a single `<T = void>` generic: a plain
+// `() => void` callback must get back a plain `() => void` (not a
+// `(arg: void) => void`, which the Realtime SDK's `.on("postgres_changes",
+// ...)` overload resolution doesn't structurally match, silently falling
+// through to an unrelated overload and breaking the caller's typecheck). A
+// payload-carrying callback needs the *last* row, not just a "something
+// changed" signal, which a no-arg debounce would lose.
+function useDebouncedCallback(callback: () => void, delayMs: number): () => void;
+function useDebouncedCallback<T>(callback: (arg: T) => void, delayMs: number): (arg: T) => void;
+function useDebouncedCallback<T>(callback: (arg?: T) => void, delayMs: number) {
   const callbackRef = useRef(callback);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -31,9 +41,9 @@ function useDebouncedCallback(callback: () => void, delayMs: number) {
     return () => clearTimeout(timeoutRef.current);
   }, []);
 
-  return () => {
+  return (arg?: T) => {
     clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => callbackRef.current(), delayMs);
+    timeoutRef.current = setTimeout(() => callbackRef.current(arg), delayMs);
   };
 }
 
@@ -84,23 +94,64 @@ export function useProjectBoardRealtime(projectId: string, onChange: () => void)
   );
 }
 
-// Subscribes to a single story's row plus its comment thread — used by
-// `StoryDetailPanel` so the inline board expansion and the standalone
-// `/stories/[id]` page both pick up other users' field edits and new comments.
-export function useStoryRealtime(storyId: string, onChange: () => void) {
-  const debouncedOnChange = useDebouncedCallback(onChange, 400);
+// The subset of a `stories` row the detail panel's autosave cares about —
+// see `apps/web/app/stories/[id]/actions.ts` "UpdateStoryFields".
+export type StoryRealtimeRow = {
+  title: string;
+  description: string | null;
+  story_type: string;
+  points: number | null;
+  epic_id: string | null;
+  assignee_id: string | null;
+  custom_status_id: string | null;
+};
+
+// Subscribes to a single story's row plus its comment thread (Task 11;
+// split into three distinct signals for Task 12's per-field autosave lock —
+// spec/screens.md "Conflict & failure rules"):
+//   - `onFieldsChanged` gets the full new row on every UPDATE (including our
+//     own save's echo — the caller's per-field lock makes that a no-op, see
+//     StoryDetailPanel) so it can merge into whichever fields aren't locked.
+//   - `onDeleted` fires on DELETE — the panel switches to its "story was
+//     deleted" state instead of trying to interpret a row that no longer
+//     exists.
+//   - `onCommentsChanged` is the original debounced "something in the
+//     thread changed, refetch" signal; comments aren't field-locked, so a
+//     coarse refetch is fine.
+// UPDATE isn't debounced through a payload-discarding timer the way it used
+// to be — each row needs its own merge, not just a "go refetch" nudge — but
+// still uses the payload-preserving debounce so a rapid burst (e.g. this
+// tab's own autosave saves echoing back) collapses into one merge of the
+// latest row rather than replaying every intermediate one.
+export function useStoryRealtime(
+  storyId: string,
+  onFieldsChanged: (row: StoryRealtimeRow) => void,
+  onDeleted: () => void,
+  onCommentsChanged: () => void,
+) {
+  const debouncedOnFieldsChanged = useDebouncedCallback(onFieldsChanged, 150);
+  const debouncedOnCommentsChanged = useDebouncedCallback(onCommentsChanged, 400);
 
   useRealtimeChannel(`story-detail-${storyId}`, (channel) =>
     channel
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "stories", filter: `id=eq.${storyId}` },
-        debouncedOnChange,
+        { event: "UPDATE", schema: "public", table: "stories", filter: `id=eq.${storyId}` },
+        (payload: RealtimePostgresUpdatePayload<StoryRealtimeRow>) => {
+          debouncedOnFieldsChanged(payload.new);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "stories", filter: `id=eq.${storyId}` },
+        () => {
+          onDeleted();
+        },
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "comments", filter: `story_id=eq.${storyId}` },
-        debouncedOnChange,
+        debouncedOnCommentsChanged,
       )
       .subscribe(),
   );

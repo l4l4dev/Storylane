@@ -669,6 +669,33 @@ export type Database = {
       }
       is_project_member: { Args: { p_project_id: string }; Returns: boolean }
       project_role: { Args: { p_project_id: string }; Returns: string }
+      update_story: {
+        Args: {
+          p_assignee_id: string
+          p_custom_status_id: string
+          p_description: string
+          p_epic_id: string
+          p_label_ids?: string[]
+          p_points: number
+          p_story_id: string
+          p_story_type: string
+          p_title: string
+        }
+        Returns: {
+          assignee_id: string
+          custom_status_id: string
+          description: string
+          epic_id: string
+          id: string
+          label_ids: string[]
+          number: number
+          points: number
+          project_id: string
+          state: string
+          story_type: string
+          title: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

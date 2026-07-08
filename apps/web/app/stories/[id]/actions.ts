@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { nextPosition, parsePoints, pointScaleValues } from "@/lib/utils/stories";
+import { nextPosition, pointScaleValues } from "@/lib/utils/stories";
 
 export type StoryDetail = {
   id: string;
@@ -111,90 +111,96 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
   };
 }
 
-export async function updateStory(formData: FormData) {
-  const id = String(formData.get("story_id"));
-  const projectId = String(formData.get("project_id"));
-  const title = String(formData.get("title") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim() || null;
-  const storyType = String(formData.get("story_type") ?? "feature");
-  const epicId = String(formData.get("epic_id") ?? "") || null;
-  const assigneeId = String(formData.get("assignee_id") ?? "") || null;
+export type UpdateStoryInput = {
+  storyId: string;
+  title: string;
+  description: string | null;
+  storyType: string;
+  points: number | null;
+  epicId: string | null;
+  assigneeId: string | null;
+  // Free-mode-only (Task 14); null leaves the column unchanged — see the
+  // update_story RPC's coalesce.
+  customStatusId: string | null;
+  labelIds: string[];
+};
 
-  if (!title) {
-    return;
-  }
+export type UpdateStoryFields = {
+  title: string;
+  description: string | null;
+  storyType: string;
+  points: number | null;
+  epicId: string | null;
+  assigneeId: string | null;
+  customStatusId: string | null;
+  labelIds: string[];
+};
 
+export type UpdateStoryResult =
+  | { ok: true; story: UpdateStoryFields }
+  // "not_found" covers both a genuinely deleted story and one RLS no longer
+  // lets this caller update — the detail panel treats either as "this story
+  // is no longer editable" (spec/screens.md "story was deleted" state).
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "error"; message: string };
+
+/**
+ * Autosave entry point for the story detail form (Task 12,
+ * spec/screens.md "Conflict & failure rules") — called directly from
+ * `StoryDetailPanel`'s client-side save orchestrator, not a `<form action>`,
+ * since each field save needs its own typed result rather than an
+ * unstructured FormData throw. All validation (empty title, points against
+ * the project's point scale) and the story_labels replace happen
+ * transactionally inside the `update_story` RPC — see its migration for why.
+ *
+ * Never calls `revalidatePath`: the caller applies the returned row into its
+ * own local state directly, and the board's inline cards/list pick up the
+ * change through their existing `useProjectBoardRealtime` subscription —
+ * forcing a fresh `detail` prop here would re-introduce a second channel
+ * (alongside Realtime) that could clobber a field the user is still editing.
+ */
+export async function updateStory(input: UpdateStoryInput): Promise<UpdateStoryResult> {
   const supabase = await createClient();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("point_scale, custom_points")
-    .eq("id", projectId)
-    .single();
-
-  if (!project) {
-    throw new Error("Project not found");
-  }
-
-  const points = parsePoints(
-    formData.get("points") as string | null,
-    storyType,
-    pointScaleValues(project.point_scale, project.custom_points),
-  );
-
-  // `state` is never written here — it's exclusively managed by the
-  // one-click transition buttons (see transitionStory in the board
-  // actions), which also enforce "an unestimated feature cannot be started".
-  // Free-mode projects (Task 14) instead submit `custom_status_id` from the
-  // detail panel's status select; the composite FK rejects a status of
-  // another project.
-  const update: {
-    title: string;
-    description: string | null;
-    story_type: string;
-    points: number | null;
-    epic_id: string | null;
-    assignee_id: string | null;
-    custom_status_id?: string;
-  } = {
-    title,
-    description,
-    story_type: storyType,
-    points,
-    epic_id: epicId,
-    assignee_id: assigneeId,
-  };
-  const customStatusId = String(formData.get("custom_status_id") ?? "");
-  if (customStatusId) {
-    update.custom_status_id = customStatusId;
-  }
-
-  const { error } = await supabase.from("stories").update(update).eq("id", id);
+  // The generated RPC Args type marks every parameter non-null — Postgres
+  // function signatures have no NOT NULL annotation for the generator to
+  // pick up the way table columns do, even though update_story's SQL body
+  // accepts and handles null for each of these. The casts below are exactly
+  // that known codegen gap, not a real non-null guarantee.
+  const { data, error } = await supabase.rpc("update_story", {
+    p_story_id: input.storyId,
+    p_title: input.title,
+    p_description: input.description as string,
+    p_story_type: input.storyType,
+    p_points: input.points as number,
+    p_epic_id: input.epicId as string,
+    p_assignee_id: input.assigneeId as string,
+    p_custom_status_id: input.customStatusId as string,
+    p_label_ids: input.labelIds,
+  });
 
   if (error) {
-    throw new Error(error.message);
+    return { ok: false, reason: "error", message: error.message };
   }
 
-  // Sync labels: the form submits the full desired set, so replace wholesale.
-  const labelIds = formData.getAll("label_ids").map(String).filter(Boolean);
-  const { error: deleteError } = await supabase
-    .from("story_labels")
-    .delete()
-    .eq("story_id", id);
-  if (deleteError) {
-    throw new Error(deleteError.message);
-  }
-  if (labelIds.length > 0) {
-    const { error: insertError } = await supabase
-      .from("story_labels")
-      .insert(labelIds.map((labelId) => ({ story_id: id, label_id: labelId })));
-    if (insertError) {
-      throw new Error(insertError.message);
-    }
+  const row = data?.[0];
+  if (!row) {
+    return { ok: false, reason: "not_found" };
   }
 
-  revalidatePath(`/stories/${id}`);
-  revalidatePath(`/projects/${projectId}/board`);
+  return {
+    ok: true,
+    story: {
+      title: row.title,
+      description: row.description,
+      storyType: row.story_type,
+      points: row.points,
+      epicId: row.epic_id,
+      assigneeId: row.assignee_id,
+      customStatusId: row.custom_status_id,
+      labelIds: row.label_ids ?? [],
+    },
+  };
 }
 
 export async function addComment(formData: FormData) {
