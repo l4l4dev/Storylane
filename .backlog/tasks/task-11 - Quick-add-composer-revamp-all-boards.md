@@ -4,13 +4,15 @@ title: Quick-add composer revamp (all boards)
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:26'
+updated_date: '2026-07-08 12:38'
 labels:
   - web
-dependencies: []
+dependencies:
+  - TASK-22
 references:
   - spec/screens.md
 priority: medium
-ordinal: 11000
+ordinal: 8000
 ---
 
 ## Description

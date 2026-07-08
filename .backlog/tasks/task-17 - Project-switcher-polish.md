@@ -4,6 +4,7 @@ title: Project switcher polish
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:29'
+updated_date: '2026-07-08 12:39'
 labels:
   - web
 dependencies:
@@ -11,7 +12,7 @@ dependencies:
 references:
   - spec/screens.md
 priority: low
-ordinal: 21000
+ordinal: 15000
 ---
 
 ## Description

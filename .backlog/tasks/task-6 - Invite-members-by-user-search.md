@@ -4,15 +4,17 @@ title: Invite members by user search
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:24'
+updated_date: '2026-07-08 12:38'
 labels:
   - web
   - db
-dependencies: []
+dependencies:
+  - TASK-18
 references:
   - spec/features.md
   - spec/rls.md
 priority: medium
-ordinal: 6000
+ordinal: 12500
 ---
 
 ## Description

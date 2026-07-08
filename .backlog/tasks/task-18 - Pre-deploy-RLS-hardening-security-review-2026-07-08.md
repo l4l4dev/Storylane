@@ -4,15 +4,16 @@ title: Pre-deploy RLS hardening (security review 2026-07-08)
 status: To Do
 assignee: []
 created_date: '2026-07-08 00:50'
-updated_date: '2026-07-08 05:31'
+updated_date: '2026-07-08 12:37'
 labels:
   - db
   - security
-dependencies: []
+dependencies:
+  - TASK-22
 references:
   - spec/rls.md
 priority: high
-ordinal: 22000
+ordinal: 3000
 ---
 
 ## Description

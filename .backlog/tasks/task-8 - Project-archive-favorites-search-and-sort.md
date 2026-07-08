@@ -4,6 +4,7 @@ title: 'Project archive, favorites, search and sort'
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:25'
+updated_date: '2026-07-08 12:39'
 labels:
   - web
   - db
@@ -13,7 +14,7 @@ references:
   - spec/screens.md
   - spec/data-model.md
 priority: medium
-ordinal: 8000
+ordinal: 14000
 ---
 
 ## Description

@@ -4,12 +4,13 @@ title: Move Slack notifications to DB webhook → Edge Function (pre-iOS prerequ
 status: To Do
 assignee: []
 created_date: '2026-07-08 07:45'
+updated_date: '2026-07-08 12:39'
 labels:
   - db
   - ios
 dependencies: []
 priority: low
-ordinal: 28000
+ordinal: 16000
 ---
 
 ## Description
@@ -24,3 +25,13 @@ Per decision-1: Slack notifications currently fire only from Web server actions 
 - [ ] #2 Web server actions no longer call notifySlack; single notification per event (no double-fire during migration)
 - [ ] #3 Edge Function reads integrations config server-side; secrets never reach clients; failures don't block the originating write
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @l4l4dev
+created: 2026-07-08 12:39
+---
+Deferred to iOS phase start per advisor-assisted prioritization pass (2026-07-08) — see TASK-19..TASK-17 for the current Web-phase sequence.
+---
+<!-- COMMENTS:END -->

@@ -4,16 +4,17 @@ title: Move or copy story to another project
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:27'
-updated_date: '2026-07-07 15:34'
+updated_date: '2026-07-08 12:38'
 labels:
   - web
   - db
-dependencies: []
+dependencies:
+  - TASK-15
 references:
   - spec/features.md
   - spec/rls.md
 priority: medium
-ordinal: 14000
+ordinal: 11000
 ---
 
 ## Description

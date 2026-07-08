@@ -4,6 +4,7 @@ title: Free mode KanbanFlow parity
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:27'
+updated_date: '2026-07-08 12:38'
 labels:
   - web
   - db
@@ -14,7 +15,7 @@ references:
   - spec/screens.md
   - spec/data-model.md
 priority: medium
-ordinal: 16000
+ordinal: 9000
 ---
 
 ## Description
