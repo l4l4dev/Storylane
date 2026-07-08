@@ -8,6 +8,9 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
 ## Critical Rules
 
 - Always ask before making architectural changes or large-scale refactors
+- Before implementing a large plan (new tables/RLS, algorithm rewrites, concurrency-sensitive
+  changes), get it reviewed via the `/advisor` skill (fable-advisor agent) — then show the verdict
+  to the user with your plan
 - Never use `git add -A` or `git add .` — always specify files explicitly
 - Always confirm before irreversible operations (file deletion, overwriting, etc.)
 - Never chain state-changing commands (commit, migration, install, rm, etc.) with `&&` — run them
