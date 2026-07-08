@@ -110,6 +110,17 @@ describe("evaluateDrop", () => {
     expect(evaluateDrop(story({ state: "started", iteration_id: CURRENT }), "started", ICEBOX_COLUMN_ID).ok).toBe(false);
   });
 
+  // TASK-19: a story stuck `started` with no iteration (the Start-button bug)
+  // still lands in the Backlog column (columnForStory falls through to it
+  // whenever iteration_id doesn't match current) — demoting to the Icebox
+  // must be rejected on the story's actual state, not just because its
+  // *origin* column happens to be Backlog, or this silently discards its
+  // in-progress work.
+  it("rejects demoting a started-but-backlog-column story to the icebox", () => {
+    const stuck = story({ state: "started", iteration_id: null });
+    expect(evaluateDrop(stuck, BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID).ok).toBe(false);
+  });
+
   it("un-schedules an unstarted story dragged back to the backlog", () => {
     const result = evaluateDrop(story({ iteration_id: CURRENT }), "unstarted", BACKLOG_COLUMN_ID);
     expect(result).toEqual({ ok: true, iteration: "none" });
@@ -178,6 +189,14 @@ describe("evaluateListDrop", () => {
     expect(
       evaluateListDrop(story({ state: "started", iteration_id: CURRENT }), "current", ICEBOX_COLUMN_ID).ok,
     ).toBe(false);
+  });
+
+  // TASK-19: same bug as evaluateDrop's — a story stuck `started` with no
+  // iteration lands in the Backlog *zone* too (zoneForStory falls through
+  // to it whenever iteration_id doesn't match current).
+  it("rejects demoting a started-but-backlog-zone story to the icebox", () => {
+    const stuck = story({ state: "started", iteration_id: null });
+    expect(evaluateListDrop(stuck, BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID).ok).toBe(false);
   });
 });
 

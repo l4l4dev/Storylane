@@ -17,7 +17,12 @@ import {
 } from "@/lib/utils/kanban";
 import { isCurrentIteration, nextIterationDates, nextIterationNumber } from "@/lib/utils/iterations";
 import { isUnestimatedFeature, nextPosition, reorderPositions } from "@/lib/utils/stories";
-import { applyTransition, type StoryState, type StoryTransitionAction } from "@/lib/utils/story-state";
+import {
+  applyTransition,
+  shouldAssignCurrentIteration,
+  type StoryState,
+  type StoryTransitionAction,
+} from "@/lib/utils/story-state";
 import { acceptedPoints } from "@/lib/utils/velocity";
 
 function todayDateOnly(): string {
@@ -443,6 +448,14 @@ async function persistBacklogOrder(
  * their shared position sequence — the same merge `board/page.tsx` does
  * server-side to build the List view's initial row order (see
  * `lib/utils/iterations.ts` "buildBacklogRows").
+ *
+ * TASK-19: matches `zoneForStory`'s actual backlog definition (not
+ * unscheduled, no iteration assigned) rather than the narrower
+ * `state = "unstarted"` this used to require — that excluded a stray
+ * story left `started` with `iteration_id: null` (see `transitionStory`)
+ * from this order entirely, so `before_item_id` lookups for it always
+ * missed (`findIndex` = -1) and new dividers silently appended at the end
+ * instead of landing where the user dropped them.
  */
 async function fetchBacklogOrder(supabase: Awaited<ReturnType<typeof createClient>>, projectId: string) {
   const [{ data: stories }, { data: dividers }] = await Promise.all([
@@ -450,7 +463,7 @@ async function fetchBacklogOrder(supabase: Awaited<ReturnType<typeof createClien
       .from("stories")
       .select("id, position")
       .eq("project_id", projectId)
-      .eq("state", "unstarted")
+      .neq("state", "unscheduled")
       .is("iteration_id", null),
     supabase.from("backlog_dividers").select("id, position").eq("project_id", projectId),
   ]);
@@ -521,6 +534,15 @@ export async function deleteBacklogDivider(formData: FormData) {
  * Accept / Reject / Restart — see spec/screens.md "Story card UX"). Reads
  * the story's current state server-side rather than trusting the client so
  * a stale card can't force an invalid jump.
+ *
+ * TASK-19: the List view renders this button on every row, including
+ * Backlog ones (a backlog story is `unstarted`, whose only action is
+ * Start) — so unlike the physical Kanban board, this can transition a
+ * story that has no iteration assigned yet. Starting/restarting such a
+ * story also assigns it to the current iteration (shouldAssignCurrentIteration),
+ * matching what dragging it into the current zone already does; otherwise
+ * it ends up `started` with `iteration_id: null` — invisible to velocity,
+ * never carried by rollover, and undraggable back to Backlog/Icebox.
  */
 export async function transitionStory(formData: FormData) {
   const projectId = String(formData.get("project_id"));
@@ -528,11 +550,20 @@ export async function transitionStory(formData: FormData) {
   const action = String(formData.get("action")) as StoryTransitionAction;
 
   const supabase = await createClient();
-  const { data: story, error: fetchError } = await supabase
-    .from("stories")
-    .select("number, title, state, story_type, points")
-    .eq("id", storyId)
-    .single();
+  const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
+    supabase
+      .from("stories")
+      .select("number, title, state, story_type, points, iteration_id")
+      .eq("id", storyId)
+      .single(),
+    supabase
+      .from("iterations")
+      .select("id")
+      .eq("project_id", projectId)
+      .neq("state", "done")
+      .order("number", { ascending: false })
+      .limit(1),
+  ]);
 
   if (fetchError || !story) {
     throw new Error(fetchError?.message ?? "Story not found");
@@ -546,7 +577,16 @@ export async function transitionStory(formData: FormData) {
     throw new Error("An unestimated feature cannot be started");
   }
 
-  const { error } = await supabase.from("stories").update({ state: nextState }).eq("id", storyId);
+  const update: { state: StoryState; iteration_id?: string } = { state: nextState };
+  if (shouldAssignCurrentIteration(nextState, Boolean(story.iteration_id))) {
+    const currentIterationId = currentRows?.[0]?.id;
+    if (!currentIterationId) {
+      throw new Error("No active iteration");
+    }
+    update.iteration_id = currentIterationId;
+  }
+
+  const { error } = await supabase.from("stories").update(update).eq("id", storyId);
   if (error) {
     throw new Error(error.message);
   }
