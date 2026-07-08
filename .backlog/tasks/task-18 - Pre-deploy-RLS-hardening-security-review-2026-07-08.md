@@ -4,6 +4,7 @@ title: Pre-deploy RLS hardening (security review 2026-07-08)
 status: To Do
 assignee: []
 created_date: '2026-07-08 00:50'
+updated_date: '2026-07-08 05:31'
 labels:
   - db
   - security
@@ -31,4 +32,5 @@ Findings from the 2026-07-08 pre-deploy security audit of supabase/migrations + 
 - [ ] #3 comments UPDATE requires current membership of the story's project in USING and WITH CHECK
 - [ ] #4 stories.epic_id and stories.iteration_id are composite FKs on (id, project_id); existing data migrates cleanly
 - [ ] #5 rls-security-reviewer has reviewed the migration; existing vitest + RLS tests pass
+- [ ] #6 App-layer: board server actions (dropStory/dropStoryInList/transitionStory/moveStory/deleteBacklogDivider/updateIterationGoal) filter the target row by project_id (only dropStoryFree does today) — a member of two projects cannot post a foreign story_id/divider id and have it written under the current project
 <!-- AC:END -->
