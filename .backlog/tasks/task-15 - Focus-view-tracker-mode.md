@@ -4,6 +4,7 @@ title: Focus view (tracker mode)
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:27'
+updated_date: '2026-07-08 12:38'
 labels:
   - web
   - db
@@ -12,7 +13,7 @@ references:
   - spec/screens.md
   - spec/data-model.md
 priority: high
-ordinal: 15000
+ordinal: 7000
 ---
 
 ## Description

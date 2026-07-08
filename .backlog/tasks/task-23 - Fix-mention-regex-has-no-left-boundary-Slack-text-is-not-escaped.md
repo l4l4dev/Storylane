@@ -4,12 +4,13 @@ title: 'Fix: @mention regex has no left boundary; Slack text is not escaped'
 status: To Do
 assignee: []
 created_date: '2026-07-08 05:31'
+updated_date: '2026-07-08 12:37'
 labels:
   - web
   - bug
 dependencies: []
-priority: medium
-ordinal: 27000
+priority: high
+ordinal: 5000
 ---
 
 ## Description

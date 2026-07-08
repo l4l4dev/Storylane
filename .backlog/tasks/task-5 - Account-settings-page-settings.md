@@ -4,13 +4,14 @@ title: Account settings page (/settings)
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:24'
+updated_date: '2026-07-08 12:38'
 labels:
   - web
 dependencies: []
 references:
   - spec/screens.md
 priority: medium
-ordinal: 5000
+ordinal: 12000
 ---
 
 ## Description

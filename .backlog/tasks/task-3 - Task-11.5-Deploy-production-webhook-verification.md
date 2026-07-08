@@ -4,11 +4,14 @@ title: 'Task 11.5: Deploy + production webhook verification'
 status: To Do
 assignee: []
 created_date: '2026-07-07 08:44'
-updated_date: '2026-07-08 00:50'
+updated_date: '2026-07-08 12:37'
 labels: []
 dependencies:
   - TASK-18
-ordinal: 3000
+  - TASK-10
+  - TASK-23
+priority: high
+ordinal: 6000
 ---
 
 ## Description

@@ -4,16 +4,17 @@ title: Manual iteration finish and auto-finish visibility
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:26'
-updated_date: '2026-07-07 15:34'
+updated_date: '2026-07-08 12:37'
 labels:
   - web
 dependencies:
   - TASK-9
+  - TASK-18
 references:
   - spec/velocity.md
   - spec/screens.md
 priority: high
-ordinal: 10000
+ordinal: 4000
 ---
 
 ## Description

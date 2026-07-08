@@ -4,6 +4,7 @@ title: Projects page redesign with inline creation
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:25'
+updated_date: '2026-07-08 12:39'
 labels:
   - web
 dependencies:
@@ -12,7 +13,7 @@ dependencies:
 references:
   - spec/screens.md
 priority: high
-ordinal: 7000
+ordinal: 13000
 ---
 
 ## Description
