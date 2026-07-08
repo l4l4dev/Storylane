@@ -196,6 +196,20 @@ export function evaluateListDrop(
   return { ok: false, reason: `Cannot move a ${from} story to ${to}` };
 }
 
+/**
+ * Merges the current iteration's per-state-column buckets into one flat list
+ * ordered by `position` (TASK-21) — matching spec/screens.md "List view":
+ * "every state ... in one flat, priority-ordered list". Concatenating the
+ * buckets in `STATE_COLUMNS` order (as the List view used to) instead
+ * produces a state-bucketed order, wrongly rendering e.g. a `started` story
+ * below an `unstarted` one at a lower position.
+ */
+export function flattenCurrentZone<T extends { position: number }>(
+  containers: Record<string, ReadonlyArray<T>>,
+): T[] {
+  return STATE_COLUMNS.flatMap((column) => containers[column] ?? []).sort((a, b) => a.position - b.position);
+}
+
 /** Buckets current-iteration stories into their state columns, preserving input order. */
 export function groupByStateColumn<T extends { state: string }>(
   stories: ReadonlyArray<T>,

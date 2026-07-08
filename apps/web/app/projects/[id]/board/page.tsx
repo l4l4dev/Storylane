@@ -104,6 +104,7 @@ export default async function BoardPage({
         story_type: story.story_type,
         state: story.state,
         points: story.points,
+        position: story.position,
         iteration_id: story.iteration_id,
         assignee_id: story.assignee_id,
         assigneeName: assigneeProfile?.display_name ?? null,
