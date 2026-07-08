@@ -55,3 +55,17 @@ export function applyTransition(state: StoryState, action: StoryTransitionAction
 export function transitionLabel(action: StoryTransitionAction): string {
   return TRANSITIONS[action].label;
 }
+
+/**
+ * Whether a one-click transition button (Start/Restart, both targeting
+ * "started") must also assign the current iteration (TASK-19). The drag
+ * path (dropStory/dropStoryInList) already does this when scheduling a
+ * backlog story into "started"; the button path used to write only
+ * `state`, so clicking Start on a Backlog row (List view renders the
+ * button on every row, including Backlog ones) produced
+ * `state: "started", iteration_id: null` — a story that's neither in the
+ * current iteration nor draggable back to Backlog/Icebox (stuck).
+ */
+export function shouldAssignCurrentIteration(nextState: StoryState, hasIterationId: boolean): boolean {
+  return nextState === "started" && !hasIterationId;
+}

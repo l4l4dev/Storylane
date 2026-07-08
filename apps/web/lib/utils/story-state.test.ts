@@ -3,6 +3,7 @@ import {
   applyTransition,
   availableTransitions,
   canTransition,
+  shouldAssignCurrentIteration,
   STORY_STATES,
   transitionLabel,
   type StoryState,
@@ -100,5 +101,26 @@ describe("STORY_STATES", () => {
       "accepted",
       "rejected",
     ]);
+  });
+});
+
+// TASK-19: Starting (or restarting) a story with no iteration assigned yet
+// must schedule it into the current iteration, matching what the drag path
+// already does — otherwise a Backlog row's one-click Start button produces
+// a stuck story (started, iteration_id null).
+describe("shouldAssignCurrentIteration", () => {
+  it("is true when starting a story that has no iteration yet", () => {
+    expect(shouldAssignCurrentIteration("started", false)).toBe(true);
+  });
+
+  it("is false when the story already has an iteration (e.g. started from the current-iteration column)", () => {
+    expect(shouldAssignCurrentIteration("started", true)).toBe(false);
+  });
+
+  it("is false for any target state other than started", () => {
+    expect(shouldAssignCurrentIteration("finished", false)).toBe(false);
+    expect(shouldAssignCurrentIteration("delivered", false)).toBe(false);
+    expect(shouldAssignCurrentIteration("accepted", false)).toBe(false);
+    expect(shouldAssignCurrentIteration("rejected", false)).toBe(false);
   });
 });

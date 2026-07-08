@@ -80,8 +80,14 @@ export function evaluateDrop(
   }
 
   if (to === ICEBOX_COLUMN_ID) {
-    // Demoting to the Icebox is only meaningful for not-yet-started work.
-    if (from === BACKLOG_COLUMN_ID || from === "unstarted") {
+    // Demoting to the Icebox is only meaningful for not-yet-started work —
+    // checked on the story's actual state, not its origin column (TASK-19):
+    // a story stuck `started` with no iteration still shows up in the
+    // Backlog column (columnForStory falls through to it whenever
+    // iteration_id doesn't match current), and `from === BACKLOG_COLUMN_ID`
+    // alone used to demote it to the Icebox unconditionally, silently
+    // discarding its in-progress state.
+    if (story.state === "unstarted") {
       return { ok: true, state: "unscheduled", iteration: "none" };
     }
     return { ok: false, reason: "Only unstarted stories can move to the icebox" };
@@ -170,7 +176,12 @@ export function evaluateListDrop(
   }
 
   if (to === ICEBOX_COLUMN_ID) {
-    if (from === BACKLOG_COLUMN_ID || (from === "current" && story.state === "unstarted")) {
+    // Checked on state alone, regardless of origin zone (TASK-19) — a
+    // story stuck `started` with no iteration still shows up in the
+    // Backlog zone (zoneForStory falls through to it whenever iteration_id
+    // doesn't match current); `from === BACKLOG_COLUMN_ID` alone used to
+    // demote it to the Icebox unconditionally, discarding its progress.
+    if (story.state === "unstarted") {
       return { ok: true, state: "unscheduled", iteration: "none" };
     }
     return { ok: false, reason: "Only unstarted stories can move to the icebox" };
