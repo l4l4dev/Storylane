@@ -131,17 +131,31 @@ export type BacklogRowItem<T> = { kind: "story"; story: T } | { kind: "divider";
 export type BacklogRow<T> =
   | { kind: "story"; story: T }
   | { kind: "note"; divider: BacklogDivider }
-  // `divider` is set only for a manually-placed break (so the UI can offer
-  // to delete it) — absent for an automatic, capacity-triggered one.
-  | { kind: "iteration-marker"; number: number; points: number; divider?: BacklogDivider };
+  // Auto-generated, always precedes its group's rows — never draggable.
+  | { kind: "iteration-header"; number: number; points: number }
+  // The manually-placed break itself — a real `backlog_dividers` row, so the
+  // UI can offer to delete it. Carries no number: the header that follows it
+  // already shows the group it opens.
+  | { kind: "iteration-break"; divider: BacklogDivider };
 
 /**
  * Interleaves the backlog's stories and freeform rows (Task 15 follow-up)
- * into one render-ready row sequence. Walks the list accumulating points
- * per virtual iteration exactly like `splitBacklogIntoVirtualIterations`,
- * but a `note` passes through untouched (no effect on the count) and an
- * `iteration_break` unconditionally closes the current group, whether or
- * not the automatic capacity would have triggered a split there.
+ * into one render-ready row sequence, with every virtual-iteration group
+ * headed by its own numbered header row (Task 9, spec/screens.md "Backlog
+ * groups") — starting at `startingIterationNumber`, even for a lone group
+ * that never splits. This replaces the old scheme where a group only got a
+ * trailing marker once a *later* story crossed into the next group, so the
+ * very first group (and a final group with nothing after it) rendered with
+ * no label at all.
+ *
+ * Two passes: first walk the items exactly like
+ * `splitBacklogIntoVirtualIterations` — a `note` joins whichever group it
+ * currently falls in without affecting the point count, an
+ * `iteration_break` unconditionally closes the current group — but buffer
+ * each group's rows instead of emitting them immediately, since the
+ * header needs the group's total *before* its first row. Then flatten,
+ * assigning sequential numbers only to groups (a break's own row carries
+ * none).
  */
 export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string }>(
   items: ReadonlyArray<BacklogRowItem<T>>,
@@ -149,14 +163,19 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
   startingIterationNumber: number,
 ): BacklogRow<T>[] {
   const capacity = Math.max(velocity, 1);
-  const rows: BacklogRow<T>[] = [];
-  let groupIndex = 0;
+
+  type Segment =
+    | { kind: "group"; rows: BacklogRow<T>[]; points: number }
+    | { kind: "break"; divider: BacklogDivider };
+
+  const segments: Segment[] = [];
+  let groupRows: BacklogRow<T>[] = [];
   let sum = 0;
   let groupHasItem = false;
 
-  function closeGroup(divider?: BacklogDivider) {
-    groupIndex += 1;
-    rows.push({ kind: "iteration-marker", number: startingIterationNumber + groupIndex, points: sum, divider });
+  function closeGroup() {
+    segments.push({ kind: "group", rows: groupRows, points: sum });
+    groupRows = [];
     sum = 0;
     groupHasItem = false;
   }
@@ -164,9 +183,10 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
   for (const item of items) {
     if (item.kind === "divider") {
       if (item.divider.kind === "note") {
-        rows.push({ kind: "note", divider: item.divider });
+        groupRows.push({ kind: "note", divider: item.divider });
       } else {
-        closeGroup(item.divider);
+        closeGroup();
+        segments.push({ kind: "break", divider: item.divider });
       }
       continue;
     }
@@ -175,10 +195,46 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
     if (groupHasItem && sum + cost > capacity) {
       closeGroup();
     }
-    rows.push({ kind: "story", story: item.story });
+    groupRows.push({ kind: "story", story: item.story });
     sum += cost;
     groupHasItem = true;
   }
+  // Flush the trailing group whenever it has content, or when a manual
+  // break is the very last item — otherwise the group it opens (empty or
+  // not) would render with no header, asymmetric with a *leading* break
+  // (which already gets an empty header before it).
+  if (groupRows.length > 0 || segments[segments.length - 1]?.kind === "break") {
+    closeGroup();
+  }
 
+  const rows: BacklogRow<T>[] = [];
+  let number = startingIterationNumber - 1;
+  for (const segment of segments) {
+    if (segment.kind === "group") {
+      number += 1;
+      rows.push({ kind: "iteration-header", number, points: segment.points });
+      rows.push(...segment.rows);
+    } else {
+      rows.push({ kind: "iteration-break", divider: segment.divider });
+    }
+  }
   return rows;
+}
+
+/**
+ * Projected date range for a virtual (not-yet-real) iteration, shown on its
+ * Backlog group header (spec/screens.md "Backlog groups"). `offset` is
+ * 1-based: 1 is the iteration immediately after the current one, computed
+ * from the current iteration's `end_date` the same way `nextIterationDates`
+ * computes the next real row, stacking full `iterationLengthDays` blocks for
+ * later offsets.
+ */
+export function projectedIterationDates(
+  currentEndDate: string,
+  iterationLengthDays: number,
+  offset: number,
+): { start_date: string; end_date: string } {
+  const startMs = parseDateOnly(currentEndDate) + MS_PER_DAY + (offset - 1) * iterationLengthDays * MS_PER_DAY;
+  const endMs = startMs + (iterationLengthDays - 1) * MS_PER_DAY;
+  return { start_date: formatDateOnly(startMs), end_date: formatDateOnly(endMs) };
 }

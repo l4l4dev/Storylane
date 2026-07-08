@@ -56,6 +56,8 @@ export function KanbanBoard({
   initialBacklogItems,
   velocity,
   nextVirtualIterationNumber,
+  iterationLength,
+  iterationGoals,
   filter,
   toolbar,
 }: {
@@ -73,6 +75,10 @@ export function KanbanBoard({
   // iterations (see spec/velocity.md "Marker computation").
   velocity: number;
   nextVirtualIterationNumber: number;
+  // List-view-only (see BoardListView): projected dates and draft goals for
+  // the Backlog's virtual-iteration group headers (Task 9).
+  iterationLength: number;
+  iterationGoals: Record<number, string>;
   // Type/assignee/label criteria from the URL — hides non-matching rows in
   // both views without ever touching the underlying (unfiltered) data.
   filter: StoryFilter;
@@ -188,6 +194,8 @@ export function KanbanBoard({
           initialBacklogItems={initialBacklogItems}
           velocity={velocity}
           nextVirtualIterationNumber={nextVirtualIterationNumber}
+          iterationLength={iterationLength}
+          iterationGoals={iterationGoals}
           showIcebox={showIcebox}
           filter={filter}
         />

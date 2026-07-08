@@ -21,8 +21,13 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Snowflake, X } from "lucide-react";
-import { createBacklogDivider, deleteBacklogDivider, dropStoryInList } from "@/app/projects/[id]/board/actions";
+import { ChevronDown, ChevronRight, Snowflake, X } from "lucide-react";
+import {
+  createBacklogDivider,
+  deleteBacklogDivider,
+  dropStoryInList,
+  upsertIterationGoal,
+} from "@/app/projects/[id]/board/actions";
 import { findContainer, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
 import {
   BACKLOG_COLUMN_ID,
@@ -32,13 +37,66 @@ import {
   zoneForStory,
   type ListZoneId,
 } from "@/lib/utils/kanban";
-import { buildBacklogRows, type BacklogDivider, type BacklogRow, type BacklogRowItem } from "@/lib/utils/iterations";
+import {
+  buildBacklogRows,
+  projectedIterationDates,
+  type BacklogDivider,
+  type BacklogRow,
+  type BacklogRowItem,
+} from "@/lib/utils/iterations";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryListRow } from "./story-list-row";
 import type { BoardStory, IterationMeta } from "./kanban-board";
+
+// Collapse state for the Backlog's virtual-iteration groups and the Current
+// section's own header (Task 9, spec/screens.md "Backlog groups": "Collapse
+// state persists per user in localStorage"). Keyed by group number
+// (stringified) or the literal "current". A lazy useState initializer reads
+// localStorage once on mount; the usual SSR/client hydration mismatch this
+// causes for client-only UI prefs is accepted (collapse doesn't affect any
+// SSR'd content's correctness, just first-paint state).
+function collapseStorageKey(projectId: string): string {
+  return `storylane:backlog-collapse:${projectId}`;
+}
+
+function readCollapsedGroups(projectId: string): Set<string> {
+  if (typeof window === "undefined") {
+    return new Set();
+  }
+  try {
+    const raw = window.localStorage.getItem(collapseStorageKey(projectId));
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function useCollapsedGroups(projectId: string) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedGroups(projectId));
+
+  function toggle(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      try {
+        window.localStorage.setItem(collapseStorageKey(projectId), JSON.stringify([...next]));
+      } catch {
+        // localStorage unavailable (private browsing, quota) — collapse
+        // state just won't persist across reloads this session.
+      }
+      return next;
+    });
+  }
+
+  return { collapsed, toggle };
+}
 
 // Internal drag item for the List view's zones. Current/Icebox only ever
 // hold `kind: "story"`; only Backlog can also hold `kind: "divider"` (Task
@@ -92,10 +150,15 @@ function SortableListRow({ item, projectId }: { item: ListItem; projectId: strin
   );
 }
 
-// A freeform planning note: dashed border, muted label, delete button —
-// distinct from the automatic, non-deletable "Iteration #N" marker.
+// A freeform planning row: dashed border, muted label, delete button. Used
+// for both a user-created note (its own typed label) and a manual iteration
+// break (fixed "Iteration break" label) — TASK-9 unifies these into one
+// flush-left divider style (spec/screens.md "Indent distinction": "note/
+// divider labels start flush at the list's left edge"); the break's own
+// number now lives on the `IterationHeaderRow` that follows it, not here.
 function DividerRow({ projectId, divider }: { projectId: string; divider: BacklogDivider }) {
   const [, startTransition] = useTransition();
+  const label = divider.kind === "note" ? divider.label : "Iteration break";
 
   function handleDelete() {
     const formData = new FormData();
@@ -108,99 +171,163 @@ function DividerRow({ projectId, divider }: { projectId: string; divider: Backlo
 
   return (
     <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-2.5 py-1.5">
-      <span className="flex-1 truncate text-sm font-medium text-muted-foreground">{divider.label}</span>
-      <Button type="button" variant="ghost" size="icon-xs" onClick={handleDelete} aria-label={`Remove "${divider.label}"`}>
+      <span className="flex-1 truncate text-sm font-medium text-muted-foreground">{label}</span>
+      <Button type="button" variant="ghost" size="icon-xs" onClick={handleDelete} aria-label={`Remove "${label}"`}>
         <X />
       </Button>
     </div>
   );
 }
 
-// The "Iteration #N · X pts" line content, shared by the automatic
-// (capacity-triggered, no `divider`) and manual (`iteration_break` row,
-// deletable) markers — see lib/utils/iterations.ts "buildBacklogRows".
-function IterationMarkerContent({
-  number,
-  points,
+// Inline-editable goal for a virtual (not-yet-real) iteration (Task 9,
+// spec/screens.md "Backlog groups": "commits on Enter like the iteration
+// bar's"). Enter is awaited and its failure caught here — never a
+// fire-and-forget `void` call — so a rejected save shows an inline error and
+// keeps what was typed instead of silently reverting (the bug Task 22 fixes
+// elsewhere in this codebase; this is new code, so it starts correct). Esc
+// reverts to the last server-confirmed value without saving.
+function IterationGoalInput({
   projectId,
-  divider,
+  number,
+  initialGoal,
 }: {
+  projectId: string;
   number: number;
-  points: number;
-  projectId?: string;
-  divider?: BacklogDivider;
+  initialGoal: string;
 }) {
-  const [, startTransition] = useTransition();
+  const [value, setValue] = useState(initialGoal);
+  const [synced, setSynced] = useState(initialGoal);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  function handleDelete() {
-    if (!divider || !projectId) {
+  if (synced !== initialGoal) {
+    setSynced(initialGoal);
+    setValue(initialGoal);
+    setError(null);
+  }
+
+  async function commit() {
+    const trimmed = value.trim();
+    if (trimmed === synced) {
       return;
     }
+    setError(null);
+    setIsSaving(true);
     const formData = new FormData();
     formData.set("project_id", projectId);
-    formData.set("divider_id", divider.id);
-    startTransition(() => {
-      void deleteBacklogDivider(formData);
-    });
+    formData.set("number", String(number));
+    formData.set("goal", trimmed);
+    try {
+      await upsertIterationGoal(formData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save goal");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
-    <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-      <span className="h-px flex-1 bg-border" />
-      <span>
-        Iteration #{number} · {points} pts
-      </span>
-      {divider && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          onClick={handleDelete}
-          aria-label={`Remove manual iteration break before #${number}`}
-        >
-          <X />
-        </Button>
-      )}
-      <span className="h-px flex-1 bg-border" />
+    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      <input
+        value={value}
+        onChange={(event) => {
+          setValue(event.target.value);
+          setError(null);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void commit();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            setValue(synced);
+            setError(null);
+          }
+        }}
+        placeholder="Goal"
+        aria-label={`Iteration #${number} goal`}
+        disabled={isSaving}
+        className="h-6 min-w-0 flex-1 truncate rounded border border-transparent bg-transparent px-1 text-xs hover:border-border focus:border-border focus:outline-none disabled:opacity-60"
+      />
+      {error && <span className="shrink-0 text-destructive">{error}</span>}
     </div>
   );
 }
 
-// Non-draggable row for an automatic, capacity-triggered marker — there's no
-// backlog_dividers row behind it, so nothing to drag or delete.
-function IterationMarkerRow({ number, points }: { number: number; points: number }) {
+// A virtual-iteration group header — always precedes its group's rows, even
+// for the very first (or a lone, never-split) group, and even when empty
+// (Task 9, replacing the old scheme where a group only got a trailing
+// marker once a *later* story crossed into the next one, so the first —
+// and a final — group could render with no label at all). Not draggable:
+// there's no backlog_dividers row behind it, only `buildBacklogRows`'
+// derived number/points.
+function IterationHeaderRow({
+  number,
+  points,
+  projectId,
+  goal,
+  projectedDates,
+  collapsed,
+  onToggle,
+}: {
+  number: number;
+  points: number;
+  projectId: string;
+  goal: string;
+  projectedDates: { start_date: string; end_date: string } | null;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <li aria-hidden>
-      <IterationMarkerContent number={number} points={points} />
+    <li>
+      <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={collapsed ? `Expand iteration #${number}` : `Collapse iteration #${number}`}
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+        </button>
+        <span className="shrink-0 font-medium text-foreground">Iteration #{number}</span>
+        {projectedDates && (
+          <span className="shrink-0">
+            {projectedDates.start_date} – {projectedDates.end_date}
+          </span>
+        )}
+        <IterationGoalInput projectId={projectId} number={number} initialGoal={goal} />
+        <span className="shrink-0">{points} pts</span>
+      </div>
     </li>
   );
 }
 
 // A draggable Backlog row: a story, a note, or a manually-placed iteration
-// break (which — unlike an automatic marker — has a real `backlog_dividers`
-// row behind it, so it can be reordered and deleted like any other item).
-// Callers only render this for rows that have a real id to drag (never for
-// an automatic marker, whose `divider` is undefined — see `BacklogSection`).
-function SortableBacklogRow({ row, projectId }: { row: BacklogRow<BoardStory>; projectId: string }) {
-  const dragId = row.kind === "story" ? row.story.id : row.divider!.id;
+// break — every one of these has a real backing row (a story or a
+// `backlog_dividers` entry), so it can be reordered and deleted like any
+// other item. `iteration-header` rows are never passed here — they render
+// directly via `IterationHeaderRow` instead (see `BacklogSection`).
+// Indent distinction (spec/screens.md, Task 9): story rows sit slightly
+// right of note/iteration-break dividers, which stay flush at the left edge.
+function SortableBacklogRow({
+  row,
+  projectId,
+}: {
+  row: Extract<BacklogRow<BoardStory>, { kind: "story" | "note" | "iteration-break" }>;
+  projectId: string;
+}) {
+  const dragId = row.kind === "story" ? row.story.id : row.divider.id;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: dragId });
   const style = { transform: CSS.Transform.toString(transform), transition };
-  const className = `cursor-grab active:cursor-grabbing ${isDragging ? "opacity-60" : ""}`;
-
-  let content: ReactNode;
-  if (row.kind === "story") {
-    content = <StoryListRow story={row.story} projectId={projectId} />;
-  } else if (row.kind === "note") {
-    content = <DividerRow projectId={projectId} divider={row.divider} />;
-  } else {
-    content = (
-      <IterationMarkerContent number={row.number} points={row.points} projectId={projectId} divider={row.divider!} />
-    );
-  }
+  const className = `cursor-grab active:cursor-grabbing ${row.kind === "story" ? "pl-3" : ""} ${isDragging ? "opacity-60" : ""}`;
 
   return (
     <li ref={setNodeRef} style={style} className={className} {...attributes} {...listeners}>
-      {content}
+      {row.kind === "story" ? (
+        <StoryListRow story={row.story} projectId={projectId} />
+      ) : (
+        <DividerRow projectId={projectId} divider={row.divider} />
+      )}
     </li>
   );
 }
@@ -311,24 +438,39 @@ function ListSection({
   items,
   projectId,
   composer,
+  collapsed,
+  onToggleCollapse,
 }: {
   zoneId: string;
   title: ReactNode;
   items: ListItem[];
   projectId: string;
   composer?: ReactNode;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }) {
   const { setNodeRef } = useDroppable({ id: zoneId });
 
   return (
     <section className="flex flex-col gap-2">
       <header className="flex items-center gap-3 py-1 text-xs text-muted-foreground">
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          aria-label={collapsed ? "Expand" : "Collapse"}
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+        </button>
         {title}
         {composer}
         <span className="h-px flex-1 bg-border" />
       </header>
+      {/* Kept mounted (not conditionally rendered) even while collapsed —
+          dnd-kit's droppable ref must stay registered so a story can still
+          be dropped into this zone (Task 9). */}
       <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
-        <ul ref={setNodeRef} className="flex min-h-10 flex-col gap-1.5">
+        <ul ref={setNodeRef} className={`flex min-h-10 flex-col gap-1.5 ${collapsed ? "hidden" : ""}`}>
           {items.map((item) => (
             <SortableListRow key={item.id} item={item} projectId={projectId} />
           ))}
@@ -338,38 +480,36 @@ function ListSection({
   );
 }
 
-// A stable React key for a backlog row — the underlying story/divider id
-// for anything real, or a synthetic key for an automatic marker (which has
-// no id of its own).
+// A stable React key for a backlog row.
 function rowKey(row: BacklogRow<BoardStory>, index: number): string {
   if (row.kind === "story") {
     return row.story.id;
   }
-  if (row.kind === "note" || row.divider) {
-    return row.divider!.id;
+  if (row.kind === "note" || row.kind === "iteration-break") {
+    return row.divider.id;
   }
-  return `auto-marker-${index}`;
+  return `header-${row.number}-${index}`;
 }
 
 // Finds the id (`"story:<id>"` / `"divider:<id>"`) of the next *real* row at
-// or after `fromIndex` — skipping over automatic markers, which aren't
-// stored rows and so have nothing to anchor an insertion to. `null` means
-// "insert at the end" (no real row follows).
+// or after `fromIndex` — skipping over header rows, which aren't stored
+// rows and so have nothing to anchor an insertion to. `null` means "insert
+// at the end" (no real row follows).
 function nextRealRowId(rows: BacklogRow<BoardStory>[], fromIndex: number): string | null {
   for (let i = fromIndex; i < rows.length; i++) {
     const row = rows[i];
     if (row.kind === "story") {
       return `story:${row.story.id}`;
     }
-    if (row.kind === "note" || (row.kind === "iteration-marker" && row.divider)) {
-      return `divider:${row.divider!.id}`;
+    if (row.kind === "note" || row.kind === "iteration-break") {
+      return `divider:${row.divider.id}`;
     }
   }
   return null;
 }
 
-// Backlog section: rows come from `buildBacklogRows`, which interleaves the
-// automatic velocity-based markers, freeform notes, and manual iteration
+// Backlog section: rows come from `buildBacklogRows`, which interleaves
+// numbered virtual-iteration headers, freeform notes, and manual iteration
 // breaks with the stories in one flat sortable list — a drag across any of
 // them is an ordinary reorder. A hover-revealed insert affordance sits
 // between every pair of rows so a note or break can be placed at an exact
@@ -380,6 +520,10 @@ function BacklogSection({
   startingIterationNumber,
   projectId,
   filter,
+  iterationGoals,
+  projectedDatesFor,
+  collapsedGroups,
+  onToggleGroup,
   composer,
 }: {
   // Full, unfiltered backlog (stories + dividers) — TASK-20: the virtual-
@@ -390,6 +534,10 @@ function BacklogSection({
   startingIterationNumber: number;
   projectId: string;
   filter: StoryFilter;
+  iterationGoals: Record<number, string>;
+  projectedDatesFor: (iterationNumber: number) => { start_date: string; end_date: string } | null;
+  collapsedGroups: ReadonlySet<string>;
+  onToggleGroup: (key: string) => void;
   composer?: ReactNode;
 }) {
   const { setNodeRef } = useDroppable({ id: BACKLOG_COLUMN_ID });
@@ -398,9 +546,31 @@ function BacklogSection({
     item.kind === "story" ? { kind: "story", story: item.story } : { kind: "divider", divider: item.divider },
   );
   const rows = buildBacklogRows(rowItems, velocity, startingIterationNumber);
-  const visibleIds = items
-    .filter((item) => item.kind !== "story" || matchesStoryFilter(item.story, filter))
-    .map((item) => item.id);
+
+  // A story/note row is hidden while its group is collapsed, or (a story
+  // only) while it doesn't match the active filter (TASK-20). Headers and
+  // break rows always render — collapsing only hides a group's *contents*,
+  // and a break stays visible/deletable regardless of either neighbor's
+  // group state.
+  let currentGroupCollapsed = false;
+  const visibleRowIds = new Set<string>();
+  for (const row of rows) {
+    if (row.kind === "iteration-header") {
+      currentGroupCollapsed = collapsedGroups.has(String(row.number));
+      continue;
+    }
+    if (row.kind === "iteration-break") {
+      visibleRowIds.add(row.divider.id);
+      continue;
+    }
+    if (currentGroupCollapsed) {
+      continue;
+    }
+    if (row.kind === "story" && !matchesStoryFilter(row.story, filter)) {
+      continue;
+    }
+    visibleRowIds.add(row.kind === "story" ? row.story.id : row.divider.id);
+  }
 
   return (
     <section className="flex flex-col gap-2">
@@ -409,19 +579,36 @@ function BacklogSection({
         {composer}
         <span className="h-px flex-1 bg-border" />
       </header>
-      <SortableContext items={visibleIds} strategy={verticalListSortingStrategy}>
+      <SortableContext items={[...visibleRowIds]} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-10 flex-col gap-1.5">
           <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, 0)} />
-          {rows.map((row, index) => (
-            <Fragment key={rowKey(row, index)}>
-              {row.kind === "iteration-marker" && !row.divider ? (
-                <IterationMarkerRow number={row.number} points={row.points} />
-              ) : row.kind === "story" && !matchesStoryFilter(row.story, filter) ? null : (
-                <SortableBacklogRow row={row} projectId={projectId} />
-              )}
-              <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
-            </Fragment>
-          ))}
+          {rows.map((row, index) => {
+            if (row.kind === "iteration-header") {
+              const key = String(row.number);
+              return (
+                <Fragment key={rowKey(row, index)}>
+                  <IterationHeaderRow
+                    number={row.number}
+                    points={row.points}
+                    projectId={projectId}
+                    goal={iterationGoals[row.number] ?? ""}
+                    projectedDates={projectedDatesFor(row.number)}
+                    collapsed={collapsedGroups.has(key)}
+                    onToggle={() => onToggleGroup(key)}
+                  />
+                  <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
+                </Fragment>
+              );
+            }
+
+            const id = row.kind === "story" ? row.story.id : row.divider.id;
+            return (
+              <Fragment key={rowKey(row, index)}>
+                {visibleRowIds.has(id) && <SortableBacklogRow row={row} projectId={projectId} />}
+                <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
+              </Fragment>
+            );
+          })}
         </ul>
       </SortableContext>
     </section>
@@ -472,6 +659,8 @@ export function BoardListView({
   initialBacklogItems,
   velocity,
   nextVirtualIterationNumber,
+  iterationLength,
+  iterationGoals,
   showIcebox,
   filter,
 }: {
@@ -485,6 +674,11 @@ export function BoardListView({
   initialBacklogItems: BacklogRowItem<BoardStory>[];
   velocity: number;
   nextVirtualIterationNumber: number;
+  // Projected dates and draft goals for the Backlog's virtual-iteration
+  // group headers (Task 9) — `iterationGoals` is pre-scoped server-side to
+  // numbers above the current iteration's.
+  iterationLength: number;
+  iterationGoals: Record<number, string>;
   showIcebox: boolean;
   filter: StoryFilter;
 }) {
@@ -493,6 +687,7 @@ export function BoardListView({
   const [syncedBacklogItems, setSyncedBacklogItems] = useState(initialBacklogItems);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  const { collapsed: collapsedGroups, toggle: onToggleGroup } = useCollapsedGroups(projectId);
 
   if (synced !== initialContainers || syncedBacklogItems !== initialBacklogItems) {
     setSynced(initialContainers);
@@ -613,6 +808,22 @@ export function BoardListView({
   const visibleCurrentItems = currentItems.filter(isVisible);
   const visibleIceboxItems = iceboxItems.filter(isVisible);
 
+  // Projected date range for a virtual iteration's group header (Task 9),
+  // derived from the current iteration's real end_date + the project's
+  // iteration_length — null when there's no current iteration to project
+  // from (shouldn't happen in tracker mode once ensureCurrentIteration has
+  // run, but this component has no other fallback date to anchor on).
+  function projectedDatesFor(iterationNumber: number) {
+    if (!currentIteration) {
+      return null;
+    }
+    return projectedIterationDates(
+      currentIteration.end_date,
+      iterationLength,
+      iterationNumber - currentIteration.number,
+    );
+  }
+
   return (
     <DndContext
       id="board-list-view"
@@ -636,6 +847,8 @@ export function BoardListView({
             items={visibleCurrentItems}
             projectId={projectId}
             composer={<QuickAddComposer projectId={projectId} target="unstarted" compact />}
+            collapsed={collapsedGroups.has("current")}
+            onToggleCollapse={() => onToggleGroup("current")}
           />
 
           <BacklogSection
@@ -644,6 +857,10 @@ export function BoardListView({
             startingIterationNumber={nextVirtualIterationNumber}
             projectId={projectId}
             filter={filter}
+            iterationGoals={iterationGoals}
+            projectedDatesFor={projectedDatesFor}
+            collapsedGroups={collapsedGroups}
+            onToggleGroup={onToggleGroup}
             composer={<QuickAddComposer projectId={projectId} target="backlog" compact />}
           />
         </div>
@@ -655,11 +872,7 @@ export function BoardListView({
         {activeItem && (
           <div className="max-w-3xl rotate-1 cursor-grabbing">
             {activeItem.kind === "divider" ? (
-              activeItem.divider.kind === "note" ? (
-                <DividerRow projectId={projectId} divider={activeItem.divider} />
-              ) : (
-                <IterationMarkerContent number={0} points={0} />
-              )
+              <DividerRow projectId={projectId} divider={activeItem.divider} />
             ) : (
               <StoryListRow story={activeItem.story} projectId={projectId} />
             )}
