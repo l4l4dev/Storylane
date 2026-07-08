@@ -10,7 +10,7 @@ test("create project, add a story, accept it, and roll over the iteration", asyn
   await page.getByRole("button", { name: "Continue as dev user" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 
-  // 2. Create a project (Pivotal is the default mode — leave it unchanged).
+  // 2. Create a project (Tracker is the default mode — leave it unchanged).
   await page.getByRole("button", { name: "New project" }).click();
   await page.getByLabel("Name").fill(projectName);
   await page.getByRole("button", { name: "Create" }).click();

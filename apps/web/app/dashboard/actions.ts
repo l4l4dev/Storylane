@@ -18,7 +18,7 @@ export async function createProject(formData: FormData) {
   const iterationLength = Number(formData.get("iteration_length") ?? 14);
   const pointScale = String(formData.get("point_scale") ?? "fibonacci");
   // Fixed at creation (Task 14 decision) — there is no mode-change path.
-  const workflowMode = formData.get("workflow_mode") === "free" ? "free" : "pivotal";
+  const workflowMode = formData.get("workflow_mode") === "free" ? "free" : "tracker";
 
   if (!name) {
     return;

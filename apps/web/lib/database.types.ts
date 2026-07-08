@@ -534,11 +534,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "stories_custom_status_id_fkey"
-            columns: ["custom_status_id"]
+            foreignKeyName: "stories_custom_status_project_fkey"
+            columns: ["custom_status_id", "project_id"]
             isOneToOne: false
             referencedRelation: "custom_statuses"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "project_id"]
           },
           {
             foreignKeyName: "stories_epic_id_fkey"

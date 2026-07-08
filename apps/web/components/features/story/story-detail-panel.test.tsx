@@ -26,7 +26,7 @@ const baseDetail: StoryDetail = {
   assigneeId: null,
   labelIds: [],
   pointScale: [0, 1, 2, 3, 5, 8, 13],
-  workflowMode: "pivotal",
+  workflowMode: "tracker",
   customStatusId: null,
   customStatuses: [],
   epics: [],

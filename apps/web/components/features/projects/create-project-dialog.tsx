@@ -19,9 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 
 export function CreateProjectDialog() {
   const [open, setOpen] = useState(false);
-  // Task 14: chosen at creation and fixed afterwards — pivotal keeps the
+  // Task 14: chosen at creation and fixed afterwards — tracker keeps the
   // iteration/velocity workflow, free is a plain Trello-style board.
-  const [mode, setMode] = useState<"pivotal" | "free">("pivotal");
+  const [mode, setMode] = useState<"tracker" | "free">("tracker");
 
   async function handleCreate(formData: FormData) {
     await createProject(formData);
@@ -56,13 +56,13 @@ export function CreateProjectDialog() {
                 <input
                   type="radio"
                   name="workflow_mode"
-                  value="pivotal"
-                  checked={mode === "pivotal"}
-                  onChange={() => setMode("pivotal")}
+                  value="tracker"
+                  checked={mode === "tracker"}
+                  onChange={() => setMode("tracker")}
                   className="mt-1"
                 />
                 <span>
-                  Pivotal Tracker
+                  Tracker
                   <span className="block text-xs text-muted-foreground">
                     Fixed story states, iterations, and velocity
                   </span>
@@ -88,7 +88,7 @@ export function CreateProjectDialog() {
             <p className="text-xs text-muted-foreground">The workflow can&apos;t be changed after creation.</p>
           </fieldset>
 
-          {mode === "pivotal" && (
+          {mode === "tracker" && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="project-iteration-length">Iteration length (days)</Label>
               <NativeSelect id="project-iteration-length" name="iteration_length" defaultValue={14}>

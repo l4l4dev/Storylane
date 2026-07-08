@@ -21,7 +21,7 @@ export type StoryDetail = {
   labelIds: string[];
   pointScale: number[];
   // Task 14: free-mode projects swap the state machine for custom statuses.
-  workflowMode: "pivotal" | "free";
+  workflowMode: "tracker" | "free";
   customStatusId: string | null;
   customStatuses: { id: string; name: string }[];
   epics: { id: string; name: string }[];
@@ -89,7 +89,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     assigneeId: story.assignee_id,
     labelIds: story.story_labels.map((sl) => sl.label_id),
     pointScale: pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points),
-    workflowMode: project?.workflow_mode === "free" ? "free" : "pivotal",
+    workflowMode: project?.workflow_mode === "free" ? "free" : "tracker",
     customStatusId: story.custom_status_id,
     customStatuses: customStatuses ?? [],
     epics: epics ?? [],
