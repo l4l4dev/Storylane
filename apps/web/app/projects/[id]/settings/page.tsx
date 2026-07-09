@@ -4,6 +4,7 @@ import { ITERATION_LENGTHS, POINT_SCALES } from "@/lib/types";
 import { IntegrationSettings, type IntegrationRow } from "@/components/features/projects/integration-settings";
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
 import { LabelManager } from "@/components/features/projects/label-manager";
+import { LaneManager } from "@/components/features/projects/lane-manager";
 import { StatusManager } from "@/components/features/projects/status-manager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +65,11 @@ export default async function ProjectSettingsPage({
         .select("id, name, color, position, is_done")
         .eq("project_id", id)
         .order("position", { ascending: true })
+    : { data: null };
+
+  // TASK-16.3: free-mode projects manage their swimlanes here too.
+  const { data: swimlanes } = isFree
+    ? await supabase.from("swimlanes").select("id, name, position").eq("project_id", id).order("position", { ascending: true })
     : { data: null };
 
   return (
@@ -220,6 +226,19 @@ export default async function ProjectSettingsPage({
           <StatusManager
             projectId={project.id}
             statuses={customStatuses ?? []}
+            canEdit={isMember}
+            canDelete={isOwner}
+          />
+        </section>
+      )}
+
+      {/* Swimlanes (TASK-16.3 — free-mode projects only) */}
+      {isFree && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-lg font-semibold">Swimlanes</h2>
+          <LaneManager
+            projectId={project.id}
+            lanes={swimlanes ?? []}
             canEdit={isMember}
             canDelete={isOwner}
           />

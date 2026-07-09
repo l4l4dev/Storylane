@@ -304,8 +304,11 @@ Mode" and spec/data-model.md for schema):
   the column header menu.
 - **Swimlanes:** when the project has `swimlanes` rows, the board splits
   into horizontal lanes (lane name on the left) × the same columns, plus a
-  "No lane" band for unassigned stories; dragging a card across bands sets
-  `swimlane_id`. Managed in Settings alongside custom statuses.
+  "No lane" band for unassigned stories, shown **first** (above the named
+  lanes) so cards created via a column's quick-add — which always start
+  with `swimlane_id = NULL` — never land buried under existing lanes;
+  dragging a card across bands sets `swimlane_id`. Managed in Settings
+  alongside custom statuses.
 - **Recurring stories:** managed in a Settings section (free projects
   only): title, description, target column/lane, cadence
   (daily / weekly + weekday / monthly + day), active toggle. Instances are

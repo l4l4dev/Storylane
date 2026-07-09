@@ -227,11 +227,19 @@ export async function quickCreateStoryFree(formData: FormData) {
  * custom statuses — there is no state machine to validate against. Also
  * persists the order within the target column, and notifies Slack with the
  * status name (the free-mode equivalent of a state change).
+ *
+ * TASK-16.3: when the board has swimlanes, the client also sends
+ * `swimlane_id` ("" = the No lane band). Its *absence* means this board has
+ * no lanes at all, so the lane column is left untouched — that's how a
+ * lanes-unaware drop is told apart from an explicit move into No lane.
  */
 export async function dropStoryFree(formData: FormData) {
   const projectId = String(formData.get("project_id"));
   const storyId = String(formData.get("story_id"));
   const statusId = String(formData.get("status_id"));
+  const hasLaneField = formData.has("swimlane_id");
+  const swimlaneRaw = String(formData.get("swimlane_id") ?? "");
+  const swimlaneId = swimlaneRaw === "" ? null : swimlaneRaw;
   const orderedIds = formData.getAll("ordered_ids").map(String).filter(Boolean);
 
   const supabase = await createClient();
@@ -239,7 +247,7 @@ export async function dropStoryFree(formData: FormData) {
   const [{ data: story, error: fetchError }, { data: status }] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, custom_status_id")
+      .select("number, title, custom_status_id, swimlane_id")
       .eq("id", storyId)
       .eq("project_id", projectId)
       .single(),
@@ -253,12 +261,37 @@ export async function dropStoryFree(formData: FormData) {
     throw new Error("Unknown status for this project");
   }
 
-  if (story.custom_status_id !== statusId) {
-    const { error } = await supabase.from("stories").update({ custom_status_id: statusId }).eq("id", storyId);
+  if (hasLaneField && swimlaneId) {
+    const { data: lane } = await supabase
+      .from("swimlanes")
+      .select("id")
+      .eq("id", swimlaneId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+    if (!lane) {
+      throw new Error("Unknown lane for this project");
+    }
+  }
+
+  const statusChanged = story.custom_status_id !== statusId;
+  const laneChanged = hasLaneField && story.swimlane_id !== swimlaneId;
+
+  if (statusChanged || laneChanged) {
+    const updates: { custom_status_id?: string; swimlane_id?: string | null } = {};
+    if (statusChanged) {
+      updates.custom_status_id = statusId;
+    }
+    if (laneChanged) {
+      updates.swimlane_id = swimlaneId;
+    }
+    const { error } = await supabase.from("stories").update(updates).eq("id", storyId);
     if (error) {
       throw new Error(error.message);
     }
-    after(() => notifySlack(projectId, storyStateChangeMessage(story, status.name)));
+    // Lane-only moves aren't a state change worth notifying about.
+    if (statusChanged) {
+      after(() => notifySlack(projectId, storyStateChangeMessage(story, status.name)));
+    }
   }
 
   if (orderedIds.length > 0) {

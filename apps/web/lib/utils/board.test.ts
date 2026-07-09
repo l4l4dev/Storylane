@@ -3,6 +3,8 @@ import {
   findContainer,
   groupStoriesByIteration,
   isOverWipLimit,
+  laneContainerKey,
+  parseLaneContainerKey,
   partitionIcebox,
   reorderContainer,
   storyById,
@@ -86,6 +88,23 @@ describe("isOverWipLimit", () => {
 
   it("is true once the count exceeds the limit", () => {
     expect(isOverWipLimit(4, 3)).toBe(true);
+  });
+});
+
+describe("laneContainerKey / parseLaneContainerKey", () => {
+  it("round-trips a status paired with a real lane", () => {
+    const key = laneContainerKey("status-1", "lane-1");
+    expect(key).toBe("status-1::lane-1");
+    expect(parseLaneContainerKey(key)).toEqual({ statusId: "status-1", laneId: "lane-1" });
+  });
+
+  it("round-trips the No lane band as a null laneId", () => {
+    const key = laneContainerKey("status-1", null);
+    expect(parseLaneContainerKey(key)).toEqual({ statusId: "status-1", laneId: null });
+  });
+
+  it("never collides with a bare status id (the no-lanes board's container key)", () => {
+    expect(laneContainerKey("status-1", "lane-1")).not.toBe("status-1");
   });
 });
 

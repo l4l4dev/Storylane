@@ -63,6 +63,24 @@ export function isOverWipLimit(count: number, wipLimit: number | null): boolean 
   return wipLimit != null && count > wipLimit;
 }
 
+// TASK-16.3: when a free-mode board has swimlanes, each board cell is a
+// column x lane pair. `::` never appears in a UUID, so this composite key
+// can't collide with a bare status id (the no-lanes container key) or a
+// story id, letting findContainer/storyById below work unchanged.
+const LANE_CONTAINER_SEPARATOR = "::";
+const NO_LANE = "none";
+
+/** Builds a composite board-cell container id for a (status, lane) pair — `laneId` null means the "No lane" band. */
+export function laneContainerKey(statusId: string, laneId: string | null): string {
+  return `${statusId}${LANE_CONTAINER_SEPARATOR}${laneId ?? NO_LANE}`;
+}
+
+/** Splits a composite board-cell container id back into its status and lane ids. */
+export function parseLaneContainerKey(key: string): { statusId: string; laneId: string | null } {
+  const [statusId, laneId] = key.split(LANE_CONTAINER_SEPARATOR);
+  return { statusId, laneId: laneId === NO_LANE ? null : laneId };
+}
+
 // Shared cross-container drag helpers — used by both the Kanban and List
 // board views, whose containers are keyed differently (state columns vs.
 // current/backlog/icebox zones) but behave identically during a drag.
