@@ -662,6 +662,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      finalize_iteration: {
+        Args: { p_manual: boolean; p_project_id: string }
+        Returns: Json
+      }
       generate_username: { Args: { base: string }; Returns: string }
       invite_member: {
         Args: { p_email: string; p_project_id: string; p_role?: string }
