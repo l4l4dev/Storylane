@@ -1,10 +1,10 @@
 ---
 id: TASK-16
 title: Free mode KanbanFlow parity
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-07 14:27'
-updated_date: '2026-07-08 12:38'
+updated_date: '2026-07-09 14:30'
 labels:
   - web
   - db
@@ -26,5 +26,11 @@ Umbrella task: bring the free-mode board to KanbanFlow parity per spec/features.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All subtasks are Done
+- [x] #1 All subtasks are Done
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Umbrella task closed: all four subtasks (16.1 column templates/done dates, 16.2 WIP limits, 16.3 swimlanes, 16.4 recurring stories) are Done, bringing the free-mode board to KanbanFlow parity per spec/features.md and spec/screens.md.
+<!-- SECTION:FINAL_SUMMARY:END -->
