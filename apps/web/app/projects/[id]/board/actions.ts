@@ -15,6 +15,7 @@ import {
   type KanbanColumnId,
   type ListZoneId,
 } from "@/lib/utils/kanban";
+import { evaluateFocusDrop, type FocusDragTarget } from "@/lib/utils/focus";
 import { isUnestimatedFeature, nextPosition, reorderPositions } from "@/lib/utils/stories";
 import {
   applyTransition,
@@ -357,6 +358,72 @@ export async function dropStory(formData: FormData) {
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/stories/${storyId}`);
+}
+
+/**
+ * Handles a Focus-view drop between Todo / This week / Today (TASK-15,
+ * spec/screens.md "Focus view"). Unlike `dropStory`, this only ever sets or
+ * clears `focus` — state and iteration_id are never touched here; state
+ * changes go through the on-card transition buttons instead.
+ */
+export async function setStoryFocus(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const storyId = String(formData.get("story_id"));
+  const target = String(formData.get("target")) as FocusDragTarget;
+  const orderedIds = formData.getAll("ordered_ids").map(String).filter(Boolean);
+
+  const supabase = await createClient();
+
+  const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
+    supabase
+      .from("stories")
+      .select("state, iteration_id")
+      .eq("id", storyId)
+      .eq("project_id", projectId)
+      .single(),
+    supabase
+      .from("iterations")
+      .select("id")
+      .eq("project_id", projectId)
+      .neq("state", "done")
+      .order("number", { ascending: false })
+      .limit(1),
+  ]);
+
+  if (fetchError || !story) {
+    throw new Error(fetchError?.message ?? "Story not found");
+  }
+
+  const currentIterationId = currentRows?.[0]?.id ?? null;
+  if (!currentIterationId || story.iteration_id !== currentIterationId) {
+    throw new Error("Story is not in the current iteration");
+  }
+
+  const evaluation = evaluateFocusDrop(story, target);
+  if (!evaluation.ok) {
+    throw new Error(evaluation.reason);
+  }
+
+  const { error } = await supabase
+    .from("stories")
+    .update({ focus: evaluation.focus })
+    .eq("id", storyId)
+    .eq("project_id", projectId);
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (orderedIds.length > 0) {
+    await assertAllSucceeded(
+      await Promise.all(
+        reorderPositions(orderedIds).map(({ id, position }) =>
+          supabase.from("stories").update({ position }).eq("id", id).eq("project_id", projectId),
+        ),
+      ),
+    );
+  }
+
+  revalidatePath(`/projects/${projectId}/board`);
 }
 
 /**

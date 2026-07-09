@@ -63,7 +63,7 @@ export default async function BoardPage({
       supabase
         .from("stories")
         .select(
-          "id, number, title, description, story_type, state, points, position, iteration_id, epic_id, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+          "id, number, title, description, story_type, state, points, position, iteration_id, epic_id, assignee_id, focus, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
         )
         .eq("project_id", id)
         .order("position", { ascending: true }),
@@ -118,6 +118,8 @@ export default async function BoardPage({
         position: story.position,
         iteration_id: story.iteration_id,
         assignee_id: story.assignee_id,
+        focus: story.focus,
+        completed_at: story.completed_at,
         assigneeName: assigneeProfile?.display_name ?? null,
         labels: labelIds
           .map((labelId) => labelById.get(labelId))

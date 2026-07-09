@@ -495,11 +495,13 @@ export type Database = {
       stories: {
         Row: {
           assignee_id: string | null
+          completed_at: string | null
           created_at: string
           created_by: string
           custom_status_id: string | null
           description: string | null
           epic_id: string | null
+          focus: string | null
           id: string
           iteration_id: string | null
           number: number
@@ -513,11 +515,13 @@ export type Database = {
         }
         Insert: {
           assignee_id?: string | null
+          completed_at?: string | null
           created_at?: string
           created_by?: string
           custom_status_id?: string | null
           description?: string | null
           epic_id?: string | null
+          focus?: string | null
           id?: string
           iteration_id?: string | null
           number?: number
@@ -531,11 +535,13 @@ export type Database = {
         }
         Update: {
           assignee_id?: string | null
+          completed_at?: string | null
           created_at?: string
           created_by?: string
           custom_status_id?: string | null
           description?: string | null
           epic_id?: string | null
+          focus?: string | null
           id?: string
           iteration_id?: string | null
           number?: number
