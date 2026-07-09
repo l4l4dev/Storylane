@@ -570,18 +570,18 @@ export type Database = {
             referencedColumns: ["id", "project_id"]
           },
           {
-            foreignKeyName: "stories_epic_id_fkey"
-            columns: ["epic_id"]
+            foreignKeyName: "stories_epic_project_fkey"
+            columns: ["epic_id", "project_id"]
             isOneToOne: false
             referencedRelation: "epics"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "project_id"]
           },
           {
-            foreignKeyName: "stories_iteration_id_fkey"
-            columns: ["iteration_id"]
+            foreignKeyName: "stories_iteration_project_fkey"
+            columns: ["iteration_id", "project_id"]
             isOneToOne: false
             referencedRelation: "iterations"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "project_id"]
           },
           {
             foreignKeyName: "stories_project_id_fkey"
@@ -669,6 +669,10 @@ export type Database = {
       }
       is_project_member: { Args: { p_project_id: string }; Returns: boolean }
       project_role: { Args: { p_project_id: string }; Returns: string }
+      shares_project_with: {
+        Args: { p_target_user_id: string }
+        Returns: boolean
+      }
       update_story: {
         Args: {
           p_assignee_id: string

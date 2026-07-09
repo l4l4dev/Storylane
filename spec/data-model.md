@@ -227,8 +227,13 @@ stories (
   project_id   uuid REFERENCES projects(id) ON DELETE CASCADE,
   number       int  NOT NULL,               -- プロジェクト毎の連番（採番トリガーで自動付与、UNIQUE (project_id, number)）。
                                             -- UI では #123、PR タイトルでは [SL-123] として使う（Task 12 で追加）
-  iteration_id uuid REFERENCES iterations(id) ON DELETE SET NULL,
-  epic_id      uuid REFERENCES epics(id) ON DELETE SET NULL,
+  iteration_id uuid,                      -- Composite FK (iteration_id, project_id) REFERENCES
+                                          -- iterations(id, project_id) ON DELETE SET NULL (iteration_id)
+                                          -- (TASK-18) — prevents a story from pointing at another
+                                          -- project's iteration; only iteration_id is nulled on delete
+  epic_id      uuid,                      -- Composite FK (epic_id, project_id) REFERENCES epics(id,
+                                          -- project_id) ON DELETE SET NULL (epic_id) (TASK-18) — same
+                                          -- cross-project protection, epic_id only
   custom_status_id uuid,                  -- free-mode column (Task 14); ignored in tracker mode.
                                           -- Composite FK (custom_status_id, project_id) REFERENCES
                                           -- custom_statuses(id, project_id) — prevents a story from
