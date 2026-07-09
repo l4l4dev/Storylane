@@ -4,9 +4,18 @@
 
 export type SlackStory = { number: number; title: string };
 
+// TASK-23: Slack's mrkdwn text uses &, <, > for entities/links — an
+// unescaped title or status name containing them renders mangled (or is
+// silently dropped) once notifySlack posts the text raw. `&` must be
+// escaped first so it doesn't double-escape the `&` this function itself
+// introduces for `<`/`>`.
+function escapeSlackText(text: string): string {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
 /** Message for a story state change (transition buttons / kanban drag / webhook). */
 export function storyStateChangeMessage(story: SlackStory, newState: string): string {
-  return `#${story.number} "${story.title}" is now *${newState}*`;
+  return `#${story.number} "${escapeSlackText(story.title)}" is now *${escapeSlackText(newState)}*`;
 }
 
 /** Message for an iteration being finalized by the lazy rollover. */

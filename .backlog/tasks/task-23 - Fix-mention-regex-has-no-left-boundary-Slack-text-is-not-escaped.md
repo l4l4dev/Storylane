@@ -1,10 +1,10 @@
 ---
 id: TASK-23
 title: 'Fix: @mention regex has no left boundary; Slack text is not escaped'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-08 05:31'
-updated_date: '2026-07-08 12:37'
+updated_date: '2026-07-09 04:43'
 labels:
   - web
   - bug
@@ -25,7 +25,25 @@ Code review 2026-07-08 (apps/web/lib/utils/comments.ts, slack.ts). Two small cor
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 extractMentions/parseCommentBody do not treat @handle inside an email or word as a mention; existing mention cases still work
-- [ ] #2 Slack message text escapes &, <, > for story titles and custom status names
-- [ ] #3 Tests cover email-in-comment (no false mention) and a title containing & < >
+- [x] #1 extractMentions/parseCommentBody do not treat @handle inside an email or word as a mention; existing mention cases still work
+- [x] #2 Slack message text escapes &, <, > for story titles and custom status names
+- [x] #3 Tests cover email-in-comment (no false mention) and a title containing & < >
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Followed systematic-debugging: reproduced both bugs directly by reading the flagged code (comments.ts MENTION_PATTERN, slack.ts storyStateChangeMessage, notifySlack), confirmed root cause matched the task description exactly, wrote failing tests first (TDD), then applied the minimal fix.
+
+1. MENTION_PATTERN gained a negative lookbehind (?<![\w@]) requiring start-of-string or a non-word/non-@ char before @ - the exact fix the task description suggested. Verified extractMentions/parseCommentBody no longer produce a false mention from mary@storylane.dev, while every existing mention case (start-of-string, mid-sentence, back-to-back mentions separated by a space, lowercasing) still passes.
+
+2. Added escapeSlackText (escapes & first, then < and >, in that order so the &amp; this function introduces for < / > is never itself re-escaped) and applied it to both story.title and the newState parameter of storyStateChangeMessage - the latter also covers custom status names, since dropStoryFree (board/actions.ts:260) passes status.name through that same parameter. iterationDoneMessage/iterationStartedMessage only interpolate numbers/dates, no escaping needed there. Confirmed extractMentions/notifications.ts (the only other consumer) shares the same single extractMentions implementation - no duplicate regex existed elsewhere to fix.
+
+No live/DB verification needed - both are pure, side-effect-free functions with full unit coverage; no RLS/UI surface touched.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed two small correctness bugs found in the 2026-07-08 code review: the @mention regex had no left boundary, so an email like mary@storylane.dev produced a false mention on "storylane"; and Slack message text was interpolated raw, so a story title or custom status name containing &, <, or > rendered mangled in Slack. Both fixed with a minimal, targeted change (a lookbehind on the mention regex; an escape helper applied before building the Slack message) and covered by new unit tests written first (TDD) to prove the bug before fixing it.
+<!-- SECTION:FINAL_SUMMARY:END -->

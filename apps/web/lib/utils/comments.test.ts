@@ -33,6 +33,22 @@ describe("parseCommentBody", () => {
       { type: "text", value: "contact me @ noon" },
     ]);
   });
+
+  // TASK-23: MENTION_PATTERN had no left boundary, so the @ inside an email
+  // address matched — "mary@storylane.dev" produced a false "storylane"
+  // mention (and a mention chip rendered mid-address).
+  it("does not treat the @ inside an email address as a mention", () => {
+    expect(parseCommentBody("reach me at mary@storylane.dev")).toEqual([
+      { type: "text", value: "reach me at mary@storylane.dev" },
+    ]);
+  });
+
+  it("still recognizes a mention right after an email, separated by a space", () => {
+    expect(parseCommentBody("cc mary@storylane.dev @alice")).toEqual([
+      { type: "text", value: "cc mary@storylane.dev " },
+      { type: "mention", value: "alice" },
+    ]);
+  });
 });
 
 describe("extractMentions", () => {
@@ -42,5 +58,9 @@ describe("extractMentions", () => {
 
   it("returns an empty array when there are no mentions", () => {
     expect(extractMentions("no mentions here")).toEqual([]);
+  });
+
+  it("does not extract a false mention from an email address", () => {
+    expect(extractMentions("reach me at mary@storylane.dev")).toEqual([]);
   });
 });

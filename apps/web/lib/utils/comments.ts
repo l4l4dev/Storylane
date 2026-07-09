@@ -1,7 +1,10 @@
 // Pure, framework-free helpers for comment bodies. Kept side-effect free so
 // they can be unit-tested without a Supabase client or React.
 
-const MENTION_PATTERN = /@([a-z0-9_]{3,30})/gi;
+// TASK-23: negative lookbehind requires start-of-string or a non-word,
+// non-@ char immediately before the @ — without it, the @ inside an email
+// address (e.g. "mary@storylane.dev") matched and produced a false mention.
+const MENTION_PATTERN = /(?<![\w@])@([a-z0-9_]{3,30})/gi;
 
 export type CommentSegment = { type: "text" | "mention"; value: string };
 
