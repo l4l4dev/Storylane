@@ -172,6 +172,7 @@ export type Database = {
           name: string
           position: number
           project_id: string
+          wip_limit: number | null
         }
         Insert: {
           color?: string
@@ -181,6 +182,7 @@ export type Database = {
           name: string
           position?: number
           project_id: string
+          wip_limit?: number | null
         }
         Update: {
           color?: string
@@ -190,6 +192,7 @@ export type Database = {
           name?: string
           position?: number
           project_id?: string
+          wip_limit?: number | null
         }
         Relationships: [
           {

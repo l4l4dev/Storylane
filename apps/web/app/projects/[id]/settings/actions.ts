@@ -119,7 +119,7 @@ export async function deleteLabel(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("labels").delete().eq("id", id);
+  const { error } = await supabase.from("labels").delete().eq("id", id).eq("project_id", projectId);
 
   if (error) {
     throw new Error(error.message);
@@ -170,7 +170,8 @@ export async function updateCustomStatus(formData: FormData) {
   const { error } = await supabase
     .from("custom_statuses")
     .update({ name, color, is_done: isDone })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("project_id", projectId);
   if (error) {
     throw new Error(error.message);
   }
@@ -183,7 +184,11 @@ export async function deleteCustomStatus(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("custom_statuses").delete().eq("id", id);
+  const { error } = await supabase
+    .from("custom_statuses")
+    .delete()
+    .eq("id", id)
+    .eq("project_id", projectId);
   if (error) {
     // 23503 = the stories.custom_status FK — a column with cards on it
     // can't be removed (see the workflow_modes migration).
@@ -193,6 +198,39 @@ export async function deleteCustomStatus(formData: FormData) {
     throw new Error(error.message);
   }
   revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+/**
+ * TASK-16.2: sets or clears a column's WIP limit — configured from the
+ * board's column header menu (spec/screens.md "Free mode board"), not the
+ * Settings status editor, but still a custom_statuses mutation like its
+ * siblings above. A soft limit only: this never blocks a drop, it just
+ * changes what the board renders as a warning past the count.
+ */
+export async function setStatusWipLimit(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const statusId = String(formData.get("status_id"));
+  const raw = String(formData.get("wip_limit") ?? "").trim();
+
+  let wipLimit: number | null = null;
+  if (raw !== "") {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error("WIP limit must be a positive number");
+    }
+    wipLimit = Math.floor(parsed);
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("custom_statuses")
+    .update({ wip_limit: wipLimit })
+    .eq("id", statusId)
+    .eq("project_id", projectId);
+  if (error) {
+    throw new Error(error.message);
+  }
   revalidatePath(`/projects/${projectId}/board`);
 }
 
@@ -279,7 +317,7 @@ export async function deleteIntegration(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("integrations").delete().eq("id", id);
+  const { error } = await supabase.from("integrations").delete().eq("id", id).eq("project_id", projectId);
 
   if (error) {
     throw new Error(error.message);
