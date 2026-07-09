@@ -4,13 +4,13 @@ title: Move Slack notifications to DB webhook → Edge Function (pre-iOS prerequ
 status: To Do
 assignee: []
 created_date: '2026-07-08 07:45'
-updated_date: '2026-07-08 12:39'
+updated_date: '2026-07-09 05:10'
 labels:
   - db
   - ios
 dependencies: []
 priority: low
-ordinal: 16000
+ordinal: 22000
 ---
 
 ## Description
@@ -33,5 +33,10 @@ author: @l4l4dev
 created: 2026-07-08 12:39
 ---
 Deferred to iOS phase start per advisor-assisted prioritization pass (2026-07-08) — see TASK-19..TASK-17 for the current Web-phase sequence.
+---
+
+created: 2026-07-09 05:10
+---
+Ordinal 16000 → 22000 (2026-07-09): with TASK-3 (deploy) moved to the tail of the Web phase, this task's documented decision 'schedule at iOS-phase start' means it belongs after TASK-3, not before it. Now ordered: all Web tasks → TASK-3 deploy → TASK-24 → iOS work.
 ---
 <!-- COMMENTS:END -->
