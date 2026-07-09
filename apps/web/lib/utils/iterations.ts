@@ -15,39 +15,6 @@ function formatDateOnly(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** One past the highest existing sprint number, or 1 if there are none yet. */
-export function nextIterationNumber(iterations: ReadonlyArray<{ number: number }>): number {
-  return iterations.reduce((max, iteration) => Math.max(max, iteration.number), 0) + 1;
-}
-
-/**
- * The next iteration starts the day after the latest existing iteration ends;
- * the very first iteration for a project starts today.
- */
-export function nextIterationDates(
-  iterations: ReadonlyArray<{ end_date: string }>,
-  iterationLengthDays: number,
-  today: string,
-): { start_date: string; end_date: string } {
-  const latestEndMs = iterations.reduce<number | null>((latest, iteration) => {
-    const end = parseDateOnly(iteration.end_date);
-    return latest === null || end > latest ? end : latest;
-  }, null);
-
-  const startMs = latestEndMs === null ? parseDateOnly(today) : latestEndMs + MS_PER_DAY;
-  const endMs = startMs + (iterationLengthDays - 1) * MS_PER_DAY;
-
-  return { start_date: formatDateOnly(startMs), end_date: formatDateOnly(endMs) };
-}
-
-/** An iteration is "current" when today falls within its date range and it hasn't been finalized. */
-export function isCurrentIteration(
-  iteration: { start_date: string; end_date: string; state: string },
-  today: string,
-): boolean {
-  return iteration.state !== "done" && iteration.start_date <= today && today <= iteration.end_date;
-}
-
 /** Done iterations are frozen: no drag, no goal edits, no manual story moves. */
 export function isIterationEditable(iteration: { state: string }): boolean {
   return iteration.state !== "done";

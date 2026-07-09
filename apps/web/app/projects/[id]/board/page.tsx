@@ -5,7 +5,7 @@ import {
   ICEBOX_COLUMN_ID,
   columnForStory,
 } from "@/lib/utils/kanban";
-import { isCurrentIteration, type BacklogRowItem } from "@/lib/utils/iterations";
+import type { BacklogRowItem } from "@/lib/utils/iterations";
 import { filterStories } from "@/lib/utils/stories";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
@@ -14,10 +14,6 @@ import { FreeBoard, type CustomStatus } from "@/components/features/board/free-b
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { StoryPeekHost } from "@/components/features/board/story-peek-host";
 import { ensureCurrentIteration } from "./actions";
-
-function todayDateOnly(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default async function BoardPage({
   params,
@@ -29,6 +25,10 @@ export default async function BoardPage({
   const { id } = await params;
   const { type, assignee, label, story: peekStoryId } = await searchParams;
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const { data: project } = await supabase
     .from("projects")
@@ -70,7 +70,7 @@ export default async function BoardPage({
       supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
       supabase
         .from("project_members")
-        .select("user_id, profiles(display_name)")
+        .select("user_id, role, profiles(display_name)")
         .eq("project_id", id),
       // List view only (see components/features/board/board-list-view.tsx) —
       // freeform planning dividers for the Backlog section.
@@ -86,10 +86,15 @@ export default async function BoardPage({
   const storyPositionById = new Map((stories ?? []).map((s) => [s.id, s.position]));
 
   const allIterations: IterationMeta[] = iterations ?? [];
-  const today = todayDateOnly();
+  // TASK-10: the current iteration is whichever non-done row
+  // ensureCurrentIteration's finalize_iteration RPC just left in place — not
+  // "starts on or before today" (isCurrentIteration). A manually-finished
+  // iteration's successor starts *tomorrow*, so requiring date coverage left
+  // the board showing no current iteration at all for the rest of finish day.
   const currentIteration =
-    allIterations.find((iteration) => iteration.state !== "done" && isCurrentIteration(iteration, today)) ??
-    null;
+    allIterations
+      .filter((iteration) => iteration.state !== "done")
+      .sort((a, b) => b.number - a.number)[0] ?? null;
   const doneIterationIds = new Set(
     allIterations.filter((iteration) => iteration.state === "done").map((iteration) => iteration.id),
   );
@@ -188,6 +193,12 @@ export default async function BoardPage({
     return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
   });
 
+  // "Finish iteration" is owner/member only (spec/velocity.md "Manual
+  // finish") — the RPC enforces this too, this is just so viewers don't see
+  // a button they'd be rejected for clicking.
+  const myRole = (members ?? []).find((m) => m.user_id === user?.id)?.role;
+  const canFinishIteration = myRole === "owner" || myRole === "member";
+
   // Side peek (spec/screens.md "Board layout"): ?story=<id> opens the story
   // detail over the board's right edge. Fetched server-side so the peek
   // renders in the same pass as the board.
@@ -209,6 +220,7 @@ export default async function BoardPage({
         nextVirtualIterationNumber={nextVirtualIterationNumber}
         iterationLength={project.iteration_length}
         iterationGoals={iterationGoals}
+        canFinishIteration={canFinishIteration}
         filter={filter}
         toolbar={
           <BoardFilters

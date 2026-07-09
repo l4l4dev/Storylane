@@ -1,16 +1,24 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutGrid, List as ListIcon, Snowflake } from "lucide-react";
-import { updateIterationGoal } from "@/app/projects/[id]/board/actions";
+import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { sumPoints } from "@/lib/utils/board";
 import { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
 import type { StoryFilter } from "@/lib/utils/stories";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { BoardListView } from "./board-list-view";
 import { KanbanColumnsBoard } from "./kanban-columns-board";
 import type { StoryCardData } from "./story-card";
@@ -58,6 +66,7 @@ export function KanbanBoard({
   nextVirtualIterationNumber,
   iterationLength,
   iterationGoals,
+  canFinishIteration,
   filter,
   toolbar,
 }: {
@@ -79,6 +88,10 @@ export function KanbanBoard({
   // the Backlog's virtual-iteration group headers (Task 9).
   iterationLength: number;
   iterationGoals: Record<number, string>;
+  // TASK-10: owner/member only (spec/velocity.md "Manual finish") — the
+  // finalize_iteration RPC enforces this too, this just keeps the button off
+  // a viewer's screen.
+  canFinishIteration: boolean;
   // Type/assignee/label criteria from the URL — hides non-matching rows in
   // both views without ever touching the underlying (unfiltered) data.
   filter: StoryFilter;
@@ -108,7 +121,7 @@ export function KanbanBoard({
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
         {currentIteration && (
           <>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold">Iteration #{currentIteration.number}</span>
               <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
                 Current
@@ -119,20 +132,20 @@ export function KanbanBoard({
               <span className="text-xs text-muted-foreground">
                 {sumPoints(iterationStories)} pts committed
               </span>
-            </div>
-            <form action={updateIterationGoal} className="flex min-w-56 flex-1 items-center gap-2 sm:max-w-md">
-              <input type="hidden" name="project_id" value={projectId} />
-              <input type="hidden" name="iteration_id" value={currentIteration.id} />
-              <Input
-                name="goal"
-                placeholder="Sprint goal"
-                defaultValue={currentIteration.goal ?? ""}
-                className="h-8 flex-1"
+              <span className="text-xs text-muted-foreground">
+                auto-finishes on {currentIteration.end_date}
+              </span>
+              <FinishIterationButton
+                projectId={projectId}
+                iterationNumber={currentIteration.number}
+                visible={canFinishIteration}
               />
-              <Button type="submit" variant="outline" size="sm">
-                Save
-              </Button>
-            </form>
+            </div>
+            <IterationGoalBar
+              projectId={projectId}
+              iterationId={currentIteration.id}
+              initialGoal={currentIteration.goal ?? ""}
+            />
           </>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -201,5 +214,156 @@ export function KanbanBoard({
         />
       )}
     </div>
+  );
+}
+
+// The current iteration's goal (spec/screens.md "Board layout": commits on
+// Enter, Esc reverts, no Save button — same UX contract as the Backlog
+// virtual-group goal inputs, board-list-view.tsx's IterationGoalInput). Adds
+// a brief "Saved ✓" confirmation flash on success, matching
+// story-detail-panel.tsx's autosave-status convention (TASK-10 AC #4).
+export function IterationGoalBar({
+  projectId,
+  iterationId,
+  initialGoal,
+}: {
+  projectId: string;
+  iterationId: string;
+  initialGoal: string;
+}) {
+  const [value, setValue] = useState(initialGoal);
+  const [synced, setSynced] = useState(initialGoal);
+  const [error, setError] = useState<string | null>(null);
+  const [showSaved, setShowSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  if (synced !== initialGoal) {
+    setSynced(initialGoal);
+    setValue(initialGoal);
+    setError(null);
+  }
+
+  async function commit() {
+    const trimmed = value.trim();
+    if (trimmed === synced) {
+      return;
+    }
+    setError(null);
+    setIsSaving(true);
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    formData.set("iteration_id", iterationId);
+    formData.set("goal", trimmed);
+    try {
+      await updateIterationGoal(formData);
+      setShowSaved(true);
+      setTimeout(() => setShowSaved(false), 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save goal");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex min-w-56 flex-1 items-center gap-2 sm:max-w-md">
+      <input
+        value={value}
+        onChange={(event) => {
+          setValue(event.target.value);
+          setError(null);
+          setShowSaved(false);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void commit();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            setValue(synced);
+            setError(null);
+            setShowSaved(false);
+          }
+        }}
+        placeholder="Sprint goal"
+        aria-label="Iteration goal"
+        disabled={isSaving}
+        className="h-8 min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 text-sm focus:outline-none disabled:opacity-60"
+      />
+      {showSaved && <span className="shrink-0 text-xs text-muted-foreground">Saved ✓</span>}
+      {error && <span className="shrink-0 text-xs text-destructive">{error}</span>}
+    </div>
+  );
+}
+
+// "Finish iteration" (spec/velocity.md "Manual finish"): irreversible, so it
+// confirms before calling the shared finalize_iteration RPC (TASK-10).
+export function FinishIterationButton({
+  projectId,
+  iterationNumber,
+  visible,
+}: {
+  projectId: string;
+  iterationNumber: number;
+  visible: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  if (!visible) {
+    return null;
+  }
+
+  function handleConfirm() {
+    setError(null);
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    startTransition(async () => {
+      try {
+        await finishIteration(formData);
+        setOpen(false);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to finish the iteration");
+      }
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) {
+          setError(null);
+        }
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm">
+          Finish iteration
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Finish iteration #{iterationNumber}?</DialogTitle>
+          <DialogDescription>
+            This closes the iteration today instead of on its scheduled end date. Unaccepted stories move
+            to the next iteration. This can&apos;t be undone.
+          </DialogDescription>
+        </DialogHeader>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={handleConfirm} disabled={isPending}>
+            {isPending ? "Finishing…" : "Finish iteration"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -34,4 +34,19 @@ describe("acceptedPoints", () => {
   it("returns 0 for an empty iteration", () => {
     expect(acceptedPoints([])).toBe(0);
   });
+
+  // TASK-10: finalize_iteration (20260709000002_finalize_iteration.sql)
+  // computes velocity in SQL instead of calling this function — this fixture
+  // is the one manually cross-checked against the RPC's
+  // "sum(points) where state='accepted' and story_type in ('feature','bug')"
+  // during TASK-10 verification, confirming both give 5 for the same rows.
+  it("matches the finalize_iteration RPC's SQL computation for a mixed-state iteration", () => {
+    const stories = [
+      { story_type: "feature", state: "accepted", points: 5 },
+      { story_type: "chore", state: "accepted", points: 3 },
+      { story_type: "feature", state: "unstarted", points: 2 },
+      { story_type: "bug", state: "rejected", points: 1 },
+    ];
+    expect(acceptedPoints(stories)).toBe(5);
+  });
 });

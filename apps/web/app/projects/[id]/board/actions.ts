@@ -15,7 +15,6 @@ import {
   type KanbanColumnId,
   type ListZoneId,
 } from "@/lib/utils/kanban";
-import { isCurrentIteration, nextIterationDates, nextIterationNumber } from "@/lib/utils/iterations";
 import { isUnestimatedFeature, nextPosition, reorderPositions } from "@/lib/utils/stories";
 import {
   applyTransition,
@@ -23,7 +22,6 @@ import {
   type StoryState,
   type StoryTransitionAction,
 } from "@/lib/utils/story-state";
-import { acceptedPoints } from "@/lib/utils/velocity";
 
 function todayDateOnly(): string {
   return new Date().toISOString().slice(0, 10);
@@ -657,146 +655,100 @@ export async function transitionStory(formData: FormData) {
   revalidatePath(`/stories/${storyId}`);
 }
 
+type FinalizeIterationEvent =
+  | { kind: "finalized"; number: number; velocity: number }
+  | { kind: "started"; number: number; start_date: string; end_date: string };
+
+function parseFinalizeEvents(raw: unknown): FinalizeIterationEvent[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter(
+    (event): event is FinalizeIterationEvent =>
+      typeof event === "object" && event !== null && "kind" in event,
+  );
+}
+
+// Replays the ordered events a finalize_iteration call reports (TASK-10) as
+// the same Slack notifications the old per-loop-iteration TS logic fired —
+// one per finalized/started iteration, in order, so a multi-sprint catch-up
+// doesn't lose the intermediate ones the way just diffing before/after
+// iteration numbers would.
+function notifyFinalizeEvents(projectId: string, events: FinalizeIterationEvent[]) {
+  for (const event of events) {
+    if (event.kind === "finalized") {
+      after(() => notifySlack(projectId, iterationDoneMessage(event.number, event.velocity)));
+    } else {
+      after(() => notifySlack(projectId, iterationStartedMessage(event.number, event.start_date, event.end_date)));
+    }
+  }
+}
+
 /**
  * Lazily keeps a project's current iteration row up to date (see
- * spec/velocity.md "Automatic scheduling & rollover"). Replaces the old
- * manual "Generate next iteration" / "Mark as done" buttons: called on first
- * access from every view that reads iterations, before it queries them.
+ * spec/velocity.md "Automatic scheduling & rollover"). Called on first
+ * access from every view that reads iterations, before it queries them —
+ * open to any project member, including viewers, since it's system
+ * maintenance triggered by reads.
  *
- * - A fresh project with no iteration rows gets iteration #1 starting today.
- * - Once the current row's `end_date` has passed, it's finalized (velocity
- *   stored, `state` set to `done`) and unaccepted stories are carried into a
- *   newly created next iteration. This repeats until a row covers today, so
- *   a project left untouched for more than one `iteration_length` catches up
- *   in one call instead of getting stuck on a stale iteration.
+ * TASK-10: the actual finalize/rollover work lives in the shared
+ * `finalize_iteration` SECURITY DEFINER RPC (advisory-locked, idempotent —
+ * spec/velocity.md "Finalization concurrency"), not here. This wrapper does
+ * a cheap pre-check so an already-current project skips the RPC call (and
+ * its advisory lock) on every page load, then replays whatever events the
+ * RPC reports as Slack notifications.
  */
 export async function ensureCurrentIteration(projectId: string) {
   const supabase = await createClient();
   const today = todayDateOnly();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("iteration_length")
-    .eq("id", projectId)
-    .single();
+  const { data: latestRows } = await supabase
+    .from("iterations")
+    .select("state, end_date")
+    .eq("project_id", projectId)
+    .order("number", { ascending: false })
+    .limit(1);
 
-  if (!project) {
+  const latest = latestRows?.[0] ?? null;
+  if (latest && latest.state !== "done" && latest.end_date >= today) {
     return;
   }
 
-  for (;;) {
-    const { data: latestRows } = await supabase
-      .from("iterations")
-      .select("id, number, start_date, end_date, state")
-      .eq("project_id", projectId)
-      .order("number", { ascending: false })
-      .limit(1);
-
-    const latest = latestRows?.[0] ?? null;
-
-    if (latest && isCurrentIteration(latest, today)) {
-      return;
-    }
-
-    let carryStoryIds: string[] = [];
-    if (latest && latest.state !== "done") {
-      const { data: stories } = await supabase
-        .from("stories")
-        .select("id, state, points, story_type")
-        .eq("iteration_id", latest.id);
-
-      const velocity = acceptedPoints(stories ?? []);
-      const { error } = await supabase
-        .from("iterations")
-        .update({ velocity, state: "done" })
-        .eq("id", latest.id);
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      const doneNumber = latest.number;
-      after(() => notifySlack(projectId, iterationDoneMessage(doneNumber, velocity)));
-
-      carryStoryIds = (stories ?? [])
-        .filter((story) => story.state !== "accepted")
-        .map((story) => story.id);
-    }
-
-    const { start_date, end_date } = nextIterationDates(
-      latest ? [latest] : [],
-      project.iteration_length,
-      today,
-    );
-    const number = nextIterationNumber(latest ? [latest] : []);
-
-    // Task 9: a goal set on the Backlog's virtual-iteration group header
-    // (spec/screens.md "Backlog groups") for this number, if any, is adopted
-    // straight into the new row instead of a separate update.
-    const { data: pendingGoal } = await supabase
-      .from("iteration_goals")
-      .select("goal")
-      .eq("project_id", projectId)
-      .eq("number", number)
-      .maybeSingle();
-
-    const { data: nextIteration, error } = await supabase
-      .from("iterations")
-      .insert({ project_id: projectId, number, start_date, end_date, goal: pendingGoal?.goal ?? null })
-      .select("id")
-      .single();
-
-    if (error) {
-      // Two concurrent calls (e.g. the board and project-home pages both
-      // triggering the same rollover) can race on this insert — the loser
-      // hits the (project_id, number) unique constraint. Re-fetch and retry
-      // rather than surfacing an error: the winner already created the row
-      // and, if it had stories to carry, already moved them.
-      if (error.code === "23505") {
-        continue;
-      }
-      throw new Error(error.message);
-    }
-
-    after(() => notifySlack(projectId, iterationStartedMessage(number, start_date, end_date)));
-
-    if (pendingGoal) {
-      // Cleanup only — the goal is already on the new row above, so this
-      // failing must never fail the rollover itself. iteration_goals write
-      // policies require owner/member (spec/rls.md), so a rollover
-      // triggered by a *viewer's* page load can't delete this row — a
-      // known, temporary gap closed once Task 10's SECURITY DEFINER
-      // finalization RPC runs this same adoption with elevated
-      // permissions. An orphaned row here is harmless: the UI never shows
-      // a goal for a number at or below the current iteration, and the
-      // iteration_goals_check_number trigger stops it from ever being
-      // rewritten onto a still-future number either.
-      const { error: deleteError } = await supabase
-        .from("iteration_goals")
-        .delete()
-        .eq("project_id", projectId)
-        .eq("number", number);
-      if (deleteError) {
-        console.error(`Failed to delete adopted iteration_goals row (#${number}):`, deleteError.message);
-      }
-    }
-
-    if (nextIteration && carryStoryIds.length > 0) {
-      // TASK-22: fails loudly instead of swallowing a per-row error — an
-      // unchecked failure here left an unaccepted story uncarried, and
-      // since its old iteration is now `done` (filtered out of the board,
-      // see board/page.tsx), the story effectively vanished with no
-      // signal. Not made transactional here: the whole rollover/finish
-      // path is being replaced by an advisory-locked RPC in Task 10, which
-      // is where a real transactional carry-move belongs.
-      await assertAllSucceeded(
-        await Promise.all(
-          carryStoryIds.map((id) =>
-            supabase.from("stories").update({ iteration_id: nextIteration.id }).eq("id", id),
-          ),
-        ),
-      );
-    }
+  const { data, error } = await supabase.rpc("finalize_iteration", {
+    p_project_id: projectId,
+    p_manual: false,
+  });
+  if (error) {
+    throw new Error(error.message);
   }
+
+  notifyFinalizeEvents(projectId, parseFinalizeEvents(data));
+}
+
+/**
+ * "Finish iteration" button (owner/member, spec/velocity.md "Manual
+ * finish"): closes the current iteration early via the same
+ * `finalize_iteration` RPC with `p_manual: true`, which truncates
+ * `end_date` to today before finalizing. A double-click or a lazy rollover
+ * racing this call is safe — the RPC's advisory lock serializes them and a
+ * call that finds nothing left to finish returns no events.
+ */
+export async function finishIteration(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("finalize_iteration", {
+    p_project_id: projectId,
+    p_manual: true,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  notifyFinalizeEvents(projectId, parseFinalizeEvents(data));
+
+  revalidatePath(`/projects/${projectId}/board`);
+  revalidatePath(`/projects/${projectId}`);
 }
 
 export async function updateIterationGoal(formData: FormData) {
