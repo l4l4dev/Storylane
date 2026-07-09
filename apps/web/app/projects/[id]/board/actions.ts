@@ -179,6 +179,35 @@ export async function quickCreateStory(formData: FormData) {
 }
 
 /**
+ * TASK-16.4: lazily generates any due recurring-story instances before a
+ * free-mode board loads (spec/data-model.md "recurring_stories"), the
+ * free-mode counterpart of `ensureCurrentIteration` above. The actual due-
+ * date math and the claim that prevents double-generation both live in the
+ * `generate_recurring_stories` SECURITY DEFINER RPC — this wrapper only
+ * does a cheap pre-check (any active rule at all?) so a project with none
+ * skips the RPC call on every page load, mirroring
+ * `ensureCurrentIteration`'s own pre-check.
+ */
+export async function generateRecurringStories(projectId: string) {
+  const supabase = await createClient();
+
+  const { count } = await supabase
+    .from("recurring_stories")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .eq("is_active", true);
+
+  if (!count) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("generate_recurring_stories", { p_project_id: projectId });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/**
  * Free-mode quick-add (Task 14): creates a story directly in a custom
  * status column. `stories.state` stays at its default and is ignored in
  * free mode — the column is `custom_status_id`.

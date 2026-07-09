@@ -495,6 +495,73 @@ export type Database = {
           },
         ]
       }
+      recurring_stories: {
+        Row: {
+          cadence: string
+          created_at: string
+          custom_status_id: string | null
+          day_of_month: number | null
+          description: string | null
+          id: string
+          is_active: boolean
+          last_generated_on: string | null
+          project_id: string
+          swimlane_id: string | null
+          title: string
+          weekday: number | null
+        }
+        Insert: {
+          cadence: string
+          created_at?: string
+          custom_status_id?: string | null
+          day_of_month?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          last_generated_on?: string | null
+          project_id: string
+          swimlane_id?: string | null
+          title: string
+          weekday?: number | null
+        }
+        Update: {
+          cadence?: string
+          created_at?: string
+          custom_status_id?: string | null
+          day_of_month?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          last_generated_on?: string | null
+          project_id?: string
+          swimlane_id?: string | null
+          title?: string
+          weekday?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_stories_lane_project_fkey"
+            columns: ["swimlane_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "swimlanes"
+            referencedColumns: ["id", "project_id"]
+          },
+          {
+            foreignKeyName: "recurring_stories_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_stories_status_project_fkey"
+            columns: ["custom_status_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "custom_statuses"
+            referencedColumns: ["id", "project_id"]
+          },
+        ]
+      }
       stories: {
         Row: {
           assignee_id: string | null
@@ -716,6 +783,10 @@ export type Database = {
       finalize_iteration: {
         Args: { p_manual: boolean; p_project_id: string }
         Returns: Json
+      }
+      generate_recurring_stories: {
+        Args: { p_project_id: string }
+        Returns: undefined
       }
       generate_username: { Args: { base: string }; Returns: string }
       invite_member: {
