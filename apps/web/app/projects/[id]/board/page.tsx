@@ -10,7 +10,8 @@ import { filterStories } from "@/lib/utils/stories";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
-import { FreeBoard, type CustomStatus } from "@/components/features/board/free-board";
+import { FreeBoard, type CustomStatus, type Swimlane } from "@/components/features/board/free-board";
+import { laneContainerKey } from "@/lib/utils/board";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { StoryPeekHost } from "@/components/features/board/story-peek-host";
 import { ensureCurrentIteration } from "./actions";
@@ -255,24 +256,36 @@ async function FreeBoardPage({
 }) {
   const supabase = await createClient();
 
-  const [{ data: statuses }, { data: stories }, { data: labels }, { data: members }] = await Promise.all([
-    supabase
-      .from("custom_statuses")
-      .select("id, name, color, position, is_done, wip_limit")
-      .eq("project_id", projectId)
-      .order("position", { ascending: true }),
-    supabase
-      .from("stories")
-      .select(
-        "id, number, title, description, story_type, state, points, position, custom_status_id, completed_at, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
-      )
-      .eq("project_id", projectId)
-      .order("position", { ascending: true }),
-    supabase.from("labels").select("id, name, color").eq("project_id", projectId).order("name"),
-    supabase.from("project_members").select("user_id, profiles(display_name)").eq("project_id", projectId),
-  ]);
+  const [{ data: statuses }, { data: lanes }, { data: stories }, { data: labels }, { data: members }] =
+    await Promise.all([
+      supabase
+        .from("custom_statuses")
+        .select("id, name, color, position, is_done, wip_limit")
+        .eq("project_id", projectId)
+        .order("position", { ascending: true }),
+      supabase
+        .from("swimlanes")
+        .select("id, name, position")
+        .eq("project_id", projectId)
+        .order("position", { ascending: true }),
+      supabase
+        .from("stories")
+        .select(
+          "id, number, title, description, story_type, state, points, position, custom_status_id, swimlane_id, completed_at, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+        )
+        .eq("project_id", projectId)
+        // Secondary key: once lanes split a column into multiple cells,
+        // removing all lanes and returning to a single band can leave two
+        // stories tied on `position` — a deterministic tiebreaker keeps
+        // their order stable instead of flapping between reloads.
+        .order("position", { ascending: true })
+        .order("id", { ascending: true }),
+      supabase.from("labels").select("id, name, color").eq("project_id", projectId).order("name"),
+      supabase.from("project_members").select("user_id, profiles(display_name)").eq("project_id", projectId),
+    ]);
 
   const statusList: CustomStatus[] = statuses ?? [];
+  const laneList: Swimlane[] = lanes ?? [];
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
 
   const cards = (stories ?? []).map((story) => {
@@ -287,6 +300,7 @@ async function FreeBoardPage({
       state: story.state,
       points: story.points,
       custom_status_id: story.custom_status_id,
+      swimlane_id: story.swimlane_id,
       completed_at: story.completed_at,
       assignee_id: story.assignee_id,
       assigneeName: assigneeProfile?.display_name ?? null,
@@ -299,19 +313,32 @@ async function FreeBoardPage({
   });
 
   const visible = filterStories(cards, { type, assigneeId: assignee, labelId: label });
+  const hasLanes = laneList.length > 0;
+  const statusIds = new Set(statusList.map((s) => s.id));
+  const laneIds = new Set(laneList.map((l) => l.id));
+
   const initialContainers: Record<string, typeof cards> = {};
   for (const status of statusList) {
-    initialContainers[status.id] = [];
+    if (hasLanes) {
+      initialContainers[laneContainerKey(status.id, null)] = [];
+      for (const lane of laneList) {
+        initialContainers[laneContainerKey(status.id, lane.id)] = [];
+      }
+    } else {
+      initialContainers[status.id] = [];
+    }
   }
   const firstStatusId = statusList[0]?.id;
   for (const card of visible) {
     // A story with no (or an unknown) status lands in the first column so
     // it can't silently disappear from the board.
-    const columnId =
-      card.custom_status_id && card.custom_status_id in initialContainers ? card.custom_status_id : firstStatusId;
-    if (columnId) {
-      initialContainers[columnId].push(card);
+    const columnId = card.custom_status_id && statusIds.has(card.custom_status_id) ? card.custom_status_id : firstStatusId;
+    if (!columnId) {
+      continue;
     }
+    const laneId = card.swimlane_id && laneIds.has(card.swimlane_id) ? card.swimlane_id : null;
+    const containerKey = hasLanes ? laneContainerKey(columnId, laneId) : columnId;
+    initialContainers[containerKey].push(card);
   }
 
   const assigneeOptions = (members ?? []).map((m) => {
@@ -330,6 +357,7 @@ async function FreeBoardPage({
       <FreeBoard
         projectId={projectId}
         statuses={statusList}
+        lanes={laneList}
         initialContainers={initialContainers}
         toolbar={
           <BoardFilters

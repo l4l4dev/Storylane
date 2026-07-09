@@ -513,6 +513,7 @@ export type Database = {
           project_id: string
           state: string
           story_type: string
+          swimlane_id: string | null
           title: string
           updated_at: string
         }
@@ -533,6 +534,7 @@ export type Database = {
           project_id: string
           state?: string
           story_type?: string
+          swimlane_id?: string | null
           title: string
           updated_at?: string
         }
@@ -553,6 +555,7 @@ export type Database = {
           project_id?: string
           state?: string
           story_type?: string
+          swimlane_id?: string | null
           title?: string
           updated_at?: string
         }
@@ -599,6 +602,13 @@ export type Database = {
             referencedRelation: "projects"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "stories_swimlane_project_fkey"
+            columns: ["swimlane_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "swimlanes"
+            referencedColumns: ["id", "project_id"]
+          },
         ]
       }
       story_labels: {
@@ -627,6 +637,38 @@ export type Database = {
             columns: ["story_id"]
             isOneToOne: false
             referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      swimlanes: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          position: number
+          project_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          position?: number
+          project_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "swimlanes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]

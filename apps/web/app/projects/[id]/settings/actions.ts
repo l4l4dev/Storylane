@@ -263,6 +263,93 @@ export async function moveCustomStatus(formData: FormData) {
   revalidatePath(`/projects/${projectId}/board`);
 }
 
+// TASK-16.3: swimlane CRUD, mirroring the custom_statuses actions above —
+// same composite-FK-blocks-delete pattern (see the swimlanes migration).
+export async function createLane(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const name = String(formData.get("name") ?? "").trim();
+
+  if (!name) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase.from("swimlanes").select("position").eq("project_id", projectId);
+  const position = (existing ?? []).reduce((max, s) => Math.max(max, s.position), -1) + 1;
+
+  const { error } = await supabase.from("swimlanes").insert({ project_id: projectId, name, position });
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+export async function updateLane(formData: FormData) {
+  const id = String(formData.get("lane_id"));
+  const projectId = String(formData.get("project_id"));
+  const name = String(formData.get("name") ?? "").trim();
+
+  if (!name) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("swimlanes").update({ name }).eq("id", id).eq("project_id", projectId);
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+export async function deleteLane(formData: FormData) {
+  const id = String(formData.get("lane_id"));
+  const projectId = String(formData.get("project_id"));
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("swimlanes").delete().eq("id", id).eq("project_id", projectId);
+  if (error) {
+    // 23503 = the stories.swimlane_id FK — a lane with cards on it can't
+    // be removed (see the free_mode_swimlanes migration).
+    if (error.code === "23503") {
+      throw new Error("Move the stories off this lane before deleting it");
+    }
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+/** Swaps the lane with its neighbor above/below — one step per click. */
+export async function moveLane(formData: FormData) {
+  const id = String(formData.get("lane_id"));
+  const projectId = String(formData.get("project_id"));
+  const direction = String(formData.get("direction")) === "up" ? "up" : "down";
+
+  const supabase = await createClient();
+  const { data: lanes } = await supabase
+    .from("swimlanes")
+    .select("id, position")
+    .eq("project_id", projectId)
+    .order("position", { ascending: true });
+
+  const list = lanes ?? [];
+  const index = list.findIndex((l) => l.id === id);
+  const swapWith = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || swapWith < 0 || swapWith >= list.length) {
+    return;
+  }
+
+  await Promise.all([
+    supabase.from("swimlanes").update({ position: list[swapWith].position }).eq("id", list[index].id),
+    supabase.from("swimlanes").update({ position: list[index].position }).eq("id", list[swapWith].id),
+  ]);
+
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
 const INTEGRATION_PROVIDERS = ["github", "forgejo", "slack"] as const;
 type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 
