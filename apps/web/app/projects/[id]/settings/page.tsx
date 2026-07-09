@@ -5,6 +5,7 @@ import { IntegrationSettings, type IntegrationRow } from "@/components/features/
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
 import { LabelManager } from "@/components/features/projects/label-manager";
 import { LaneManager } from "@/components/features/projects/lane-manager";
+import { RecurringStoryManager } from "@/components/features/projects/recurring-story-manager";
 import { StatusManager } from "@/components/features/projects/status-manager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +72,18 @@ export default async function ProjectSettingsPage({
   const { data: swimlanes } = isFree
     ? await supabase.from("swimlanes").select("id, name, position").eq("project_id", id).order("position", { ascending: true })
     : { data: null };
+
+  // TASK-16.4: recurring-story rules, and the is_done-excluded column list
+  // their target select offers (spec/data-model.md: "a card must not be
+  // born completed").
+  const { data: recurringStories } = isFree
+    ? await supabase
+        .from("recurring_stories")
+        .select("id, title, description, custom_status_id, swimlane_id, cadence, weekday, day_of_month, is_active")
+        .eq("project_id", id)
+        .order("created_at", { ascending: true })
+    : { data: null };
+  const nonDoneStatuses = (customStatuses ?? []).filter((s) => !s.is_done);
 
   return (
     <main className="mx-auto max-w-2xl p-6">
@@ -239,6 +252,24 @@ export default async function ProjectSettingsPage({
           <LaneManager
             projectId={project.id}
             lanes={swimlanes ?? []}
+            canEdit={isMember}
+            canDelete={isOwner}
+          />
+        </section>
+      )}
+
+      {/* Recurring stories (TASK-16.4 — free-mode projects only) */}
+      {isFree && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-lg font-semibold">Recurring stories</h2>
+          <RecurringStoryManager
+            projectId={project.id}
+            rules={(recurringStories ?? []).map((r) => ({
+              ...r,
+              cadence: r.cadence as "daily" | "weekly" | "monthly",
+            }))}
+            statuses={nonDoneStatuses.map((s) => ({ id: s.id, name: s.name }))}
+            lanes={(swimlanes ?? []).map((l) => ({ id: l.id, name: l.name }))}
             canEdit={isMember}
             canDelete={isOwner}
           />

@@ -14,7 +14,7 @@ import { FreeBoard, type CustomStatus, type Swimlane } from "@/components/featur
 import { laneContainerKey } from "@/lib/utils/board";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { StoryPeekHost } from "@/components/features/board/story-peek-host";
-import { ensureCurrentIteration } from "./actions";
+import { ensureCurrentIteration, generateRecurringStories } from "./actions";
 
 export default async function BoardPage({
   params,
@@ -255,6 +255,11 @@ async function FreeBoardPage({
   peekStoryId?: string;
 }) {
   const supabase = await createClient();
+
+  // TASK-16.4: lazily generate any due recurring-story instances before
+  // reading stories below — must run first, same ordering constraint as
+  // ensureCurrentIteration above for tracker mode.
+  await generateRecurringStories(projectId);
 
   const [{ data: statuses }, { data: lanes }, { data: stories }, { data: labels }, { data: members }] =
     await Promise.all([

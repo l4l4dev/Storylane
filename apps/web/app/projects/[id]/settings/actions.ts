@@ -350,6 +350,117 @@ export async function moveLane(formData: FormData) {
   revalidatePath(`/projects/${projectId}/board`);
 }
 
+type RecurringCadence = "daily" | "weekly" | "monthly";
+
+/** Reads and validates the cadence-specific fields, matching the DB's own CHECK constraints. */
+function parseRecurringCadence(formData: FormData): {
+  cadence: RecurringCadence;
+  weekday: number | null;
+  day_of_month: number | null;
+} {
+  const cadence = String(formData.get("cadence"));
+  if (cadence !== "daily" && cadence !== "weekly" && cadence !== "monthly") {
+    throw new Error(`Unknown cadence: ${cadence}`);
+  }
+
+  if (cadence === "weekly") {
+    const weekday = Number(formData.get("weekday"));
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+      throw new Error("Weekly recurrence requires a weekday");
+    }
+    return { cadence, weekday, day_of_month: null };
+  }
+
+  if (cadence === "monthly") {
+    const dayOfMonth = Number(formData.get("day_of_month"));
+    if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) {
+      throw new Error("Monthly recurrence requires a day of month (1-31)");
+    }
+    return { cadence, weekday: null, day_of_month: dayOfMonth };
+  }
+
+  return { cadence, weekday: null, day_of_month: null };
+}
+
+// TASK-16.4: recurring-story rule CRUD, free-mode Settings only. Generation
+// itself never runs here — it's the generate_recurring_stories RPC, called
+// lazily on board access (see apps/web/app/projects/[id]/board/actions.ts).
+export async function createRecurringStory(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || null;
+  const customStatusId = String(formData.get("custom_status_id") ?? "") || null;
+  const swimlaneId = String(formData.get("swimlane_id") ?? "") || null;
+
+  if (!title) {
+    return;
+  }
+  const { cadence, weekday, day_of_month } = parseRecurringCadence(formData);
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("recurring_stories").insert({
+    project_id: projectId,
+    title,
+    description,
+    custom_status_id: customStatusId,
+    swimlane_id: swimlaneId,
+    cadence,
+    weekday,
+    day_of_month,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+}
+
+export async function updateRecurringStory(formData: FormData) {
+  const id = String(formData.get("rule_id"));
+  const projectId = String(formData.get("project_id"));
+  const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || null;
+  const customStatusId = String(formData.get("custom_status_id") ?? "") || null;
+  const swimlaneId = String(formData.get("swimlane_id") ?? "") || null;
+  const isActive = formData.get("is_active") === "on";
+
+  if (!title) {
+    return;
+  }
+  const { cadence, weekday, day_of_month } = parseRecurringCadence(formData);
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("recurring_stories")
+    .update({
+      title,
+      description,
+      custom_status_id: customStatusId,
+      swimlane_id: swimlaneId,
+      cadence,
+      weekday,
+      day_of_month,
+      is_active: isActive,
+    })
+    .eq("id", id)
+    .eq("project_id", projectId);
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+}
+
+export async function deleteRecurringStory(formData: FormData) {
+  const id = String(formData.get("rule_id"));
+  const projectId = String(formData.get("project_id"));
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("recurring_stories").delete().eq("id", id).eq("project_id", projectId);
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+}
+
 const INTEGRATION_PROVIDERS = ["github", "forgejo", "slack"] as const;
 type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 
