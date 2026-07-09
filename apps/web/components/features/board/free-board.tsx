@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState, useTransition } from "react";
+import { Fragment, type ReactNode, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -25,12 +25,29 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { dropStoryFree } from "@/app/projects/[id]/board/actions";
 import { findContainer, storyById, sumPoints } from "@/lib/utils/board";
+import { groupDoneStories } from "@/lib/utils/focus";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
 import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard, type StoryCardData } from "./story-card";
 
 export type CustomStatus = { id: string; name: string; color: string; position: number; is_done: boolean };
+
+// TASK-16.1: is_done columns show when each card was completed, grouped
+// under date headers — completed_at is DB-trigger-maintained (see
+// 20260709000005_free_mode_completed_at.sql), set whenever a story moves
+// into an is_done column, cleared when it moves out.
+type FreeStoryCardData = StoryCardData & { completed_at: string | null };
+
+function todayLocalDateKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function localDateKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // Free-mode board (Task 14, spec/screens.md): a pure Trello-style kanban.
 // Columns come from the project's `custom_statuses` rows, any card can move
@@ -46,7 +63,7 @@ export function FreeBoard({
   projectId: string;
   statuses: CustomStatus[];
   // Keyed by custom_statuses.id.
-  initialContainers: Record<string, StoryCardData[]>;
+  initialContainers: Record<string, FreeStoryCardData[]>;
   toolbar?: ReactNode;
 }) {
   const [containers, setContainers] = useState(initialContainers);
@@ -193,11 +210,26 @@ function FreeColumn({
   projectId,
 }: {
   status: CustomStatus;
-  stories: StoryCardData[];
+  stories: FreeStoryCardData[];
   projectId: string;
 }) {
   const { setNodeRef } = useDroppable({ id: status.id });
   const points = sumPoints(stories);
+
+  // TASK-16.1: is_done columns group their cards under date headers
+  // (Today/Yesterday/date), newest first — still one flat SortableContext
+  // (headers interspersed, same pattern as the Backlog's virtual-iteration
+  // groups in board-list-view.tsx) so cards stay draggable in and out, per
+  // spec/screens.md "any-to-any drag" — free mode has no read-only columns.
+  const doneGroups = status.is_done
+    ? groupDoneStories(
+        stories.map((story) => ({
+          story,
+          completedDateKey: story.completed_at ? localDateKey(story.completed_at) : todayLocalDateKey(),
+        })),
+        todayLocalDateKey(),
+      )
+    : null;
 
   return (
     <section className="flex h-[calc(100dvh-13rem)] w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/30">
@@ -211,11 +243,21 @@ function FreeColumn({
         <QuickAddComposer projectId={projectId} target={{ customStatusId: status.id }} />
       </div>
       <div className="flex flex-1 flex-col overflow-y-auto px-3 pb-3">
-        <SortableContext items={stories.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext
+          items={doneGroups ? doneGroups.flatMap((g) => g.stories.map(({ story }) => story.id)) : stories.map((s) => s.id)}
+          strategy={verticalListSortingStrategy}
+        >
           <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-2">
-            {stories.map((story) => (
-              <SortableFreeCard key={story.id} story={story} projectId={projectId} />
-            ))}
+            {doneGroups
+              ? doneGroups.map((group) => (
+                  <Fragment key={group.dateKey}>
+                    <li className="text-xs font-semibold text-muted-foreground">{group.label}</li>
+                    {group.stories.map(({ story }) => (
+                      <SortableFreeCard key={story.id} story={story} projectId={projectId} />
+                    ))}
+                  </Fragment>
+                ))
+              : stories.map((story) => <SortableFreeCard key={story.id} story={story} projectId={projectId} />)}
           </ul>
         </SortableContext>
       </div>
@@ -223,7 +265,7 @@ function FreeColumn({
   );
 }
 
-function SortableFreeCard({ story, projectId }: { story: StoryCardData; projectId: string }) {
+function SortableFreeCard({ story, projectId }: { story: FreeStoryCardData; projectId: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: story.id });
 
   return (

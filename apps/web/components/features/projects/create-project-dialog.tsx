@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createProject } from "@/app/dashboard/actions";
-import { ITERATION_LENGTHS, POINT_SCALES } from "@/lib/types";
+import { ITERATION_LENGTHS, POINT_SCALES, type FreeTemplate } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,6 +22,9 @@ export function CreateProjectDialog() {
   // Task 14: chosen at creation and fixed afterwards — tracker keeps the
   // iteration/velocity workflow, free is a plain Trello-style board.
   const [mode, setMode] = useState<"tracker" | "free">("tracker");
+  // TASK-16.1: which custom_statuses set a free-mode project is seeded
+  // with — only asked when Free is selected, has no effect on tracker mode.
+  const [freeTemplate, setFreeTemplate] = useState<FreeTemplate>("kanbanflow");
 
   async function handleCreate(formData: FormData) {
     await createProject(formData);
@@ -99,6 +102,42 @@ export function CreateProjectDialog() {
                 ))}
               </NativeSelect>
             </div>
+          )}
+
+          {mode === "free" && (
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="text-sm font-medium">Column template</legend>
+              <input type="hidden" name="free_template" value={freeTemplate} />
+              <div className="flex flex-col gap-1 text-sm">
+                <label className="flex items-start gap-2">
+                  <input
+                    type="radio"
+                    checked={freeTemplate === "kanbanflow"}
+                    onChange={() => setFreeTemplate("kanbanflow")}
+                    className="mt-1"
+                  />
+                  <span>
+                    KanbanFlow
+                    <span className="block text-xs text-muted-foreground">
+                      Todo · This week · Today · In progress · Done
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2">
+                  <input
+                    type="radio"
+                    checked={freeTemplate === "basic"}
+                    onChange={() => setFreeTemplate("basic")}
+                    className="mt-1"
+                  />
+                  <span>
+                    Basic
+                    <span className="block text-xs text-muted-foreground">To do · Doing · Done</span>
+                  </span>
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground">Columns can be edited afterwards in Settings.</p>
+            </fieldset>
           )}
 
           <div className="flex flex-col gap-1.5">
