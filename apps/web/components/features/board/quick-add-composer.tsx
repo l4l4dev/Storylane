@@ -33,9 +33,14 @@ export function QuickAddComposer({
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // TASK-22: the typed title is kept until creation actually succeeds — it
+  // used to be cleared optimistically before the (void, unawaited) action
+  // call, so a failure (e.g. "No active iteration", a DB error) lost the
+  // text with no story created and no feedback.
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = title.trim();
@@ -47,24 +52,28 @@ export function QuickAddComposer({
     formData.set("project_id", projectId);
     formData.set("title", trimmed);
 
-    setTitle("");
-    if (typeof target === "string") {
-      formData.set("target", target);
-      startTransition(() => {
-        void quickCreateStory(formData);
-      });
-    } else {
-      formData.set("status_id", target.customStatusId);
-      startTransition(() => {
-        void quickCreateStoryFree(formData);
-      });
-    }
-    inputRef.current?.focus();
+    setError(null);
+    startTransition(async () => {
+      try {
+        if (typeof target === "string") {
+          formData.set("target", target);
+          await quickCreateStory(formData);
+        } else {
+          formData.set("status_id", target.customStatusId);
+          await quickCreateStoryFree(formData);
+        }
+        setTitle("");
+        inputRef.current?.focus();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to create story");
+      }
+    });
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       setTitle("");
+      setError(null);
       setOpen(false);
     }
   }
@@ -100,7 +109,11 @@ export function QuickAddComposer({
         ref={inputRef}
         autoFocus
         value={title}
-        onChange={(event) => setTitle(event.target.value)}
+        disabled={isPending}
+        onChange={(event) => {
+          setTitle(event.target.value);
+          setError(null);
+        }}
         onKeyDown={handleKeyDown}
         onBlur={() => {
           if (!title.trim()) {
@@ -109,8 +122,14 @@ export function QuickAddComposer({
         }}
         placeholder="Story title — Enter to add"
         aria-label="New story title"
+        aria-invalid={error ? true : undefined}
         className={compact ? "h-7 bg-card text-xs" : "h-8 bg-card"}
       />
+      {error && (
+        <p className="mt-1 text-xs text-destructive" role="alert">
+          {error} — press Enter to retry
+        </p>
+      )}
     </form>
   );
 }

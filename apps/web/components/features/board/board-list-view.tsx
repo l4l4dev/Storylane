@@ -47,6 +47,7 @@ import {
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryListRow } from "./story-list-row";
 import type { BoardStory, IterationMeta } from "./kanban-board";
@@ -686,6 +687,7 @@ export function BoardListView({
   const [synced, setSynced] = useState(initialContainers);
   const [syncedBacklogItems, setSyncedBacklogItems] = useState(initialBacklogItems);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [dragError, setDragError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const { collapsed: collapsedGroups, toggle: onToggleGroup } = useCollapsedGroups(projectId);
 
@@ -781,6 +783,7 @@ export function BoardListView({
     const reordered = reorderContainer(items, String(active.id), String(over.id));
 
     setContainers((prev) => ({ ...prev, [overContainer]: reordered }));
+    setDragError(null);
 
     const activeItem = storyById(containers, String(active.id));
     const formData = new FormData();
@@ -789,8 +792,18 @@ export function BoardListView({
     formData.set("item_id", String(active.id));
     formData.set("target_zone", overContainer);
     reordered.forEach((item) => formData.append("ordered_ids", `${item.kind}:${item.id}`));
-    startTransition(() => {
-      void dropStoryInList(formData);
+    // TASK-22: awaited and caught — the server re-derives the move from the
+    // story's *current* row (see dropStoryInList), so a stale client (e.g.
+    // another user already accepted this story) gets a rejection here even
+    // though the client-side isAllowedMove check above passed. Un-caught,
+    // this optimistic update above would never be reverted.
+    startTransition(async () => {
+      try {
+        await dropStoryInList(formData);
+      } catch (err) {
+        fallback();
+        setDragError(err instanceof Error ? err.message : "Failed to move the story");
+      }
     });
   }
 
@@ -836,6 +849,7 @@ export function BoardListView({
     >
       <div className="flex gap-4">
         <div className="flex max-w-3xl flex-1 flex-col gap-6">
+          {dragError && <MutationErrorBanner message={dragError} onDismiss={() => setDragError(null)} />}
           <ListSection
             zoneId="current"
             title={

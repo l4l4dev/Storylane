@@ -30,6 +30,23 @@ function todayDateOnly(): string {
 }
 
 /**
+ * Throws on the first failed write in a batch of parallel Supabase updates
+ * (TASK-22). `Promise.all` alone only rejects if a promise itself throws —
+ * a Supabase update that fails (including one RLS silently filters to zero
+ * rows) resolves normally with `{ error }` set, so an unchecked batch like
+ * `Promise.all(ids.map(id => supabase.from(...).update(...).eq("id", id)))`
+ * can partially apply and still look like a success to the caller.
+ */
+async function assertAllSucceeded(
+  results: ReadonlyArray<{ error: { message: string } | null }>,
+): Promise<void> {
+  const failed = results.find((result) => result.error);
+  if (failed?.error) {
+    throw new Error(failed.error.message);
+  }
+}
+
+/**
  * Moves a story to `destination_container` — `backlog`, `icebox`, or an
  * iteration id — and persists the resulting order within that destination
  * container. Handles both cross-container drags and same-container
@@ -84,9 +101,11 @@ export async function moveStory(formData: FormData) {
   }
 
   if (orderedIds.length > 0) {
-    await Promise.all(
-      reorderPositions(orderedIds).map(({ id, position }) =>
-        supabase.from("stories").update({ position }).eq("id", id),
+    await assertAllSucceeded(
+      await Promise.all(
+        reorderPositions(orderedIds).map(({ id, position }) =>
+          supabase.from("stories").update({ position }).eq("id", id),
+        ),
       ),
     );
   }
@@ -234,9 +253,11 @@ export async function dropStoryFree(formData: FormData) {
   }
 
   if (orderedIds.length > 0) {
-    await Promise.all(
-      reorderPositions(orderedIds).map(({ id, position }) =>
-        supabase.from("stories").update({ position }).eq("id", id),
+    await assertAllSucceeded(
+      await Promise.all(
+        reorderPositions(orderedIds).map(({ id, position }) =>
+          supabase.from("stories").update({ position }).eq("id", id),
+        ),
       ),
     );
   }
@@ -312,9 +333,11 @@ export async function dropStory(formData: FormData) {
   }
 
   if (orderedIds.length > 0) {
-    await Promise.all(
-      reorderPositions(orderedIds).map(({ id, position }) =>
-        supabase.from("stories").update({ position }).eq("id", id),
+    await assertAllSucceeded(
+      await Promise.all(
+        reorderPositions(orderedIds).map(({ id, position }) =>
+          supabase.from("stories").update({ position }).eq("id", id),
+        ),
       ),
     );
   }
@@ -437,10 +460,14 @@ async function persistBacklogOrder(
     (kind === "divider" ? dividerUpdates : storyUpdates).push({ id, position });
   });
 
-  await Promise.all([
-    ...storyUpdates.map(({ id, position }) => supabase.from("stories").update({ position }).eq("id", id)),
-    ...dividerUpdates.map(({ id, position }) => supabase.from("backlog_dividers").update({ position }).eq("id", id)),
-  ]);
+  await assertAllSucceeded(
+    await Promise.all([
+      ...storyUpdates.map(({ id, position }) => supabase.from("stories").update({ position }).eq("id", id)),
+      ...dividerUpdates.map(({ id, position }) =>
+        supabase.from("backlog_dividers").update({ position }).eq("id", id),
+      ),
+    ]),
+  );
 }
 
 /**
@@ -722,9 +749,18 @@ export async function ensureCurrentIteration(projectId: string) {
     }
 
     if (nextIteration && carryStoryIds.length > 0) {
-      await Promise.all(
-        carryStoryIds.map((id) =>
-          supabase.from("stories").update({ iteration_id: nextIteration.id }).eq("id", id),
+      // TASK-22: fails loudly instead of swallowing a per-row error — an
+      // unchecked failure here left an unaccepted story uncarried, and
+      // since its old iteration is now `done` (filtered out of the board,
+      // see board/page.tsx), the story effectively vanished with no
+      // signal. Not made transactional here: the whole rollover/finish
+      // path is being replaced by an advisory-locked RPC in Task 10, which
+      // is where a real transactional carry-move belongs.
+      await assertAllSucceeded(
+        await Promise.all(
+          carryStoryIds.map((id) =>
+            supabase.from("stories").update({ iteration_id: nextIteration.id }).eq("id", id),
+          ),
         ),
       );
     }
