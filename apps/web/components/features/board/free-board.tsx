@@ -26,6 +26,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { dropStoryFree } from "@/app/projects/[id]/board/actions";
 import { findContainer, storyById, sumPoints } from "@/lib/utils/board";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
+import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard, type StoryCardData } from "./story-card";
 
@@ -51,6 +52,7 @@ export function FreeBoard({
   const [containers, setContainers] = useState(initialContainers);
   const [synced, setSynced] = useState(initialContainers);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [dragError, setDragError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();
 
@@ -122,14 +124,23 @@ export function FreeBoard({
       oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex ? arrayMove(items, oldIndex, newIndex) : items;
 
     setContainers((prev) => ({ ...prev, [overContainer]: reordered }));
+    setDragError(null);
 
     const formData = new FormData();
     formData.set("project_id", projectId);
     formData.set("story_id", String(active.id));
     formData.set("status_id", overContainer);
     reordered.forEach((s) => formData.append("ordered_ids", s.id));
-    startTransition(() => {
-      void dropStoryFree(formData);
+    // TASK-22: awaited and caught so a failed/RLS-filtered write reverts
+    // the optimistic move and surfaces an error instead of leaving the
+    // card in a column the server never actually applied.
+    startTransition(async () => {
+      try {
+        await dropStoryFree(formData);
+      } catch (err) {
+        setContainers(synced);
+        setDragError(err instanceof Error ? err.message : "Failed to move the story");
+      }
     });
   }
 
@@ -146,6 +157,7 @@ export function FreeBoard({
       onDragCancel={() => setActiveId(null)}
     >
       {toolbar && <div className="mb-4 flex items-center justify-end gap-2">{toolbar}</div>}
+      {dragError && <MutationErrorBanner message={dragError} onDismiss={() => setDragError(null)} />}
 
       {statuses.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">

@@ -34,6 +34,7 @@ import { dropStory } from "@/app/projects/[id]/board/actions";
 import { findContainer, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
 import { STATE_COLUMNS, columnForStory, evaluateDrop, type KanbanColumnId, type StateColumnId } from "@/lib/utils/kanban";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
+import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard } from "./story-card";
 import type { BoardStory, IterationMeta } from "./kanban-board";
@@ -186,6 +187,7 @@ export function KanbanColumnsBoard({
   const [containers, setContainers] = useState(initialContainers);
   const [synced, setSynced] = useState(initialContainers);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [dragError, setDragError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   if (synced !== initialContainers) {
@@ -285,14 +287,25 @@ export function KanbanColumnsBoard({
     const reordered = reorderContainer(items, String(active.id), String(over.id));
 
     setContainers((prev) => ({ ...prev, [overContainer]: reordered }));
+    setDragError(null);
 
     const formData = new FormData();
     formData.set("project_id", projectId);
     formData.set("story_id", String(active.id));
     formData.set("target_column", overContainer);
     reordered.forEach((s) => formData.append("ordered_ids", s.id));
-    startTransition(() => {
-      void dropStory(formData);
+    // TASK-22: awaited and caught — the server re-derives the transition
+    // from the story's *current* state (see dropStory), so a stale client
+    // (e.g. another user already accepted this story) gets a rejection
+    // here even though the client-side isAllowedMove check above passed.
+    // Un-caught, the optimistic reorder above would never be reverted.
+    startTransition(async () => {
+      try {
+        await dropStory(formData);
+      } catch (err) {
+        setContainers(synced);
+        setDragError(err instanceof Error ? err.message : "Failed to move the story");
+      }
     });
   }
 
@@ -311,6 +324,7 @@ export function KanbanColumnsBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveId(null)}
     >
+      {dragError && <MutationErrorBanner message={dragError} onDismiss={() => setDragError(null)} />}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {STATE_COLUMNS.filter((column) => column !== "rejected" || showRejected).map((column) => (
           <KanbanColumn
