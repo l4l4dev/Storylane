@@ -253,8 +253,11 @@ iteration's stories** — the third option in the view toggle. Columns:
 - **This week** / **Today** — stories bucketed via `stories.focus`
   (spec/data-model.md); dragging between Todo / This week / Today sets or
   clears `focus` and never touches state;
-- **In progress** — stories in `started` / `finished` / `delivered`
-  (state badge shown on the card);
+- **In progress** — stories in `started` / `finished` / `delivered` /
+  `rejected` (state badge shown on the card; `rejected` groups here rather
+  than getting its own column since it still needs action — the Restart
+  transition — same as Kanban view's Rejected→Started, TASK-15 decision
+  2026-07-09);
 - **Done** — `accepted` stories, read-only, grouped under date headers
   (Today / Yesterday / date) by `completed_at`, so *when* something was
   finished is visible.

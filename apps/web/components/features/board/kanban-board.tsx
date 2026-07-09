@@ -2,7 +2,7 @@
 
 import { type ReactNode, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutGrid, List as ListIcon, Snowflake } from "lucide-react";
+import { Crosshair, LayoutGrid, List as ListIcon, Snowflake } from "lucide-react";
 import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { sumPoints } from "@/lib/utils/board";
 import { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
@@ -20,6 +20,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { BoardListView } from "./board-list-view";
+import { FocusBoard } from "./focus-board";
 import { KanbanColumnsBoard } from "./kanban-columns-board";
 import type { StoryCardData } from "./story-card";
 
@@ -37,6 +38,10 @@ export type BoardStory = StoryCardData & {
   position: number;
   assignee_id: string | null;
   labelIds: string[];
+  // Focus view only (TASK-15, spec/screens.md "Focus view") — ignored by
+  // the List/Kanban views.
+  focus: string | null;
+  completed_at: string | null;
 };
 
 export type IterationMeta = {
@@ -49,7 +54,7 @@ export type IterationMeta = {
   state: string;
 };
 
-type BoardView = "kanban" | "list";
+type BoardView = "kanban" | "list" | "focus";
 
 // Top-level board component: owns the shared header (iteration bar, goal
 // form, Icebox toggle, filters, and the Kanban/List view toggle — see
@@ -168,6 +173,15 @@ export function KanbanBoard({
               <LayoutGrid />
               Kanban
             </Button>
+            <Button
+              type="button"
+              variant={view === "focus" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setView("focus")}
+            >
+              <Crosshair />
+              Focus
+            </Button>
           </div>
           {view === "list" && (
             <Button
@@ -194,6 +208,13 @@ export function KanbanBoard({
       )}
       {view === "kanban" ? (
         <KanbanColumnsBoard
+          projectId={projectId}
+          currentIteration={currentIteration}
+          initialContainers={initialContainers}
+          filter={filter}
+        />
+      ) : view === "focus" ? (
+        <FocusBoard
           projectId={projectId}
           currentIteration={currentIteration}
           initialContainers={initialContainers}
