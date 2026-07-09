@@ -76,6 +76,7 @@ export async function moveStory(formData: FormData) {
       .from("iterations")
       .select("state")
       .eq("id", destinationIterationId)
+      .eq("project_id", projectId)
       .single();
 
     if (iteration?.state === "done") {
@@ -83,7 +84,12 @@ export async function moveStory(formData: FormData) {
     }
   }
 
-  const { data: story } = await supabase.from("stories").select("state").eq("id", storyId).single();
+  const { data: story } = await supabase
+    .from("stories")
+    .select("state")
+    .eq("id", storyId)
+    .eq("project_id", projectId)
+    .single();
 
   const update: { iteration_id: string | null; state?: StoryState } = {
     iteration_id: destinationIterationId,
@@ -94,7 +100,11 @@ export async function moveStory(formData: FormData) {
     update.state = "unstarted";
   }
 
-  const { error } = await supabase.from("stories").update(update).eq("id", storyId);
+  const { error } = await supabase
+    .from("stories")
+    .update(update)
+    .eq("id", storyId)
+    .eq("project_id", projectId);
 
   if (error) {
     throw new Error(error.message);
@@ -104,7 +114,7 @@ export async function moveStory(formData: FormData) {
     await assertAllSucceeded(
       await Promise.all(
         reorderPositions(orderedIds).map(({ id, position }) =>
-          supabase.from("stories").update({ position }).eq("id", id),
+          supabase.from("stories").update({ position }).eq("id", id).eq("project_id", projectId),
         ),
       ),
     );
@@ -256,7 +266,7 @@ export async function dropStoryFree(formData: FormData) {
     await assertAllSucceeded(
       await Promise.all(
         reorderPositions(orderedIds).map(({ id, position }) =>
-          supabase.from("stories").update({ position }).eq("id", id),
+          supabase.from("stories").update({ position }).eq("id", id).eq("project_id", projectId),
         ),
       ),
     );
@@ -286,6 +296,7 @@ export async function dropStory(formData: FormData) {
       .from("stories")
       .select("number, title, state, story_type, points, iteration_id")
       .eq("id", storyId)
+      .eq("project_id", projectId)
       .single(),
     supabase
       .from("iterations")
@@ -322,7 +333,11 @@ export async function dropStory(formData: FormData) {
   }
 
   if (Object.keys(update).length > 0) {
-    const { error } = await supabase.from("stories").update(update).eq("id", storyId);
+    const { error } = await supabase
+      .from("stories")
+      .update(update)
+      .eq("id", storyId)
+      .eq("project_id", projectId);
     if (error) {
       throw new Error(error.message);
     }
@@ -336,7 +351,7 @@ export async function dropStory(formData: FormData) {
     await assertAllSucceeded(
       await Promise.all(
         reorderPositions(orderedIds).map(({ id, position }) =>
-          supabase.from("stories").update({ position }).eq("id", id),
+          supabase.from("stories").update({ position }).eq("id", id).eq("project_id", projectId),
         ),
       ),
     );
@@ -381,6 +396,7 @@ export async function dropStoryInList(formData: FormData) {
         .from("stories")
         .select("number, title, state, story_type, points, iteration_id")
         .eq("id", itemId)
+        .eq("project_id", projectId)
         .single(),
       supabase
         .from("iterations")
@@ -417,7 +433,11 @@ export async function dropStoryInList(formData: FormData) {
     }
 
     if (Object.keys(update).length > 0) {
-      const { error } = await supabase.from("stories").update(update).eq("id", itemId);
+      const { error } = await supabase
+        .from("stories")
+        .update(update)
+        .eq("id", itemId)
+        .eq("project_id", projectId);
       if (error) {
         throw new Error(error.message);
       }
@@ -429,7 +449,7 @@ export async function dropStoryInList(formData: FormData) {
   }
 
   if (orderedItems.length > 0) {
-    await persistBacklogOrder(supabase, orderedItems);
+    await persistBacklogOrder(supabase, projectId, orderedItems);
   }
 
   revalidatePath(`/projects/${projectId}/board`);
@@ -449,6 +469,7 @@ export async function dropStoryInList(formData: FormData) {
  */
 async function persistBacklogOrder(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
   entries: ReadonlyArray<string>,
 ) {
   const storyUpdates: { id: string; position: number }[] = [];
@@ -462,9 +483,11 @@ async function persistBacklogOrder(
 
   await assertAllSucceeded(
     await Promise.all([
-      ...storyUpdates.map(({ id, position }) => supabase.from("stories").update({ position }).eq("id", id)),
+      ...storyUpdates.map(({ id, position }) =>
+        supabase.from("stories").update({ position }).eq("id", id).eq("project_id", projectId),
+      ),
       ...dividerUpdates.map(({ id, position }) =>
-        supabase.from("backlog_dividers").update({ position }).eq("id", id),
+        supabase.from("backlog_dividers").update({ position }).eq("id", id).eq("project_id", projectId),
       ),
     ]),
   );
@@ -538,7 +561,7 @@ export async function createBacklogDivider(formData: FormData) {
   const ordered = merged.map((item) => `${item.kind}:${item.id}`);
   ordered.splice(insertAt, 0, `divider:${created.id}`);
 
-  await persistBacklogOrder(supabase, ordered);
+  await persistBacklogOrder(supabase, projectId, ordered);
 
   revalidatePath(`/projects/${projectId}/board`);
 }
@@ -548,7 +571,11 @@ export async function deleteBacklogDivider(formData: FormData) {
   const dividerId = String(formData.get("divider_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("backlog_dividers").delete().eq("id", dividerId);
+  const { error } = await supabase
+    .from("backlog_dividers")
+    .delete()
+    .eq("id", dividerId)
+    .eq("project_id", projectId);
   if (error) {
     throw new Error(error.message);
   }
@@ -582,6 +609,7 @@ export async function transitionStory(formData: FormData) {
       .from("stories")
       .select("number, title, state, story_type, points, iteration_id")
       .eq("id", storyId)
+      .eq("project_id", projectId)
       .single(),
     supabase
       .from("iterations")
@@ -613,7 +641,11 @@ export async function transitionStory(formData: FormData) {
     update.iteration_id = currentIterationId;
   }
 
-  const { error } = await supabase.from("stories").update(update).eq("id", storyId);
+  const { error } = await supabase
+    .from("stories")
+    .update(update)
+    .eq("id", storyId)
+    .eq("project_id", projectId);
   if (error) {
     throw new Error(error.message);
   }
@@ -773,7 +805,11 @@ export async function updateIterationGoal(formData: FormData) {
   const goal = String(formData.get("goal") ?? "").trim() || null;
 
   const supabase = await createClient();
-  const { error } = await supabase.from("iterations").update({ goal }).eq("id", iterationId);
+  const { error } = await supabase
+    .from("iterations")
+    .update({ goal })
+    .eq("id", iterationId)
+    .eq("project_id", projectId);
 
   if (error) {
     throw new Error(error.message);
