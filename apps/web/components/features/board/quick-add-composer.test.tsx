@@ -18,10 +18,16 @@ describe("QuickAddComposer", () => {
     quickCreateStoryFreeMock.mockClear();
   });
 
-  it("starts as an Add story button and opens an input in place", () => {
+  // TASK-11: the old composer morphed the trigger button itself into the
+  // input. The trigger must now stay visible and unchanged, with the
+  // composer appearing as a separate element alongside it.
+  it("keeps the Add story trigger visible when the composer opens", () => {
     render(<QuickAddComposer projectId="p1" target="backlog" />);
     fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
-    expect(screen.getByRole("textbox", { name: "New story title" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: /Add story/ })).toBeInTheDocument();
+    const input = screen.getByRole("textbox", { name: "New story title" });
+    expect(input).toHaveFocus();
+    expect(screen.getByText("Enter to add · Esc to close")).toBeInTheDocument();
   });
 
   it("creates on Enter, clears the input once creation succeeds, and stays open for the next add", async () => {
@@ -89,14 +95,14 @@ describe("QuickAddComposer", () => {
     expect(quickCreateStoryMock).not.toHaveBeenCalled();
     const formData = quickCreateStoryFreeMock.mock.calls[0]?.[0];
     if (!formData) {
-      throw new Error("quickCreateStoryFree was not called with FormData");
+      throw new Error("quickCreateStory was not called with FormData");
     }
     expect(formData.get("project_id")).toBe("p1");
     expect(formData.get("title")).toBe("Free mode story");
     expect(formData.get("status_id")).toBe("cs1");
   });
 
-  it("closes on Escape and discards the draft", () => {
+  it("closes on Escape and discards the draft, leaving the trigger in place", () => {
     render(<QuickAddComposer projectId="p1" target="icebox" />);
     fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
     const input = screen.getByRole("textbox", { name: "New story title" });
@@ -104,5 +110,33 @@ describe("QuickAddComposer", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Add story/ })).toBeInTheDocument();
+  });
+
+  it("closes and discards the draft on an outside click", () => {
+    render(
+      <div>
+        <button type="button">outside</button>
+        <QuickAddComposer projectId="p1" target="icebox" />
+      </div>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
+    const input = screen.getByRole("textbox", { name: "New story title" });
+    fireEvent.change(input, { target: { value: "half-typed" } });
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: "outside" }));
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Add story/ })).toBeInTheDocument();
+  });
+
+  it("does not close on a click inside the composer", () => {
+    render(<QuickAddComposer projectId="p1" target="icebox" />);
+    fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
+    const input = screen.getByRole("textbox", { name: "New story title" });
+    fireEvent.change(input, { target: { value: "still typing" } });
+
+    fireEvent.mouseDown(input);
+
+    expect(screen.getByRole("textbox", { name: "New story title" })).toHaveValue("still typing");
   });
 });
