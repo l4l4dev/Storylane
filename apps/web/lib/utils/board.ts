@@ -54,6 +54,15 @@ export function sumPoints(stories: ReadonlyArray<PointedStory>): number {
     .reduce((total, story) => total + (story.points ?? 0), 0);
 }
 
+/**
+ * Whether a free-mode column's card count has passed its WIP limit
+ * (TASK-16.2, spec/screens.md "Free mode board") — a soft limit, purely a
+ * display warning; `null` means no limit is set.
+ */
+export function isOverWipLimit(count: number, wipLimit: number | null): boolean {
+  return wipLimit != null && count > wipLimit;
+}
+
 // Shared cross-container drag helpers — used by both the Kanban and List
 // board views, whose containers are keyed differently (state columns vs.
 // current/backlog/icebox zones) but behave identically during a drag.

@@ -23,15 +23,31 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { MoreHorizontal } from "lucide-react";
 import { dropStoryFree } from "@/app/projects/[id]/board/actions";
-import { findContainer, storyById, sumPoints } from "@/lib/utils/board";
+import { setStatusWipLimit } from "@/app/projects/[id]/settings/actions";
+import { findContainer, isOverWipLimit, storyById, sumPoints } from "@/lib/utils/board";
 import { groupDoneStories } from "@/lib/utils/focus";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard, type StoryCardData } from "./story-card";
 
-export type CustomStatus = { id: string; name: string; color: string; position: number; is_done: boolean };
+export type CustomStatus = {
+  id: string;
+  name: string;
+  color: string;
+  position: number;
+  is_done: boolean;
+  wip_limit: number | null;
+};
 
 // TASK-16.1: is_done columns show when each card was completed, grouped
 // under date headers — completed_at is DB-trigger-maintained (see
@@ -231,13 +247,20 @@ function FreeColumn({
       )
     : null;
 
+  // TASK-16.2: a soft WIP limit — over it is purely a warning color, drops
+  // are never blocked (spec/screens.md "Free mode board").
+  const overWipLimit = isOverWipLimit(stories.length, status.wip_limit);
+
   return (
     <section className="flex h-[calc(100dvh-13rem)] w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/30">
       <header className="flex items-center gap-2 px-3 pt-3 pb-2">
         <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: status.color }} aria-hidden />
         <h2 className="truncate text-sm font-semibold">{status.name}</h2>
-        <span className="text-xs text-muted-foreground">{stories.length}</span>
+        <span className={`text-xs ${overWipLimit ? "font-semibold text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}>
+          {status.wip_limit != null ? `${stories.length} / ${status.wip_limit}` : stories.length}
+        </span>
         {points > 0 && <span className="text-xs text-muted-foreground">· {points} pts</span>}
+        <WipLimitMenu projectId={projectId} statusId={status.id} currentLimit={status.wip_limit} />
       </header>
       <div className="px-3 pb-2">
         <QuickAddComposer projectId={projectId} target={{ customStatusId: status.id }} />
@@ -278,5 +301,114 @@ function SortableFreeCard({ story, projectId }: { story: FreeStoryCardData; proj
     >
       <StoryCard story={story} projectId={projectId} />
     </li>
+  );
+}
+
+// TASK-16.2: "Configured from the column header menu" (spec/screens.md) —
+// a small kebab menu next to the count/limit, not the Settings status
+// editor. Soft limit only: this only ever writes wip_limit, never touches
+// drag/drop validation.
+export function WipLimitMenu({
+  projectId,
+  statusId,
+  currentLimit,
+}: {
+  projectId: string;
+  statusId: string;
+  currentLimit: number | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(currentLimit != null ? String(currentLimit) : "");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function submit(nextValue: string) {
+    setError(null);
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    formData.set("status_id", statusId);
+    formData.set("wip_limit", nextValue);
+    startTransition(async () => {
+      try {
+        await setStatusWipLimit(formData);
+        setOpen(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update WIP limit");
+      }
+    });
+  }
+
+  return (
+    <DropdownMenu
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) {
+          setValue(currentLimit != null ? String(currentLimit) : "");
+          setError(null);
+        }
+      }}
+    >
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
+          aria-label="Column options"
+        >
+          <MoreHorizontal className="size-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48 p-2">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit(value);
+          }}
+          className="flex flex-col gap-1.5"
+        >
+          <label htmlFor={`wip-limit-${statusId}`} className="text-xs font-medium text-muted-foreground">
+            WIP limit
+          </label>
+          <Input
+            id={`wip-limit-${statusId}`}
+            type="number"
+            min={1}
+            step={1}
+            value={value}
+            disabled={isPending}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setError(null);
+            }}
+            placeholder="No limit"
+            className="h-7 text-xs"
+          />
+          {error && (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
+          <div className="flex gap-1.5">
+            <Button type="submit" size="xs" variant="outline" disabled={isPending}>
+              Save
+            </Button>
+            {currentLimit != null && (
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                disabled={isPending}
+                onClick={() => {
+                  setValue("");
+                  submit("");
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        </form>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

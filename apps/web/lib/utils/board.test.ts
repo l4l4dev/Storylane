@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { findContainer, groupStoriesByIteration, partitionIcebox, reorderContainer, storyById, sumPoints } from "./board";
+import {
+  findContainer,
+  groupStoriesByIteration,
+  isOverWipLimit,
+  partitionIcebox,
+  reorderContainer,
+  storyById,
+  sumPoints,
+} from "./board";
 
 describe("groupStoriesByIteration", () => {
   it("separates backlog stories from iteration-assigned ones", () => {
@@ -63,6 +71,21 @@ describe("sumPoints", () => {
 
   it("returns 0 for an empty list", () => {
     expect(sumPoints([])).toBe(0);
+  });
+});
+
+describe("isOverWipLimit", () => {
+  it("is false when no limit is set", () => {
+    expect(isOverWipLimit(10, null)).toBe(false);
+  });
+
+  it("is false when the count is at or below the limit", () => {
+    expect(isOverWipLimit(3, 3)).toBe(false);
+    expect(isOverWipLimit(2, 3)).toBe(false);
+  });
+
+  it("is true once the count exceeds the limit", () => {
+    expect(isOverWipLimit(4, 3)).toBe(true);
   });
 });
 

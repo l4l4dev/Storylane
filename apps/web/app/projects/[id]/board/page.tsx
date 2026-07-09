@@ -258,7 +258,7 @@ async function FreeBoardPage({
   const [{ data: statuses }, { data: stories }, { data: labels }, { data: members }] = await Promise.all([
     supabase
       .from("custom_statuses")
-      .select("id, name, color, position, is_done")
+      .select("id, name, color, position, is_done, wip_limit")
       .eq("project_id", projectId)
       .order("position", { ascending: true }),
     supabase
