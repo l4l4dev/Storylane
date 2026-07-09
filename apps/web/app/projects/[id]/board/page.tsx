@@ -264,7 +264,7 @@ async function FreeBoardPage({
     supabase
       .from("stories")
       .select(
-        "id, number, title, description, story_type, state, points, position, custom_status_id, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+        "id, number, title, description, story_type, state, points, position, custom_status_id, completed_at, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
       )
       .eq("project_id", projectId)
       .order("position", { ascending: true }),
@@ -287,6 +287,7 @@ async function FreeBoardPage({
       state: story.state,
       points: story.points,
       custom_status_id: story.custom_status_id,
+      completed_at: story.completed_at,
       assignee_id: story.assignee_id,
       assigneeName: assigneeProfile?.display_name ?? null,
       labels: labelIds
