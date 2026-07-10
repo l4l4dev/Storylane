@@ -21,6 +21,20 @@ export function calculateVelocity(
   return Math.round(sum / recent.length);
 }
 
+/**
+ * Clamps a submitted velocity_window to what `projects_velocity_window_check`
+ * (>= 1, supabase/migrations/20260714000001_velocity_window_check.sql)
+ * allows, so createProject/updateProject never send an out-of-range value —
+ * a 0 or negative window would otherwise make calculateVelocity's slice
+ * permanently empty (velocity always reporting 0).
+ */
+export function clampVelocityWindow(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.max(1, Math.floor(value));
+}
+
 export type PointedStory = { story_type: string; state: string; points: number | null };
 
 /**

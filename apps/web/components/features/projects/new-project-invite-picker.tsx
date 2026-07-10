@@ -4,6 +4,11 @@ import { useState } from "react";
 import { searchUserForNewProject, type NewProjectInviteResult } from "@/app/dashboard/actions";
 import { Input } from "@/components/ui/input";
 
+// Matches createProject's server-side cap (apps/web/app/dashboard/actions.ts)
+// so a 21st+ selection is refused client-side instead of being silently
+// dropped on submit (TASK-25 follow-up).
+const MAX_INVITEES = 20;
+
 // TASK-7: initial-invite picker for the project-creation panel, usable
 // before a project row exists. Deliberately not InviteMemberForm's fuzzy
 // dropdown — see new-project-invite-picker's backing RPC
@@ -17,24 +22,29 @@ export function NewProjectInvitePicker({
   onChange: (users: NewProjectInviteResult[]) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [notFound, setNotFound] = useState(false);
+  const [message, setMessage] = useState<{ kind: "not_found" | "error"; text: string } | null>(null);
   const [pending, setPending] = useState(false);
+  const atCap = selected.length >= MAX_INVITEES;
 
   async function handleSubmit() {
     const trimmed = query.trim();
-    if (!trimmed || pending) {
+    if (!trimmed || pending || atCap) {
       return;
     }
     setPending(true);
-    setNotFound(false);
-    const found = await searchUserForNewProject(trimmed);
+    setMessage(null);
+    const result = await searchUserForNewProject(trimmed);
     setPending(false);
-    if (!found) {
-      setNotFound(true);
+    if (result.status === "error") {
+      setMessage({ kind: "error", text: `Search failed: ${result.message}` });
       return;
     }
-    if (!selected.some((u) => u.id === found.id)) {
-      onChange([...selected, found]);
+    if (result.status === "not_found") {
+      setMessage({ kind: "not_found", text: "No user found with that exact username." });
+      return;
+    }
+    if (!selected.some((u) => u.id === result.user.id)) {
+      onChange([...selected, result.user]);
     }
     setQuery("");
   }
@@ -63,24 +73,36 @@ export function NewProjectInvitePicker({
           </span>
         ))}
       </div>
-      <Input
-        type="text"
-        aria-label="Add member by exact username"
-        placeholder="Exact username, then Enter…"
-        value={query}
-        autoComplete="off"
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setNotFound(false);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            void handleSubmit();
+      {atCap ? (
+        <p className="text-sm text-muted-foreground">Maximum of 20 initial invites reached.</p>
+      ) : (
+        <Input
+          type="text"
+          aria-label="Add member by exact username"
+          placeholder="Exact username, then Enter…"
+          value={query}
+          autoComplete="off"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setMessage(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void handleSubmit();
+            }
+          }}
+        />
+      )}
+      {message && (
+        <p
+          className={
+            message.kind === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
           }
-        }}
-      />
-      {notFound && <p className="text-sm text-muted-foreground">No user found with that exact username.</p>}
+        >
+          {message.text}
+        </p>
+      )}
     </div>
   );
 }
