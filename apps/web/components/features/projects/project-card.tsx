@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProjectCardMenu } from "./project-card-menu";
 
 export type ProjectCardMember = { userId: string; displayName: string; avatarUrl: string | null };
 
@@ -11,6 +12,9 @@ export type ProjectCardData = {
   workflowMode: "tracker" | "free";
   updatedAt: string;
   members: ProjectCardMember[];
+  isFavorite: boolean;
+  isOwner: boolean;
+  archivedAt: string | null;
   currentIterationNumber?: number | null;
   velocity?: number | null;
   columnCount?: number;
@@ -53,9 +57,19 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
               {project.name}
             </Link>
           </CardTitle>
-          <Badge variant={project.workflowMode === "tracker" ? "default" : "secondary"}>
-            {project.workflowMode === "tracker" ? "Tracker" : "Free"}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {project.archivedAt && <Badge variant="outline">Archived</Badge>}
+            <Badge variant={project.workflowMode === "tracker" ? "default" : "secondary"}>
+              {project.workflowMode === "tracker" ? "Tracker" : "Free"}
+            </Badge>
+            <ProjectCardMenu
+              projectId={project.id}
+              projectName={project.name}
+              isOwner={project.isOwner}
+              isFavorite={project.isFavorite}
+              isArchived={project.archivedAt !== null}
+            />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
