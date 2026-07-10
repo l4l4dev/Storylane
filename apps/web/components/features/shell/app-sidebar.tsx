@@ -128,6 +128,13 @@ export function AppSidebar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
+            <DropdownMenuItem asChild>
+              <Link href="/settings">
+                <Settings />
+                Account settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={() => void signOut()}>
               <LogOut />
               Sign out

@@ -82,37 +82,3 @@ export async function signOut() {
   await supabase.auth.signOut();
   redirect("/auth/login");
 }
-
-export type UpdateUsernameState = { error?: string; success?: string };
-
-export async function updateUsername(
-  _prev: UpdateUsernameState,
-  formData: FormData,
-): Promise<UpdateUsernameState> {
-  const username = String(formData.get("username") ?? "").trim().toLowerCase();
-
-  if (!/^[a-z0-9_]{3,30}$/.test(username)) {
-    return { error: "Usernames must be 3-30 characters: lowercase letters, numbers, underscores." };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Not signed in." };
-  }
-
-  const { error } = await supabase.from("profiles").update({ username }).eq("id", user.id);
-
-  if (error) {
-    if (error.code === "23505") {
-      return { error: "That username is already taken." };
-    }
-    return { error: error.message };
-  }
-
-  revalidatePath("/dashboard");
-  return { success: "Username updated." };
-}
