@@ -1,24 +1,15 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { CreateProjectDialog } from "@/components/features/projects/create-project-dialog";
-import { UsernameEditor } from "@/components/features/projects/username-editor";
 import { Button } from "@/components/ui/button";
 import { signOut } from "./actions";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const [{ data: projects }, { data: profile }] = await Promise.all([
-    supabase
-      .from("projects")
-      .select("id, name, description, updated_at")
-      .order("updated_at", { ascending: false }),
-    user
-      ? supabase.from("profiles").select("username").eq("id", user.id).single()
-      : Promise.resolve({ data: null }),
-  ]);
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("id, name, description, updated_at")
+    .order("updated_at", { ascending: false });
 
   return (
     <main className="mx-auto max-w-3xl p-6">
@@ -26,6 +17,9 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-bold">Projects</h1>
         <div className="flex items-center gap-3">
           <CreateProjectDialog />
+          <Button asChild variant="outline" size="sm">
+            <Link href="/settings">Account settings</Link>
+          </Button>
           <form action={signOut}>
             <Button type="submit" variant="outline" size="sm">
               Sign out
@@ -33,12 +27,6 @@ export default async function DashboardPage() {
           </form>
         </div>
       </header>
-
-      {profile && (
-        <div className="mb-6">
-          <UsernameEditor username={profile.username} />
-        </div>
-      )}
 
       {projects && projects.length > 0 ? (
         <ul className="flex flex-col gap-3">
