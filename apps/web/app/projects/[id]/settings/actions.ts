@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { assertAllSucceeded } from "@/lib/supabase/assert";
 import { clampVelocityWindow } from "@/lib/utils/velocity";
 
 export type InviteState = { error?: string; success?: string };
@@ -287,10 +288,20 @@ export async function moveCustomStatus(formData: FormData) {
     return;
   }
 
-  await Promise.all([
-    supabase.from("custom_statuses").update({ position: list[swapWith].position }).eq("id", list[index].id),
-    supabase.from("custom_statuses").update({ position: list[index].position }).eq("id", list[swapWith].id),
-  ]);
+  await assertAllSucceeded(
+    await Promise.all([
+      supabase
+        .from("custom_statuses")
+        .update({ position: list[swapWith].position })
+        .eq("id", list[index].id)
+        .eq("project_id", projectId),
+      supabase
+        .from("custom_statuses")
+        .update({ position: list[index].position })
+        .eq("id", list[swapWith].id)
+        .eq("project_id", projectId),
+    ]),
+  );
 
   revalidatePath(`/projects/${projectId}/settings`);
   revalidatePath(`/projects/${projectId}/board`);
@@ -374,10 +385,20 @@ export async function moveLane(formData: FormData) {
     return;
   }
 
-  await Promise.all([
-    supabase.from("swimlanes").update({ position: list[swapWith].position }).eq("id", list[index].id),
-    supabase.from("swimlanes").update({ position: list[index].position }).eq("id", list[swapWith].id),
-  ]);
+  await assertAllSucceeded(
+    await Promise.all([
+      supabase
+        .from("swimlanes")
+        .update({ position: list[swapWith].position })
+        .eq("id", list[index].id)
+        .eq("project_id", projectId),
+      supabase
+        .from("swimlanes")
+        .update({ position: list[index].position })
+        .eq("id", list[swapWith].id)
+        .eq("project_id", projectId),
+    ]),
+  );
 
   revalidatePath(`/projects/${projectId}/settings`);
   revalidatePath(`/projects/${projectId}/board`);

@@ -3,11 +3,11 @@ id: TASK-26
 title: >-
   Fix: moveCustomStatus/moveLane swap writes are unchecked (TASK-22 pattern
   recurrence)
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-10 10:37'
-updated_date: '2026-07-10 23:39'
+updated_date: '2026-07-10 23:51'
 labels:
   - web
 dependencies: []
@@ -23,12 +23,18 @@ Code review 2026-07-10: settings/actions.ts moveCustomStatus (line ~290) and mov
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 assertAllSucceeded is extracted to a shared lib module (e.g. lib/supabase/assert.ts) and board/actions.ts reuses it
-- [ ] #2 moveCustomStatus and moveLane check both swap update results and throw on failure
-- [ ] #3 The swap updates also filter by project_id, matching house style
-- [ ] #4 upsertIterationGoal rejects non-positive/non-integer iteration numbers before writing
-- [ ] #5 Tests cover a failed swap surfacing an error and the goal-number validation
+- [x] #1 assertAllSucceeded is extracted to a shared lib module (e.g. lib/supabase/assert.ts) and board/actions.ts reuses it
+- [x] #2 moveCustomStatus and moveLane check both swap update results and throw on failure
+- [x] #3 The swap updates also filter by project_id, matching house style
+- [x] #4 upsertIterationGoal rejects non-positive/non-integer iteration numbers before writing
+- [x] #5 Tests cover a failed swap surfacing an error and the goal-number validation
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+assertAllSucceeded を lib/supabase/assert.ts に抽出し board/actions.ts はそれを再利用(直接テスト lib/supabase/assert.test.ts 追加)。settings/actions.ts の moveCustomStatus/moveLane はスワップ2件を assertAllSucceeded でチェックし project_id フィルタも追加(app/projects/[id]/settings/actions.test.ts 追加、失敗スワップがエラーを伝播することと project_id フィルタを確認)。upsertIterationGoal は Number.isInteger && > 0 の検証を書き込み前に追加(app/projects/[id]/board/actions.test.ts 追加、0/-1/1.5/abc/空文字を拒否、正の整数は成功することを確認)。TDD で実装(各テストの RED を確認してから実装)。pnpm test 342 passed / pnpm build 成功。
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 

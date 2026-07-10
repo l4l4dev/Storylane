@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { assertAllSucceeded } from "@/lib/supabase/assert";
 import { notifySlack } from "@/lib/integrations/slack";
 import { iterationDoneMessage, iterationStartedMessage, storyStateChangeMessage } from "@/lib/utils/slack";
 import {
@@ -25,23 +26,6 @@ import {
 
 function todayDateOnly(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-/**
- * Throws on the first failed write in a batch of parallel Supabase updates
- * (TASK-22). `Promise.all` alone only rejects if a promise itself throws —
- * a Supabase update that fails (including one RLS silently filters to zero
- * rows) resolves normally with `{ error }` set, so an unchecked batch like
- * `Promise.all(ids.map(id => supabase.from(...).update(...).eq("id", id)))`
- * can partially apply and still look like a success to the caller.
- */
-async function assertAllSucceeded(
-  results: ReadonlyArray<{ error: { message: string } | null }>,
-): Promise<void> {
-  const failed = results.find((result) => result.error);
-  if (failed?.error) {
-    throw new Error(failed.error.message);
-  }
 }
 
 /**
@@ -832,6 +816,10 @@ export async function upsertIterationGoal(formData: FormData) {
   const projectId = String(formData.get("project_id"));
   const number = Number(formData.get("number"));
   const goal = String(formData.get("goal") ?? "").trim();
+
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("Invalid iteration number");
+  }
 
   const supabase = await createClient();
 
