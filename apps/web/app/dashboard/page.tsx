@@ -7,6 +7,28 @@ import { ProjectCard, type ProjectCardData } from "@/components/features/project
 import { Button } from "@/components/ui/button";
 import { signOut } from "./actions";
 
+/**
+ * Rolls over one tracker project's current iteration, swallowing any
+ * failure from `ensureCurrentIteration` (e.g. a transient DB error, or a
+ * genuinely broken iteration state on that one project).
+ *
+ * Exported at module scope — rather than nested in the page component like
+ * this file's other `fetchX` helpers — so it can be unit tested directly,
+ * and so a batched `Promise.all` over many projects never rejects because
+ * of a single project's rollover failure (see final code review finding on
+ * this file: previously the whole `/dashboard` page 500'd for every
+ * project when even one project's rollover failed). The project's card
+ * simply falls back to whatever iteration data was already fetched
+ * (possibly stale by one rollover) instead of crashing the page.
+ */
+export async function rolloverIterationSafely(projectId: string): Promise<void> {
+  try {
+    await ensureCurrentIteration(projectId);
+  } catch {
+    // Intentionally ignored — see comment above.
+  }
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -24,8 +46,10 @@ export default async function DashboardPage({
 
   // Lazily rolls over each tracker project's current iteration before
   // reading it (spec/velocity.md "Automatic scheduling & rollover") — same
-  // rule the board page applies, just batched across projects here.
-  await Promise.all(trackerProjects.map((p) => ensureCurrentIteration(p.id)));
+  // rule the board page applies, just batched across projects here. Uses
+  // the failure-swallowing wrapper (not ensureCurrentIteration directly) so
+  // one project's rollover failure can't 500 the whole page for everyone.
+  await Promise.all(trackerProjects.map((p) => rolloverIterationSafely(p.id)));
 
   type IterationRow = { number: number; velocity: number | null; state: string };
   type MemberRow = { user_id: string; profiles: { display_name: string; avatar_url: string | null } | null };
