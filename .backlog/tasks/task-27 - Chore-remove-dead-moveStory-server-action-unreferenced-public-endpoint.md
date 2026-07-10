@@ -1,11 +1,11 @@
 ---
 id: TASK-27
 title: 'Chore: remove dead moveStory server action (unreferenced public endpoint)'
-status: To Do
+status: Done
 assignee:
-  - '@claude-haiku-4-5'
+  - '@claude-sonnet-5'
 created_date: '2026-07-10 10:37'
-updated_date: '2026-07-10 23:39'
+updated_date: '2026-07-10 23:46'
 labels:
   - web
 dependencies: []
@@ -21,10 +21,16 @@ Code review 2026-07-10: board/actions.ts exports moveStory but nothing in app/, 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 moveStory and its imports are removed from board/actions.ts
-- [ ] #2 grep confirms no remaining references to moveStory in apps/web
-- [ ] #3 pnpm test and pnpm build pass
+- [x] #1 moveStory and its imports are removed from board/actions.ts
+- [x] #2 grep confirms no remaining references to moveStory in apps/web
+- [x] #3 pnpm test and pnpm build pass
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+moveStory と付随する doc comment を board/actions.ts から削除。BACKLOG_CONTAINER_ID / ICEBOX_CONTAINER_ID の import も未使用化のため削除。grep で apps/web 全体を確認し参照なし。pnpm test (330 passed) と pnpm build 成功。
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 
