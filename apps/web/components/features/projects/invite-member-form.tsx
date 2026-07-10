@@ -1,34 +1,115 @@
 "use client";
 
-import { useActionState } from "react";
-import { inviteMember, type InviteState } from "@/app/projects/[id]/settings/actions";
+import { useActionState, useEffect, useRef, useState } from "react";
+import {
+  inviteMember,
+  searchUsersForInvite,
+  type InviteSearchResult,
+  type InviteState,
+} from "@/app/projects/[id]/settings/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 
+// Invite by user search (spec/features.md "Team Collaboration", TASK-6) —
+// replaces the old email input. Search results are debounced client-side;
+// the 2-char minimum, the cap, and excluding already-invited users are all
+// enforced server-side by search_users_for_invite itself.
 export function InviteMemberForm({ projectId }: { projectId: string }) {
   const [state, formAction, pending] = useActionState<InviteState, FormData>(
     inviteMember,
     {},
   );
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<InviteSearchResult[]>([]);
+  const [selected, setSelected] = useState<InviteSearchResult | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    if (query.trim().length < 2) {
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      const found = await searchUsersForInvite(projectId, query);
+      setResults(found);
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [query, projectId]);
+
+  // Derived rather than reset via setState in the effect above: avoids a
+  // cascading-render lint violation and means a query shortened back below
+  // 2 chars hides stale results immediately, without waiting on an effect.
+  const visibleResults = query.trim().length < 2 ? [] : results;
+
+  function selectUser(user: InviteSearchResult) {
+    setSelected(user);
+    setQuery("");
+    setResults([]);
+  }
 
   return (
-    <form action={formAction} className="flex flex-col gap-2">
+    <form
+      action={formAction}
+      onSubmit={() => {
+        setSelected(null);
+        setQuery("");
+      }}
+      className="flex flex-col gap-2"
+    >
       <input type="hidden" name="project_id" value={projectId} />
+      <input type="hidden" name="user_id" value={selected?.id ?? ""} />
+      <input type="hidden" name="display_name" value={selected?.displayName ?? ""} />
+
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          type="email"
-          name="email"
-          required
-          placeholder="email@example.com"
-          className="flex-1"
-        />
+        {selected ? (
+          <span className="flex flex-1 items-center gap-1.5 rounded-lg border border-input px-2.5 py-1 text-sm">
+            {selected.displayName}
+            <span className="text-muted-foreground">@{selected.username}</span>
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              aria-label={`Remove ${selected.displayName}`}
+              className="ml-1 text-muted-foreground hover:text-foreground"
+            >
+              ×
+            </button>
+          </span>
+        ) : (
+          <div className="relative flex-1">
+            <Input
+              type="text"
+              aria-label="Search users to invite"
+              placeholder="Search by username or name…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoComplete="off"
+            />
+            {visibleResults.length > 0 && (
+              <ul className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-popover shadow-md">
+                {visibleResults.map((user) => (
+                  <li key={user.id}>
+                    <button
+                      type="button"
+                      onClick={() => selectUser(user)}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm hover:bg-accent"
+                    >
+                      {user.displayName}{" "}
+                      <span className="text-muted-foreground">@{user.username}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         <NativeSelect name="role" defaultValue="member" className="w-auto">
           <option value="member">member</option>
           <option value="viewer">viewer</option>
           <option value="owner">owner</option>
         </NativeSelect>
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || !selected}>
           {pending ? "Inviting…" : "Invite"}
         </Button>
       </div>
