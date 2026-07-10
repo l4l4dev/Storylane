@@ -52,13 +52,13 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2">
+          <CardTitle className="min-w-0 flex-1 truncate">
             <Link href={`/projects/${project.id}`} className="hover:underline">
               {project.name}
             </Link>
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {project.archivedAt && <Badge variant="outline">Archived</Badge>}
             <Badge variant={project.workflowMode === "tracker" ? "default" : "secondary"}>
               {project.workflowMode === "tracker" ? "Tracker" : "Free"}
