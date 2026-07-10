@@ -22,6 +22,21 @@ import { signOut } from "./actions";
  * simply falls back to whatever iteration data was already fetched
  * (possibly stale by one rollover) instead of crashing the page.
  */
+/**
+ * Tracker projects that should be rolled over on this page load — excludes
+ * archived ones. Without this, visiting `/dashboard` would call
+ * `ensureCurrentIteration` on every tracker project unconditionally,
+ * creating a new empty iteration in an archived project each time anyone
+ * viewed the page — exactly the app-driven write this task's read-only
+ * scoping (Move/Copy checks + this UI's own gating) is supposed to prevent
+ * (fable-advisor finding, TASK-8).
+ */
+export function projectsNeedingRollover<T extends { archived_at: string | null }>(
+  trackerProjects: readonly T[],
+): T[] {
+  return trackerProjects.filter((p) => p.archived_at === null);
+}
+
 export async function rolloverIterationSafely(projectId: string): Promise<void> {
   try {
     await ensureCurrentIteration(projectId);
@@ -59,7 +74,7 @@ export default async function DashboardPage({
   // rule the board page applies, just batched across projects here. Uses
   // the failure-swallowing wrapper (not ensureCurrentIteration directly) so
   // one project's rollover failure can't 500 the whole page for everyone.
-  await Promise.all(trackerProjects.map((p) => rolloverIterationSafely(p.id)));
+  await Promise.all(projectsNeedingRollover(trackerProjects).map((p) => rolloverIterationSafely(p.id)));
 
   type IterationRow = { number: number; velocity: number | null; state: string };
   type MemberRow = {
