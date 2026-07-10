@@ -813,6 +813,15 @@ export type Database = {
           username: string
         }[]
       }
+      search_users_for_new_project: {
+        Args: { p_query: string }
+        Returns: {
+          avatar_url: string
+          display_name: string
+          id: string
+          username: string
+        }[]
+      }
       shares_project_with: {
         Args: { p_target_user_id: string }
         Returns: boolean
