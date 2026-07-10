@@ -403,4 +403,48 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
       .eq("action", "story.copied_in");
     expect(log).toHaveLength(1);
   });
+
+  it("rejects moving a story out of an archived source project", async () => {
+    const { data: story, error: storyError } = await supabase
+      .from("stories")
+      .insert({ project_id: trackerProjectId, title: "archived source move test", story_type: "feature" })
+      .select("id")
+      .single();
+    if (storyError || !story) throw new Error(`Failed to create test story: ${storyError?.message}`);
+
+    await admin.from("projects").update({ archived_at: new Date().toISOString() }).eq("id", trackerProjectId);
+    try {
+      const { error } = await supabase.rpc("move_story_to_project", {
+        p_story_id: story.id,
+        p_target_project_id: freeProjectId,
+      });
+      expect(error).not.toBeNull();
+      expect(error?.message).toMatch(/source project is archived/i);
+    } finally {
+      await admin.from("projects").update({ archived_at: null }).eq("id", trackerProjectId);
+      await admin.from("stories").delete().eq("id", story.id);
+    }
+  });
+
+  it("rejects copying a story into an archived target project", async () => {
+    const { data: story, error: storyError } = await supabase
+      .from("stories")
+      .insert({ project_id: trackerProjectId, title: "archived target copy test", story_type: "feature" })
+      .select("id")
+      .single();
+    if (storyError || !story) throw new Error(`Failed to create test story: ${storyError?.message}`);
+
+    await admin.from("projects").update({ archived_at: new Date().toISOString() }).eq("id", freeProjectId);
+    try {
+      const { error } = await supabase.rpc("copy_story_to_project", {
+        p_story_id: story.id,
+        p_target_project_id: freeProjectId,
+      });
+      expect(error).not.toBeNull();
+      expect(error?.message).toMatch(/target project is archived/i);
+    } finally {
+      await admin.from("projects").update({ archived_at: null }).eq("id", freeProjectId);
+      await admin.from("stories").delete().eq("id", story.id);
+    }
+  });
 });
