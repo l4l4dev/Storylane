@@ -7,7 +7,7 @@ const rpcMock = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
-    from: (_table: string) => ({
+    from: () => ({
       update: (payload: unknown) => {
         updateMock(payload);
         return { eq: eqMock };
