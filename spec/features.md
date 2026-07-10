@@ -37,13 +37,24 @@
   epic and its tasks are expanded into new stories:
   - The new epic takes the story's title and description.
   - Each task becomes a new story (type `feature`, unestimated,
-    state/backlog position inherited from the original story's spot,
-    preserving task order) linked to the new epic. The original story's
-    labels are copied to each new story.
+    backlog position inherited from the original story's spot, preserving
+    task order) linked to the new epic. The original story's labels are
+    copied to each new story.
+  - **State (2026-07-10, advisor-reviewed):** new stories never inherit a
+    `started`-or-later state — an unestimated feature can't be started. If
+    the original was `unscheduled` (Icebox) the new stories stay
+    `unscheduled`; otherwise they land as `unstarted`. `iteration_id` is
+    copied from the original except when that iteration is already `done`
+    (an accepted story keeps `iteration_id` after finalization), in which
+    case the new stories drop back to the backlog instead of raising the
+    done-iteration-assignment guard. Assignee is never inherited (new
+    stories start unassigned); task completion state (`is_done`) is not
+    carried over either.
   - The original story is deleted. A confirmation dialog spells out the
     conversion; if the story has comments it warns that they will be
     deleted with the story. Points and assignee are discarded (epics carry
-    neither). The promotion is recorded in the activity log.
+    neither). The promotion is recorded in the activity log (single RPC,
+    see ARCHITECTURE.md).
 - **Move / Copy to another project (2026-07-07):** from the story detail
   menu, targeting any project the user is a member of (either mode):
   - **Move** carries title, description, type, tasks, labels (recreated by

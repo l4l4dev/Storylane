@@ -42,8 +42,12 @@ UsernameEditor is removed from this page (moved to `/settings`).
   - Free settings: column template (**KanbanFlow**: Todo / This week /
     Today / In progress / Done, Done seeded `is_done` / **Basic**: To do /
     Doing / Done);
-  - initial member invites via the same user-search picker as project
-    settings (optional, addable later).
+  - initial member invites via an exact-match username picker (optional,
+    addable later) — deliberately not the fuzzy search-as-you-type picker
+    used in project settings, since that RPC requires an existing
+    project_id to stay owner-gated; searching before a project exists can
+    only safely support confirm/deny-one-exact-username, not fuzzy
+    enumeration (see TASK-6's rls-security-reviewer finding).
 - **Project cards** show: name, mode badge (Tracker / Free), a
   mode-specific summary line (Tracker: current iteration number and
   velocity; Free: column count and open-card count), member avatars

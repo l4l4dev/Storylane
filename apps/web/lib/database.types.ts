@@ -780,6 +780,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      copy_story_to_project: {
+        Args: { p_story_id: string; p_target_project_id: string }
+        Returns: Json
+      }
       finalize_iteration: {
         Args: { p_manual: boolean; p_project_id: string }
         Returns: Json
@@ -790,11 +794,34 @@ export type Database = {
       }
       generate_username: { Args: { base: string }; Returns: string }
       invite_member: {
-        Args: { p_email: string; p_project_id: string; p_role?: string }
+        Args: { p_project_id: string; p_role?: string; p_user_id: string }
         Returns: undefined
       }
       is_project_member: { Args: { p_project_id: string }; Returns: boolean }
+      move_story_to_project: {
+        Args: { p_story_id: string; p_target_project_id: string }
+        Returns: Json
+      }
       project_role: { Args: { p_project_id: string }; Returns: string }
+      promote_story_to_epic: { Args: { p_story_id: string }; Returns: Json }
+      search_users_for_invite: {
+        Args: { p_project_id: string; p_query: string }
+        Returns: {
+          avatar_url: string
+          display_name: string
+          id: string
+          username: string
+        }[]
+      }
+      search_users_for_new_project: {
+        Args: { p_query: string }
+        Returns: {
+          avatar_url: string
+          display_name: string
+          id: string
+          username: string
+        }[]
+      }
       shares_project_with: {
         Args: { p_target_user_id: string }
         Returns: boolean
