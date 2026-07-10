@@ -151,6 +151,49 @@ export async function createProject(formData: FormData) {
   redirect(failedInviteCount > 0 ? `/dashboard?invite_failed=${failedInviteCount}` : "/dashboard");
 }
 
+export async function archiveProject(formData: FormData): Promise<void> {
+  const projectId = String(formData.get("project_id"));
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("projects")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", projectId);
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath("/dashboard");
+}
+
+export async function unarchiveProject(formData: FormData): Promise<void> {
+  const projectId = String(formData.get("project_id"));
+  const supabase = await createClient();
+  const { error } = await supabase.from("projects").update({ archived_at: null }).eq("id", projectId);
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath("/dashboard");
+}
+
+/**
+ * Best-effort — never throws. The picker/card calls this after an
+ * optimistic UI update and reverts on `{ ok: false }` rather than crashing
+ * the page (TASK-25's "surface RPC errors, don't swallow them" pattern,
+ * applied here as a returned status instead of a thrown error since this
+ * is called directly from a client event handler, not a `<form action>`).
+ */
+export async function toggleFavorite(projectId: string, favorite: boolean): Promise<{ ok: boolean }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("toggle_project_favorite", {
+    p_project_id: projectId,
+    p_favorite: favorite,
+  });
+  if (error) {
+    return { ok: false };
+  }
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();

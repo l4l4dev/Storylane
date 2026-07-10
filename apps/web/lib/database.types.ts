@@ -411,18 +411,21 @@ export type Database = {
       }
       project_members: {
         Row: {
+          is_favorite: boolean
           joined_at: string
           project_id: string
           role: string
           user_id: string
         }
         Insert: {
+          is_favorite?: boolean
           joined_at?: string
           project_id: string
           role: string
           user_id: string
         }
         Update: {
+          is_favorite?: boolean
           joined_at?: string
           project_id?: string
           role?: string
@@ -447,6 +450,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          archived_at: string | null
           created_at: string
           created_by: string
           custom_points: number[] | null
@@ -460,6 +464,7 @@ export type Database = {
           workflow_mode: string
         }
         Insert: {
+          archived_at?: string | null
           created_at?: string
           created_by?: string
           custom_points?: number[] | null
@@ -473,6 +478,7 @@ export type Database = {
           workflow_mode?: string
         }
         Update: {
+          archived_at?: string | null
           created_at?: string
           created_by?: string
           custom_points?: number[] | null
@@ -825,6 +831,10 @@ export type Database = {
       shares_project_with: {
         Args: { p_target_user_id: string }
         Returns: boolean
+      }
+      toggle_project_favorite: {
+        Args: { p_favorite: boolean; p_project_id: string }
+        Returns: undefined
       }
       update_story: {
         Args: {
