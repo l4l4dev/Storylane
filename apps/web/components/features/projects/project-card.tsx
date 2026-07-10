@@ -10,6 +10,7 @@ export type ProjectCardData = {
   name: string;
   description: string | null;
   workflowMode: "tracker" | "free";
+  createdAt: string;
   updatedAt: string;
   members: ProjectCardMember[];
   isFavorite: boolean;
