@@ -51,10 +51,8 @@ describe("NewProjectInvitePicker", () => {
 
   it("adds a matched user as a chip on Enter and clears the input", async () => {
     searchUserForNewProjectMock.mockResolvedValueOnce({
-      id: "u1",
-      username: "jdoe",
-      displayName: "Jane Doe",
-      avatarUrl: null,
+      status: "found",
+      user: { id: "u1", username: "jdoe", displayName: "Jane Doe", avatarUrl: null },
     });
     const onChange = vi.fn();
     render(<ControlledPicker onChangeSpy={onChange} />);
@@ -70,13 +68,28 @@ describe("NewProjectInvitePicker", () => {
   });
 
   it("shows a not-found message when no exact match exists", async () => {
-    searchUserForNewProjectMock.mockResolvedValueOnce(null);
+    searchUserForNewProjectMock.mockResolvedValueOnce({ status: "not_found" });
     render(<NewProjectInvitePicker selected={[]} onChange={vi.fn()} />);
     const input = screen.getByLabelText("Add member by exact username");
     fireEvent.change(input, { target: { value: "nobody" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByText(/no user found/i)).toBeInTheDocument();
+  });
+
+  // TASK-25 follow-up: an RPC error (transient failure, or the RPC's own
+  // "Not signed in" exception) must read differently from a genuine
+  // not-found, so a user doesn't mistake a temporary failure for "that
+  // account doesn't exist".
+  it("shows a distinct error message when the search RPC itself errors", async () => {
+    searchUserForNewProjectMock.mockResolvedValueOnce({ status: "error", message: "Not signed in" });
+    render(<NewProjectInvitePicker selected={[]} onChange={vi.fn()} />);
+    const input = screen.getByLabelText("Add member by exact username");
+    fireEvent.change(input, { target: { value: "someone" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(await screen.findByText(/search failed/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no user found/i)).not.toBeInTheDocument();
   });
 
   it("removing a chip calls onChange without that user", () => {
@@ -89,5 +102,21 @@ describe("NewProjectInvitePicker", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Remove Jane Doe" }));
     expect(onChange).toHaveBeenCalledWith([]);
+  });
+
+  // TASK-25 follow-up: createProject caps invites at 20 server-side
+  // (apps/web/app/dashboard/actions.ts) — without a matching client-side
+  // cap, a 21st+ chip was silently dropped with no feedback.
+  it("disables further additions and shows a message once 20 users are selected", () => {
+    const selected: NewProjectInviteResult[] = Array.from({ length: 20 }, (_, i) => ({
+      id: `u${i}`,
+      username: `user${i}`,
+      displayName: `User ${i}`,
+      avatarUrl: null,
+    }));
+    render(<NewProjectInvitePicker selected={selected} onChange={vi.fn()} />);
+
+    expect(screen.queryByLabelText("Add member by exact username")).not.toBeInTheDocument();
+    expect(screen.getByText(/maximum of 20/i)).toBeInTheDocument();
   });
 });

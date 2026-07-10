@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { clampVelocityWindow } from "@/lib/utils/velocity";
 
 export type InviteState = { error?: string; success?: string };
 
@@ -42,7 +43,7 @@ export async function updateProject(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim() || null;
   const iterationLength = Number(formData.get("iteration_length") ?? 14);
   const pointScale = String(formData.get("point_scale") ?? "fibonacci");
-  const velocityWindow = Number(formData.get("velocity_window") ?? 3);
+  const velocityWindow = clampVelocityWindow(Number(formData.get("velocity_window") ?? 3));
 
   if (!name) {
     return;

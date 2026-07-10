@@ -35,6 +35,12 @@ export default async function DashboardPage({
   searchParams: Promise<{ invite_failed?: string }>;
 }) {
   const { invite_failed } = await searchParams;
+  // TASK-25 follow-up: only render the banner for a genuine positive
+  // integer — a crafted/garbled query param renders nothing instead of a
+  // nonsensical message (React already escapes it, so this is a validity
+  // guard, not an XSS fix).
+  const inviteFailedCount = invite_failed ? Number.parseInt(invite_failed, 10) : NaN;
+  const showInviteFailedBanner = Number.isInteger(inviteFailedCount) && inviteFailedCount > 0;
   const supabase = await createClient();
   const { data: projects } = await supabase
     .from("projects")
@@ -152,9 +158,9 @@ export default async function DashboardPage({
         </div>
       </header>
 
-      {invite_failed && (
+      {showInviteFailedBanner && (
         <p className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          Project created, but {invite_failed} invite{invite_failed === "1" ? "" : "s"} could not be sent.
+          Project created, but {inviteFailedCount} invite{inviteFailedCount === 1 ? "" : "s"} could not be sent.
           Invite them from Project settings instead.
         </p>
       )}
