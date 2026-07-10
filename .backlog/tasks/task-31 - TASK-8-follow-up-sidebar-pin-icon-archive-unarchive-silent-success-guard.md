@@ -5,11 +5,12 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-10 23:33'
+updated_date: '2026-07-10 23:39'
 labels:
   - web
 dependencies: []
 priority: low
-ordinal: 28000
+ordinal: 15500
 ---
 
 ## Description
@@ -26,3 +27,12 @@ Two non-blocking findings from fable-advisor's PR #4 review (TASK-8 project arch
 - [ ] #2 archiveProject/unarchiveProject check the updated row count (e.g. .select('id') after .update()) and throw if empty, instead of silently succeeding
 - [ ] #3 Tests cover both
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-10 23:39
+---
+Reorder 2026-07-11: moved from tail to right after TASK-17. AC #1 (pin icon) is a subset of TASK-17 AC #2 — implement both in the same session; completing TASK-17 satisfies this task's #1. AC #2 (row-count guard) follows the same pattern as TASK-26's assertAllSucceeded extraction — reuse that shared helper.
+---
+<!-- COMMENTS:END -->

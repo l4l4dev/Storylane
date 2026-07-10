@@ -7,11 +7,12 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-10 10:37'
+updated_date: '2026-07-10 23:39'
 labels:
   - web
 dependencies: []
 priority: medium
-ordinal: 16000
+ordinal: 14000
 ---
 
 ## Description
@@ -28,3 +29,12 @@ Code review 2026-07-10: settings/actions.ts moveCustomStatus (line ~290) and mov
 - [ ] #4 upsertIterationGoal rejects non-positive/non-integer iteration numbers before writing
 - [ ] #5 Tests cover a failed swap surfacing an error and the goal-number validation
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-10 23:39
+---
+Reorder 2026-07-11: moved ahead of TASK-17 — Medium-priority correctness fix (silent write failures) outranks Low-priority UI polish.
+---
+<!-- COMMENTS:END -->

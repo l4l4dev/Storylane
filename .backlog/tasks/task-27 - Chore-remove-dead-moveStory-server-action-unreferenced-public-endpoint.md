@@ -5,11 +5,12 @@ status: To Do
 assignee:
   - '@claude-haiku-4-5'
 created_date: '2026-07-10 10:37'
+updated_date: '2026-07-10 23:39'
 labels:
   - web
 dependencies: []
 priority: low
-ordinal: 16500
+ordinal: 13000
 ---
 
 ## Description
@@ -24,3 +25,12 @@ Code review 2026-07-10: board/actions.ts exports moveStory but nothing in app/, 
 - [ ] #2 grep confirms no remaining references to moveStory in apps/web
 - [ ] #3 pnpm test and pnpm build pass
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-10 23:39
+---
+Reorder 2026-07-11: moved ahead of TASK-26 — both edit board/actions.ts, and deleting dead moveStory first gives TASK-26 a clean file.
+---
+<!-- COMMENTS:END -->

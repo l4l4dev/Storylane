@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-07 14:29'
-updated_date: '2026-07-10 10:30'
+updated_date: '2026-07-10 23:39'
 labels:
   - web
 dependencies:
@@ -28,3 +28,12 @@ The sidebar project switcher already exists (app-sidebar.tsx) but owner didn't d
 - [ ] #2 Dropdown lists favorites first with a pin icon, shows mode badges, and excludes archived projects
 - [ ] #3 Component test covers ordering and archived exclusion
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-10 23:39
+---
+Note 2026-07-11: TASK-31 AC #1 (pin icon in the switcher dropdown) is a subset of this task's AC #2. Pick up TASK-31 in the same session after this one.
+---
+<!-- COMMENTS:END -->
