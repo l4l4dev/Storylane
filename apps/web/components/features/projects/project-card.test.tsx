@@ -1,0 +1,61 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { ProjectCard, type ProjectCardData } from "./project-card";
+
+function baseProject(overrides: Partial<ProjectCardData> = {}): ProjectCardData {
+  return {
+    id: "p1",
+    name: "Storylane",
+    description: null,
+    workflowMode: "tracker",
+    updatedAt: "2026-07-10T00:00:00.000Z",
+    members: [],
+    ...overrides,
+  };
+}
+
+describe("ProjectCard", () => {
+  it("shows the Tracker badge and iteration/velocity summary", () => {
+    render(
+      <ProjectCard
+        project={baseProject({ workflowMode: "tracker", currentIterationNumber: 4, velocity: 12 })}
+      />,
+    );
+    expect(screen.getByText("Tracker")).toBeInTheDocument();
+    expect(screen.getByText("Iteration #4 · velocity 12 pts")).toBeInTheDocument();
+  });
+
+  it("shows the Free badge and column/open-card summary", () => {
+    render(
+      <ProjectCard
+        project={baseProject({ workflowMode: "free", columnCount: 5, openCardCount: 8 })}
+      />,
+    );
+    expect(screen.getByText("Free")).toBeInTheDocument();
+    expect(screen.getByText("5 columns · 8 open cards")).toBeInTheDocument();
+  });
+
+  it("caps overlapping member avatars with a +N badge", () => {
+    const members = Array.from({ length: 5 }, (_, i) => ({
+      userId: `u${i}`,
+      displayName: `User ${i}`,
+      avatarUrl: null,
+    }));
+    render(<ProjectCard project={baseProject({ members })} />);
+    // First 4 rendered as initials, 5th collapsed into "+1".
+    expect(screen.getByText("U0")).toBeInTheDocument();
+    expect(screen.getByText("U3")).toBeInTheDocument();
+    expect(screen.queryByText("U4")).not.toBeInTheDocument();
+    expect(screen.getByText("+1")).toBeInTheDocument();
+  });
+
+  it("renders no +N badge when member count is at or below the cap", () => {
+    const members = Array.from({ length: 3 }, (_, i) => ({
+      userId: `u${i}`,
+      displayName: `User ${i}`,
+      avatarUrl: null,
+    }));
+    render(<ProjectCard project={baseProject({ members })} />);
+    expect(screen.queryByText(/^\+/)).not.toBeInTheDocument();
+  });
+});
