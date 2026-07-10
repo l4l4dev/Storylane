@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProjectCardMenu } from "./project-card-menu";
 
 export type ProjectCardMember = { userId: string; displayName: string; avatarUrl: string | null };
 
@@ -9,8 +10,12 @@ export type ProjectCardData = {
   name: string;
   description: string | null;
   workflowMode: "tracker" | "free";
+  createdAt: string;
   updatedAt: string;
   members: ProjectCardMember[];
+  isFavorite: boolean;
+  isOwner: boolean;
+  archivedAt: string | null;
   currentIterationNumber?: number | null;
   velocity?: number | null;
   columnCount?: number;
@@ -47,15 +52,25 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2">
+          <CardTitle className="min-w-0 flex-1 truncate">
             <Link href={`/projects/${project.id}`} className="hover:underline">
               {project.name}
             </Link>
           </CardTitle>
-          <Badge variant={project.workflowMode === "tracker" ? "default" : "secondary"}>
-            {project.workflowMode === "tracker" ? "Tracker" : "Free"}
-          </Badge>
+          <div className="flex shrink-0 items-center gap-2">
+            {project.archivedAt && <Badge variant="outline">Archived</Badge>}
+            <Badge variant={project.workflowMode === "tracker" ? "default" : "secondary"}>
+              {project.workflowMode === "tracker" ? "Tracker" : "Free"}
+            </Badge>
+            <ProjectCardMenu
+              projectId={project.id}
+              projectName={project.name}
+              isOwner={project.isOwner}
+              isFavorite={project.isFavorite}
+              isArchived={project.archivedAt !== null}
+            />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">

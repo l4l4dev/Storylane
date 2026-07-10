@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureCurrentIteration } from "@/app/projects/[id]/board/actions";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { InlineCreatePanel } from "@/components/features/projects/inline-create-panel";
-import { ProjectCard, type ProjectCardData } from "@/components/features/projects/project-card";
+import type { ProjectCardData } from "@/components/features/projects/project-card";
+import { ProjectGrid } from "@/components/features/projects/project-grid";
 import { Button } from "@/components/ui/button";
 import { signOut } from "./actions";
 
@@ -21,6 +22,21 @@ import { signOut } from "./actions";
  * simply falls back to whatever iteration data was already fetched
  * (possibly stale by one rollover) instead of crashing the page.
  */
+/**
+ * Tracker projects that should be rolled over on this page load — excludes
+ * archived ones. Without this, visiting `/dashboard` would call
+ * `ensureCurrentIteration` on every tracker project unconditionally,
+ * creating a new empty iteration in an archived project each time anyone
+ * viewed the page — exactly the app-driven write this task's read-only
+ * scoping (Move/Copy checks + this UI's own gating) is supposed to prevent
+ * (fable-advisor finding, TASK-8).
+ */
+export function projectsNeedingRollover<T extends { archived_at: string | null }>(
+  trackerProjects: readonly T[],
+): T[] {
+  return trackerProjects.filter((p) => p.archived_at === null);
+}
+
 export async function rolloverIterationSafely(projectId: string): Promise<void> {
   try {
     await ensureCurrentIteration(projectId);
@@ -42,9 +58,12 @@ export default async function DashboardPage({
   const inviteFailedCount = invite_failed ? Number.parseInt(invite_failed, 10) : NaN;
   const showInviteFailedBanner = Number.isInteger(inviteFailedCount) && inviteFailedCount > 0;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const { data: projects } = await supabase
     .from("projects")
-    .select("id, name, description, workflow_mode, updated_at, velocity_window")
+    .select("id, name, description, workflow_mode, created_at, updated_at, archived_at, velocity_window")
     .order("updated_at", { ascending: false });
 
   const trackerProjects = (projects ?? []).filter((p) => p.workflow_mode === "tracker");
@@ -55,10 +74,15 @@ export default async function DashboardPage({
   // rule the board page applies, just batched across projects here. Uses
   // the failure-swallowing wrapper (not ensureCurrentIteration directly) so
   // one project's rollover failure can't 500 the whole page for everyone.
-  await Promise.all(trackerProjects.map((p) => rolloverIterationSafely(p.id)));
+  await Promise.all(projectsNeedingRollover(trackerProjects).map((p) => rolloverIterationSafely(p.id)));
 
   type IterationRow = { number: number; velocity: number | null; state: string };
-  type MemberRow = { user_id: string; profiles: { display_name: string; avatar_url: string | null } | null };
+  type MemberRow = {
+    user_id: string;
+    role: string;
+    is_favorite: boolean;
+    profiles: { display_name: string; avatar_url: string | null } | null;
+  };
 
   async function fetchIterations(projectId: string): Promise<readonly [string, IterationRow[]]> {
     const { data } = await supabase
@@ -89,7 +113,7 @@ export default async function DashboardPage({
   async function fetchMembers(projectId: string): Promise<readonly [string, MemberRow[]]> {
     const { data } = await supabase
       .from("project_members")
-      .select("user_id, profiles(display_name, avatar_url)")
+      .select("user_id, role, is_favorite, profiles(display_name, avatar_url)")
       .eq("project_id", projectId);
     return [projectId, data ?? []] as const;
   }
@@ -108,11 +132,15 @@ export default async function DashboardPage({
   const membersById = new Map(membersByProject);
 
   const cards: ProjectCardData[] = (projects ?? []).map((project) => {
-    const members = (membersById.get(project.id) ?? []).map((m) => ({
+    const memberRows = membersById.get(project.id) ?? [];
+    const members = memberRows.map((m) => ({
       userId: m.user_id,
       displayName: m.profiles?.display_name ?? "Unknown",
       avatarUrl: m.profiles?.avatar_url ?? null,
     }));
+    const myMembership = memberRows.find((m) => m.user_id === user?.id);
+    const isOwner = myMembership?.role === "owner";
+    const isFavorite = myMembership?.is_favorite ?? false;
 
     if (project.workflow_mode === "tracker") {
       const iterations = iterationsById.get(project.id) ?? [];
@@ -123,8 +151,12 @@ export default async function DashboardPage({
         name: project.name,
         description: project.description,
         workflowMode: "tracker",
+        createdAt: project.created_at,
         updatedAt: project.updated_at,
+        archivedAt: project.archived_at,
         members,
+        isOwner,
+        isFavorite,
         currentIterationNumber: current?.number ?? null,
         velocity: calculateVelocity(done, project.velocity_window),
       };
@@ -135,8 +167,12 @@ export default async function DashboardPage({
       name: project.name,
       description: project.description,
       workflowMode: "free",
+      createdAt: project.created_at,
       updatedAt: project.updated_at,
+      archivedAt: project.archived_at,
       members,
+      isOwner,
+      isFavorite,
       columnCount: columnCountById.get(project.id) ?? 0,
       openCardCount: openCardCountById.get(project.id) ?? 0,
     };
@@ -169,17 +205,7 @@ export default async function DashboardPage({
         <InlineCreatePanel />
       </div>
 
-      {cards.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {cards.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          No projects yet. Create your first one to get started.
-        </p>
-      )}
+      <ProjectGrid projects={cards} />
     </main>
   );
 }

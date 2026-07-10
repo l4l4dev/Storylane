@@ -17,6 +17,23 @@ beforeEach(() => {
 // `rolloverIterationSafely` helper directly — the exact unit the review
 // finding is about — which is enough to prove one project's rollover
 // failure can no longer reject the batched `Promise.all` in the page.
+// TASK-8 fable-advisor finding: /dashboard was rolling over every tracker
+// project on every load, including archived ones — creating a new empty
+// iteration in an archived project each time anyone viewed the page. Same
+// test-scope tradeoff as rolloverIterationSafely above: test the extracted
+// predicate directly rather than the whole Server Component.
+describe("projectsNeedingRollover", () => {
+  it("excludes archived tracker projects", async () => {
+    const { projectsNeedingRollover } = await import("./page");
+    const projects = [
+      { id: "active", workflow_mode: "tracker", archived_at: null },
+      { id: "archived", workflow_mode: "tracker", archived_at: "2026-07-10T00:00:00.000Z" },
+    ];
+
+    expect(projectsNeedingRollover(projects).map((p) => p.id)).toEqual(["active"]);
+  });
+});
+
 describe("rolloverIterationSafely", () => {
   it("resolves even when ensureCurrentIteration throws", async () => {
     ensureCurrentIterationMock.mockRejectedValueOnce(new Error("finalize_iteration failed"));

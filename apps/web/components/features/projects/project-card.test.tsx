@@ -1,6 +1,12 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ProjectCard, type ProjectCardData } from "./project-card";
+
+vi.mock("./project-card-menu", () => ({
+  ProjectCardMenu: ({ isArchived }: { isArchived: boolean }) => (
+    <div data-testid="project-card-menu">{isArchived ? "archived-menu" : "active-menu"}</div>
+  ),
+}));
 
 function baseProject(overrides: Partial<ProjectCardData> = {}): ProjectCardData {
   return {
@@ -8,8 +14,12 @@ function baseProject(overrides: Partial<ProjectCardData> = {}): ProjectCardData 
     name: "Storylane",
     description: null,
     workflowMode: "tracker",
+    createdAt: "2026-07-10T00:00:00.000Z",
     updatedAt: "2026-07-10T00:00:00.000Z",
     members: [],
+    isFavorite: false,
+    isOwner: false,
+    archivedAt: null,
     ...overrides,
   };
 }
@@ -57,5 +67,10 @@ describe("ProjectCard", () => {
     }));
     render(<ProjectCard project={baseProject({ members })} />);
     expect(screen.queryByText(/^\+/)).not.toBeInTheDocument();
+  });
+
+  it("shows an Archived badge when the project is archived", () => {
+    render(<ProjectCard project={baseProject({ archivedAt: "2026-07-10T00:00:00.000Z" })} />);
+    expect(screen.getByText("Archived")).toBeInTheDocument();
   });
 });

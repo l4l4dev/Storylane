@@ -22,5 +22,13 @@
   `invite_member` (existing), user search for invites (capped results, minimal
   columns: id / username / display_name / avatar_url), and story Move/Copy
   between projects (caller must be a member of **both** projects)
-- Project archive (`projects.archived_at`): set/cleared by owner only; while
-  archived, non-owner writes to the project's data are rejected (read-only)
+- Project archive (`projects.archived_at`): set/cleared by owner only (no
+  dedicated policy — covered by the existing owner-gated `projects` UPDATE
+  policy). Read-only enforcement is scoped to (a) the Move/Copy story RPCs,
+  which reject a source or target project that's archived, and (b) the web
+  UI's display/archive-control gating on `/dashboard`. There is **no**
+  DB-level lock across every write-capable table (`stories`, `comments`,
+  `iterations`, `custom_statuses`, `labels`, ...) — a member can still write
+  directly to an archived project's data via PostgREST/the REST API,
+  bypassing the UI. Full DB-level read-only enforcement is tracked as
+  follow-up work (see Backlog), not implemented here.

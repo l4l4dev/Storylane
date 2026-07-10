@@ -76,6 +76,42 @@ chore/update-supabase-client
 
 ---
 
+## Backlog Assignee & Model Policy
+
+Every Backlog task MUST have an assignee — set it at creation time, never leave it empty.
+
+- Tasks owner performs herself (interactive auth, manual verification, deploys): `@l4l4dev`
+- Tasks a model implements: assign the model best matched to the task's content:
+  - `@claude-haiku-4-5` — mechanical, low-risk edits (renames, copy tweaks, config)
+  - `@claude-sonnet-5` — standard feature/bugfix implementation (default choice)
+  - `@claude-opus-4-8` — architecture-sensitive work: new tables/RLS, concurrency,
+    cross-cutting refactors, notification/event paths
+  - `@claude-fable-5` — design review, planning, and final review passes (fable-advisor)
+
+Workflow rules:
+
+- When picking up the next task, tell owner which model the task is assigned to and suggest
+  switching to it before starting work.
+- If a review finds poor-quality output, escalate: reassign the task to the next higher model
+  (or propose the switch to owner), leave a task comment explaining why, and redo the work there.
+
+## Code Comment Policy
+
+How belongs in the code itself, what in test names, why in the commit message. A code comment
+earns its place only by stating what the code cannot: a non-obvious constraint, or a "why not"
+(the rejected alternative and what breaks with it). Keep these short.
+
+Never write:
+
+- History narration ("TASK-19 changed this", "this used to be...") — that's commit-log material
+  and becomes noise the moment it merges
+- Spec restatement — reference the section (e.g. `spec/screens.md "Board layout"`) instead of
+  copying its content
+- Reviewer-directed notes explaining that a change is correct or where it came from
+
+Longer design context that future sessions must not re-derive belongs in the architecture notes
+or `spec/`, with a one-line pointer from the code.
+
 ## Do Not
 
 - Add features not defined in `SPEC.md` without confirmation
