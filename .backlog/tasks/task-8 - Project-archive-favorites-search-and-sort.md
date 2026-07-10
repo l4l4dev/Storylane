@@ -4,7 +4,7 @@ title: 'Project archive, favorites, search and sort'
 status: To Do
 assignee: []
 created_date: '2026-07-07 14:25'
-updated_date: '2026-07-08 12:39'
+updated_date: '2026-07-10 02:53'
 labels:
   - web
   - db
@@ -31,3 +31,15 @@ Projects page management features per spec/screens.md 'Projects page' and spec/d
 - [ ] #4 Search box filters by name; sort select offers last updated / name / created
 - [ ] #5 Tests cover archive gating, favorite ordering, and search/sort
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Follow-up from TASK-14 (Move/Copy story): move_story_to_project /
+copy_story_to_project (supabase/migrations/20260711000001_move_copy_story.sql)
+were implemented WITHOUT the "neither project archived" re-check from
+spec/features.md's Move/Copy hardening note, since projects.archived_at
+doesn't exist yet (deferred per user decision 2026-07-11). Once this task
+adds that column, add the check to both RPCs and cover it with a test
+(archived-project rejection), matching AC#7/#9 of TASK-14.
+<!-- SECTION:NOTES:END -->

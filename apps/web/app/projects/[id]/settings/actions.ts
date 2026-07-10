@@ -5,6 +5,37 @@ import { createClient } from "@/lib/supabase/server";
 
 export type InviteState = { error?: string; success?: string };
 
+export type InviteSearchResult = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+};
+
+/**
+ * Backs the invite picker's search box (spec/features.md "Invite members
+ * by user search") — thin wrapper around the search_users_for_invite RPC,
+ * which enforces the 2-char minimum, the cap, and excludes existing
+ * project members server-side.
+ */
+export async function searchUsersForInvite(
+  projectId: string,
+  query: string,
+): Promise<InviteSearchResult[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("search_users_for_invite", {
+    p_query: query,
+    p_project_id: projectId,
+  });
+
+  return (data ?? []).map((u) => ({
+    id: u.id,
+    username: u.username,
+    displayName: u.display_name,
+    avatarUrl: u.avatar_url,
+  }));
+}
+
 export async function updateProject(formData: FormData) {
   const id = String(formData.get("project_id"));
   const name = String(formData.get("name") ?? "").trim();
@@ -40,17 +71,18 @@ export async function inviteMember(
   formData: FormData,
 ): Promise<InviteState> {
   const id = String(formData.get("project_id"));
-  const email = String(formData.get("email") ?? "").trim();
+  const userId = String(formData.get("user_id") ?? "");
+  const displayName = String(formData.get("display_name") ?? "member");
   const role = String(formData.get("role") ?? "member");
 
-  if (!email) {
-    return { error: "Email is required" };
+  if (!userId) {
+    return { error: "Search for and select a user to invite" };
   }
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("invite_member", {
     p_project_id: id,
-    p_email: email,
+    p_user_id: userId,
     p_role: role,
   });
 
@@ -58,7 +90,7 @@ export async function inviteMember(
     return { error: error.message };
   }
   revalidatePath(`/projects/${id}/settings`);
-  return { success: `Added ${email}` };
+  return { success: `Added ${displayName}` };
 }
 
 export async function updateMemberRole(formData: FormData) {

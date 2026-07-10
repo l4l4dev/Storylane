@@ -5,6 +5,34 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { FREE_TEMPLATES, type FreeTemplate } from "@/lib/types";
 
+export type NewProjectInviteResult = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+};
+
+/**
+ * Backs the project-creation panel's invite picker (TASK-7) — exact-match
+ * only, usable before a project row exists. See
+ * supabase/migrations/20260713000001_search_users_for_new_project.sql for
+ * why this can't reuse search_users_for_invite.
+ */
+export async function searchUserForNewProject(query: string): Promise<NewProjectInviteResult | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("search_users_for_new_project", { p_query: query });
+  const match = data?.[0];
+  if (!match) {
+    return null;
+  }
+  return {
+    id: match.id,
+    username: match.username,
+    displayName: match.display_name,
+    avatarUrl: match.avatar_url,
+  };
+}
+
 // Column templates seeded for a new free-mode project (TASK-16.1,
 // spec/screens.md "Projects page" / "Free mode board") — the owner
 // customizes them afterwards in Settings. KanbanFlow's Done column is the
@@ -35,6 +63,7 @@ export async function createProject(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim() || null;
   const iterationLength = Number(formData.get("iteration_length") ?? 14);
   const pointScale = String(formData.get("point_scale") ?? "fibonacci");
+  const velocityWindow = Number(formData.get("velocity_window") ?? 3);
   // Fixed at creation (Task 14 decision) — there is no mode-change path.
   const workflowMode = formData.get("workflow_mode") === "free" ? "free" : "tracker";
   const freeTemplateInput = String(formData.get("free_template") ?? "kanbanflow");
@@ -47,7 +76,21 @@ export async function createProject(formData: FormData) {
   }
 
   const supabase = await createClient();
-  // created_by defaults to auth.uid(); a trigger adds the creator as owner.
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // TASK-7: ids come from a client-controlled hidden input (the picker's
+  // selections) — dedupe, drop the caller's own id (the RPC itself also
+  // excludes it, but invite_member's upsert would demote an included
+  // creator from owner to member; this is defense in depth, not the only
+  // guard), and cap so one submit can't fan out unbounded invite_member
+  // calls.
+  const invitedUserIds = [...new Set(formData.getAll("invited_user_ids").map(String))]
+    .filter((id) => id && id !== user?.id)
+    .slice(0, 20);
+
   const { data: project, error } = await supabase
     .from("projects")
     .insert({
@@ -55,6 +98,7 @@ export async function createProject(formData: FormData) {
       description,
       iteration_length: iterationLength,
       point_scale: pointScale,
+      velocity_window: velocityWindow,
       workflow_mode: workflowMode,
     })
     .select("id")
@@ -73,46 +117,26 @@ export async function createProject(formData: FormData) {
     }
   }
 
+  let failedInviteCount = 0;
+  if (project) {
+    for (const userId of invitedUserIds) {
+      const { error: inviteError } = await supabase.rpc("invite_member", {
+        p_project_id: project.id,
+        p_user_id: userId,
+        p_role: "member",
+      });
+      if (inviteError) {
+        failedInviteCount += 1;
+      }
+    }
+  }
+
   revalidatePath("/dashboard");
-  redirect("/dashboard");
+  redirect(failedInviteCount > 0 ? `/dashboard?invite_failed=${failedInviteCount}` : "/dashboard");
 }
 
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/auth/login");
-}
-
-export type UpdateUsernameState = { error?: string; success?: string };
-
-export async function updateUsername(
-  _prev: UpdateUsernameState,
-  formData: FormData,
-): Promise<UpdateUsernameState> {
-  const username = String(formData.get("username") ?? "").trim().toLowerCase();
-
-  if (!/^[a-z0-9_]{3,30}$/.test(username)) {
-    return { error: "Usernames must be 3-30 characters: lowercase letters, numbers, underscores." };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Not signed in." };
-  }
-
-  const { error } = await supabase.from("profiles").update({ username }).eq("id", user.id);
-
-  if (error) {
-    if (error.code === "23505") {
-      return { error: "That username is already taken." };
-    }
-    return { error: error.message };
-  }
-
-  revalidatePath("/dashboard");
-  return { success: "Username updated." };
 }
