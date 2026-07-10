@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-07 08:44'
-updated_date: '2026-07-10 10:30'
+updated_date: '2026-07-10 10:37'
 labels: []
 dependencies:
   - TASK-18
@@ -39,5 +39,10 @@ Ordinal moved from 6000 to 17000 (2026-07-09, per Mika): confirmed no other To D
 created: 2026-07-09 05:10
 ---
 Ordinal 17000 → 21000 (2026-07-09): 17000 collided with TASK-16.1 and sat before TASK-16.2–16.4, so it was not actually last. Now placed after all Web implementation tasks, matching the plan: finish all Web work → deploy → start iOS.
+---
+
+created: 2026-07-10 10:37
+---
+Code review 2026-07-10: add to the deploy checklist — the login page's 'Continue as dev user' button is hidden in production, but signInWithPassword with the fixed dev@storylane.local credentials is callable by anyone against the hosted Supabase URL + anon key. Ensure supabase/seed.sql is NEVER run against the hosted project (so the dev user doesn't exist there) and consider disabling the email/password provider in the hosted Supabase Auth settings.
 ---
 <!-- COMMENTS:END -->
