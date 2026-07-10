@@ -9,12 +9,14 @@ import {
   History,
   Layers,
   LogOut,
+  Pin,
   Settings,
   SquareKanban,
   type LucideIcon,
 } from "lucide-react";
 import { signOut } from "@/app/dashboard/actions";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,7 +28,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "./mode-toggle";
 
-export type ProjectRef = { id: string; name: string; isFavorite: boolean };
+export type ProjectRef = {
+  id: string;
+  name: string;
+  isFavorite: boolean;
+  workflowMode: "tracker" | "free";
+  isArchived: boolean;
+};
 
 type NavItem = { label: string; segment: string; icon: LucideIcon };
 
@@ -60,17 +68,21 @@ export function AppSidebar({
   const base = `/projects/${project.id}`;
   const navItems = NAV_ITEMS.filter((item) => showIterations || item.segment !== "iterations");
 
-  // Favorites first (spec/screens.md "Projects page" / "Project switcher"),
+  // Favorites first, archived excluded (spec/screens.md "Project switcher"),
   // same rule as the dashboard's ProjectGrid (lib/utils/project-list.ts) —
-  // kept as a small inline sort here rather than importing that module,
-  // since the switcher has no search/sort UI of its own, only this one
-  // ordering rule.
-  const sortedProjects = [...projects].sort((a, b) => {
-    if (a.isFavorite !== b.isFavorite) {
-      return a.isFavorite ? -1 : 1;
-    }
-    return a.name.localeCompare(b.name);
-  });
+  // kept as a small inline filter/sort here rather than importing that
+  // module, since the switcher has no search/sort UI of its own. The
+  // server query already excludes archived projects (project layout); this
+  // filter is a defensive second layer so the component's own behavior is
+  // independently testable.
+  const sortedProjects = [...projects]
+    .filter((p) => !p.isArchived)
+    .sort((a, b) => {
+      if (a.isFavorite !== b.isFavorite) {
+        return a.isFavorite ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
 
   return (
     <aside className="sticky top-0 flex h-dvh w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -93,7 +105,17 @@ export function AppSidebar({
               <DropdownMenuItem key={p.id} asChild>
                 <Link href={`/projects/${p.id}`}>
                   <Check className={cn("mr-1", p.id === project.id ? "opacity-100" : "opacity-0")} />
-                  <span className="truncate">{p.name}</span>
+                  {p.isFavorite && (
+                    <Pin data-testid="pin-icon" className="size-3.5 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  <Badge
+                    data-testid="mode-badge"
+                    variant={p.workflowMode === "tracker" ? "default" : "secondary"}
+                    className="shrink-0"
+                  >
+                    {p.workflowMode === "tracker" ? "Tracker" : "Free"}
+                  </Badge>
                 </Link>
               </DropdownMenuItem>
             ))}

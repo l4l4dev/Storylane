@@ -1,11 +1,11 @@
 ---
 id: TASK-17
 title: Project switcher polish
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-07 14:29'
-updated_date: '2026-07-10 23:39'
+updated_date: '2026-07-10 23:59'
 labels:
   - web
 dependencies:
@@ -24,10 +24,16 @@ The sidebar project switcher already exists (app-sidebar.tsx) but owner didn't d
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Switcher trigger shows a visible chevron and hover state so it reads as a control
-- [ ] #2 Dropdown lists favorites first with a pin icon, shows mode badges, and excludes archived projects
-- [ ] #3 Component test covers ordering and archived exclusion
+- [x] #1 Switcher trigger shows a visible chevron and hover state so it reads as a control
+- [x] #2 Dropdown lists favorites first with a pin icon, shows mode badges, and excludes archived projects
+- [x] #3 Component test covers ordering and archived exclusion
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+AC#1(chevron+hover)は既存実装(ChevronsUpDown + Button variant=outline の hover:bg-muted)で満たされていたため変更なし。AC#2: app-sidebar.tsx の ProjectRef に workflowMode/isArchived を追加し、archived を除外するフィルタ(サーバー側の archived_at フィルタに加えて防御的にコンポーネント側でも実施)、favorite に Pin アイコン、Tracker/Free モードバッジ(project-card.tsx と同じ Badge variant 規約)を追加。layout.tsx で workflow_mode を取得しマッピング。AC#3: app-sidebar.test.tsx にピン表示・モードバッジ・archived除外の3テストを追加(TDDでRED確認後に実装)。pnpm test 345 passed / pnpm build 成功 / web-conventions-reviewer でクリーンなレビュー確認済み。
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 

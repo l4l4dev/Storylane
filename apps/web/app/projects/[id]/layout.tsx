@@ -23,7 +23,7 @@ export default async function ProjectLayout({
     supabase.from("projects").select("id, name, workflow_mode").eq("id", id).single(),
     supabase
       .from("projects")
-      .select("id, name")
+      .select("id, name, workflow_mode")
       .is("archived_at", null)
       .order("updated_at", { ascending: false }),
     user
@@ -37,7 +37,16 @@ export default async function ProjectLayout({
   const favoriteProjectIds = new Set(
     (myMemberships ?? []).filter((m) => m.is_favorite).map((m) => m.project_id),
   );
-  const projects = (projectRows ?? []).map((p) => ({ ...p, isFavorite: favoriteProjectIds.has(p.id) }));
+  const projects = (projectRows ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    workflowMode: p.workflow_mode === "tracker" ? ("tracker" as const) : ("free" as const),
+    isFavorite: favoriteProjectIds.has(p.id),
+    // The query above already excludes archived_at rows, but the switcher
+    // filters this flag itself too (see app-sidebar.tsx) so that behavior
+    // stays testable independent of this query.
+    isArchived: false,
+  }));
 
   if (!project) {
     notFound();
@@ -46,7 +55,13 @@ export default async function ProjectLayout({
   return (
     <div className="flex min-h-dvh">
       <AppSidebar
-        project={{ ...project, isFavorite: favoriteProjectIds.has(project.id) }}
+        project={{
+          id: project.id,
+          name: project.name,
+          workflowMode: project.workflow_mode === "tracker" ? ("tracker" as const) : ("free" as const),
+          isFavorite: favoriteProjectIds.has(project.id),
+          isArchived: false,
+        }}
         projects={projects}
         username={profile?.username ?? null}
         // Free-mode projects have no iterations (Task 14) — hide that nav item.
