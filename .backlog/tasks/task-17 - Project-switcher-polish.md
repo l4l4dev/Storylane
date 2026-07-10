@@ -2,9 +2,10 @@
 id: TASK-17
 title: Project switcher polish
 status: To Do
-assignee: []
+assignee:
+  - '@claude-sonnet-5'
 created_date: '2026-07-07 14:29'
-updated_date: '2026-07-08 12:39'
+updated_date: '2026-07-10 10:30'
 labels:
   - web
 dependencies:

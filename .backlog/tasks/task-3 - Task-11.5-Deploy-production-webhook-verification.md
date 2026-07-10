@@ -2,9 +2,10 @@
 id: TASK-3
 title: 'Task 11.5: Deploy + production webhook verification'
 status: To Do
-assignee: []
+assignee:
+  - '@l4l4dev'
 created_date: '2026-07-07 08:44'
-updated_date: '2026-07-09 05:10'
+updated_date: '2026-07-10 10:30'
 labels: []
 dependencies:
   - TASK-18
