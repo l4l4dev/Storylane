@@ -2,9 +2,10 @@
 id: TASK-24
 title: Move Slack notifications to DB webhook → Edge Function (pre-iOS prerequisite)
 status: To Do
-assignee: []
+assignee:
+  - '@claude-opus-4-8'
 created_date: '2026-07-08 07:45'
-updated_date: '2026-07-09 05:10'
+updated_date: '2026-07-10 10:31'
 labels:
   - db
   - ios

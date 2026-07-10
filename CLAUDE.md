@@ -76,6 +76,25 @@ chore/update-supabase-client
 
 ---
 
+## Backlog Assignee & Model Policy
+
+Every Backlog task MUST have an assignee — set it at creation time, never leave it empty.
+
+- Tasks Mika performs herself (interactive auth, manual verification, deploys): `@l4l4dev`
+- Tasks a model implements: assign the model best matched to the task's content:
+  - `@claude-haiku-4-5` — mechanical, low-risk edits (renames, copy tweaks, config)
+  - `@claude-sonnet-5` — standard feature/bugfix implementation (default choice)
+  - `@claude-opus-4-8` — architecture-sensitive work: new tables/RLS, concurrency,
+    cross-cutting refactors, notification/event paths
+  - `@claude-fable-5` — design review, planning, and final review passes (fable-advisor)
+
+Workflow rules:
+
+- When picking up the next task, tell Mika which model the task is assigned to and suggest
+  switching to it before starting work.
+- If a review finds poor-quality output, escalate: reassign the task to the next higher model
+  (or propose the switch to Mika), leave a task comment explaining why, and redo the work there.
+
 ## Do Not
 
 - Add features not defined in `SPEC.md` without confirmation

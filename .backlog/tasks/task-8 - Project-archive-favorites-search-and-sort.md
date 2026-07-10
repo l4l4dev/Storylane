@@ -2,9 +2,10 @@
 id: TASK-8
 title: 'Project archive, favorites, search and sort'
 status: To Do
-assignee: []
+assignee:
+  - '@claude-opus-4-8'
 created_date: '2026-07-07 14:25'
-updated_date: '2026-07-10 02:53'
+updated_date: '2026-07-10 10:34'
 labels:
   - web
   - db
