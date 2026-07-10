@@ -25,6 +25,18 @@ export function describeActivity(log: ActivityLog): string {
       const taskCount = Number(payload.task_count ?? 0);
       return `${log.actorName} promoted ${title} to an epic with ${taskCount} new ${taskCount === 1 ? "story" : "stories"}`;
     }
+    case "story.moved_out": {
+      const title = payload.title ? `"${String(payload.title)}"` : story;
+      return `${log.actorName} moved ${title} to another project`;
+    }
+    case "story.moved_in": {
+      const title = payload.title ? `"${String(payload.title)}"` : story;
+      return `${log.actorName} moved ${title} here from another project`;
+    }
+    case "story.copied_in": {
+      const title = payload.title ? `"${String(payload.title)}"` : story;
+      return `${log.actorName} copied ${title} here from another project`;
+    }
     default:
       return log.storyTitle
         ? `${log.actorName} performed ${log.action} on ${story}`
