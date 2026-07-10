@@ -59,8 +59,11 @@ UsernameEditor is removed from this page (moved to `/settings`).
   updated (default) / name / created.
 - **Archive:** owner-only action in the card's overflow menu (confirmation
   required). Archived projects are hidden by default behind an "Archived"
-  filter toggle; unarchive restores them. Archived projects are read-only
-  until unarchived.
+  filter toggle; unarchive restores them. Read-only enforcement is scoped
+  to the Move/Copy story RPCs (reject an archived source/target) and this
+  UI's own display/archive-control gating — there is no DB-level lock
+  across every write-capable table (see spec/rls.md); full enforcement is
+  follow-up work.
 
 ### Navigation (Web) — updated 2026-07-06
 
