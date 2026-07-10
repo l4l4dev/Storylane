@@ -230,6 +230,75 @@ export async function promoteStoryToEpic(storyId: string): Promise<PromoteToEpic
   return { ok: true, epicId: result.epic_id };
 }
 
+export type MoveCopyTargetProject = { id: string; name: string };
+
+/**
+ * Projects the caller can Move/Copy a story into: owner/member of, excluding
+ * the current one (spec/features.md "Move / Copy to another project" —
+ * viewer isn't enough, matching the RPCs' own re-check). RLS on
+ * `project_members` already scopes this to rows the caller owns.
+ */
+export async function getMoveTargetProjects(currentProjectId: string): Promise<MoveCopyTargetProject[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("project_members")
+    .select("role, projects(id, name)")
+    .in("role", ["owner", "member"])
+    .neq("project_id", currentProjectId);
+
+  return (data ?? [])
+    .map((row) => (Array.isArray(row.projects) ? row.projects[0] : row.projects))
+    .filter((project): project is MoveCopyTargetProject => project != null)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export type MoveCopyResult =
+  | { ok: true; projectId: string; storyId: string }
+  | { ok: false; message: string };
+
+/**
+ * Moves a story to another project via the `move_story_to_project` RPC —
+ * see its migration for the full atomicity/permission/carry-over design.
+ */
+export async function moveStoryToProject(storyId: string, targetProjectId: string): Promise<MoveCopyResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("move_story_to_project", {
+    p_story_id: storyId,
+    p_target_project_id: targetProjectId,
+  });
+
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+
+  const result = data as { story_id: string; project_id: string } | null;
+  if (!result) {
+    return { ok: false, message: "Move failed" };
+  }
+
+  return { ok: true, storyId: result.story_id, projectId: result.project_id };
+}
+
+/** Copies a story to another project via the `copy_story_to_project` RPC. */
+export async function copyStoryToProject(storyId: string, targetProjectId: string): Promise<MoveCopyResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("copy_story_to_project", {
+    p_story_id: storyId,
+    p_target_project_id: targetProjectId,
+  });
+
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+
+  const result = data as { story_id: string; project_id: string } | null;
+  if (!result) {
+    return { ok: false, message: "Copy failed" };
+  }
+
+  return { ok: true, storyId: result.story_id, projectId: result.project_id };
+}
+
 export async function addComment(formData: FormData) {
   const storyId = String(formData.get("story_id"));
   const projectId = String(formData.get("project_id"));

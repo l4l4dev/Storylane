@@ -11,9 +11,14 @@ import { StoryPeekMenu } from "./story-peek-menu";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
+const getMoveTargetProjectsMock = vi.fn();
 vi.mock("@/app/stories/[id]/actions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/app/stories/[id]/actions")>();
-  return { ...actual, promoteStoryToEpic: vi.fn() };
+  return {
+    ...actual,
+    promoteStoryToEpic: vi.fn(),
+    getMoveTargetProjects: (...args: unknown[]) => getMoveTargetProjectsMock(...args),
+  };
 });
 
 const baseDetail: StoryDetail = {
@@ -107,5 +112,45 @@ describe("StoryPeekMenu", () => {
 
     expect(screen.getByText(/including its 1 comment/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete story" })).toBeInTheDocument();
+  });
+
+  it("Move dialog lists target projects and explains the carry-over rules", async () => {
+    getMoveTargetProjectsMock.mockResolvedValueOnce([
+      { id: "p2", name: "Other project" },
+      { id: "p3", name: "Third project" },
+    ]);
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={baseDetail} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Move to project…" }));
+
+    expect(getMoveTargetProjectsMock).toHaveBeenCalledWith("p1");
+    expect(await screen.findByRole("option", { name: "Other project" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Third project" })).toBeInTheDocument();
+    expect(screen.getByText(/labels are\s+recreated there by name/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Move story" })).toBeInTheDocument();
+  });
+
+  it("Copy dialog explains that no comments/history are duplicated", async () => {
+    getMoveTargetProjectsMock.mockResolvedValueOnce([{ id: "p2", name: "Other project" }]);
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={baseDetail} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Copy to project…" }));
+
+    expect(await screen.findByRole("option", { name: "Other project" })).toBeInTheDocument();
+    expect(screen.getByText(/no comments or history/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy story" })).toBeInTheDocument();
+  });
+
+  it("shows an empty state and disables the button when there's no other project to target", async () => {
+    getMoveTargetProjectsMock.mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={baseDetail} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Move to project…" }));
+
+    expect(await screen.findByText(/not an owner or member of any other project/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Move story" })).toBeDisabled();
   });
 });

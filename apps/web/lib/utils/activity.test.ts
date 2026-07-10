@@ -52,6 +52,36 @@ describe("describeActivity", () => {
     expect(text).toBe('Dev User promoted "Small story" to an epic with 1 new story');
   });
 
+  it("describes a story moved out to another project", () => {
+    const text = describeActivity({
+      action: "story.moved_out",
+      payload: { target_project_id: "p2", title: "Fix login bug" },
+      actorName: "Dev User",
+      storyTitle: null,
+    });
+    expect(text).toBe('Dev User moved "Fix login bug" to another project');
+  });
+
+  it("describes a story moved in from another project", () => {
+    const text = describeActivity({
+      action: "story.moved_in",
+      payload: { source_project_id: "p1", title: "Fix login bug" },
+      actorName: "Dev User",
+      storyTitle: "Fix login bug",
+    });
+    expect(text).toBe('Dev User moved "Fix login bug" here from another project');
+  });
+
+  it("describes a story copied in from another project", () => {
+    const text = describeActivity({
+      action: "story.copied_in",
+      payload: { source_project_id: "p1", source_story_id: "s1", title: "Fix login bug" },
+      actorName: "Dev User",
+      storyTitle: "Fix login bug",
+    });
+    expect(text).toBe('Dev User copied "Fix login bug" here from another project');
+  });
+
   it("falls back to a generic description for unknown actions", () => {
     const text = describeActivity({
       action: "project.renamed",

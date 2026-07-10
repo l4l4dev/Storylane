@@ -780,6 +780,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      copy_story_to_project: {
+        Args: { p_story_id: string; p_target_project_id: string }
+        Returns: Json
+      }
       finalize_iteration: {
         Args: { p_manual: boolean; p_project_id: string }
         Returns: Json
@@ -794,6 +798,10 @@ export type Database = {
         Returns: undefined
       }
       is_project_member: { Args: { p_project_id: string }; Returns: boolean }
+      move_story_to_project: {
+        Args: { p_story_id: string; p_target_project_id: string }
+        Returns: Json
+      }
       project_role: { Args: { p_project_id: string }; Returns: string }
       promote_story_to_epic: { Args: { p_story_id: string }; Returns: Json }
       shares_project_with: {
