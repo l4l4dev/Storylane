@@ -95,6 +95,23 @@ Workflow rules:
 - If a review finds poor-quality output, escalate: reassign the task to the next higher model
   (or propose the switch to Mika), leave a task comment explaining why, and redo the work there.
 
+## Code Comment Policy
+
+How belongs in the code itself, what in test names, why in the commit message. A code comment
+earns its place only by stating what the code cannot: a non-obvious constraint, or a "why not"
+(the rejected alternative and what breaks with it). Keep these short.
+
+Never write:
+
+- History narration ("TASK-19 changed this", "this used to be...") — that's commit-log material
+  and becomes noise the moment it merges
+- Spec restatement — reference the section (e.g. `spec/screens.md "Board layout"`) instead of
+  copying its content
+- Reviewer-directed notes explaining that a change is correct or where it came from
+
+Longer design context that future sessions must not re-derive belongs in the architecture notes
+or `spec/`, with a one-line pointer from the code.
+
 ## Do Not
 
 - Add features not defined in `SPEC.md` without confirmation
