@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptedPoints, calculateVelocity } from "./velocity";
+import { acceptedPoints, calculateVelocity, clampVelocityWindow } from "./velocity";
 
 describe("calculateVelocity", () => {
   it("returns 0 when there are no completed iterations", () => {
@@ -16,6 +16,32 @@ describe("calculateVelocity", () => {
 
   it("treats a null velocity as 0", () => {
     expect(calculateVelocity([{ velocity: null }, { velocity: 10 }], 2)).toBe(5);
+  });
+});
+
+describe("clampVelocityWindow", () => {
+  // TASK-25 (follow-up from TASK-7 PR #2): projects.velocity_window had no
+  // validation client-side and only a `>= 1` DB CHECK — this clamps before
+  // the value ever reaches the insert/update, so createProject/updateProject
+  // never send an out-of-range value in the first place.
+  it("passes through a valid positive integer unchanged", () => {
+    expect(clampVelocityWindow(5)).toBe(5);
+  });
+
+  it("clamps 0 up to 1", () => {
+    expect(clampVelocityWindow(0)).toBe(1);
+  });
+
+  it("clamps a negative value up to 1", () => {
+    expect(clampVelocityWindow(-3)).toBe(1);
+  });
+
+  it("clamps NaN (e.g. a non-numeric form value) to 1", () => {
+    expect(clampVelocityWindow(Number.NaN)).toBe(1);
+  });
+
+  it("rounds a non-integer down to the nearest whole number", () => {
+    expect(clampVelocityWindow(3.7)).toBe(3);
   });
 });
 
