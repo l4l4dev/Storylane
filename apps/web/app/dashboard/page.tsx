@@ -1,22 +1,122 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { CreateProjectDialog } from "@/components/features/projects/create-project-dialog";
+import { ensureCurrentIteration } from "@/app/projects/[id]/board/actions";
+import { calculateVelocity } from "@/lib/utils/velocity";
+import { InlineCreatePanel } from "@/components/features/projects/inline-create-panel";
+import { ProjectCard, type ProjectCardData } from "@/components/features/projects/project-card";
 import { Button } from "@/components/ui/button";
 import { signOut } from "./actions";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite_failed?: string }>;
+}) {
+  const { invite_failed } = await searchParams;
   const supabase = await createClient();
   const { data: projects } = await supabase
     .from("projects")
-    .select("id, name, description, updated_at")
+    .select("id, name, description, workflow_mode, updated_at, velocity_window")
     .order("updated_at", { ascending: false });
 
+  const trackerProjects = (projects ?? []).filter((p) => p.workflow_mode === "tracker");
+  const freeProjects = (projects ?? []).filter((p) => p.workflow_mode === "free");
+
+  // Lazily rolls over each tracker project's current iteration before
+  // reading it (spec/velocity.md "Automatic scheduling & rollover") — same
+  // rule the board page applies, just batched across projects here.
+  await Promise.all(trackerProjects.map((p) => ensureCurrentIteration(p.id)));
+
+  type IterationRow = { number: number; velocity: number | null; state: string };
+  type MemberRow = { user_id: string; profiles: { display_name: string; avatar_url: string | null } | null };
+
+  async function fetchIterations(projectId: string): Promise<readonly [string, IterationRow[]]> {
+    const { data } = await supabase
+      .from("iterations")
+      .select("number, velocity, state")
+      .eq("project_id", projectId)
+      .order("number", { ascending: false });
+    return [projectId, data ?? []] as const;
+  }
+
+  async function fetchColumnCount(projectId: string): Promise<readonly [string, number]> {
+    const { count } = await supabase
+      .from("custom_statuses")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId);
+    return [projectId, count ?? 0] as const;
+  }
+
+  async function fetchOpenCardCount(projectId: string): Promise<readonly [string, number]> {
+    const { count } = await supabase
+      .from("stories")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId)
+      .is("completed_at", null);
+    return [projectId, count ?? 0] as const;
+  }
+
+  async function fetchMembers(projectId: string): Promise<readonly [string, MemberRow[]]> {
+    const { data } = await supabase
+      .from("project_members")
+      .select("user_id, profiles(display_name, avatar_url)")
+      .eq("project_id", projectId);
+    return [projectId, data ?? []] as const;
+  }
+
+  const [iterationsByProject, columnCountsByProject, openCardCountsByProject, membersByProject] =
+    await Promise.all([
+      Promise.all(trackerProjects.map((p) => fetchIterations(p.id))),
+      Promise.all(freeProjects.map((p) => fetchColumnCount(p.id))),
+      Promise.all(freeProjects.map((p) => fetchOpenCardCount(p.id))),
+      Promise.all((projects ?? []).map((p) => fetchMembers(p.id))),
+    ]);
+
+  const iterationsById = new Map(iterationsByProject);
+  const columnCountById = new Map(columnCountsByProject);
+  const openCardCountById = new Map(openCardCountsByProject);
+  const membersById = new Map(membersByProject);
+
+  const cards: ProjectCardData[] = (projects ?? []).map((project) => {
+    const members = (membersById.get(project.id) ?? []).map((m) => ({
+      userId: m.user_id,
+      displayName: m.profiles?.display_name ?? "Unknown",
+      avatarUrl: m.profiles?.avatar_url ?? null,
+    }));
+
+    if (project.workflow_mode === "tracker") {
+      const iterations = iterationsById.get(project.id) ?? [];
+      const current = iterations.find((it) => it.state !== "done") ?? null;
+      const done = iterations.filter((it) => it.state === "done");
+      return {
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        workflowMode: "tracker",
+        updatedAt: project.updated_at,
+        members,
+        currentIterationNumber: current?.number ?? null,
+        velocity: calculateVelocity(done, project.velocity_window),
+      };
+    }
+
+    return {
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      workflowMode: "free",
+      updatedAt: project.updated_at,
+      members,
+      columnCount: columnCountById.get(project.id) ?? 0,
+      openCardCount: openCardCountById.get(project.id) ?? 0,
+    };
+  });
+
   return (
-    <main className="mx-auto max-w-3xl p-6">
+    <main className="mx-auto max-w-5xl p-6">
       <header className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Projects</h1>
         <div className="flex items-center gap-3">
-          <CreateProjectDialog />
           <Button asChild variant="outline" size="sm">
             <Link href="/settings">Account settings</Link>
           </Button>
@@ -28,30 +128,23 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      {projects && projects.length > 0 ? (
-        <ul className="flex flex-col gap-3">
-          {projects.map((project) => (
-            <li
-              key={project.id}
-              className="rounded-lg border border-border p-4 transition-colors hover:border-ring"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <Link href={`/projects/${project.id}`} className="block flex-1">
-                  <p className="font-medium">{project.name}</p>
-                  {project.description && (
-                    <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
-                  )}
-                </Link>
-                <Link
-                  href={`/projects/${project.id}/settings`}
-                  className="shrink-0 text-sm text-primary hover:underline"
-                >
-                  Settings
-                </Link>
-              </div>
-            </li>
+      {invite_failed && (
+        <p className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          Project created, but {invite_failed} invite{invite_failed === "1" ? "" : "s"} could not be sent.
+          Invite them from Project settings instead.
+        </p>
+      )}
+
+      <div className="mb-6">
+        <InlineCreatePanel />
+      </div>
+
+      {cards.length > 0 ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {cards.map((project) => (
+            <ProjectCard key={project.id} project={project} />
           ))}
-        </ul>
+        </div>
       ) : (
         <p className="text-sm text-muted-foreground">
           No projects yet. Create your first one to get started.
