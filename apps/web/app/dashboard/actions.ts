@@ -5,6 +5,34 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { FREE_TEMPLATES, type FreeTemplate } from "@/lib/types";
 
+export type NewProjectInviteResult = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+};
+
+/**
+ * Backs the project-creation panel's invite picker (TASK-7) — exact-match
+ * only, usable before a project row exists. See
+ * supabase/migrations/20260713000001_search_users_for_new_project.sql for
+ * why this can't reuse search_users_for_invite.
+ */
+export async function searchUserForNewProject(query: string): Promise<NewProjectInviteResult | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("search_users_for_new_project", { p_query: query });
+  const match = data?.[0];
+  if (!match) {
+    return null;
+  }
+  return {
+    id: match.id,
+    username: match.username,
+    displayName: match.display_name,
+    avatarUrl: match.avatar_url,
+  };
+}
+
 // Column templates seeded for a new free-mode project (TASK-16.1,
 // spec/screens.md "Projects page" / "Free mode board") — the owner
 // customizes them afterwards in Settings. KanbanFlow's Done column is the
