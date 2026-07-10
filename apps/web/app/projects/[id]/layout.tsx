@@ -19,13 +19,25 @@ export default async function ProjectLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: project }, { data: projects }, { data: profile }] = await Promise.all([
+  const [{ data: project }, { data: projectRows }, { data: myMemberships }, { data: profile }] = await Promise.all([
     supabase.from("projects").select("id, name, workflow_mode").eq("id", id).single(),
-    supabase.from("projects").select("id, name").order("updated_at", { ascending: false }),
+    supabase
+      .from("projects")
+      .select("id, name")
+      .is("archived_at", null)
+      .order("updated_at", { ascending: false }),
+    user
+      ? supabase.from("project_members").select("project_id, is_favorite").eq("user_id", user.id)
+      : Promise.resolve({ data: null }),
     user
       ? supabase.from("profiles").select("username").eq("id", user.id).single()
       : Promise.resolve({ data: null }),
   ]);
+
+  const favoriteProjectIds = new Set(
+    (myMemberships ?? []).filter((m) => m.is_favorite).map((m) => m.project_id),
+  );
+  const projects = (projectRows ?? []).map((p) => ({ ...p, isFavorite: favoriteProjectIds.has(p.id) }));
 
   if (!project) {
     notFound();
@@ -34,8 +46,8 @@ export default async function ProjectLayout({
   return (
     <div className="flex min-h-dvh">
       <AppSidebar
-        project={project}
-        projects={projects ?? []}
+        project={{ ...project, isFavorite: favoriteProjectIds.has(project.id) }}
+        projects={projects}
         username={profile?.username ?? null}
         // Free-mode projects have no iterations (Task 14) — hide that nav item.
         showIterations={project.workflow_mode !== "free"}

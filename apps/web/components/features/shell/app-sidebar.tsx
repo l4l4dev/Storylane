@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "./mode-toggle";
 
-export type ProjectRef = { id: string; name: string };
+export type ProjectRef = { id: string; name: string; isFavorite: boolean };
 
 type NavItem = { label: string; segment: string; icon: LucideIcon };
 
@@ -60,6 +60,18 @@ export function AppSidebar({
   const base = `/projects/${project.id}`;
   const navItems = NAV_ITEMS.filter((item) => showIterations || item.segment !== "iterations");
 
+  // Favorites first (spec/screens.md "Projects page" / "Project switcher"),
+  // same rule as the dashboard's ProjectGrid (lib/utils/project-list.ts) —
+  // kept as a small inline sort here rather than importing that module,
+  // since the switcher has no search/sort UI of its own, only this one
+  // ordering rule.
+  const sortedProjects = [...projects].sort((a, b) => {
+    if (a.isFavorite !== b.isFavorite) {
+      return a.isFavorite ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
   return (
     <aside className="sticky top-0 flex h-dvh w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex flex-col gap-2 p-3">
@@ -77,7 +89,7 @@ export function AppSidebar({
           <DropdownMenuContent align="start" className="w-52">
             <DropdownMenuLabel>Projects</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {projects.map((p) => (
+            {sortedProjects.map((p) => (
               <DropdownMenuItem key={p.id} asChild>
                 <Link href={`/projects/${p.id}`}>
                   <Check className={cn("mr-1", p.id === project.id ? "opacity-100" : "opacity-0")} />
