@@ -795,6 +795,7 @@ export type Database = {
       }
       is_project_member: { Args: { p_project_id: string }; Returns: boolean }
       project_role: { Args: { p_project_id: string }; Returns: string }
+      promote_story_to_epic: { Args: { p_story_id: string }; Returns: Json }
       shares_project_with: {
         Args: { p_target_user_id: string }
         Returns: boolean

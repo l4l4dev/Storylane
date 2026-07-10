@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import type { StoryDetail } from "@/app/stories/[id]/actions";
 import { StoryDetailPanel } from "@/components/features/story/story-detail-panel";
+import { StoryPeekMenu } from "@/components/features/story/story-peek-menu";
 import { Button } from "@/components/ui/button";
 
 // Side peek (spec/screens.md "Board layout"): the story detail slides in
@@ -48,9 +49,12 @@ export function StoryPeek({ detail }: { detail: StoryDetail }) {
           <span className="mr-1.5 font-normal text-muted-foreground">#{detail.number}</span>
           {detail.title}
         </h2>
-        <Button variant="ghost" size="icon-sm" onClick={close} aria-label="Close story detail">
-          <X />
-        </Button>
+        <div className="flex items-center gap-1">
+          <StoryPeekMenu detail={detail} />
+          <Button variant="ghost" size="icon-sm" onClick={close} aria-label="Close story detail">
+            <X />
+          </Button>
+        </div>
       </header>
       <div className="flex-1 overflow-y-auto p-4">
         <StoryDetailPanel detail={detail} />
