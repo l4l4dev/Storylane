@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const rpcMock = vi.fn();
 const insertProjectSelectSingleMock = vi.fn();
+const insertProjectMock = vi.fn();
 const getUserMock = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -10,9 +11,12 @@ vi.mock("@/lib/supabase/server", () => ({
     from: (table: string) => {
       if (table === "projects") {
         return {
-          insert: () => ({
-            select: () => ({ single: insertProjectSelectSingleMock }),
-          }),
+          insert: (payload: unknown) => {
+            insertProjectMock(payload);
+            return {
+              select: () => ({ single: insertProjectSelectSingleMock }),
+            };
+          },
         };
       }
       // custom_statuses insert (free mode only) — not exercised by these
@@ -34,6 +38,7 @@ describe("createProject invite handling", () => {
   beforeEach(() => {
     rpcMock.mockReset();
     insertProjectSelectSingleMock.mockReset();
+    insertProjectMock.mockReset();
     getUserMock.mockReset();
     getUserMock.mockResolvedValue({ data: { user: { id: "creator-1" } } });
     insertProjectSelectSingleMock.mockResolvedValue({ data: { id: "project-1" }, error: null });
@@ -84,5 +89,21 @@ describe("createProject invite handling", () => {
 
     await expect(createProject(formData)).rejects.toThrow(/REDIRECT:/);
     expect(rpcMock).toHaveBeenCalledTimes(20);
+  });
+
+  // TASK-25 follow-up: velocity_window had no validation before hitting the
+  // DB's `>= 1` CHECK constraint (20260714000001_velocity_window_check.sql)
+  // — clampVelocityWindow now clamps before the insert is even built, so a
+  // bad client value never reaches Supabase as-is.
+  it("clamps an out-of-range velocity_window before inserting", async () => {
+    rpcMock.mockResolvedValue({ error: null });
+    const { createProject } = await import("./actions");
+
+    const formData = new FormData();
+    formData.set("name", "My Project");
+    formData.set("velocity_window", "0");
+
+    await expect(createProject(formData)).rejects.toThrow("REDIRECT:/dashboard");
+    expect(insertProjectMock).toHaveBeenCalledWith(expect.objectContaining({ velocity_window: 1 }));
   });
 });

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { FREE_TEMPLATES, type FreeTemplate } from "@/lib/types";
+import { clampVelocityWindow } from "@/lib/utils/velocity";
 
 export type NewProjectInviteResult = {
   id: string;
@@ -12,24 +13,39 @@ export type NewProjectInviteResult = {
   avatarUrl: string | null;
 };
 
+export type NewProjectInviteSearchResult =
+  | { status: "found"; user: NewProjectInviteResult }
+  | { status: "not_found" }
+  | { status: "error"; message: string };
+
 /**
  * Backs the project-creation panel's invite picker (TASK-7) — exact-match
  * only, usable before a project row exists. See
  * supabase/migrations/20260713000001_search_users_for_new_project.sql for
  * why this can't reuse search_users_for_invite.
+ *
+ * TASK-25 follow-up: distinguishes an RPC error (e.g. a transient failure,
+ * or the "Not signed in" exception) from a genuine no-match, so the UI can
+ * tell the two apart instead of showing "no user found" for both.
  */
-export async function searchUserForNewProject(query: string): Promise<NewProjectInviteResult | null> {
+export async function searchUserForNewProject(query: string): Promise<NewProjectInviteSearchResult> {
   const supabase = await createClient();
-  const { data } = await supabase.rpc("search_users_for_new_project", { p_query: query });
+  const { data, error } = await supabase.rpc("search_users_for_new_project", { p_query: query });
+  if (error) {
+    return { status: "error", message: error.message };
+  }
   const match = data?.[0];
   if (!match) {
-    return null;
+    return { status: "not_found" };
   }
   return {
-    id: match.id,
-    username: match.username,
-    displayName: match.display_name,
-    avatarUrl: match.avatar_url,
+    status: "found",
+    user: {
+      id: match.id,
+      username: match.username,
+      displayName: match.display_name,
+      avatarUrl: match.avatar_url,
+    },
   };
 }
 
@@ -63,7 +79,7 @@ export async function createProject(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim() || null;
   const iterationLength = Number(formData.get("iteration_length") ?? 14);
   const pointScale = String(formData.get("point_scale") ?? "fibonacci");
-  const velocityWindow = Number(formData.get("velocity_window") ?? 3);
+  const velocityWindow = clampVelocityWindow(Number(formData.get("velocity_window") ?? 3));
   // Fixed at creation (Task 14 decision) — there is no mode-change path.
   const workflowMode = formData.get("workflow_mode") === "free" ? "free" : "tracker";
   const freeTemplateInput = String(formData.get("free_template") ?? "kanbanflow");
