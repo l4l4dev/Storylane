@@ -20,6 +20,11 @@ export function describeActivity(log: ActivityLog): string {
       return `${log.actorName} moved ${story} from ${String(payload.from)} to ${String(payload.to)}`;
     case "comment.added":
       return `${log.actorName} commented on ${story}`;
+    case "story.promoted_to_epic": {
+      const title = payload.title ? `"${String(payload.title)}"` : story;
+      const taskCount = Number(payload.task_count ?? 0);
+      return `${log.actorName} promoted ${title} to an epic with ${taskCount} new ${taskCount === 1 ? "story" : "stories"}`;
+    }
     default:
       return log.storyTitle
         ? `${log.actorName} performed ${log.action} on ${story}`

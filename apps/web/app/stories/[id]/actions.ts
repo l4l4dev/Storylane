@@ -203,6 +203,33 @@ export async function updateStory(input: UpdateStoryInput): Promise<UpdateStoryR
   };
 }
 
+export type PromoteToEpicResult =
+  | { ok: true; epicId: string }
+  | { ok: false; message: string };
+
+/**
+ * Converts a story into a new epic (spec/features.md "Promote to Epic") via
+ * the `promote_story_to_epic` RPC — see its migration for the full
+ * atomicity/permission design. Called from the peek's confirmation dialog,
+ * not a `<form action>`, so the dialog can show the RPC's error message
+ * inline instead of hitting a Next.js error boundary.
+ */
+export async function promoteStoryToEpic(storyId: string): Promise<PromoteToEpicResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("promote_story_to_epic", { p_story_id: storyId });
+
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+
+  const result = data as { epic_id: string } | null;
+  if (!result) {
+    return { ok: false, message: "Promotion failed" };
+  }
+
+  return { ok: true, epicId: result.epic_id };
+}
+
 export async function addComment(formData: FormData) {
   const storyId = String(formData.get("story_id"));
   const projectId = String(formData.get("project_id"));
