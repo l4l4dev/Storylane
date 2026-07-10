@@ -1,11 +1,11 @@
 ---
 id: TASK-8
 title: 'Project archive, favorites, search and sort'
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-07 14:25'
-updated_date: '2026-07-10 10:34'
+updated_date: '2026-07-10 14:57'
 labels:
   - web
   - db
@@ -27,11 +27,19 @@ Projects page management features per spec/screens.md 'Projects page' and spec/d
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 Migration adds projects.archived_at and project_members.is_favorite; rls-security-reviewer has reviewed it
-- [ ] #2 Owner can archive/unarchive from the card overflow menu with confirmation; archived projects appear only under the Archived filter and are read-only for non-owners
-- [ ] #3 Pin toggle on cards; favorited projects sort first on /dashboard and in the sidebar switcher
-- [ ] #4 Search box filters by name; sort select offers last updated / name / created
-- [ ] #5 Tests cover archive gating, favorite ordering, and search/sort
+- [ ] #2 Pin toggle on cards; favorited projects sort first on /dashboard and in the sidebar switcher
+- [ ] #3 Search box filters by name; sort select offers last updated / name / created
+- [ ] #4 Tests cover archive gating, favorite ordering, and search/sort
+- [ ] #5 Owner can archive/unarchive from the card overflow menu with confirmation; archived projects appear only under the Archived filter (read-only enforced at the Move/Copy RPCs and this UI's own gating only — no DB-level lock across every write-capable table; see spec/rls.md)
 <!-- AC:END -->
+
+
+
+
+
+
+
+
 
 ## Implementation Notes
 
