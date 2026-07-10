@@ -63,6 +63,7 @@ export async function createProject(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim() || null;
   const iterationLength = Number(formData.get("iteration_length") ?? 14);
   const pointScale = String(formData.get("point_scale") ?? "fibonacci");
+  const velocityWindow = Number(formData.get("velocity_window") ?? 3);
   // Fixed at creation (Task 14 decision) — there is no mode-change path.
   const workflowMode = formData.get("workflow_mode") === "free" ? "free" : "tracker";
   const freeTemplateInput = String(formData.get("free_template") ?? "kanbanflow");
@@ -75,7 +76,21 @@ export async function createProject(formData: FormData) {
   }
 
   const supabase = await createClient();
-  // created_by defaults to auth.uid(); a trigger adds the creator as owner.
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // TASK-7: ids come from a client-controlled hidden input (the picker's
+  // selections) — dedupe, drop the caller's own id (the RPC itself also
+  // excludes it, but invite_member's upsert would demote an included
+  // creator from owner to member; this is defense in depth, not the only
+  // guard), and cap so one submit can't fan out unbounded invite_member
+  // calls.
+  const invitedUserIds = [...new Set(formData.getAll("invited_user_ids").map(String))]
+    .filter((id) => id && id !== user?.id)
+    .slice(0, 20);
+
   const { data: project, error } = await supabase
     .from("projects")
     .insert({
@@ -83,6 +98,7 @@ export async function createProject(formData: FormData) {
       description,
       iteration_length: iterationLength,
       point_scale: pointScale,
+      velocity_window: velocityWindow,
       workflow_mode: workflowMode,
     })
     .select("id")
@@ -101,8 +117,22 @@ export async function createProject(formData: FormData) {
     }
   }
 
+  let failedInviteCount = 0;
+  if (project) {
+    for (const userId of invitedUserIds) {
+      const { error: inviteError } = await supabase.rpc("invite_member", {
+        p_project_id: project.id,
+        p_user_id: userId,
+        p_role: "member",
+      });
+      if (inviteError) {
+        failedInviteCount += 1;
+      }
+    }
+  }
+
   revalidatePath("/dashboard");
-  redirect("/dashboard");
+  redirect(failedInviteCount > 0 ? `/dashboard?invite_failed=${failedInviteCount}` : "/dashboard");
 }
 
 export async function signOut() {
