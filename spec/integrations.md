@@ -8,13 +8,13 @@
 2. Receive and parse the webhook in a Supabase Edge Function (`git-webhook`)
    - Webhook URL はプロジェクトをクエリで識別する: `/functions/v1/git-webhook?project=<project_id>`
    - 署名検証の secret は `integrations.config.webhook_secret`（プロジェクト設定で登録）
-   - **`workflow_mode = 'tracker'` のプロジェクトにのみ適用**（2026-07-11 owner 決定）:
+   - **`workflow_mode = 'tracker'` のプロジェクトにのみ適用**（2026-07-11 オーナー決定）:
      free mode は story の state をボード運用に使わないため、署名検証後・イベント種別の
      判定より前に workflow_mode をチェックし、tracker でなければ即座に
      `{ ignored: "free mode" }` を返して何も書き込まない（force-finish もiteration
      アサインも行わない）。
 3. Update the matching story's state（tracker mode のみ）
-   - **PR マージ時は `finished` へ強制遷移**（2026-07-07 owner 決定）: `unscheduled` / `unstarted` /
+   - **PR マージ時は `finished` へ強制遷移**（2026-07-07 オーナー決定）: `unscheduled` / `unstarted` /
      `started` の story はステートマシンの1段遷移を例外的に飛び越えて `finished` にする
      （本家 Pivotal の GitHub 連携と同じ挙動）。すでに `finished` 以降
      （finished / delivered / accepted / rejected）なら何もしない。
@@ -31,7 +31,7 @@
 
 ### Slack Notifications
 - Register an Incoming Webhook URL in project settings（`integrations.config.webhook_url`）
-- **送信経路（2026-07-07 owner 決定・旧「Edge Function から POST」を置き換え）**:
+- **送信経路（2026-07-07 オーナー決定・旧「Edge Function から POST」を置き換え）**:
   Next.js の server action から共有ヘルパー（`apps/web/lib/integrations/slack.ts`）経由で
   Slack Incoming Webhook に直接 POST する。Edge Function は使わない
   （Webhook 受信と違い公開エンドポイントが不要なため）。

@@ -18,7 +18,7 @@ Reference `SPEC.md` for data models, RLS policies, and feature details.
 - **2026-07-07 要件改訂** → Backlog **TASK-4〜TASK-17**（Tracker 改名 / Projects ページ刷新 /
   アカウント設定 / Backlog グループ表示 / 手動 Finish / autosave / Epic 昇格 / Move・Copy /
   Focus ビュー / Free モード KanbanFlow 拡張 / スイッチャー改善。spec 反映済み）
-- **Task 13 の残スコープ**（今回ラウンド対象外と owner 確認済み、未計画）:
+- **Task 13 の残スコープ**（今回ラウンド対象外と オーナー確認済み、未計画）:
   レスポンシブ対応 / アクセシビリティ監査 / パフォーマンスレビュー
 
 ## iOS（Web 全タスク完了後に着手 — 各タスクの Web 実装経緯は TASK_ARCHIVE.md 参照）

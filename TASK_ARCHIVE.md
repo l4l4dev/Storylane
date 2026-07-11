@@ -216,7 +216,7 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 
 ## Task 14 — Custom Workflow Modes（Web ✅ 2026-07-07、コミット f57f362）
 
-> スコープ決定（owner 確定）: Free モードは iteration/velocity なしの純 Trello ボード。
+> スコープ決定（オーナー確定）: Free モードは iteration/velocity なしの純 Trello ボード。
 > points は任意入力の表示のみ。モードは作成時固定。custom status に is_done フラグ。
 > ※ 2026-07-07 の要件改訂で「Pivotal モード」は「Tracker モード」に改名（Backlog TASK-4）。
 
@@ -249,7 +249,7 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 
 ## Task 13 — Polish & QA（Web ✅ 2026-07-07、Backlog TASK-2 で管理・完了）
 
-> スコープは 3 項目に絞ることを owner 確認済み（レスポンシブ / a11y 監査 /
+> スコープは 3 項目に絞ることを オーナー確認済み（レスポンシブ / a11y 監査 /
 > パフォーマンスレビューは対象外 — 残スコープは TASK.md 参照）。詳細な実装ノートと
 > 検証結果は `backlog task view TASK-2 --plain`。
 
