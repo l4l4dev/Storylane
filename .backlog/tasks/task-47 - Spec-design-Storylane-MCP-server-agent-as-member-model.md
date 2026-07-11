@@ -5,10 +5,11 @@ status: Done
 assignee:
   - '@claude-fable-5'
 created_date: '2026-07-11 07:09'
-updated_date: '2026-07-11 07:51'
+updated_date: '2026-07-11 17:26'
 labels:
   - mcp
   - design
+milestone: m-3
 dependencies: []
 priority: medium
 ordinal: 15200

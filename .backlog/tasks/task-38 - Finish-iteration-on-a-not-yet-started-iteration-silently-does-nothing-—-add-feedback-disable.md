@@ -7,11 +7,12 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 05:18'
-updated_date: '2026-07-11 07:51'
+updated_date: '2026-07-11 17:26'
 labels:
   - web
   - bug
   - ux
+milestone: m-0
 dependencies: []
 priority: high
 ordinal: 12000

@@ -7,10 +7,11 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-11 05:18'
-updated_date: '2026-07-11 10:13'
+updated_date: '2026-07-11 17:26'
 labels:
   - web
   - ux
+milestone: m-0
 dependencies: []
 priority: high
 ordinal: 1000

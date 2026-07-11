@@ -5,10 +5,11 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-08 07:45'
-updated_date: '2026-07-11 06:38'
+updated_date: '2026-07-11 17:26'
 labels:
   - db
   - ios
+milestone: m-4
 dependencies: []
 priority: low
 ordinal: 16000

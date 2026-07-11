@@ -5,11 +5,12 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 11:29'
-updated_date: '2026-07-11 16:13'
+updated_date: '2026-07-11 17:26'
 labels:
   - web
   - refactor
   - backend
+milestone: m-2
 dependencies: []
 priority: medium
 ordinal: 15750

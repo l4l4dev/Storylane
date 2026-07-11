@@ -5,9 +5,10 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-10 10:37'
-updated_date: '2026-07-10 23:46'
+updated_date: '2026-07-11 17:26'
 labels:
   - web
+milestone: m-2
 dependencies: []
 priority: low
 ordinal: 13000

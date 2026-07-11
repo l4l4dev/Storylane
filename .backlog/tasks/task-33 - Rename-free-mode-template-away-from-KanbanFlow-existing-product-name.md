@@ -5,10 +5,11 @@ status: To Do
 assignee:
   - '@claude-haiku-4-5'
 created_date: '2026-07-11 05:16'
-updated_date: '2026-07-11 06:37'
+updated_date: '2026-07-11 17:26'
 labels:
   - web
   - copy
+milestone: m-0
 dependencies: []
 priority: medium
 ordinal: 10000

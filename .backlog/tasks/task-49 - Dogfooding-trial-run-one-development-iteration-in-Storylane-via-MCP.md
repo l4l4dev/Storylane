@@ -5,9 +5,11 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-11 07:10'
+updated_date: '2026-07-11 17:26'
 labels:
   - mcp
   - process
+milestone: m-3
 dependencies:
   - TASK-48
   - TASK-3

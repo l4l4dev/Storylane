@@ -5,11 +5,12 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:11'
-updated_date: '2026-07-11 16:54'
+updated_date: '2026-07-11 17:26'
 labels:
   - concurrency
   - db
   - refactor
+milestone: m-2
 dependencies: []
 priority: high
 ordinal: 15700
