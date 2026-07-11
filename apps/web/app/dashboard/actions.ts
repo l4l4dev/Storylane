@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { assertRowAffected } from "@/lib/supabase/assert";
 import { FREE_TEMPLATES, type FreeTemplate } from "@/lib/types";
 import { clampVelocityWindow } from "@/lib/utils/velocity";
 
@@ -154,23 +155,22 @@ export async function createProject(formData: FormData) {
 export async function archiveProject(formData: FormData): Promise<void> {
   const projectId = String(formData.get("project_id"));
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("projects")
-    .update({ archived_at: new Date().toISOString() })
-    .eq("id", projectId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase
+      .from("projects")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", projectId)
+      .select("id"),
+  );
   revalidatePath("/dashboard");
 }
 
 export async function unarchiveProject(formData: FormData): Promise<void> {
   const projectId = String(formData.get("project_id"));
   const supabase = await createClient();
-  const { error } = await supabase.from("projects").update({ archived_at: null }).eq("id", projectId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase.from("projects").update({ archived_at: null }).eq("id", projectId).select("id"),
+  );
   revalidatePath("/dashboard");
 }
 

@@ -1,11 +1,11 @@
 ---
 id: TASK-31
 title: 'TASK-8 follow-up: sidebar pin icon + archive/unarchive silent-success guard'
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-10 23:33'
-updated_date: '2026-07-10 23:39'
+updated_date: '2026-07-11 00:02'
 labels:
   - web
 dependencies: []
@@ -23,10 +23,16 @@ Two non-blocking findings from fable-advisor's PR #4 review (TASK-8 project arch
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Sidebar project switcher shows a pin icon next to favorited projects in the dropdown, matching spec/screens.md
-- [ ] #2 archiveProject/unarchiveProject check the updated row count (e.g. .select('id') after .update()) and throw if empty, instead of silently succeeding
-- [ ] #3 Tests cover both
+- [x] #1 Sidebar project switcher shows a pin icon next to favorited projects in the dropdown, matching spec/screens.md
+- [x] #2 archiveProject/unarchiveProject check the updated row count (e.g. .select('id') after .update()) and throw if empty, instead of silently succeeding
+- [x] #3 Tests cover both
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+AC#1: TASK-17 で app-sidebar.tsx の favorite に pin アイコンを実装済みのため変更なし(TASK-17完了時点で充足)。AC#2: lib/supabase/assert.ts に assertRowAffected を追加(assertAllSucceeded と同じ共有モジュール、error フィールドではなく空配列=RLSフィルタでの無言成功を検知する別チェック)。dashboard/actions.ts の archiveProject/unarchiveProject を .select('id') 追加 + assertRowAffected 使用に変更。AC#3: lib/supabase/assert.test.ts に assertRowAffected の4テスト追加、archive-favorite-actions.test.ts に0件更新時に例外を投げる2テスト追加(TDDでRED確認後に実装)。pnpm test 351 passed / tsc --noEmit クリーン / pnpm build 成功。
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 

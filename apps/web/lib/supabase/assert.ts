@@ -14,3 +14,22 @@ export async function assertAllSucceeded(
     throw new Error(failed.error.message);
   }
 }
+
+/**
+ * Same silent-failure class as `assertAllSucceeded` (TASK-31), but for a
+ * single write whose row-count — not its `error` field — is the signal:
+ * an `.update(...).eq("id", id).select("id")` on a row RLS filters out
+ * resolves with `error: null` and `data: []`, not an error, so the caller
+ * must check the row count itself to detect a no-op write.
+ */
+export async function assertRowAffected(
+  result: { data: ReadonlyArray<unknown> | null; error: { message: string } | null },
+  message = "No matching row found, or you don't have permission to modify it",
+): Promise<void> {
+  if (result.error) {
+    throw new Error(result.error.message);
+  }
+  if (!result.data || result.data.length === 0) {
+    throw new Error(message);
+  }
+}

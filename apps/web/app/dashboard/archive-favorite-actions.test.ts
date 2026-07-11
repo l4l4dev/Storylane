@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const updateMock = vi.fn();
 const eqMock = vi.fn();
+const selectMock = vi.fn();
 const rpcMock = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -10,7 +11,12 @@ vi.mock("@/lib/supabase/server", () => ({
     from: () => ({
       update: (payload: unknown) => {
         updateMock(payload);
-        return { eq: eqMock };
+        return {
+          eq: (...args: [string, unknown]) => {
+            eqMock(...args);
+            return { select: selectMock };
+          },
+        };
       },
     }),
     rpc: rpcMock,
@@ -23,7 +29,8 @@ describe("archiveProject / unarchiveProject / toggleFavorite", () => {
   beforeEach(() => {
     updateMock.mockReset();
     eqMock.mockReset();
-    eqMock.mockResolvedValue({ error: null });
+    selectMock.mockReset();
+    selectMock.mockResolvedValue({ data: [{ id: "project-1" }], error: null });
     rpcMock.mockReset();
   });
 
@@ -47,6 +54,24 @@ describe("archiveProject / unarchiveProject / toggleFavorite", () => {
 
     expect(updateMock).toHaveBeenCalledWith({ archived_at: null });
     expect(eqMock).toHaveBeenCalledWith("id", "project-1");
+  });
+
+  it("archiveProject throws when the update affects zero rows (e.g. RLS silently filtered a non-owner's request)", async () => {
+    selectMock.mockResolvedValue({ data: [], error: null });
+    const { archiveProject } = await import("./actions");
+    const formData = new FormData();
+    formData.set("project_id", "project-1");
+
+    await expect(archiveProject(formData)).rejects.toThrow();
+  });
+
+  it("unarchiveProject throws when the update affects zero rows", async () => {
+    selectMock.mockResolvedValue({ data: [], error: null });
+    const { unarchiveProject } = await import("./actions");
+    const formData = new FormData();
+    formData.set("project_id", "project-1");
+
+    await expect(unarchiveProject(formData)).rejects.toThrow();
   });
 
   it("toggleFavorite calls the RPC and returns ok: true on success", async () => {
