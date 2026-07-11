@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:12'
+updated_date: '2026-07-11 16:54'
 labels:
   - bug
   - concurrency
@@ -33,3 +34,9 @@ Sequencing: pick up AFTER TASK-56/57 so position rules land once, not twice.
 - [ ] #3 Position ordering invariant documented and DB-enforced where feasible
 - [ ] #4 Project creation is all-or-nothing including default statuses
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Full Codex report: backlog doc-1 (.backlog/docs/reviews/) — read the matching finding before implementing.
+<!-- SECTION:NOTES:END -->

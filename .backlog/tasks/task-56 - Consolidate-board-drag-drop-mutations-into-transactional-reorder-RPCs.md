@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:11'
-updated_date: '2026-07-11 16:13'
+updated_date: '2026-07-11 16:54'
 labels:
   - concurrency
   - db
@@ -35,4 +35,6 @@ Fix: a small set of transactional Postgres RPCs (advisory or row locks per proje
 
 <!-- SECTION:NOTES:BEGIN -->
 Overlap note (2026-07-12): TASK-51 (insert+resequence RPC for quickCreateStory/createBacklogDivider/dropStoryInList, from the TASK-36 advisor review) is the same consolidation for the insertion side — design the RPC family together and share the position logic. TASK-58 items 2-3 defer to this task's position rules.
+
+Full Codex report: backlog doc-1 (.backlog/docs/reviews/) — read the matching finding before implementing.
 <!-- SECTION:NOTES:END -->

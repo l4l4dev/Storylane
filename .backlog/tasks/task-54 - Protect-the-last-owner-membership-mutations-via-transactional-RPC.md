@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:10'
+updated_date: '2026-07-11 16:54'
 labels:
   - security
   - rls
@@ -28,3 +29,9 @@ Fix: centralize membership mutations (role change, removal) in transactional RPC
 - [ ] #2 Membership mutations are RPC-only; direct UPDATE/DELETE on project_members is no longer permitted for admin operations
 - [ ] #3 Integration tests cover the final-owner invariant and membership-policy edge cases
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Full Codex report: backlog doc-1 (.backlog/docs/reviews/) — read the matching finding before implementing.
+<!-- SECTION:NOTES:END -->

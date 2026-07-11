@@ -7,6 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:10'
+updated_date: '2026-07-11 16:54'
 labels:
   - bug
   - webhook
@@ -30,3 +31,9 @@ Fix: move 'conditional finish + active-iteration lock + assignment' into ONE tra
 - [ ] #2 Concurrent finalization cannot interleave between transition and assignment (single transaction/lock)
 - [ ] #3 Failure-path tests cover iteration lookup and assignment errors
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Full Codex report: backlog doc-1 (.backlog/docs/reviews/) — read the matching finding before implementing.
+<!-- SECTION:NOTES:END -->

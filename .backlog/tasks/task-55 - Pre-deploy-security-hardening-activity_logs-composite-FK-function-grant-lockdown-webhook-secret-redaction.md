@@ -7,6 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:11'
+updated_date: '2026-07-11 16:54'
 labels:
   - security
   - rls
@@ -33,3 +34,9 @@ Migration-heavy — run rls-security-reviewer; verify the MCP design (spec/mcp.m
 - [ ] #3 webhook_secret is never returned to any client query after creation
 - [ ] #4 rls-security-reviewer passes; existing web flows and finalize_iteration/invite_member RPCs still work under the new grants
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Full Codex report: backlog doc-1 (.backlog/docs/reviews/) — read the matching finding before implementing.
+<!-- SECTION:NOTES:END -->

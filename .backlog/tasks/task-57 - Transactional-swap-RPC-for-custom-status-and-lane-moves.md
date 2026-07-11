@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:11'
+updated_date: '2026-07-11 16:54'
 labels:
   - concurrency
   - db
@@ -27,3 +28,9 @@ Fix: one transactional swap RPC (row locks or the project advisory lock) used by
 - [ ] #2 Invalid direction values are rejected, not coerced
 - [ ] #3 Tests cover concurrent swaps and the half-failure case
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Full Codex report: backlog doc-1 (.backlog/docs/reviews/) — read the matching finding before implementing.
+<!-- SECTION:NOTES:END -->
