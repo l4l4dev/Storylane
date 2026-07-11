@@ -5,13 +5,13 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-10 14:57'
-updated_date: '2026-07-10 14:58'
+updated_date: '2026-07-11 06:38'
 labels:
   - web
   - db
 dependencies: []
 priority: low
-ordinal: 27000
+ordinal: 17000
 ---
 
 ## Description
@@ -22,7 +22,7 @@ Follow-up from TASK-8 (project archive/favorites/search/sort), flagged by rls-se
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Decide (with owner) whether full DB-level archived read-only enforcement is actually wanted, given the broad blast radius (touches most write-capable tables' RLS policies)
+- [ ] #1 Decide (with the owner) whether full DB-level archived read-only enforcement is actually wanted, given the broad blast radius (touches most write-capable tables' RLS policies)
 - [ ] #2 If yes: design reviewed by fable-advisor before implementation (large RLS surface change)
 - [ ] #3 If yes: migration adds an archived_at check to every write-capable table's INSERT/UPDATE policies (or a shared helper function), reviewed by rls-security-reviewer
 - [ ] #4 spec/rls.md and spec/screens.md updated back to the stronger guarantee once actually implemented

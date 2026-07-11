@@ -19,7 +19,7 @@ ordinal: 15000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-The sidebar project switcher already exists (app-sidebar.tsx) but owner didn't discover it — it reads as a label, not a control. Per spec/screens.md 'Project switcher': add a chevron affordance, list favorites first with pin icons, show each project's mode badge, and exclude archived projects.
+The sidebar project switcher already exists (app-sidebar.tsx) but the owner didn't discover it — it reads as a label, not a control. Per spec/screens.md 'Project switcher': add a chevron affordance, list favorites first with pin icons, show each project's mode badge, and exclude archived projects.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

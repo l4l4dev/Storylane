@@ -33,5 +33,5 @@ Follow-up to the Code Comment Policy added to CLAUDE.md on 2026-07-10. Existing 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-指定5ファイル(board/actions.ts, settings/actions.ts, board/page.tsx, lib/utils/iterations.ts, lib/utils/kanban.ts)に加え、apps/web全体をgrepで洗い出し、TASK番号引用タグ(全46ファイル)と履歴語りセンテンス(used to/previously/replaces the old等)を全て除去(owner承認のうえ範囲拡大)。短い constraint/why-not コメントは維持、spec参照はセクションポインタのみに整理。自分がこのセッション中にTASK-26/TASK-31で追加した lib/supabase/assert.ts のTASK参照も同様に修正。diff は git diff で全行を機械チェックし、コメント/JSXコメント行以外の変更がないことを確認(コード挙動変更なし)。pnpm test 351 passed(変更前と同数)/ tsc --noEmit クリーン / pnpm build 成功。
+指定5ファイル(board/actions.ts, settings/actions.ts, board/page.tsx, lib/utils/iterations.ts, lib/utils/kanban.ts)に加え、apps/web全体をgrepで洗い出し、TASK番号引用タグ(全46ファイル)と履歴語りセンテンス(used to/previously/replaces the old等)を全て除去(the owner承認のうえ範囲拡大)。短い constraint/why-not コメントは維持、spec参照はセクションポインタのみに整理。自分がこのセッション中にTASK-26/TASK-31で追加した lib/supabase/assert.ts のTASK参照も同様に修正。diff は git diff で全行を機械チェックし、コメント/JSXコメント行以外の変更がないことを確認(コード挙動変更なし)。pnpm test 351 passed(変更前と同数)/ tsc --noEmit クリーン / pnpm build 成功。
 <!-- SECTION:NOTES:END -->
