@@ -21,13 +21,64 @@ describe("QuickAddComposer", () => {
   // TASK-11: the old composer morphed the trigger button itself into the
   // input. The trigger must now stay visible and unchanged, with the
   // composer appearing as a separate element alongside it.
-  it("keeps the Add story trigger visible when the composer opens", () => {
+  it("keeps the Add story trigger visible when the composer opens, with an explicit Add button", () => {
     render(<QuickAddComposer projectId="p1" target="backlog" />);
     fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
     expect(screen.getByRole("button", { name: /Add story/ })).toBeInTheDocument();
     const input = screen.getByRole("textbox", { name: "New story title" });
     expect(input).toHaveFocus();
-    expect(screen.getByText("Enter to add · Esc to close")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
+    expect(screen.getByText("Esc to close")).toBeInTheDocument();
+  });
+
+  it("creates when the explicit Add button is clicked (not just Enter)", async () => {
+    render(<QuickAddComposer projectId="p1" target="backlog" />);
+    fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
+
+    const input = screen.getByRole("textbox", { name: "New story title" });
+    fireEvent.change(input, { target: { value: "Ship the thing" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(quickCreateStoryMock).toHaveBeenCalledTimes(1);
+    const formData = quickCreateStoryMock.mock.calls[0]?.[0];
+    if (!formData) {
+      throw new Error("quickCreateStory was not called with FormData");
+    }
+    expect(formData.get("title")).toBe("Ship the thing");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+  });
+
+  it("includes before_item_id in the FormData for a backlog target when given", () => {
+    render(<QuickAddComposer projectId="p1" target="backlog" beforeItemId="story:s2" />);
+    fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
+
+    const input = screen.getByRole("textbox", { name: "New story title" });
+    fireEvent.change(input, { target: { value: "Ship the thing" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    const formData = quickCreateStoryMock.mock.calls[0]?.[0];
+    if (!formData) {
+      throw new Error("quickCreateStory was not called with FormData");
+    }
+    expect(formData.get("before_item_id")).toBe("story:s2");
+  });
+
+  it("omits before_item_id for a non-backlog target even when given", () => {
+    render(<QuickAddComposer projectId="p1" target="unstarted" beforeItemId="story:s2" />);
+    fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
+
+    const input = screen.getByRole("textbox", { name: "New story title" });
+    fireEvent.change(input, { target: { value: "Ship the thing" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    const formData = quickCreateStoryMock.mock.calls[0]?.[0];
+    if (!formData) {
+      throw new Error("quickCreateStory was not called with FormData");
+    }
+    expect(formData.get("before_item_id")).toBeNull();
   });
 
   it("creates on Enter, clears the input once creation succeeds, and stays open for the next add", async () => {

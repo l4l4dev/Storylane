@@ -475,7 +475,6 @@ function ListSection({
           {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
         </button>
         {title}
-        {composer}
         <span className="h-px flex-1 bg-border" />
       </header>
       {/* Kept mounted (not conditionally rendered) even while collapsed —
@@ -488,6 +487,10 @@ function ListSection({
           ))}
         </ul>
       </SortableContext>
+      {/* The add-story affordance lives at the group's bottom edge, not the
+          header (TASK-36) — hidden along with the rest of a collapsed
+          group's content. */}
+      {!collapsed && composer}
     </section>
   );
 }
@@ -536,7 +539,6 @@ function BacklogSection({
   projectedDatesFor,
   collapsedGroups,
   onToggleGroup,
-  composer,
   pointScale,
 }: {
   // Full, unfiltered backlog (stories + dividers) — the virtual-iteration
@@ -551,7 +553,6 @@ function BacklogSection({
   projectedDatesFor: (iterationNumber: number) => { start_date: string; end_date: string } | null;
   collapsedGroups: ReadonlySet<string>;
   onToggleGroup: (key: string) => void;
-  composer?: ReactNode;
   pointScale: number[];
 }) {
   const { setNodeRef } = useDroppable({ id: BACKLOG_COLUMN_ID });
@@ -568,9 +569,18 @@ function BacklogSection({
   // group state.
   let currentGroupCollapsed = false;
   const visibleRowIds = new Set<string>();
+  // Parallel to `rows` — whether the row at that index's group is collapsed,
+  // computed in this same pass so the per-group "+ Add story" composer
+  // (TASK-36) below can look it up by index instead of tracking its own
+  // mutable state across the JSX-building `.map()` (React disallows
+  // reassigning a plain variable from inside a render-time callback).
+  const rowGroupCollapsed: boolean[] = [];
   for (const row of rows) {
     if (row.kind === "iteration-header") {
       currentGroupCollapsed = collapsedGroups.has(String(row.number));
+    }
+    rowGroupCollapsed.push(currentGroupCollapsed);
+    if (row.kind === "iteration-header") {
       continue;
     }
     if (row.kind === "iteration-break") {
@@ -590,13 +600,31 @@ function BacklogSection({
     <section className="flex flex-col gap-2">
       <header className="flex items-center gap-3 py-1 text-xs text-muted-foreground">
         <span className="font-semibold text-foreground">Backlog</span>
-        {composer}
         <span className="h-px flex-1 bg-border" />
       </header>
       <SortableContext items={[...visibleRowIds]} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-10 flex-col gap-1.5">
           <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, 0)} />
           {rows.map((row, index) => {
+            // This row is the last one in its virtual-iteration group (or,
+            // for an empty group, the header itself) whenever the next row
+            // starts a new group/break or there is none — that's exactly
+            // the group's bottom edge the per-group composer belongs at.
+            const next = rows[index + 1];
+            const isGroupEnd =
+              row.kind !== "iteration-break" &&
+              (!next || next.kind === "iteration-header" || next.kind === "iteration-break");
+            const groupComposer =
+              isGroupEnd && !rowGroupCollapsed[index] ? (
+                <li className="pl-3">
+                  <QuickAddComposer
+                    projectId={projectId}
+                    target="backlog"
+                    beforeItemId={nextRealRowId(rows, index + 1) ?? undefined}
+                  />
+                </li>
+              ) : null;
+
             if (row.kind === "iteration-header") {
               const key = String(row.number);
               return (
@@ -610,6 +638,7 @@ function BacklogSection({
                     collapsed={collapsedGroups.has(key)}
                     onToggle={() => onToggleGroup(key)}
                   />
+                  {groupComposer}
                   <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
                 </Fragment>
               );
@@ -621,12 +650,17 @@ function BacklogSection({
                 {visibleRowIds.has(id) && (
                   <SortableBacklogRow row={row} projectId={projectId} pointScale={pointScale} />
                 )}
+                {groupComposer}
                 <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
               </Fragment>
             );
           })}
         </ul>
       </SortableContext>
+      {/* No virtual-iteration group renders at all for a totally empty
+          backlog (buildBacklogRows emits nothing) — this fallback keeps an
+          add-story affordance available even then. */}
+      {rows.length === 0 && <QuickAddComposer projectId={projectId} target="backlog" />}
     </section>
   );
 }
@@ -653,9 +687,6 @@ function IceboxColumn({
         <Snowflake className="size-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
         <h2 className="text-sm font-semibold">Icebox</h2>
         <span className="text-xs text-muted-foreground">{items.length}</span>
-        <span className="ml-auto">
-          <QuickAddComposer projectId={projectId} target="icebox" compact />
-        </span>
       </header>
       <div className="flex flex-1 flex-col overflow-y-auto px-3 pb-3">
         <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
@@ -665,6 +696,11 @@ function IceboxColumn({
             ))}
           </ul>
         </SortableContext>
+      </div>
+      {/* Pinned below the scroll area (TASK-36) rather than inside it, so
+          it's reachable without scrolling to the bottom of a long Icebox. */}
+      <div className="px-3 pb-3">
+        <QuickAddComposer projectId={projectId} target="icebox" />
       </div>
     </section>
   );
@@ -888,7 +924,7 @@ export function BoardListView({
             }
             items={visibleCurrentItems}
             projectId={projectId}
-            composer={<QuickAddComposer projectId={projectId} target="unstarted" compact />}
+            composer={<QuickAddComposer projectId={projectId} target="unstarted" />}
             collapsed={collapsedGroups.has("current")}
             onToggleCollapse={() => onToggleGroup("current")}
             pointScale={pointScale}
@@ -904,7 +940,6 @@ export function BoardListView({
             projectedDatesFor={projectedDatesFor}
             collapsedGroups={collapsedGroups}
             onToggleGroup={onToggleGroup}
-            composer={<QuickAddComposer projectId={projectId} target="backlog" compact />}
             pointScale={pointScale}
           />
         </div>

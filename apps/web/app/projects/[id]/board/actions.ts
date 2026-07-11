@@ -34,6 +34,13 @@ function todayDateOnly(): string {
  * type `feature`, unestimated, unassigned). `target` decides where it lands:
  * `backlog` (unstarted, no iteration), `icebox` (unscheduled), or
  * `unstarted` (scheduled into the current iteration).
+ *
+ * `backlog` additionally accepts `before_item_id` (TASK-36, same
+ * `"story:<id>"` / `"divider:<id>"` convention as `createBacklogDivider`) so
+ * the List view's per-virtual-iteration-group composer can land the new
+ * story at that group's bottom instead of always the whole backlog's —
+ * reuses the same fetch-merge-splice-persist sequence `createBacklogDivider`
+ * already uses to insert at an exact spot.
  */
 export async function quickCreateStory(formData: FormData) {
   const projectId = String(formData.get("project_id"));
@@ -45,6 +52,38 @@ export async function quickCreateStory(formData: FormData) {
   }
 
   const supabase = await createClient();
+
+  if (target === "backlog") {
+    const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
+    const merged = await fetchBacklogOrder(supabase, projectId);
+
+    const { data: created, error: insertError } = await supabase
+      .from("stories")
+      .insert({
+        project_id: projectId,
+        title,
+        story_type: "feature",
+        state: "unstarted",
+        iteration_id: null,
+        position: merged.length,
+      })
+      .select("id")
+      .single();
+
+    if (insertError || !created) {
+      throw new Error(insertError?.message ?? "Failed to create story");
+    }
+
+    const beforeIndex = beforeItemId ? merged.findIndex((item) => `${item.kind}:${item.id}` === beforeItemId) : -1;
+    const insertAt = beforeIndex >= 0 ? beforeIndex : merged.length;
+    const ordered = merged.map((item) => `${item.kind}:${item.id}`);
+    ordered.splice(insertAt, 0, `story:${created.id}`);
+
+    await persistBacklogOrder(supabase, projectId, ordered);
+
+    revalidatePath(`/projects/${projectId}/board`);
+    return;
+  }
 
   const [{ data: existing }, { data: currentRows }] = await Promise.all([
     supabase.from("stories").select("position").eq("project_id", projectId),

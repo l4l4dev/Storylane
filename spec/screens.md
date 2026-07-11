@@ -187,26 +187,34 @@ a physical column.
   Reject / Restart) render directly on each row, since there's no column to
   drop onto for a state change — the same buttons and rules as the side
   peek's (see "Story row UX" below).
-- **Quick-add is compact:** each section header carries a small "+ Add
-  story" text link instead of a full-width story-shaped button, so the
-  list itself stays visually dominant (composer behavior: see "Quick-add
-  composer" below).
+- **Quick-add sits at each group's bottom edge (2026-07-11):** every
+  List-view group — Current, each virtual future-iteration group inside
+  Backlog (even an empty one), and Icebox — gets its own full-width dashed
+  "+ Add story" button after that group's last row, not the section
+  header, so where a new story will land is never ambiguous. A story added
+  from a specific virtual-iteration group's composer inserts at that exact
+  group's bottom, not just the end of the whole Backlog. A group's
+  composer is hidden while that group is collapsed (its rows aren't visible
+  either). Composer behavior: see "Quick-add composer" below.
 - The side peek works the same as Kanban.
 
-### Quick-add composer (2026-07-07 — all boards)
+### Quick-add composer (2026-07-07, revised 2026-07-11 — all boards)
 
 The old composer morphed the "+ Add story" button itself into an input,
-which felt broken. New behavior (Trello/Linear convention), shared by the
-List sections, the Kanban Unstarted column, and free-mode columns:
+which felt broken. Current behavior (Trello/Linear convention), shared by
+the List-view groups, the Kanban Unstarted column, and free-mode columns:
 
 - The "+ Add story" trigger stays visible where it is; clicking it reveals
-  a **separate card-shaped composer** beneath it (title input + subtle
-  hint "Enter to add · Esc to close").
-- Enter creates the story (same defaults as before: type `feature`,
-  unestimated, unassigned) and keeps the composer open with an empty input
-  for consecutive adds; Esc or clicking outside closes it. An empty Enter
-  does nothing.
+  a **separate card-shaped composer** beneath it: a title input, an
+  explicit **Add** button, and a hint "Esc to close".
+- Enter also submits (same as clicking Add): creates the story (same
+  defaults as before: type `feature`, unestimated, unassigned) and keeps
+  the composer open with an empty input for consecutive adds; Esc or
+  clicking outside closes it, discarding the draft. An empty submit does
+  nothing.
 - The trigger itself never changes shape or turns into an input.
+- A failed create keeps the typed title and shows an inline error,
+  offering retry (press Enter or Add again).
 
 ### Story detail editing — autosave (2026-07-07)
 
