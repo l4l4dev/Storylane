@@ -23,7 +23,7 @@ export function extractStoryNumbers(title: string, branch: string): number[] {
   return [...numbers];
 }
 
-async function hmacSha256Hex(secret: string, body: string): Promise<string> {
+export async function hmacSha256Hex(secret: string, body: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -54,7 +54,18 @@ function json(status: number, body: Record<string, unknown>): Response {
   });
 }
 
-Deno.serve(async (req) => {
+// Exported (rather than only reachable via Deno.serve) so tests can drive
+// the full request flow with an injected fake Supabase client instead of a
+// live one — see index.test.ts. `client` defaults to the real service-role
+// client; only tests pass an override.
+export async function handleGitWebhookRequest(
+  req: Request,
+  // Untyped, matching createClient's own default (no Database generic is
+  // supplied here, same as the pre-refactor inline call) — tests inject a
+  // minimal fake with only the methods this handler actually calls.
+  // deno-lint-ignore no-explicit-any
+  client?: any,
+): Promise<Response> {
   if (req.method !== "POST") {
     return json(405, { error: "Method not allowed" });
   }
@@ -76,10 +87,9 @@ Deno.serve(async (req) => {
 
   const body = await req.text();
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
+  const supabase =
+    client ??
+    createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   const { data: integration } = await supabase
     .from("integrations")
@@ -106,6 +116,19 @@ Deno.serve(async (req) => {
   const expected = await hmacSha256Hex(secret, body);
   if (!received || !timingSafeEqual(expected, received.toLowerCase())) {
     return json(401, { error: "Invalid signature" });
+  }
+
+  // Applies to tracker-mode projects only (2026-07-11 owner decision, see
+  // spec/integrations.md) — free mode doesn't use story state for its
+  // workflow, so this writes nothing for it rather than force-finishing a
+  // story whose state column the free-mode board ignores.
+  const { data: project } = await supabase
+    .from("projects")
+    .select("workflow_mode")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (project?.workflow_mode !== "tracker") {
+    return json(200, { ignored: "free mode" });
   }
 
   if (event !== "pull_request") {
@@ -169,11 +192,22 @@ Deno.serve(async (req) => {
         .update({ iteration_id: currentIterationId })
         .in(
           "id",
-          updated.map((s) => s.id),
+          updated.map((s: { id: string }) => s.id),
         )
         .is("iteration_id", null);
     }
   }
 
-  return json(200, { matched: numbers, finished: (updated ?? []).map((s) => s.number) });
-});
+  return json(200, {
+    matched: numbers,
+    finished: (updated ?? []).map((s: { number: number }) => s.number),
+  });
+}
+
+// `import.meta.main` is false when this module is imported (e.g. from
+// index.test.ts), so tests never start a live listener — only running this
+// file directly (as Supabase does when deploying/serving the function)
+// starts the server.
+if (import.meta.main) {
+  Deno.serve(handleGitWebhookRequest);
+}

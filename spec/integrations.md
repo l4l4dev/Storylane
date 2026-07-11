@@ -8,7 +8,12 @@
 2. Receive and parse the webhook in a Supabase Edge Function (`git-webhook`)
    - Webhook URL はプロジェクトをクエリで識別する: `/functions/v1/git-webhook?project=<project_id>`
    - 署名検証の secret は `integrations.config.webhook_secret`（プロジェクト設定で登録）
-3. Update the matching story's state
+   - **`workflow_mode = 'tracker'` のプロジェクトにのみ適用**（2026-07-11 owner 決定）:
+     free mode は story の state をボード運用に使わないため、署名検証後・イベント種別の
+     判定より前に workflow_mode をチェックし、tracker でなければ即座に
+     `{ ignored: "free mode" }` を返して何も書き込まない（force-finish もiteration
+     アサインも行わない）。
+3. Update the matching story's state（tracker mode のみ）
    - **PR マージ時は `finished` へ強制遷移**（2026-07-07 owner 決定）: `unscheduled` / `unstarted` /
      `started` の story はステートマシンの1段遷移を例外的に飛び越えて `finished` にする
      （本家 Pivotal の GitHub 連携と同じ挙動）。すでに `finished` 以降
