@@ -1,14 +1,12 @@
 "use client";
 
-import { TriangleAlert } from "lucide-react";
-import { transitionStory } from "@/app/projects/[id]/board/actions";
+import { estimateStory, transitionStory } from "@/app/projects/[id]/board/actions";
 import {
-  applyTransition,
   availableTransitions,
   transitionLabel,
   type StoryState as StoryLifecycleState,
 } from "@/lib/utils/story-state";
-import { isUnestimatedFeature } from "@/lib/utils/stories";
+import { formatPoints, isUnestimatedFeature } from "@/lib/utils/stories";
 import { Button } from "@/components/ui/button";
 
 // One-click state-transition buttons (Start / Finish / Deliver / Accept /
@@ -21,12 +19,14 @@ export function TransitionButtons({
   state,
   storyType,
   points,
+  pointScale,
 }: {
   storyId: string;
   projectId: string;
   state: string;
   storyType: string;
   points: number | null;
+  pointScale: number[];
 }) {
   const actions = availableTransitions(state as StoryLifecycleState);
 
@@ -34,37 +34,49 @@ export function TransitionButtons({
     return null;
   }
 
+  // An unestimated feature can't Start/Restart (spec/features.md). Pivotal
+  // Tracker parity (TASK-37, spec/ux-principles.md principle 1 — no dead
+  // controls): instead of a disabled button, show the point-scale estimation
+  // buttons in its place. Both states this can happen in (`unstarted`,
+  // `rejected`) offer exactly one transition action, so replacing the whole
+  // group is equivalent to replacing just that button. Estimating never
+  // auto-starts the story — Start/Restart appears as the next click once
+  // `points` is set.
+  if (isUnestimatedFeature(storyType, points)) {
+    return (
+      <form action={estimateStory} className="flex flex-wrap items-center gap-1">
+        <input type="hidden" name="project_id" value={projectId} />
+        <input type="hidden" name="story_id" value={storyId} />
+        {pointScale.map((value) => (
+          <Button
+            key={value}
+            type="submit"
+            name="points"
+            value={value}
+            variant="outline"
+            size="xs"
+            aria-label={`Estimate: ${value} point${value === 1 ? "" : "s"}`}
+            title={`Estimate: ${value} point${value === 1 ? "" : "s"}`}
+          >
+            {formatPoints(value)}
+          </Button>
+        ))}
+      </form>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-2">
-      {actions.map((action) => {
-        // An unestimated feature cannot be started (spec/features.md) — the
-        // button targeting `started` (Start / Restart) is disabled.
-        const blocked =
-          isUnestimatedFeature(storyType, points) &&
-          applyTransition(state as StoryLifecycleState, action) === "started";
-        return (
-          <form key={action} action={transitionStory}>
-            <input type="hidden" name="project_id" value={projectId} />
-            <input type="hidden" name="story_id" value={storyId} />
-            <input type="hidden" name="action" value={action} />
-            <Button
-              type="submit"
-              variant="outline"
-              size="xs"
-              disabled={blocked}
-              title={blocked ? "Estimate this feature before starting" : undefined}
-              className={
-                blocked
-                  ? "border-orange-300 text-orange-700 disabled:opacity-100 dark:border-orange-500/40 dark:text-orange-300"
-                  : undefined
-              }
-            >
-              {blocked && <TriangleAlert className="text-orange-500 dark:text-orange-400" />}
-              {transitionLabel(action)}
-            </Button>
-          </form>
-        );
-      })}
+    <div className="flex flex-wrap items-center gap-1">
+      {actions.map((action) => (
+        <form key={action} action={transitionStory}>
+          <input type="hidden" name="project_id" value={projectId} />
+          <input type="hidden" name="story_id" value={storyId} />
+          <input type="hidden" name="action" value={action} />
+          <Button type="submit" variant="outline" size="xs">
+            {transitionLabel(action)}
+          </Button>
+        </form>
+      ))}
     </div>
   );
 }

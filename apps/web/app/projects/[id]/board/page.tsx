@@ -6,7 +6,7 @@ import {
   columnForStory,
 } from "@/lib/utils/kanban";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
-import { filterStories } from "@/lib/utils/stories";
+import { filterStories, pointScaleValues } from "@/lib/utils/stories";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
@@ -33,7 +33,7 @@ export default async function BoardPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, velocity_window, workflow_mode, iteration_length")
+    .select("id, name, velocity_window, workflow_mode, iteration_length, point_scale, custom_points")
     .eq("id", id)
     .single();
 
@@ -226,6 +226,7 @@ export default async function BoardPage({
         iterationGoals={iterationGoals}
         canFinishIteration={canFinishIteration}
         filter={filter}
+        pointScale={pointScaleValues(project.point_scale, project.custom_points)}
         toolbar={
           <BoardFilters
             assignees={assigneeOptions}

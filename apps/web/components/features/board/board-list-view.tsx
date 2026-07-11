@@ -135,7 +135,15 @@ function toListItemContainers(
 // over past the pointer's activation distance. Used by the Current/Icebox
 // sections, which only ever hold stories — the Backlog section uses
 // `SortableBacklogRow` instead since it also renders notes/iteration breaks.
-function SortableListRow({ item, projectId }: { item: ListItem; projectId: string }) {
+function SortableListRow({
+  item,
+  projectId,
+  pointScale,
+}: {
+  item: ListItem;
+  projectId: string;
+  pointScale: number[];
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const className = `cursor-grab active:cursor-grabbing ${isDragging ? "opacity-60" : ""}`;
@@ -145,7 +153,7 @@ function SortableListRow({ item, projectId }: { item: ListItem; projectId: strin
       {item.kind === "divider" ? (
         <DividerRow projectId={projectId} divider={item.divider} />
       ) : (
-        <StoryListRow story={item.story} projectId={projectId} />
+        <StoryListRow story={item.story} projectId={projectId} pointScale={pointScale} />
       )}
     </li>
   );
@@ -312,9 +320,11 @@ function IterationHeaderRow({
 function SortableBacklogRow({
   row,
   projectId,
+  pointScale,
 }: {
   row: Extract<BacklogRow<BoardStory>, { kind: "story" | "note" | "iteration-break" }>;
   projectId: string;
+  pointScale: number[];
 }) {
   const dragId = row.kind === "story" ? row.story.id : row.divider.id;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: dragId });
@@ -324,7 +334,7 @@ function SortableBacklogRow({
   return (
     <li ref={setNodeRef} style={style} className={className} {...attributes} {...listeners}>
       {row.kind === "story" ? (
-        <StoryListRow story={row.story} projectId={projectId} />
+        <StoryListRow story={row.story} projectId={projectId} pointScale={pointScale} />
       ) : (
         <DividerRow projectId={projectId} divider={row.divider} />
       )}
@@ -440,6 +450,7 @@ function ListSection({
   composer,
   collapsed,
   onToggleCollapse,
+  pointScale,
 }: {
   zoneId: string;
   title: ReactNode;
@@ -448,6 +459,7 @@ function ListSection({
   composer?: ReactNode;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  pointScale: number[];
 }) {
   const { setNodeRef } = useDroppable({ id: zoneId });
 
@@ -472,7 +484,7 @@ function ListSection({
       <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className={`flex min-h-10 flex-col gap-1.5 ${collapsed ? "hidden" : ""}`}>
           {items.map((item) => (
-            <SortableListRow key={item.id} item={item} projectId={projectId} />
+            <SortableListRow key={item.id} item={item} projectId={projectId} pointScale={pointScale} />
           ))}
         </ul>
       </SortableContext>
@@ -525,6 +537,7 @@ function BacklogSection({
   collapsedGroups,
   onToggleGroup,
   composer,
+  pointScale,
 }: {
   // Full, unfiltered backlog (stories + dividers) — the virtual-iteration
   // groups/point sums/dates below must reflect the true backlog regardless
@@ -539,6 +552,7 @@ function BacklogSection({
   collapsedGroups: ReadonlySet<string>;
   onToggleGroup: (key: string) => void;
   composer?: ReactNode;
+  pointScale: number[];
 }) {
   const { setNodeRef } = useDroppable({ id: BACKLOG_COLUMN_ID });
 
@@ -604,7 +618,9 @@ function BacklogSection({
             const id = row.kind === "story" ? row.story.id : row.divider.id;
             return (
               <Fragment key={rowKey(row, index)}>
-                {visibleRowIds.has(id) && <SortableBacklogRow row={row} projectId={projectId} />}
+                {visibleRowIds.has(id) && (
+                  <SortableBacklogRow row={row} projectId={projectId} pointScale={pointScale} />
+                )}
                 <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
               </Fragment>
             );
@@ -620,7 +636,15 @@ function BacklogSection({
 // of the priority order, so keeping it out of the main list lets the PO
 // focus purely on Current/Backlog priority (see spec/screens.md "Board
 // layout: List view").
-function IceboxColumn({ items, projectId }: { items: ListItem[]; projectId: string }) {
+function IceboxColumn({
+  items,
+  projectId,
+  pointScale,
+}: {
+  items: ListItem[];
+  projectId: string;
+  pointScale: number[];
+}) {
   const { setNodeRef } = useDroppable({ id: ICEBOX_COLUMN_ID });
 
   return (
@@ -637,7 +661,7 @@ function IceboxColumn({ items, projectId }: { items: ListItem[]; projectId: stri
         <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-1.5">
             {items.map((item) => (
-              <SortableListRow key={item.id} item={item} projectId={projectId} />
+              <SortableListRow key={item.id} item={item} projectId={projectId} pointScale={pointScale} />
             ))}
           </ul>
         </SortableContext>
@@ -663,6 +687,7 @@ export function BoardListView({
   iterationGoals,
   showIcebox,
   filter,
+  pointScale,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
@@ -681,6 +706,10 @@ export function BoardListView({
   iterationGoals: Record<number, string>;
   showIcebox: boolean;
   filter: StoryFilter;
+  // The project's selectable point values (spec/features.md) — passed down
+  // to every TransitionButtons render so an unestimated feature's estimation
+  // picker offers the right scale (TASK-37).
+  pointScale: number[];
 }) {
   const [containers, setContainers] = useState(() => toListItemContainers(initialContainers, initialBacklogItems));
   const [synced, setSynced] = useState(initialContainers);
@@ -862,6 +891,7 @@ export function BoardListView({
             composer={<QuickAddComposer projectId={projectId} target="unstarted" compact />}
             collapsed={collapsedGroups.has("current")}
             onToggleCollapse={() => onToggleGroup("current")}
+            pointScale={pointScale}
           />
 
           <BacklogSection
@@ -875,10 +905,13 @@ export function BoardListView({
             collapsedGroups={collapsedGroups}
             onToggleGroup={onToggleGroup}
             composer={<QuickAddComposer projectId={projectId} target="backlog" compact />}
+            pointScale={pointScale}
           />
         </div>
 
-        {showIcebox && <IceboxColumn items={visibleIceboxItems} projectId={projectId} />}
+        {showIcebox && (
+          <IceboxColumn items={visibleIceboxItems} projectId={projectId} pointScale={pointScale} />
+        )}
       </div>
 
       <DragOverlay>
@@ -887,7 +920,7 @@ export function BoardListView({
             {activeItem.kind === "divider" ? (
               <DividerRow projectId={projectId} divider={activeItem.divider} />
             ) : (
-              <StoryListRow story={activeItem.story} projectId={projectId} />
+              <StoryListRow story={activeItem.story} projectId={projectId} pointScale={pointScale} />
             )}
           </div>
         )}

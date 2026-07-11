@@ -19,9 +19,11 @@ const STORY_TYPE_ICON: Record<Exclude<StoryType, "release">, LucideIcon> = {
 export function StoryListRow({
   story,
   projectId,
+  pointScale,
 }: {
   story: StoryCardData;
   projectId: string;
+  pointScale: number[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -96,6 +98,7 @@ export function StoryListRow({
           state={story.state}
           storyType={story.story_type}
           points={story.points}
+          pointScale={pointScale}
         />
       </div>
     </div>

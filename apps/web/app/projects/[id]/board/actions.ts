@@ -16,7 +16,7 @@ import {
   type ListZoneId,
 } from "@/lib/utils/kanban";
 import { evaluateFocusDrop, type FocusDragTarget } from "@/lib/utils/focus";
-import { isUnestimatedFeature, nextPosition, reorderPositions } from "@/lib/utils/stories";
+import { isUnestimatedFeature, nextPosition, parsePoints, pointScaleValues, reorderPositions } from "@/lib/utils/stories";
 import {
   applyTransition,
   shouldAssignCurrentIteration,
@@ -682,6 +682,73 @@ export async function transitionStory(formData: FormData) {
   }
 
   after(() => notifySlack(projectId, storyStateChangeMessage(story, nextState)));
+
+  revalidatePath(`/projects/${projectId}/board`);
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/stories/${storyId}`);
+}
+
+/**
+ * Estimates an unstarted/rejected unestimated feature (TASK-37, Pivotal
+ * Tracker parity — spec/features.md): replaces the blocked Start/Restart
+ * button with the project's point-scale buttons, one click each. Only sets
+ * `points` — never `state`, so estimating never auto-starts the story (the
+ * normal Start/Restart button appears as the follow-up click).
+ */
+export async function estimateStory(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const storyId = String(formData.get("story_id"));
+  const rawPoints = formData.get("points");
+
+  const supabase = await createClient();
+  const [{ data: story, error: fetchError }, { data: project }] = await Promise.all([
+    supabase
+      .from("stories")
+      .select("story_type, points")
+      .eq("id", storyId)
+      .eq("project_id", projectId)
+      .single(),
+    supabase.from("projects").select("point_scale, custom_points").eq("id", projectId).single(),
+  ]);
+
+  if (fetchError || !story) {
+    throw new Error(fetchError?.message ?? "Story not found");
+  }
+
+  // The estimation picker only ever renders for a `feature` (spec/features.md
+  // — bug/chore/release never use it). A non-feature reaching this action is
+  // tampering, not a race, so it's a hard error.
+  if (story.story_type !== "feature") {
+    throw new Error("This story is not awaiting estimation");
+  }
+
+  // A story that already has points got there legitimately — another
+  // tab/user estimated it first, or a double-click resubmitted after the
+  // first one landed. Neither is an error a user caused; re-render (via
+  // revalidate) shows the now-current points and the Start button that
+  // follows, same as if this click had never raced (spec/ux-principles.md
+  // principle 2 — no silent no-op, but also no crash for a benign race).
+  if (story.points !== null) {
+    revalidatePath(`/projects/${projectId}/board`);
+    revalidatePath(`/projects/${projectId}`);
+    revalidatePath(`/stories/${storyId}`);
+    return;
+  }
+
+  const allowedPoints = pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points);
+  const points = parsePoints(String(rawPoints ?? ""), story.story_type, allowedPoints);
+  if (points === null) {
+    throw new Error("Invalid point value");
+  }
+
+  const { error } = await supabase
+    .from("stories")
+    .update({ points })
+    .eq("id", storyId)
+    .eq("project_id", projectId);
+  if (error) {
+    throw new Error(error.message);
+  }
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);

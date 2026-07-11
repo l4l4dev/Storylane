@@ -320,6 +320,7 @@ export function StoryDetailPanel({
             state={detail.state}
             storyType={detail.storyType}
             points={detail.points}
+            pointScale={detail.pointScale}
           />
         ) : (
           <span />

@@ -74,6 +74,7 @@ export function KanbanBoard({
   canFinishIteration,
   filter,
   toolbar,
+  pointScale,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
@@ -102,6 +103,11 @@ export function KanbanBoard({
   filter: StoryFilter;
   // Filters / new-story controls supplied by the server component.
   toolbar?: ReactNode;
+  // The project's selectable point values (spec/features.md), threaded down
+  // to List/Focus views' TransitionButtons for the unestimated-feature
+  // estimation picker (TASK-37). The Kanban columns view never needs it —
+  // state changes there are drag-only, no transition buttons render.
+  pointScale: number[];
 }) {
   const [view, setView] = useState<BoardView>("list");
   const [showIcebox, setShowIcebox] = useState(false);
@@ -219,6 +225,7 @@ export function KanbanBoard({
           currentIteration={currentIteration}
           initialContainers={initialContainers}
           filter={filter}
+          pointScale={pointScale}
         />
       ) : (
         <BoardListView
@@ -232,6 +239,7 @@ export function KanbanBoard({
           iterationGoals={iterationGoals}
           showIcebox={showIcebox}
           filter={filter}
+          pointScale={pointScale}
         />
       )}
     </div>

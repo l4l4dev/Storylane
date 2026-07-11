@@ -160,11 +160,13 @@ export function FocusBoard({
   currentIteration,
   initialContainers,
   filter,
+  pointScale,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
   initialContainers: Record<string, BoardStory[]>;
   filter: StoryFilter;
+  pointScale: number[];
 }) {
   const [containers, setContainers] = useState(initialContainers);
   const [synced, setSynced] = useState(initialContainers);
@@ -324,7 +326,7 @@ export function FocusBoard({
 
         <ReadOnlyColumn icon={PlayCircle} label="In progress" count={buckets.in_progress.length}>
           {buckets.in_progress.map((story) => (
-            <StoryListRow key={story.id} story={story} projectId={projectId} />
+            <StoryListRow key={story.id} story={story} projectId={projectId} pointScale={pointScale} />
           ))}
         </ReadOnlyColumn>
 
@@ -333,7 +335,7 @@ export function FocusBoard({
             <div key={group.dateKey} className="flex flex-col gap-2">
               <h3 className="text-xs font-semibold text-muted-foreground">{group.label}</h3>
               {group.stories.map((story) => (
-                <StoryListRow key={story.id} story={story} projectId={projectId} />
+                <StoryListRow key={story.id} story={story} projectId={projectId} pointScale={pointScale} />
               ))}
             </div>
           ))}
