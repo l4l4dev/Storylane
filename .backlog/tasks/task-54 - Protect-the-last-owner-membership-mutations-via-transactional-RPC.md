@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:10'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-11 19:33'
 labels:
   - security
   - rls
@@ -35,4 +35,12 @@ Fix: centralize membership mutations (role change, removal) in transactional RPC
 
 <!-- SECTION:NOTES:BEGIN -->
 Full Codex report: backlog doc-1 (.backlog/docs/reviews/) — read the matching finding before implementing.
+
+DESIGN (Fable, 2026-07-12 — treat as the advisor-approved design):
+RPCs (SECURITY DEFINER, per-project advisory lock 'membership:'||project_id to serialize concurrent admin actions):
+1. change_member_role(p_project_id, p_user_id, p_role) — caller must be owner; raises if the target is the LAST owner being demoted (count owners under the lock).
+2. remove_member(p_project_id, p_user_id) — allowed when caller is owner, OR caller = target (self-leave, which today is impossible for non-owners — fixing that gap is included); raises if target is the last owner.
+RLS CHANGES (20260627000002_projects.sql): DROP the owner UPDATE policy and the owner DELETE policy on project_members — role changes and removals become RPC-only. Keep SELECT and the owner INSERT policy (invite_member also inserts). This is the fail-closed shape: no direct path can violate the invariant.
+invite_member FIX (20260709000003): the upsert must not modify an EXISTING member's role at all (insert-only semantics; re-inviting an existing member returns a no-op/informative result) — that closes the owner-overwrite hole without touching the invariant logic.
+TESTS (use the local RLS verification harness from the TASK-18 era): outsider denied; viewer denied; member self-leave OK; owner removes member OK; last owner cannot demote/remove self; co-owner CAN be demoted while another owner remains; direct UPDATE/DELETE on project_members now denied for owners too. Run rls-security-reviewer on the migration. NOTE for Web UI: settings member management must switch to the RPCs and surface the 'last owner' error clearly (ux-principles #2).
 <!-- SECTION:NOTES:END -->

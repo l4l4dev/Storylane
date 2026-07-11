@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:10'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-11 19:32'
 labels:
   - bug
   - webhook
@@ -37,4 +37,9 @@ Fix: move 'conditional finish + active-iteration lock + assignment' into ONE tra
 
 <!-- SECTION:NOTES:BEGIN -->
 Full Codex report: backlog doc-1 (.backlog/docs/reviews/) — read the matching finding before implementing.
+
+DESIGN (Fable, 2026-07-12 — treat as the advisor-approved design):
+New RPC finish_story_from_git(p_project_id, p_story_number int) returning jsonb events, SECURITY DEFINER. CRITICAL: it takes the SAME advisory lock as finalize_iteration ('iteration_finalize:'||project_id) so a webhook finish can never interleave with a rollover/manual finish — this is what makes 'assign to current iteration' safe. Inside one transaction: (1) verify projects.workflow_mode='tracker' (TASK-28 rule moves into the RPC, single enforcement point), return an 'ignored' event otherwise; (2) conditional transition to 'finished' only from the allowed states (keep the current webhook semantics; guard is a WHERE predicate so 0 rows = explicit 'not transitionable' event, never silent); (3) if iteration_id is null, assign the current iteration — under the shared lock the current iteration cannot finalize mid-flight; (4) any failure raises, nothing partial commits.
+Edge Function becomes: one rpc() call; on error return 5xx so the git provider retries (today's 200-on-failure is the bug); type the injected client with a narrow interface (kills the bare 'any'). Failure-path tests: RPC error → 5xx; not-transitionable → 200 with ignored event; mode=free → 200 ignored.
+GRANT: EXECUTE to service_role only (the webhook runs server-side), NOT to authenticated — verify which key the Edge Function client uses at implementation time and align. Sequencing with TASK-24 (Slack → DB webhook): do TASK-53 first (correctness), TASK-24 builds on the RPC's events afterwards.
 <!-- SECTION:NOTES:END -->

@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:11'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-11 19:33'
 labels:
   - security
   - rls
@@ -40,4 +40,14 @@ Migration-heavy — run rls-security-reviewer; verify the MCP design (spec/mcp.m
 
 <!-- SECTION:NOTES:BEGIN -->
 Full Codex report: backlog doc-1 (.backlog/docs/reviews/) — read the matching finding before implementing.
+
+DESIGN (Fable, 2026-07-12 — treat as the advisor-approved design):
+GRANT LOCKDOWN (20260630000002_grants.sql lines 14-15, 22-23 are the target):
+- revoke execute on all functions in schema public from authenticated; drop the 'alter default privileges ... grant execute on functions' rule. New functions become private by default.
+- Re-grant EXECUTE explicitly to authenticated ONLY for intended entry points: invite_member, finalize_iteration, promote_story_to_epic, move_story_to_project, copy_story_to_project, plus the RPCs landing from TASK-48/50/53/54/56 as they merge (each new RPC migration carries its own grant line from now on).
+- ⚠️ TRAP: functions referenced inside RLS policies (project_role, is_project_member) are executed by the querying role and MUST KEEP EXECUTE for authenticated, or every policy in the DB starts failing. Only revoke trigger bodies and internal helpers not referenced by any policy. Enumerate policy-referenced functions first (pg_policies definition scan) and keep them granted.
+- Verification: after the migration, run the full web test suite against local Supabase AND exercise login→board→story edit→invite manually; a missed grant fails loudly (permission denied for function).
+ACTIVITY_LOGS: make the activity trigger functions SECURITY DEFINER (they currently run as the invoking user, which is why a client INSERT policy exists at all), then DROP the client INSERT policy on activity_logs — triggers keep working, direct client inserts die, and the composite FK (story_id, project_id) → stories(id, project_id) closes the cross-project reference (needs the matching UNIQUE(id, project_id) on stories first; both in this migration). Backfill check: assert no existing rows violate the FK before adding it.
+WEBHOOK_SECRET: move it out of integrations.config into a new column (or table) with NO select exposure: owner SELECT policy switches to a redacted view (or column-level: revoke select on the secret column from authenticated — column grants work for this). Settings UI shows 'set/rotate' only; the Edge Function reads it with the service key. One-time migration copies existing secrets over.
+Run rls-security-reviewer; also re-check spec/mcp.md's RPC list against the final grant list (agent = authenticated role).
 <!-- SECTION:NOTES:END -->
