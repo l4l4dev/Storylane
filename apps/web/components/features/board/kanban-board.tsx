@@ -28,8 +28,8 @@ export { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID };
 
 // Card data plus the fields the drop validation and filters need (see
 // lib/utils/kanban, lib/utils/stories "matchesStoryFilter"). `position` is
-// the shared cross-state ordinal the List view's current zone sorts on
-// (TASK-21) — it's meaningless for the Kanban view's own per-column order,
+// the shared cross-state ordinal the List view's current zone sorts on —
+// it's meaningless for the Kanban view's own per-column order,
 // which never reads it. `assignee_id`/`labelIds` are the raw ids filters
 // match on, alongside `assigneeName`/`labels` (from `StoryCardData`), which
 // are only ever used for display.
@@ -38,7 +38,7 @@ export type BoardStory = StoryCardData & {
   position: number;
   assignee_id: string | null;
   labelIds: string[];
-  // Focus view only (TASK-15, spec/screens.md "Focus view") — ignored by
+  // Focus view only (spec/screens.md "Focus view") — ignored by
   // the List/Kanban views.
   focus: string | null;
   completed_at: string | null;
@@ -78,7 +78,7 @@ export function KanbanBoard({
   projectId: string;
   currentIteration: IterationMeta | null;
   // Keyed by KanbanColumnId: backlog, icebox, and one bucket per state column.
-  // Unfiltered (TASK-20) — `filter` is applied client-side, at render only,
+  // Unfiltered — `filter` is applied client-side, at render only,
   // so drag persistence and virtual-iteration/point-sum math never see a
   // filtered-down subset.
   initialContainers: Record<string, BoardStory[]>;
@@ -90,10 +90,10 @@ export function KanbanBoard({
   velocity: number;
   nextVirtualIterationNumber: number;
   // List-view-only (see BoardListView): projected dates and draft goals for
-  // the Backlog's virtual-iteration group headers (Task 9).
+  // the Backlog's virtual-iteration group headers.
   iterationLength: number;
   iterationGoals: Record<number, string>;
-  // TASK-10: owner/member only (spec/velocity.md "Manual finish") — the
+  // Owner/member only (spec/velocity.md "Manual finish") — the
   // finalize_iteration RPC enforces this too, this just keeps the button off
   // a viewer's screen.
   canFinishIteration: boolean;
@@ -107,7 +107,7 @@ export function KanbanBoard({
   const [showIcebox, setShowIcebox] = useState(false);
   const router = useRouter();
 
-  // Task 11: other users' story/divider changes arrive here and re-fetch the
+  // Other users' story/divider changes arrive here and re-fetch the
   // board's Server Component, which flows back in as `initialContainers` /
   // `initialBacklogItems` and syncs in each view's own state — no client-side
   // grouping logic is duplicated for this, and it covers both views since
@@ -242,7 +242,7 @@ export function KanbanBoard({
 // Enter, Esc reverts, no Save button — same UX contract as the Backlog
 // virtual-group goal inputs, board-list-view.tsx's IterationGoalInput). Adds
 // a brief "Saved ✓" confirmation flash on success, matching
-// story-detail-panel.tsx's autosave-status convention (TASK-10 AC #4).
+// story-detail-panel.tsx's autosave-status convention.
 export function IterationGoalBar({
   projectId,
   iterationId,
@@ -318,7 +318,7 @@ export function IterationGoalBar({
 }
 
 // "Finish iteration" (spec/velocity.md "Manual finish"): irreversible, so it
-// confirms before calling the shared finalize_iteration RPC (TASK-10).
+// confirms before calling the shared finalize_iteration RPC.
 export function FinishIterationButton({
   projectId,
   iterationNumber,

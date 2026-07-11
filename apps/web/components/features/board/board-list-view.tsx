@@ -53,7 +53,7 @@ import { StoryListRow } from "./story-list-row";
 import type { BoardStory, IterationMeta } from "./kanban-board";
 
 // Collapse state for the Backlog's virtual-iteration groups and the Current
-// section's own header (Task 9, spec/screens.md "Backlog groups": "Collapse
+// section's own header (spec/screens.md "Backlog groups": "Collapse
 // state persists per user in localStorage"). Keyed by group number
 // (stringified) or the literal "current". A lazy useState initializer reads
 // localStorage once on mount; the usual SSR/client hydration mismatch this
@@ -119,7 +119,7 @@ function toListItemContainers(
 ): Record<string, ListItem[]> {
   return {
     [ICEBOX_COLUMN_ID]: (source[ICEBOX_COLUMN_ID] ?? []).map(wrapStory),
-    // Flattened by `position`, not by state (TASK-21) — the List view's
+    // Flattened by `position`, not by state — the List view's
     // current zone is one flat, priority-ordered list spanning every state
     // (see spec/screens.md "List view"); concatenating the physical Kanban
     // columns in state order would bucket by state instead.
@@ -153,8 +153,8 @@ function SortableListRow({ item, projectId }: { item: ListItem; projectId: strin
 
 // A freeform planning row: dashed border, muted label, delete button. Used
 // for both a user-created note (its own typed label) and a manual iteration
-// break (fixed "Iteration break" label) — TASK-9 unifies these into one
-// flush-left divider style (spec/screens.md "Indent distinction": "note/
+// break (fixed "Iteration break" label) — unified into one flush-left
+// divider style (spec/screens.md "Indent distinction": "note/
 // divider labels start flush at the list's left edge"); the break's own
 // number now lives on the `IterationHeaderRow` that follows it, not here.
 function DividerRow({ projectId, divider }: { projectId: string; divider: BacklogDivider }) {
@@ -180,13 +180,12 @@ function DividerRow({ projectId, divider }: { projectId: string; divider: Backlo
   );
 }
 
-// Inline-editable goal for a virtual (not-yet-real) iteration (Task 9,
-// spec/screens.md "Backlog groups": "commits on Enter like the iteration
+// Inline-editable goal for a virtual (not-yet-real) iteration
+// (spec/screens.md "Backlog groups": "commits on Enter like the iteration
 // bar's"). Enter is awaited and its failure caught here — never a
-// fire-and-forget `void` call — so a rejected save shows an inline error and
-// keeps what was typed instead of silently reverting (the bug Task 22 fixes
-// elsewhere in this codebase; this is new code, so it starts correct). Esc
-// reverts to the last server-confirmed value without saving.
+// fire-and-forget `void` call — so a rejected save shows an inline error
+// and keeps what was typed instead of silently reverting. Esc reverts to
+// the last server-confirmed value without saving.
 function IterationGoalInput({
   projectId,
   number,
@@ -255,13 +254,13 @@ function IterationGoalInput({
   );
 }
 
-// A virtual-iteration group header — always precedes its group's rows, even
-// for the very first (or a lone, never-split) group, and even when empty
-// (Task 9, replacing the old scheme where a group only got a trailing
-// marker once a *later* story crossed into the next one, so the first —
-// and a final — group could render with no label at all). Not draggable:
-// there's no backlog_dividers row behind it, only `buildBacklogRows`'
-// derived number/points.
+// A virtual-iteration group header — always precedes its group's rows,
+// even for the very first (or a lone, never-split) group, and even when
+// empty. Heading every group up front, rather than only once a *later*
+// story crosses into the next one, is what keeps the first — and a final
+// — group from rendering with no label at all. Not draggable: there's no
+// backlog_dividers row behind it, only `buildBacklogRows`' derived
+// number/points.
 function IterationHeaderRow({
   number,
   points,
@@ -308,8 +307,8 @@ function IterationHeaderRow({
 // `backlog_dividers` entry), so it can be reordered and deleted like any
 // other item. `iteration-header` rows are never passed here — they render
 // directly via `IterationHeaderRow` instead (see `BacklogSection`).
-// Indent distinction (spec/screens.md, Task 9): story rows sit slightly
-// right of note/iteration-break dividers, which stay flush at the left edge.
+// Indent distinction (spec/screens.md): story rows sit slightly right of
+// note/iteration-break dividers, which stay flush at the left edge.
 function SortableBacklogRow({
   row,
   projectId,
@@ -334,8 +333,8 @@ function SortableBacklogRow({
 }
 
 // Hover-revealed "insert a line here" affordance between two adjacent
-// Backlog rows (Task 15 follow-up — owner: appending then dragging wasn't
-// discoverable enough). `beforeItemId` is a `"story:<id>"` / `"divider:<id>"`
+// Backlog rows — appending then dragging into place wasn't discoverable
+// enough. `beforeItemId` is a `"story:<id>"` / `"divider:<id>"`
 // pair identifying the exact spot server-side (see board/actions.ts
 // "createBacklogDivider"); `null` means "at the end".
 function InsertBetweenRows({ projectId, beforeItemId }: { projectId: string; beforeItemId: string | null }) {
@@ -469,7 +468,7 @@ function ListSection({
       </header>
       {/* Kept mounted (not conditionally rendered) even while collapsed —
           dnd-kit's droppable ref must stay registered so a story can still
-          be dropped into this zone (Task 9). */}
+          be dropped into this zone. */}
       <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className={`flex min-h-10 flex-col gap-1.5 ${collapsed ? "hidden" : ""}`}>
           {items.map((item) => (
@@ -527,9 +526,9 @@ function BacklogSection({
   onToggleGroup,
   composer,
 }: {
-  // Full, unfiltered backlog (stories + dividers) — TASK-20: the virtual-
-  // iteration groups/point sums/dates below must reflect the true backlog
-  // regardless of `filter`, which only decides which *rows* get rendered.
+  // Full, unfiltered backlog (stories + dividers) — the virtual-iteration
+  // groups/point sums/dates below must reflect the true backlog regardless
+  // of `filter`, which only decides which *rows* get rendered.
   items: ListItem[];
   velocity: number;
   startingIterationNumber: number;
@@ -549,7 +548,7 @@ function BacklogSection({
   const rows = buildBacklogRows(rowItems, velocity, startingIterationNumber);
 
   // A story/note row is hidden while its group is collapsed, or (a story
-  // only) while it doesn't match the active filter (TASK-20). Headers and
+  // only) while it doesn't match the active filter. Headers and
   // break rows always render — collapsing only hides a group's *contents*,
   // and a break stays visible/deletable regardless of either neighbor's
   // group state.
@@ -616,8 +615,8 @@ function BacklogSection({
   );
 }
 
-// Icebox rendered as its own narrow side column (Task 15 follow-up) rather
-// than an inline stacked section — it's a pre-triage parking lot, not part
+// Icebox rendered as its own narrow side column rather than an inline
+// stacked section — it's a pre-triage parking lot, not part
 // of the priority order, so keeping it out of the main list lets the PO
 // focus purely on Current/Backlog priority (see spec/screens.md "Board
 // layout: List view").
@@ -667,7 +666,7 @@ export function BoardListView({
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
-  // Unfiltered (TASK-20) — see `filter` below, applied only at render.
+  // Unfiltered — see `filter` below, applied only at render.
   initialContainers: Record<string, BoardStory[]>;
   // Backlog stories and freeform planning rows, pre-merged and ordered
   // server-side (see board/page.tsx) since only the server has both tables'
@@ -676,8 +675,8 @@ export function BoardListView({
   velocity: number;
   nextVirtualIterationNumber: number;
   // Projected dates and draft goals for the Backlog's virtual-iteration
-  // group headers (Task 9) — `iterationGoals` is pre-scoped server-side to
-  // numbers above the current iteration's.
+  // group headers — `iterationGoals` is pre-scoped server-side to numbers
+  // above the current iteration's.
   iterationLength: number;
   iterationGoals: Record<number, string>;
   showIcebox: boolean;
@@ -778,7 +777,7 @@ export function BoardListView({
     // Reorders against the *full* zone (containers), not just what's
     // rendered under the active filter — active.id/over.id always belong to
     // visible rows, but relocating them within the full list is what keeps a
-    // hidden row's relative position intact (TASK-20).
+    // hidden row's relative position intact.
     const items = containers[overContainer];
     const reordered = reorderContainer(items, String(active.id), String(over.id));
 
@@ -792,7 +791,7 @@ export function BoardListView({
     formData.set("item_id", String(active.id));
     formData.set("target_zone", overContainer);
     reordered.forEach((item) => formData.append("ordered_ids", `${item.kind}:${item.id}`));
-    // TASK-22: awaited and caught — the server re-derives the move from the
+    // Awaited and caught — the server re-derives the move from the
     // story's *current* row (see dropStoryInList), so a stale client (e.g.
     // another user already accepted this story) gets a rejection here even
     // though the client-side isAllowedMove check above passed. Un-caught,
@@ -810,7 +809,7 @@ export function BoardListView({
   const iceboxItems = containers[ICEBOX_COLUMN_ID] ?? [];
   const currentItems = containers.current ?? [];
   const backlogItems = containers[BACKLOG_COLUMN_ID] ?? [];
-  // Point sum uses the full (unfiltered) current-zone items (TASK-20) — the
+  // Point sum uses the full (unfiltered) current-zone items — the
   // iteration bar's committed points must not shift with the active filter.
   const currentStoryItems = currentItems.filter((item): item is Extract<ListItem, { kind: "story" }> => item.kind === "story");
   const activeItem = activeId ? storyById(containers, activeId) : undefined;
@@ -821,8 +820,8 @@ export function BoardListView({
   const visibleCurrentItems = currentItems.filter(isVisible);
   const visibleIceboxItems = iceboxItems.filter(isVisible);
 
-  // Projected date range for a virtual iteration's group header (Task 9),
-  // derived from the current iteration's real end_date + the project's
+  // Projected date range for a virtual iteration's group header, derived
+  // from the current iteration's real end_date + the project's
   // iteration_length — null when there's no current iteration to project
   // from (shouldn't happen in tracker mode once ensureCurrentIteration has
   // run, but this component has no other fallback date to anchor on).

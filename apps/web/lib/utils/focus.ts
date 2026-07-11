@@ -24,8 +24,8 @@ export type FocusStory = {
  * The Focus-view column a story belongs to, or null if it doesn't belong in
  * this view at all (not in the current iteration, or Icebox/Backlog).
  * `rejected` groups into `in_progress` alongside started/finished/delivered
- * (TASK-15 decision 2026-07-09) rather than getting its own column — it
- * still needs the Restart transition, same reasoning as Kanban view's
+ * rather than getting its own column — it still needs the Restart
+ * transition, same reasoning as Kanban view's
  * Rejected column.
  */
 export function focusColumnForStory(

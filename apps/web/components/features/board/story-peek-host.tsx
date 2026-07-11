@@ -5,7 +5,7 @@ import type { StoryDetail } from "@/app/stories/[id]/actions";
 import { StoryPeek } from "./story-peek";
 
 // Keeps the peek mounted across a server refresh that can no longer find
-// the story (Task 12) — the board's own Realtime subscription
+// the story — the board's own Realtime subscription
 // (useProjectBoardRealtime) triggers a route refresh on *any* story change
 // in the project, including a delete, which would otherwise re-run
 // `getStoryDetail` server-side, get `null` back, and have the

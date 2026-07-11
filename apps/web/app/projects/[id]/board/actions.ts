@@ -84,8 +84,8 @@ export async function quickCreateStory(formData: FormData) {
 }
 
 /**
- * TASK-16.4: lazily generates any due recurring-story instances before a
- * free-mode board loads (spec/data-model.md "recurring_stories"), the
+ * Lazily generates any due recurring-story instances before a free-mode
+ * board loads (spec/data-model.md "recurring_stories"), the
  * free-mode counterpart of `ensureCurrentIteration` above. The actual due-
  * date math and the claim that prevents double-generation both live in the
  * `generate_recurring_stories` SECURITY DEFINER RPC — this wrapper only
@@ -113,9 +113,9 @@ export async function generateRecurringStories(projectId: string) {
 }
 
 /**
- * Free-mode quick-add (Task 14): creates a story directly in a custom
- * status column. `stories.state` stays at its default and is ignored in
- * free mode — the column is `custom_status_id`.
+ * Free-mode quick-add: creates a story directly in a custom status column.
+ * `stories.state` stays at its default and is ignored in free mode — the
+ * column is `custom_status_id`.
  */
 export async function quickCreateStoryFree(formData: FormData) {
   const projectId = String(formData.get("project_id"));
@@ -157,15 +157,15 @@ export async function quickCreateStoryFree(formData: FormData) {
 }
 
 /**
- * Free-mode drop (Task 14): any story may move to any of the project's
- * custom statuses — there is no state machine to validate against. Also
- * persists the order within the target column, and notifies Slack with the
- * status name (the free-mode equivalent of a state change).
+ * Free-mode drop: any story may move to any of the project's custom
+ * statuses — there is no state machine to validate against. Also persists
+ * the order within the target column, and notifies Slack with the status
+ * name (the free-mode equivalent of a state change).
  *
- * TASK-16.3: when the board has swimlanes, the client also sends
- * `swimlane_id` ("" = the No lane band). Its *absence* means this board has
- * no lanes at all, so the lane column is left untouched — that's how a
- * lanes-unaware drop is told apart from an explicit move into No lane.
+ * When the board has swimlanes, the client also sends `swimlane_id` ("" =
+ * the No lane band). Its *absence* means this board has no lanes at all,
+ * so the lane column is left untouched — that's how a lanes-unaware drop
+ * is told apart from an explicit move into No lane.
  */
 export async function dropStoryFree(formData: FormData) {
   const projectId = String(formData.get("project_id"));
@@ -328,8 +328,8 @@ export async function dropStory(formData: FormData) {
 }
 
 /**
- * Handles a Focus-view drop between Todo / This week / Today (TASK-15,
- * spec/screens.md "Focus view"). Unlike `dropStory`, this only ever sets or
+ * Handles a Focus-view drop between Todo / This week / Today (spec/screens.md
+ * "Focus view"). Unlike `dropStory`, this only ever sets or
  * clears `focus` — state and iteration_id are never touched here; state
  * changes go through the on-card transition buttons instead.
  */
@@ -531,13 +531,12 @@ async function persistBacklogOrder(
  * server-side to build the List view's initial row order (see
  * `lib/utils/iterations.ts` "buildBacklogRows").
  *
- * TASK-19: matches `zoneForStory`'s actual backlog definition (not
- * unscheduled, no iteration assigned) rather than the narrower
- * `state = "unstarted"` this used to require — that excluded a stray
- * story left `started` with `iteration_id: null` (see `transitionStory`)
- * from this order entirely, so `before_item_id` lookups for it always
- * missed (`findIndex` = -1) and new dividers silently appended at the end
- * instead of landing where the user dropped them.
+ * Matches `zoneForStory`'s actual backlog definition (not unscheduled, no
+ * iteration assigned) — a stray story left `started` with
+ * `iteration_id: null` (see `transitionStory`) must stay included here, or
+ * `before_item_id` lookups for it always miss (`findIndex` = -1) and new
+ * dividers silently append at the end instead of landing where the user
+ * dropped them.
  */
 async function fetchBacklogOrder(supabase: Awaited<ReturnType<typeof createClient>>, projectId: string) {
   const [{ data: stories }, { data: dividers }] = await Promise.all([
@@ -621,7 +620,7 @@ export async function deleteBacklogDivider(formData: FormData) {
  * the story's current state server-side rather than trusting the client so
  * a stale card can't force an invalid jump.
  *
- * TASK-19: the List view renders this button on every row, including
+ * The List view renders this button on every row, including
  * Backlog ones (a backlog story is `unstarted`, whose only action is
  * Start) — so unlike the physical Kanban board, this can transition a
  * story that has no iteration assigned yet. Starting/restarting such a
@@ -703,11 +702,10 @@ function parseFinalizeEvents(raw: unknown): FinalizeIterationEvent[] {
   );
 }
 
-// Replays the ordered events a finalize_iteration call reports (TASK-10) as
-// the same Slack notifications the old per-loop-iteration TS logic fired —
-// one per finalized/started iteration, in order, so a multi-sprint catch-up
-// doesn't lose the intermediate ones the way just diffing before/after
-// iteration numbers would.
+// Replays the ordered events a finalize_iteration call reports as Slack
+// notifications — one per finalized/started iteration, in order, so a
+// multi-sprint catch-up doesn't lose the intermediate ones the way just
+// diffing before/after iteration numbers would.
 function notifyFinalizeEvents(projectId: string, events: FinalizeIterationEvent[]) {
   for (const event of events) {
     if (event.kind === "finalized") {
@@ -725,7 +723,7 @@ function notifyFinalizeEvents(projectId: string, events: FinalizeIterationEvent[
  * open to any project member, including viewers, since it's system
  * maintenance triggered by reads.
  *
- * TASK-10: the actual finalize/rollover work lives in the shared
+ * The actual finalize/rollover work lives in the shared
  * `finalize_iteration` SECURITY DEFINER RPC (advisory-locked, idempotent —
  * spec/velocity.md "Finalization concurrency"), not here. This wrapper does
  * a cheap pre-check so an already-current project skips the RPC call (and
@@ -806,8 +804,8 @@ export async function updateIterationGoal(formData: FormData) {
 
 /**
  * Sets or clears the goal for a *virtual* (not-yet-real) future iteration,
- * edited inline on its Backlog group header (Task 9, spec/screens.md
- * "Backlog groups"). `iteration_goals.goal` is NOT NULL, so an empty commit
+ * edited inline on its Backlog group header (spec/screens.md "Backlog
+ * groups"). `iteration_goals.goal` is NOT NULL, so an empty commit
  * deletes the row outright rather than storing an empty string — adopted
  * into the real `iterations.goal` on rollover (see `ensureCurrentIteration`
  * above) once that number's row is created.

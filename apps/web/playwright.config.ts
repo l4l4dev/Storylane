@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Local-only E2E config (Task 13, TASK-2). Requires `supabase start` to
+// Local-only E2E config. Requires `supabase start` to
 // already be running (the test talks to the local Supabase instance
 // directly for setup — see e2e/helpers/admin-client.ts) and reads
 // SUPABASE_SERVICE_ROLE_KEY / NEXT_PUBLIC_SUPABASE_URL from .env.local.

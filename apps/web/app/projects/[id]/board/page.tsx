@@ -41,8 +41,8 @@ export default async function BoardPage({
     notFound();
   }
 
-  // Task 14: free-mode projects get the Trello-style board — no iterations,
-  // so the lazy rollover below must never run for them.
+  // Free-mode projects get the Trello-style board — no iterations, so the
+  // lazy rollover below must never run for them.
   if (project.workflow_mode === "free") {
     return (
       <FreeBoardPage projectId={project.id} type={type} assignee={assignee} label={label} peekStoryId={peekStoryId} />
@@ -77,7 +77,7 @@ export default async function BoardPage({
       // freeform planning dividers for the Backlog section.
       supabase.from("backlog_dividers").select("id, label, kind, position").eq("project_id", id),
       // Draft goals for virtual (not-yet-real) future iterations, edited
-      // inline on the Backlog's group headers (Task 9). Small table (at
+      // inline on the Backlog's group headers. Small table (at
       // most one row per virtual iteration with a goal set) — cheaper to
       // fetch everything and filter to `number > currentIteration.number`
       // below than to await `currentIteration` first for a second query.
@@ -87,7 +87,7 @@ export default async function BoardPage({
   const storyPositionById = new Map((stories ?? []).map((s) => [s.id, s.position]));
 
   const allIterations: IterationMeta[] = iterations ?? [];
-  // TASK-10: the current iteration is whichever non-done row
+  // The current iteration is whichever non-done row
   // ensureCurrentIteration's finalize_iteration RPC just left in place — not
   // "starts on or before today" (isCurrentIteration). A manually-finished
   // iteration's successor starts *tomorrow*, so requiring date coverage left
@@ -131,12 +131,13 @@ export default async function BoardPage({
       return card;
     });
 
-  // Containers are built from every card, unfiltered (TASK-20): filters only
-  // hide rows visually (applied client-side — see KanbanBoard/BoardListView).
-  // Bucketing the pre-filtered set here used to make a filtered drag persist
+  // Containers are built from every card, unfiltered — filters only hide
+  // rows visually (applied client-side — see KanbanBoard/BoardListView).
+  // Bucketing a pre-filtered set instead would make a filtered drag persist
   // a dense 0..n-1 position across only the visible subset, corrupting
-  // hidden stories' positions, and made the virtual-iteration groups/point
-  // sums/committed-points shift with whatever filter happened to be active.
+  // hidden stories' positions, and would make the virtual-iteration
+  // groups/point sums/committed-points shift with whatever filter happened
+  // to be active.
   const filter = { type, assigneeId: assignee, labelId: label };
   const initialContainers: Record<string, BoardStory[]> = {
     [BACKLOG_COLUMN_ID]: [],
@@ -238,9 +239,9 @@ export default async function BoardPage({
   );
 }
 
-// Free-mode board page (Task 14): columns are the project's custom
-// statuses; stories are grouped by `custom_status_id`. No iterations,
-// velocity, backlog, or Icebox. Filters and the side peek work the same.
+// Free-mode board page: columns are the project's custom statuses;
+// stories are grouped by `custom_status_id`. No iterations, velocity,
+// backlog, or Icebox. Filters and the side peek work the same.
 async function FreeBoardPage({
   projectId,
   type,
@@ -256,8 +257,8 @@ async function FreeBoardPage({
 }) {
   const supabase = await createClient();
 
-  // TASK-16.4: lazily generate any due recurring-story instances before
-  // reading stories below — must run first, same ordering constraint as
+  // Lazily generate any due recurring-story instances before reading
+  // stories below — must run first, same ordering constraint as
   // ensureCurrentIteration above for tracker mode.
   await generateRecurringStories(projectId);
 

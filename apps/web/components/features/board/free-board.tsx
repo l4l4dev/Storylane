@@ -56,19 +56,19 @@ export type CustomStatus = {
   wip_limit: number | null;
 };
 
-// TASK-16.3: an optional horizontal lane (spec/screens.md "Swimlanes").
+// An optional horizontal lane (spec/screens.md "Swimlanes").
 export type Swimlane = {
   id: string;
   name: string;
   position: number;
 };
 
-// TASK-16.1: is_done columns show when each card was completed, grouped
-// under date headers — completed_at is DB-trigger-maintained (see
+// is_done columns show when each card was completed, grouped under date
+// headers — completed_at is DB-trigger-maintained (see
 // 20260709000005_free_mode_completed_at.sql), set whenever a story moves
-// into an is_done column, cleared when it moves out.
-// TASK-16.3: also carries swimlane_id so a lane-less board can be told
-// apart from a card explicitly sitting in the No lane band.
+// into an is_done column, cleared when it moves out. Also carries
+// swimlane_id so a lane-less board can be told apart from a card
+// explicitly sitting in the No lane band.
 type FreeStoryCardData = StoryCardData & { completed_at: string | null; swimlane_id: string | null };
 
 function todayLocalDateKey(): string {
@@ -81,7 +81,7 @@ function localDateKey(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// Free-mode board (Task 14, spec/screens.md): a pure Trello-style kanban.
+// Free-mode board (spec/screens.md): a pure Trello-style kanban.
 // Columns come from the project's `custom_statuses` rows, any card can move
 // to any column (no state machine), and there is no iteration bar, List
 // view, or Icebox. Shares the drag scaffolding conventions of
@@ -95,7 +95,7 @@ export function FreeBoard({
 }: {
   projectId: string;
   statuses: CustomStatus[];
-  // TASK-16.3: when non-empty, `initialContainers` is keyed by
+  // When non-empty, `initialContainers` is keyed by
   // `laneContainerKey(statusId, laneId)` instead of a bare status id.
   lanes: Swimlane[];
   initialContainers: Record<string, FreeStoryCardData[]>;
@@ -193,9 +193,9 @@ export function FreeBoard({
       formData.set("swimlane_id", laneId ?? "");
     }
     reordered.forEach((s) => formData.append("ordered_ids", s.id));
-    // TASK-22: awaited and caught so a failed/RLS-filtered write reverts
-    // the optimistic move and surfaces an error instead of leaving the
-    // card in a column the server never actually applied.
+    // Awaited and caught so a failed/RLS-filtered write reverts the
+    // optimistic move and surfaces an error instead of leaving the card in
+    // a column the server never actually applied.
     startTransition(async () => {
       try {
         await dropStoryFree(formData);
@@ -253,8 +253,8 @@ export function FreeBoard({
 
 // Column header content (dot, name, count/limit, points, WIP menu) — shared
 // between the single-band board's per-column header and the lanes layout's
-// column-header row (TASK-16.3), where it's rendered once for the whole
-// column and `stories` is the sum across every lane band.
+// column-header row, where it's rendered once for the whole column and
+// `stories` is the sum across every lane band.
 function ColumnHeaderContent({
   status,
   stories,
@@ -265,8 +265,8 @@ function ColumnHeaderContent({
   projectId: string;
 }) {
   const points = sumPoints(stories);
-  // TASK-16.2: a soft WIP limit — over it is purely a warning color, drops
-  // are never blocked (spec/screens.md "Free mode board").
+  // A soft WIP limit — over it is purely a warning color, drops are never
+  // blocked (spec/screens.md "Free mode board").
   const overWipLimit = isOverWipLimit(stories.length, status.wip_limit);
 
   return (
@@ -293,7 +293,7 @@ function FreeColumn({
 }) {
   const { setNodeRef } = useDroppable({ id: status.id });
 
-  // TASK-16.1: is_done columns group their cards under date headers
+  // is_done columns group their cards under date headers
   // (Today/Yesterday/date), newest first — still one flat SortableContext
   // (headers interspersed, same pattern as the Backlog's virtual-iteration
   // groups in board-list-view.tsx) so cards stay draggable in and out, per
@@ -339,7 +339,7 @@ function FreeColumn({
   );
 }
 
-// TASK-16.3: the lanes layout (spec/screens.md "Swimlanes") — a column
+// The lanes layout (spec/screens.md "Swimlanes") — a column
 // header row rendered once, then one horizontal band per lane stacked below
 // it, each holding its own per-column droppable cell. The No lane band is
 // always shown first, even when empty, so it's always a valid drop target
@@ -429,10 +429,9 @@ function LaneCell({
 }) {
   const { setNodeRef } = useDroppable({ id: laneContainerKey(status.id, laneId) });
 
-  // Same per-cell date grouping as the single-band board's is_done columns
-  // (TASK-16.1) — decided per TASK-16.3 to group within each lane band
-  // rather than across the whole column, since spec/screens.md doesn't
-  // define how the two interact.
+  // Same per-cell date grouping as the single-band board's is_done
+  // columns — grouped within each lane band rather than across the whole
+  // column, since spec/screens.md doesn't define how the two interact.
   const doneGroups = status.is_done
     ? groupDoneStories(
         stories.map((story) => ({
@@ -489,7 +488,7 @@ function SortableFreeCard({ story, projectId }: { story: FreeStoryCardData; proj
   );
 }
 
-// TASK-16.2: "Configured from the column header menu" (spec/screens.md) —
+// "Configured from the column header menu" (spec/screens.md) —
 // a small kebab menu next to the count/limit, not the Settings status
 // editor. Soft limit only: this only ever writes wip_limit, never touches
 // drag/drop validation.

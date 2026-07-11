@@ -31,7 +31,7 @@ const WEEKDAYS = [
   { value: 6, label: "Saturday" },
 ];
 
-// TASK-16.4: title/description/target column/target lane/cadence, matching
+// Title/description/target column/target lane/cadence, matching
 // spec/screens.md "Recurring stories" — target column excludes is_done
 // columns (spec/data-model.md "a card must not be born completed"), and the
 // weekday/day-of-month input swaps in only for the cadence that needs it.

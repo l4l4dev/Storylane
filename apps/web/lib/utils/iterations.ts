@@ -86,7 +86,7 @@ export function splitBacklogIntoVirtualIterations<T extends BacklogStoryForMarke
   return groups;
 }
 
-// Two kinds of freeform backlog row (Task 15 follow-up: `backlog_dividers`).
+// Two kinds of freeform backlog row (`backlog_dividers`).
 // `note` is purely cosmetic. `iteration_break` forces a velocity-group
 // boundary at that exact point — an escape hatch on top of the automatic,
 // capacity-based split below, for when the PO wants "iteration 2 ends here"
@@ -106,14 +106,14 @@ export type BacklogRow<T> =
   | { kind: "iteration-break"; divider: BacklogDivider };
 
 /**
- * Interleaves the backlog's stories and freeform rows (Task 15 follow-up)
- * into one render-ready row sequence, with every virtual-iteration group
- * headed by its own numbered header row (Task 9, spec/screens.md "Backlog
- * groups") — starting at `startingIterationNumber`, even for a lone group
- * that never splits. This replaces the old scheme where a group only got a
- * trailing marker once a *later* story crossed into the next group, so the
- * very first group (and a final group with nothing after it) rendered with
- * no label at all.
+ * Interleaves the backlog's stories and freeform rows into one
+ * render-ready row sequence, with every virtual-iteration group headed by
+ * its own numbered header row (spec/screens.md "Backlog groups") —
+ * starting at `startingIterationNumber`, even for a lone group that never
+ * splits. Heading every group up front, rather than only once a *later*
+ * story crosses into the next one, is what keeps the very first group —
+ * and a final group with nothing after it — from rendering with no label
+ * at all.
  *
  * Two passes: first walk the items exactly like
  * `splitBacklogIntoVirtualIterations` — a `note` joins whichever group it

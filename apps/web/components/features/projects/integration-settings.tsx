@@ -10,8 +10,8 @@ export type IntegrationRow = {
   is_active: boolean;
 };
 
-// Task 12: per-provider integration forms (see spec/integrations.md).
-// Rendered only for project owners — the integrations RLS is owner-only
+// Per-provider integration forms (see spec/integrations.md). Rendered
+// only for project owners — the integrations RLS is owner-only
 // since config holds secrets. Plain forms + server actions, so this stays
 // a Server Component.
 export function IntegrationSettings({

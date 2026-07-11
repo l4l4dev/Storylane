@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 
 export type CustomStatusRow = { id: string; name: string; color: string; position: number; is_done: boolean };
 
-// Task 14: board-column management for free-mode projects — rename, color,
+// Board-column management for free-mode projects — rename, color,
 // "counts as done" flag, one-step reorder, delete (blocked by the DB while
 // stories still reference the status), and an add row at the bottom. Plain
 // forms + server actions, so this stays a Server Component.

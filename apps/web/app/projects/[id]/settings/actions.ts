@@ -161,7 +161,7 @@ export async function deleteLabel(formData: FormData) {
   revalidatePath(`/projects/${projectId}/settings`);
 }
 
-// ---- Custom statuses (Task 14, free-mode projects only) ----
+// ---- Custom statuses (free-mode projects only) ----
 
 export async function createCustomStatus(formData: FormData) {
   const projectId = String(formData.get("project_id"));
@@ -236,8 +236,8 @@ export async function deleteCustomStatus(formData: FormData) {
 }
 
 /**
- * TASK-16.2: sets or clears a column's WIP limit — configured from the
- * board's column header menu (spec/screens.md "Free mode board"), not the
+ * Sets or clears a column's WIP limit — configured from the board's
+ * column header menu (spec/screens.md "Free mode board"), not the
  * Settings status editor, but still a custom_statuses mutation like its
  * siblings above. A soft limit only: this never blocks a drop, it just
  * changes what the board renders as a warning past the count.
@@ -307,8 +307,8 @@ export async function moveCustomStatus(formData: FormData) {
   revalidatePath(`/projects/${projectId}/board`);
 }
 
-// TASK-16.3: swimlane CRUD, mirroring the custom_statuses actions above —
-// same composite-FK-blocks-delete pattern (see the swimlanes migration).
+// Swimlane CRUD, mirroring the custom_statuses actions above — same
+// composite-FK-blocks-delete pattern (see the swimlanes migration).
 export async function createLane(formData: FormData) {
   const projectId = String(formData.get("project_id"));
   const name = String(formData.get("name") ?? "").trim();
@@ -436,9 +436,9 @@ function parseRecurringCadence(formData: FormData): {
   return { cadence, weekday: null, day_of_month: null };
 }
 
-// TASK-16.4: recurring-story rule CRUD, free-mode Settings only. Generation
-// itself never runs here — it's the generate_recurring_stories RPC, called
-// lazily on board access (see apps/web/app/projects/[id]/board/actions.ts).
+// Recurring-story rule CRUD, free-mode Settings only. Generation itself
+// never runs here — it's the generate_recurring_stories RPC, called lazily
+// on board access (see apps/web/app/projects/[id]/board/actions.ts).
 export async function createRecurringStory(formData: FormData) {
   const projectId = String(formData.get("project_id"));
   const title = String(formData.get("title") ?? "").trim();
@@ -519,9 +519,9 @@ const INTEGRATION_PROVIDERS = ["github", "forgejo", "slack"] as const;
 type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 
 /**
- * Creates or updates a project's integration for one provider (Task 12 —
- * see spec/integrations.md for the config shape per provider). RLS limits
- * this to project owners; one row per (project_id, provider).
+ * Creates or updates a project's integration for one provider (see
+ * spec/integrations.md for the config shape per provider). RLS limits this
+ * to project owners; one row per (project_id, provider).
  */
 export async function saveIntegration(formData: FormData) {
   const projectId = String(formData.get("project_id"));

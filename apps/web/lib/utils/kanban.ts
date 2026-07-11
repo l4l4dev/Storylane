@@ -81,11 +81,11 @@ export function evaluateDrop(
 
   if (to === ICEBOX_COLUMN_ID) {
     // Demoting to the Icebox is only meaningful for not-yet-started work —
-    // checked on the story's actual state, not its origin column (TASK-19):
-    // a story stuck `started` with no iteration still shows up in the
-    // Backlog column (columnForStory falls through to it whenever
-    // iteration_id doesn't match current), and `from === BACKLOG_COLUMN_ID`
-    // alone used to demote it to the Icebox unconditionally, silently
+    // checked on the story's actual state, not its origin column: a story
+    // stuck `started` with no iteration still shows up in the Backlog
+    // column (columnForStory falls through to it whenever iteration_id
+    // doesn't match current), so checking `from === BACKLOG_COLUMN_ID`
+    // alone would demote it to the Icebox unconditionally, silently
     // discarding its in-progress state.
     if (story.state === "unstarted") {
       return { ok: true, state: "unscheduled", iteration: "none" };
@@ -176,10 +176,10 @@ export function evaluateListDrop(
   }
 
   if (to === ICEBOX_COLUMN_ID) {
-    // Checked on state alone, regardless of origin zone (TASK-19) — a
-    // story stuck `started` with no iteration still shows up in the
-    // Backlog zone (zoneForStory falls through to it whenever iteration_id
-    // doesn't match current); `from === BACKLOG_COLUMN_ID` alone used to
+    // Checked on state alone, regardless of origin zone — a story stuck
+    // `started` with no iteration still shows up in the Backlog zone
+    // (zoneForStory falls through to it whenever iteration_id doesn't
+    // match current), so checking `from === BACKLOG_COLUMN_ID` alone would
     // demote it to the Icebox unconditionally, discarding its progress.
     if (story.state === "unstarted") {
       return { ok: true, state: "unscheduled", iteration: "none" };
@@ -208,12 +208,11 @@ export function evaluateListDrop(
 }
 
 /**
- * Merges the current iteration's per-state-column buckets into one flat list
- * ordered by `position` (TASK-21) — matching spec/screens.md "List view":
- * "every state ... in one flat, priority-ordered list". Concatenating the
- * buckets in `STATE_COLUMNS` order (as the List view used to) instead
- * produces a state-bucketed order, wrongly rendering e.g. a `started` story
- * below an `unstarted` one at a lower position.
+ * Merges the current iteration's per-state-column buckets into one flat
+ * list ordered by `position`, matching spec/screens.md "Board layout: List
+ * view". Concatenating the buckets in `STATE_COLUMNS` order instead
+ * produces a state-bucketed order, wrongly rendering e.g. a `started`
+ * story below an `unstarted` one at a lower position.
  */
 export function flattenCurrentZone<T extends { position: number }>(
   containers: Record<string, ReadonlyArray<T>>,

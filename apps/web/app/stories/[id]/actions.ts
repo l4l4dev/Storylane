@@ -20,7 +20,7 @@ export type StoryDetail = {
   assigneeId: string | null;
   labelIds: string[];
   pointScale: number[];
-  // Task 14: free-mode projects swap the state machine for custom statuses.
+  // Free-mode projects swap the state machine for custom statuses.
   workflowMode: "tracker" | "free";
   customStatusId: string | null;
   customStatuses: { id: string; name: string }[];
@@ -119,8 +119,8 @@ export type UpdateStoryInput = {
   points: number | null;
   epicId: string | null;
   assigneeId: string | null;
-  // Free-mode-only (Task 14); null leaves the column unchanged — see the
-  // update_story RPC's coalesce.
+  // Free-mode-only; null leaves the column unchanged — see the update_story
+  // RPC's coalesce.
   customStatusId: string | null;
   labelIds: string[];
 };
@@ -145,8 +145,8 @@ export type UpdateStoryResult =
   | { ok: false; reason: "error"; message: string };
 
 /**
- * Autosave entry point for the story detail form (Task 12,
- * spec/screens.md "Conflict & failure rules") — called directly from
+ * Autosave entry point for the story detail form (spec/screens.md
+ * "Conflict & failure rules") — called directly from
  * `StoryDetailPanel`'s client-side save orchestrator, not a `<form action>`,
  * since each field save needs its own typed result rather than an
  * unstructured FormData throw. All validation (empty title, points against

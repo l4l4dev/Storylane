@@ -42,8 +42,8 @@ function summaryLine(project: ProjectCardData): string | null {
   return `${project.columnCount ?? 0} columns · ${project.openCardCount ?? 0} open cards`;
 }
 
-// TASK-7 (spec/screens.md "Projects page"). Archive/favorite/search/sort
-// controls are TASK-8's scope, not added here.
+// spec/screens.md "Projects page". Archive/favorite/search/sort controls
+// live in ProjectGrid, not added here.
 export function ProjectCard({ project }: { project: ProjectCardData }) {
   const visibleMembers = project.members.slice(0, MAX_VISIBLE_AVATARS);
   const overflowCount = project.members.length - visibleMembers.length;

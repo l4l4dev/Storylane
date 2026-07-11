@@ -176,8 +176,8 @@ export function KanbanColumnsBoard({
   currentIteration: IterationMeta | null;
   // Keyed by KanbanColumnId: only the state-column buckets are read here —
   // this same object's backlog/icebox buckets are what `BoardListView` reads.
-  // Unfiltered (TASK-20) — see `visibleContainers` below for the rendered,
-  // filtered view.
+  // Unfiltered — see `visibleContainers` below for the rendered, filtered
+  // view.
   initialContainers: Record<string, BoardStory[]>;
   filter: StoryFilter;
 }) {
@@ -197,7 +197,7 @@ export function KanbanColumnsBoard({
 
   // Rendered (visible) view only — `containers` itself stays the full,
   // unfiltered set so drag math (below) and the top bar's committed points
-  // (KanbanBoard) never depend on which filter is active (TASK-20).
+  // (KanbanBoard) never depend on which filter is active.
   const visibleContainers: Record<string, BoardStory[]> = {};
   for (const [column, stories] of Object.entries(containers)) {
     visibleContainers[column] = stories.filter((story) => matchesStoryFilter(story, filter));
@@ -282,7 +282,7 @@ export function KanbanColumnsBoard({
     // Reorders against the *full* column (containers), not just what's
     // rendered under the active filter — active.id/over.id always belong to
     // visible rows, but relocating them within the full list is what keeps a
-    // hidden row's relative position intact (TASK-20).
+    // hidden row's relative position intact.
     const items = containers[overContainer];
     const reordered = reorderContainer(items, String(active.id), String(over.id));
 
@@ -294,8 +294,8 @@ export function KanbanColumnsBoard({
     formData.set("story_id", String(active.id));
     formData.set("target_column", overContainer);
     reordered.forEach((s) => formData.append("ordered_ids", s.id));
-    // TASK-22: awaited and caught — the server re-derives the transition
-    // from the story's *current* state (see dropStory), so a stale client
+    // Awaited and caught — the server re-derives the transition from the
+    // story's *current* state (see dropStory), so a stale client
     // (e.g. another user already accepted this story) gets a rejection
     // here even though the client-side isAllowedMove check above passed.
     // Un-caught, the optimistic reorder above would never be reverted.
@@ -310,7 +310,7 @@ export function KanbanColumnsBoard({
   }
 
   // Based on the visible set — an empty column that only has content hidden
-  // by the active filter shouldn't clutter the board (TASK-20).
+  // by the active filter shouldn't clutter the board.
   const showRejected = (visibleContainers.rejected ?? []).length > 0;
   const activeStory = activeId ? storyById(containers, activeId) : undefined;
 

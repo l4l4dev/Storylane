@@ -56,14 +56,14 @@ export function sumPoints(stories: ReadonlyArray<PointedStory>): number {
 
 /**
  * Whether a free-mode column's card count has passed its WIP limit
- * (TASK-16.2, spec/screens.md "Free mode board") — a soft limit, purely a
- * display warning; `null` means no limit is set.
+ * (spec/screens.md "Free mode board") — a soft limit, purely a display
+ * warning; `null` means no limit is set.
  */
 export function isOverWipLimit(count: number, wipLimit: number | null): boolean {
   return wipLimit != null && count > wipLimit;
 }
 
-// TASK-16.3: when a free-mode board has swimlanes, each board cell is a
+// When a free-mode board has swimlanes, each board cell is a
 // column x lane pair. `::` never appears in a UUID, so this composite key
 // can't collide with a bare status id (the no-lanes container key) or a
 // story id, letting findContainer/storyById below work unchanged.
@@ -118,8 +118,8 @@ export function storyById<T extends { id: string }>(
  * Moves the item `activeId` to sit where `overId` currently sits — the same
  * single-element relocation dnd-kit's own `arrayMove` performs (replicated
  * here to keep this module framework-free), exposed as a pure helper so
- * callers always run it against a container's *full*, unfiltered item list
- * (TASK-20). `activeId`/`overId` only ever come from currently-rendered
+ * callers always run it against a container's *full*, unfiltered item
+ * list. `activeId`/`overId` only ever come from currently-rendered
  * (visible) rows, but indexing into the full list still finds them
  * correctly, and relocating just the dragged item leaves every other item —
  * hidden by an active filter or not — in the same relative order, so no two

@@ -11,7 +11,7 @@ import { CommentThread } from "./comment-thread";
 import { TaskChecklist } from "./task-checklist";
 import { TransitionButtons } from "./transition-buttons";
 
-// The story fields this panel edits inline (Task 12) — everything else on
+// The story fields this panel edits inline — everything else on
 // `StoryDetail` (comments, tasks, epics/labels/members lists, workflowMode,
 // state, number, pointScale) is read-only display data the panel always
 // takes fresh from the latest `detail` prop, never locked.
@@ -240,8 +240,8 @@ export function StoryDetailPanel({
     void runSave();
   }
 
-  // Task 11/12: Realtime keeps this story's fields, and its comment thread,
-  // in sync with other users — fields merge only into unlocked ones; a
+  // Realtime keeps this story's fields, and its comment thread, in sync
+  // with other users — fields merge only into unlocked ones; a
   // DELETE switches to the "story was deleted" state (spec/screens.md).
   useStoryRealtime(
     detail.id,
@@ -311,7 +311,7 @@ export function StoryDetailPanel({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
-        {/* Task 14: free-mode projects have no state machine — the status is
+        {/* Free-mode projects have no state machine — the status is
             a plain select in the form below instead of transition buttons. */}
         {detail.workflowMode === "tracker" ? (
           <TransitionButtons

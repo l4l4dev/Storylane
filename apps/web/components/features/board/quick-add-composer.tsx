@@ -5,21 +5,21 @@ import { Plus } from "lucide-react";
 import { quickCreateStory, quickCreateStoryFree } from "@/app/projects/[id]/board/actions";
 import { Input } from "@/components/ui/input";
 
-// Pivotal-mode targets, or a free-mode custom status column (Task 14).
+// Pivotal-mode targets, or a free-mode custom status column.
 export type QuickAddTarget =
   | "backlog"
   | "icebox"
   | "unstarted"
   | { customStatusId: string };
 
-// Quick-add composer (TASK-11, spec/screens.md "Quick-add composer"): the
+// Quick-add composer (spec/screens.md "Quick-add composer"): the
 // "+ Add story" trigger stays visible and unchanged — clicking it reveals a
 // separate card-shaped composer beneath it, rather than the trigger
-// morphing into an input in place (the old behavior, which "felt broken").
-// Enter creates the story with defaults and keeps the composer open for
-// consecutive adds; Esc or a click outside closes it (discarding whatever
-// was typed); an empty Enter is a no-op. No modal, no navigation — every
-// other field is edited afterwards in the story detail.
+// morphing into an input in place. Enter creates the story with defaults
+// and keeps the composer open for consecutive adds; Esc or a click outside
+// closes it (discarding whatever was typed); an empty Enter is a no-op.
+// No modal, no navigation — every other field is edited afterwards in the
+// story detail.
 //
 // `compact` (List view section headers) renders the trigger as a small text
 // link instead of the full dashed box — those headers are a single-line
@@ -64,10 +64,10 @@ export function QuickAddComposer({
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [open]);
 
-  // TASK-22: the typed title is kept until creation actually succeeds — it
-  // used to be cleared optimistically before the (void, unawaited) action
-  // call, so a failure (e.g. "No active iteration", a DB error) lost the
-  // text with no story created and no feedback.
+  // The typed title is kept until creation actually succeeds. Clearing it
+  // optimistically before the (void, unawaited) action call would lose the
+  // text on failure (e.g. "No active iteration", a DB error) — no story
+  // created and no feedback.
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = title.trim();

@@ -16,20 +16,17 @@ import { signOut } from "./actions";
  * Exported at module scope — rather than nested in the page component like
  * this file's other `fetchX` helpers — so it can be unit tested directly,
  * and so a batched `Promise.all` over many projects never rejects because
- * of a single project's rollover failure (see final code review finding on
- * this file: previously the whole `/dashboard` page 500'd for every
- * project when even one project's rollover failed). The project's card
- * simply falls back to whatever iteration data was already fetched
- * (possibly stale by one rollover) instead of crashing the page.
+ * of a single project's rollover failure. The project's card simply falls
+ * back to whatever iteration data was already fetched (possibly stale by
+ * one rollover) instead of crashing the page.
  */
 /**
  * Tracker projects that should be rolled over on this page load — excludes
  * archived ones. Without this, visiting `/dashboard` would call
  * `ensureCurrentIteration` on every tracker project unconditionally,
  * creating a new empty iteration in an archived project each time anyone
- * viewed the page — exactly the app-driven write this task's read-only
- * scoping (Move/Copy checks + this UI's own gating) is supposed to prevent
- * (fable-advisor finding, TASK-8).
+ * viewed the page — exactly the app-driven write the read-only scoping
+ * (Move/Copy checks + this UI's own gating) is supposed to prevent.
  */
 export function projectsNeedingRollover<T extends { archived_at: string | null }>(
   trackerProjects: readonly T[],
@@ -51,8 +48,8 @@ export default async function DashboardPage({
   searchParams: Promise<{ invite_failed?: string }>;
 }) {
   const { invite_failed } = await searchParams;
-  // TASK-25 follow-up: only render the banner for a genuine positive
-  // integer — a crafted/garbled query param renders nothing instead of a
+  // Only render the banner for a genuine positive integer — a
+  // crafted/garbled query param renders nothing instead of a
   // nonsensical message (React already escapes it, so this is a validity
   // guard, not an XSS fix).
   const inviteFailedCount = invite_failed ? Number.parseInt(invite_failed, 10) : NaN;

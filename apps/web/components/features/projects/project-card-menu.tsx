@@ -20,10 +20,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-// TASK-8 (spec/screens.md "Projects page"): ProjectCard's interactive
-// bits, split into their own client component so ProjectCard itself stays
-// a Server Component (matches the InlineCreatePanel/ProjectCard split
-// from TASK-7).
+// ProjectCard's interactive bits (spec/screens.md "Projects page"), split
+// into their own client component so ProjectCard itself stays a Server
+// Component (matches the InlineCreatePanel/ProjectCard split).
 export function ProjectCardMenu({
   projectId,
   projectName,

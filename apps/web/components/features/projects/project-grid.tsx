@@ -12,10 +12,9 @@ const SORT_OPTIONS: { value: ProjectSort; label: string }[] = [
   { value: "created", label: "Created" },
 ];
 
-// TASK-8 (spec/screens.md "Projects page"): owns the search/sort/archived
-// filter UI state and applies filterAndSortProjects client-side over the
-// already-fetched project list (same scale assumption as TASK-7 — no new
-// server query per keystroke).
+// Owns the search/sort/archived filter UI state (spec/screens.md "Projects
+// page") and applies filterAndSortProjects client-side over the
+// already-fetched project list — no new server query per keystroke.
 export function ProjectGrid({ projects }: { projects: ProjectCardData[] }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<ProjectSort>("updated");

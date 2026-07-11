@@ -14,13 +14,12 @@ import {
   type StoryNotificationRow,
 } from "@/lib/utils/notifications";
 
-// Task 11 (Realtime Collaboration): subscribes to Postgres Changes so other
-// users' edits are reflected without a manual page refresh. Debounces
-// `callback` (default 400ms) so a burst of related row changes — e.g. a drag
-// reorder touching many `stories.position` values — triggers one refresh
-// instead of one per row.
+// Subscribes to Postgres Changes so other users' edits are reflected
+// without a manual page refresh. Debounces `callback` (default 400ms) so a
+// burst of related row changes — e.g. a drag reorder touching many
+// `stories.position` values — triggers one refresh instead of one per row.
 //
-// Overloaded (Task 12) rather than a single `<T = void>` generic: a plain
+// Overloaded rather than a single `<T = void>` generic: a plain
 // `() => void` callback must get back a plain `() => void` (not a
 // `(arg: void) => void`, which the Realtime SDK's `.on("postgres_changes",
 // ...)` overload resolution doesn't structurally match, silently falling
@@ -74,7 +73,7 @@ function useRealtimeChannel(topic: string, register: (channel: RealtimeChannel) 
 // Subscribes to all story and planning-divider changes within a project —
 // used by the board to keep its views (List zones / Kanban columns) in sync
 // with other users' moves, state transitions, creations/deletions, and
-// backlog divider edits (Task 15).
+// backlog divider edits.
 export function useProjectBoardRealtime(projectId: string, onChange: () => void) {
   const debouncedOnChange = useDebouncedCallback(onChange, 400);
 
@@ -106,23 +105,22 @@ export type StoryRealtimeRow = {
   custom_status_id: string | null;
 };
 
-// Subscribes to a single story's row plus its comment thread (Task 11;
-// split into three distinct signals for Task 12's per-field autosave lock —
-// spec/screens.md "Conflict & failure rules"):
+// Subscribes to a single story's row plus its comment thread — split into
+// three distinct signals for the per-field autosave lock (spec/screens.md
+// "Conflict & failure rules"):
 //   - `onFieldsChanged` gets the full new row on every UPDATE (including our
 //     own save's echo — the caller's per-field lock makes that a no-op, see
 //     StoryDetailPanel) so it can merge into whichever fields aren't locked.
 //   - `onDeleted` fires on DELETE — the panel switches to its "story was
 //     deleted" state instead of trying to interpret a row that no longer
 //     exists.
-//   - `onCommentsChanged` is the original debounced "something in the
-//     thread changed, refetch" signal; comments aren't field-locked, so a
-//     coarse refetch is fine.
-// UPDATE isn't debounced through a payload-discarding timer the way it used
-// to be — each row needs its own merge, not just a "go refetch" nudge — but
-// still uses the payload-preserving debounce so a rapid burst (e.g. this
-// tab's own autosave saves echoing back) collapses into one merge of the
-// latest row rather than replaying every intermediate one.
+//   - `onCommentsChanged` is a debounced "something in the thread changed,
+//     refetch" signal; comments aren't field-locked, so a coarse refetch is
+//     fine.
+// UPDATE needs each row's own merge rather than just a "go refetch" nudge,
+// so it uses a payload-preserving debounce: a rapid burst (e.g. this tab's
+// own autosave saves echoing back) collapses into one merge of the latest
+// row rather than replaying every intermediate one.
 export function useStoryRealtime(
   storyId: string,
   onFieldsChanged: (row: StoryRealtimeRow) => void,
@@ -157,8 +155,8 @@ export function useStoryRealtime(
   );
 }
 
-// Task 10 (Notifications): fires `onNotify` for the two Realtime-driven
-// triggers (see spec/features.md) — assigned to a story / a story you own
+// Fires `onNotify` for the two Realtime-driven notification triggers (see
+// spec/features.md) — assigned to a story / a story you own
 // changes state, and mentioned in a comment. Unlike the hooks above this
 // isn't debounced: each qualifying row change is its own notification, not a
 // "something changed, go refetch" signal.

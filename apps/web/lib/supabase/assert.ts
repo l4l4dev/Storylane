@@ -1,7 +1,7 @@
 /**
- * Throws on the first failed write in a batch of parallel Supabase updates
- * (TASK-22). `Promise.all` alone only rejects if a promise itself throws —
- * a Supabase update that fails (including one RLS silently filters to zero
+ * Throws on the first failed write in a batch of parallel Supabase updates.
+ * `Promise.all` alone only rejects if a promise itself throws — a Supabase
+ * update that fails (including one RLS silently filters to zero
  * rows) resolves normally with `{ error }` set, so an unchecked batch like
  * `Promise.all(ids.map(id => supabase.from(...).update(...).eq("id", id)))`
  * can partially apply and still look like a success to the caller.
@@ -16,8 +16,8 @@ export async function assertAllSucceeded(
 }
 
 /**
- * Same silent-failure class as `assertAllSucceeded` (TASK-31), but for a
- * single write whose row-count — not its `error` field — is the signal:
+ * Same silent-failure class as `assertAllSucceeded`, but for a single
+ * write whose row-count — not its `error` field — is the signal:
  * an `.update(...).eq("id", id).select("id")` on a row RLS filters out
  * resolves with `error: null` and `data: []`, not an error, so the caller
  * must check the row count itself to detect a no-op write.

@@ -61,7 +61,7 @@ export function AppSidebar({
   project: ProjectRef;
   projects: ProjectRef[];
   username: string | null;
-  // Free-mode projects have no iterations (Task 14).
+  // Free-mode projects have no iterations.
   showIterations?: boolean;
 }) {
   const pathname = usePathname();

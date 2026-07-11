@@ -3,9 +3,8 @@
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-// TASK-7 (spec/screens.md "Projects page"): mode is chosen via
-// comparison cards, not radio buttons, so the Tracker/Free difference is
-// visible at a glance.
+// Mode is chosen via comparison cards, not radio buttons (spec/screens.md
+// "Projects page"), so the Tracker/Free difference is visible at a glance.
 export function ModeComparisonCard({
   mode,
   title,

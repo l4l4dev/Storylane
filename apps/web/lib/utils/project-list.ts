@@ -1,7 +1,6 @@
 // Pure, framework-free filter/sort for the /dashboard project grid
-// (spec/screens.md "Projects page", TASK-8). Applied client-side over the
-// already-fetched project list — no new server query, same scale
-// assumption as TASK-7.
+// (spec/screens.md "Projects page"). Applied client-side over the
+// already-fetched project list — no new server query per keystroke.
 
 export type ProjectListItem = {
   id: string;

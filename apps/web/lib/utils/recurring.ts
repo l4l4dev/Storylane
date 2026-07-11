@@ -1,5 +1,5 @@
-// TASK-16.4: pure date helpers for free-mode recurring stories
-// (spec/data-model.md "recurring_stories").
+// Pure date helpers for free-mode recurring stories (spec/data-model.md
+// "recurring_stories").
 
 export type RecurrenceRule = {
   cadence: "daily" | "weekly" | "monthly";

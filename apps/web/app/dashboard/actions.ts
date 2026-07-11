@@ -20,14 +20,14 @@ export type NewProjectInviteSearchResult =
   | { status: "error"; message: string };
 
 /**
- * Backs the project-creation panel's invite picker (TASK-7) — exact-match
- * only, usable before a project row exists. See
+ * Backs the project-creation panel's invite picker — exact-match only,
+ * usable before a project row exists. See
  * supabase/migrations/20260713000001_search_users_for_new_project.sql for
  * why this can't reuse search_users_for_invite.
  *
- * TASK-25 follow-up: distinguishes an RPC error (e.g. a transient failure,
- * or the "Not signed in" exception) from a genuine no-match, so the UI can
- * tell the two apart instead of showing "no user found" for both.
+ * Distinguishes an RPC error (e.g. a transient failure, or the "Not signed
+ * in" exception) from a genuine no-match, so the UI can tell the two apart
+ * instead of showing "no user found" for both.
  */
 export async function searchUserForNewProject(query: string): Promise<NewProjectInviteSearchResult> {
   const supabase = await createClient();
@@ -50,7 +50,7 @@ export async function searchUserForNewProject(query: string): Promise<NewProject
   };
 }
 
-// Column templates seeded for a new free-mode project (TASK-16.1,
+// Column templates seeded for a new free-mode project (see
 // spec/screens.md "Projects page" / "Free mode board") — the owner
 // customizes them afterwards in Settings. KanbanFlow's Done column is the
 // project's only is_done seed; Basic's Done is is_done too, since it's the
@@ -81,7 +81,7 @@ export async function createProject(formData: FormData) {
   const iterationLength = Number(formData.get("iteration_length") ?? 14);
   const pointScale = String(formData.get("point_scale") ?? "fibonacci");
   const velocityWindow = clampVelocityWindow(Number(formData.get("velocity_window") ?? 3));
-  // Fixed at creation (Task 14 decision) — there is no mode-change path.
+  // Fixed at creation — there is no mode-change path.
   const workflowMode = formData.get("workflow_mode") === "free" ? "free" : "tracker";
   const freeTemplateInput = String(formData.get("free_template") ?? "kanbanflow");
   const freeTemplate: FreeTemplate = FREE_TEMPLATES.includes(freeTemplateInput as FreeTemplate)
@@ -98,7 +98,7 @@ export async function createProject(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // TASK-7: ids come from a client-controlled hidden input (the picker's
+  // ids come from a client-controlled hidden input (the picker's
   // selections) — dedupe, drop the caller's own id (the RPC itself also
   // excludes it, but invite_member's upsert would demote an included
   // creator from owner to member; this is defense in depth, not the only
@@ -177,8 +177,8 @@ export async function unarchiveProject(formData: FormData): Promise<void> {
 /**
  * Best-effort — never throws. The picker/card calls this after an
  * optimistic UI update and reverts on `{ ok: false }` rather than crashing
- * the page (TASK-25's "surface RPC errors, don't swallow them" pattern,
- * applied here as a returned status instead of a thrown error since this
+ * the page ("surface RPC errors, don't swallow them" pattern, applied
+ * here as a returned status instead of a thrown error since this
  * is called directly from a client event handler, not a `<form action>`).
  */
 export async function toggleFavorite(projectId: string, favorite: boolean): Promise<{ ok: boolean }> {

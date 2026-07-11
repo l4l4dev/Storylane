@@ -11,10 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 
-// Invite by user search (spec/features.md "Team Collaboration", TASK-6) —
-// replaces the old email input. Search results are debounced client-side;
-// the 2-char minimum, the cap, and excluding already-invited users are all
-// enforced server-side by search_users_for_invite itself.
+// Invite by user search (spec/features.md "Team Collaboration"). Search
+// results are debounced client-side; the 2-char minimum, the cap, and
+// excluding already-invited users are all enforced server-side by
+// search_users_for_invite itself.
 export function InviteMemberForm({ projectId }: { projectId: string }) {
   const [state, formAction, pending] = useActionState<InviteState, FormData>(
     inviteMember,

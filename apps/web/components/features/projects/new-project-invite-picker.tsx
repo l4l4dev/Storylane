@@ -6,11 +6,11 @@ import { Input } from "@/components/ui/input";
 
 // Matches createProject's server-side cap (apps/web/app/dashboard/actions.ts)
 // so a 21st+ selection is refused client-side instead of being silently
-// dropped on submit (TASK-25 follow-up).
+// dropped on submit.
 const MAX_INVITEES = 20;
 
-// TASK-7: initial-invite picker for the project-creation panel, usable
-// before a project row exists. Deliberately not InviteMemberForm's fuzzy
+// Initial-invite picker for the project-creation panel, usable before a
+// project row exists. Deliberately not InviteMemberForm's fuzzy
 // dropdown — see new-project-invite-picker's backing RPC
 // (search_users_for_new_project) for why only an exact-match, Enter-to-add
 // flow is safe pre-project (spec/screens.md "Projects page").

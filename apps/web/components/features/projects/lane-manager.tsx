@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 
 export type SwimlaneRow = { id: string; name: string; position: number };
 
-// TASK-16.3: swimlane management for free-mode projects — rename, one-step
+// Swimlane management for free-mode projects — rename, one-step
 // reorder, delete (blocked by the DB while stories still reference the
 // lane), and an add row at the bottom. Mirrors StatusManager, minus the
 // color/is_done fields lanes don't have.

@@ -28,7 +28,7 @@ export function StoryPeek({ detail }: { detail: StoryDetail }) {
     function onKeyDown(event: KeyboardEvent) {
       // isComposing guards IME candidate-window cancellation (e.g. Japanese
       // input) — that Escape must never close the peek out from under an
-      // in-progress conversion (Task 12). A title/description field's own
+      // in-progress conversion. A title/description field's own
       // Escape handler additionally calls stopPropagation to revert just
       // the field without reaching this listener at all.
       if (event.key === "Escape" && !event.isComposing) {

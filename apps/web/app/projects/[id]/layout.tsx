@@ -64,7 +64,7 @@ export default async function ProjectLayout({
         }}
         projects={projects}
         username={profile?.username ?? null}
-        // Free-mode projects have no iterations (Task 14) — hide that nav item.
+        // Free-mode projects have no iterations — hide that nav item.
         showIterations={project.workflow_mode !== "free"}
       />
       <div className="min-w-0 flex-1">{children}</div>

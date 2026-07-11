@@ -1,6 +1,6 @@
 // A rejected/failed board mutation (stale-board drag, RLS-filtered write,
-// etc. — Task 22, spec/screens.md "Conflict & failure rules" sibling for
-// the board itself) surfaces here instead of silently leaving the UI
+// etc. — spec/screens.md "Conflict & failure rules" sibling for the board
+// itself) surfaces here instead of silently leaving the UI
 // diverged from the server. Shared by the three board views (List, Kanban,
 // Free mode) that each own their own drag state and so each need their own
 // error slot.

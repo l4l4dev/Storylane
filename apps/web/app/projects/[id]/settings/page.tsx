@@ -58,7 +58,7 @@ export default async function ProjectSettingsPage({
     ? await supabase.from("integrations").select("id, provider, config, is_active").eq("project_id", id)
     : { data: null };
 
-  // Task 14: free-mode projects manage their board columns here.
+  // Free-mode projects manage their board columns here.
   const isFree = project.workflow_mode === "free";
   const { data: customStatuses } = isFree
     ? await supabase
@@ -68,14 +68,14 @@ export default async function ProjectSettingsPage({
         .order("position", { ascending: true })
     : { data: null };
 
-  // TASK-16.3: free-mode projects manage their swimlanes here too.
+  // Free-mode projects manage their swimlanes here too.
   const { data: swimlanes } = isFree
     ? await supabase.from("swimlanes").select("id, name, position").eq("project_id", id).order("position", { ascending: true })
     : { data: null };
 
-  // TASK-16.4: recurring-story rules, and the is_done-excluded column list
-  // their target select offers (spec/data-model.md: "a card must not be
-  // born completed").
+  // Recurring-story rules, and the is_done-excluded column list their
+  // target select offers (spec/data-model.md: "a card must not be born
+  // completed").
   const { data: recurringStories } = isFree
     ? await supabase
         .from("recurring_stories")
@@ -111,7 +111,7 @@ export default async function ProjectSettingsPage({
             />
           </div>
           <div className="flex gap-4">
-            {/* Task 14: free-mode projects have no iterations/velocity. */}
+            {/* Free-mode projects have no iterations/velocity. */}
             {!isFree && (
               <div className="flex flex-1 flex-col gap-1.5">
                 <Label htmlFor="settings-iteration-length">Iteration length (days)</Label>
@@ -232,7 +232,7 @@ export default async function ProjectSettingsPage({
         </ul>
       </section>
 
-      {/* Board statuses (Task 14 — free-mode projects only) */}
+      {/* Board statuses (free-mode projects only) */}
       {isFree && (
         <section className="mt-8">
           <h2 className="mb-3 text-lg font-semibold">Board statuses</h2>
@@ -245,7 +245,7 @@ export default async function ProjectSettingsPage({
         </section>
       )}
 
-      {/* Swimlanes (TASK-16.3 — free-mode projects only) */}
+      {/* Swimlanes (free-mode projects only) */}
       {isFree && (
         <section className="mt-8">
           <h2 className="mb-3 text-lg font-semibold">Swimlanes</h2>
@@ -258,7 +258,7 @@ export default async function ProjectSettingsPage({
         </section>
       )}
 
-      {/* Recurring stories (TASK-16.4 — free-mode projects only) */}
+      {/* Recurring stories (free-mode projects only) */}
       {isFree && (
         <section className="mt-8">
           <h2 className="mb-3 text-lg font-semibold">Recurring stories</h2>

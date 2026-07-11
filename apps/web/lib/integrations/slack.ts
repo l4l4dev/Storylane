@@ -1,6 +1,6 @@
-// Task 12: Slack notification sender (see spec/integrations.md — sent
-// directly from server actions via this shared helper, not an Edge
-// Function; 2026-07-07 decision). Server-only: reads the owner-only
+// Slack notification sender (see spec/integrations.md — sent directly
+// from server actions via this shared helper, not an Edge Function).
+// Server-only: reads the owner-only
 // `integrations` row through the service-role client since the acting user
 // may be a plain member.
 

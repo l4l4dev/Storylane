@@ -11,9 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ModeComparisonCard } from "./mode-comparison-card";
 import { NewProjectInvitePicker } from "./new-project-invite-picker";
 
-// TASK-7 (spec/screens.md "Projects page"): inline panel replacing the
-// former CreateProjectDialog overlay — expands in place above the card
-// grid, no route change, no dialog role.
+// Inline panel (spec/screens.md "Projects page") that expands in place
+// above the card grid — no route change, no dialog role.
 export function InlineCreatePanel() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"tracker" | "free">("tracker");

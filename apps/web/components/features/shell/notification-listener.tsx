@@ -14,8 +14,8 @@ function showBrowserNotification({ title, body }: NotificationContent) {
   }
 }
 
-// Task 10 (Notifications): mounted once in the root layout so it's active on
-// every authenticated page, not just the board. Requests permission as soon
+// Mounted once in the root layout so it's active on every authenticated
+// page, not just the board. Requests permission as soon
 // as a session is found — in practice that's right after sign-in, since both
 // the OAuth callback and the dev-login button do a full page navigation
 // (see app/auth/login/page.tsx), so this component mounts fresh at that
