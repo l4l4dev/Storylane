@@ -92,7 +92,9 @@ Every Backlog task MUST have an assignee — set it at creation time, never leav
   - `@claude-sonnet-5` — standard feature/bugfix implementation (default choice)
   - `@claude-opus-4-8` — architecture-sensitive work: new tables/RLS, concurrency,
     cross-cutting refactors, notification/event paths
-  - `@claude-fable-5` — design review, planning, and final review passes (fable-advisor)
+  - `@claude-fable-5` — design review, planning, and final review passes (fable-advisor).
+    When Fable is unavailable (plan window closed), these duties fall to `@claude-opus-4-8`
+    and the fable-advisor agent runs with `model: opus` (the /advisor skill already says so)
 
 Workflow rules:
 
