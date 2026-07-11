@@ -5,12 +5,13 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-11 11:29'
+updated_date: '2026-07-11 16:13'
 labels:
   - web
   - bug
 dependencies: []
 priority: low
-ordinal: 44000
+ordinal: 9500
 ---
 
 ## Description

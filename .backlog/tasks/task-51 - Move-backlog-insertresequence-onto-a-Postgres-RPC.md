@@ -5,13 +5,14 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 11:29'
+updated_date: '2026-07-11 16:13'
 labels:
   - web
   - refactor
   - backend
 dependencies: []
 priority: medium
-ordinal: 43000
+ordinal: 15750
 ---
 
 ## Description
@@ -26,3 +27,9 @@ quickCreateStory's backlog-target branch and createBacklogDivider/dropStoryInLis
 - [ ] #2 A failure partway through cannot leave an orphaned story/divider with no corresponding position update
 - [ ] #3 Existing tests for these three actions pass unchanged (or updated only for the new call shape)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Overlap note (2026-07-12): TASK-56 (Codex review: consolidate ALL board drag/drop mutations into transactional reorder RPCs) covers the same persistBacklogOrder surface from the other direction. Implement TASK-51's insert+resequence RPC as part of / in the same design pass as TASK-56's RPC family — one position-rules implementation, not two. TASK-58 item 2-3 (max+1 races, position invariants) also lands there.
+<!-- SECTION:NOTES:END -->
