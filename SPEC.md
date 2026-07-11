@@ -30,6 +30,7 @@ This file is an index. Read only the section file relevant to the task at hand â
 | [spec/velocity.md](spec/velocity.md) | Velocity calculation formula and auto-assignment rule | Implementing Task 6 (Iterations) or Task 8 (Velocity) |
 | [spec/features.md](spec/features.md) | Full Phase 1 / Phase 2 feature list | Scoping a new feature or checking what's in/out of Phase 1 |
 | [spec/screens.md](spec/screens.md) | Web route map and iOS screen/tab structure | Adding a new screen or route |
+| [spec/ux-principles.md](spec/ux-principles.md) | Design language, checkable interaction principles, Tracker-parity procedure, design review gate | Designing or implementing anything user-facing |
 | [spec/integrations.md](spec/integrations.md) | GitHub/Forgejo/Slack webhook implementation notes | Implementing Task 12 (Integrations) |
 | [spec/local-dev.md](spec/local-dev.md) | Prerequisites and local setup commands | Onboarding or environment troubleshooting |
 | [spec/glossary.md](spec/glossary.md) | Domain term definitions | Clarifying terminology |

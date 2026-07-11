@@ -16,8 +16,14 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
 - Never chain state-changing commands (commit, migration, install, rm, etc.) with `&&` — run them
   one at a time. Chaining read-only commands (`git status`, `ls`, `grep`, `wc`, ...) is fine
 - Never guess at unspecified behavior — ask when the spec is unclear
+- Any user-facing UI work follows `spec/ux-principles.md`: check original Pivotal Tracker's
+  behavior first for tracker-mode interactions (Wayback procedure in that file), and end the
+  task with a fable-advisor design review against the principles before manual verification
 - Destructive DB operations (DELETE/TRUNCATE/UPDATE without a primary-key filter) on rows you did
   not create in the current session require explicit user approval first
+- This repository is public: never write the owner's personal name or private email in anything
+  git-tracked (source, tests, spec, task files, commit messages) — refer to them as `@l4l4dev` or
+  "the owner" (オーナー), and use fictional names/emails in test fixtures
 
 ## Token Economy
 
@@ -80,7 +86,7 @@ chore/update-supabase-client
 
 Every Backlog task MUST have an assignee — set it at creation time, never leave it empty.
 
-- Tasks owner performs herself (interactive auth, manual verification, deploys): `@l4l4dev`
+- Tasks the owner performs herself (interactive auth, manual verification, deploys): `@l4l4dev`
 - Tasks a model implements: assign the model best matched to the task's content:
   - `@claude-haiku-4-5` — mechanical, low-risk edits (renames, copy tweaks, config)
   - `@claude-sonnet-5` — standard feature/bugfix implementation (default choice)
@@ -90,10 +96,10 @@ Every Backlog task MUST have an assignee — set it at creation time, never leav
 
 Workflow rules:
 
-- When picking up the next task, tell owner which model the task is assigned to and suggest
+- When picking up the next task, tell the owner which model the task is assigned to and suggest
   switching to it before starting work.
 - If a review finds poor-quality output, escalate: reassign the task to the next higher model
-  (or propose the switch to owner), leave a task comment explaining why, and redo the work there.
+  (or propose the switch to the owner), leave a task comment explaining why, and redo the work there.
 
 ## Code Comment Policy
 
