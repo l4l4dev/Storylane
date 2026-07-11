@@ -121,9 +121,9 @@ describe("buildBacklogRows", () => {
     const b = { id: "b", points: 5, story_type: "feature" };
     const rows = buildBacklogRows([storyItem(a), storyItem(b)], 8, 3);
     expect(rows).toEqual([
-      { kind: "iteration-header", number: 3, points: 5 },
+      { kind: "iteration-header", number: 3, points: 5, manualBreakDividerId: undefined },
       { kind: "story", story: a },
-      { kind: "iteration-header", number: 4, points: 5 },
+      { kind: "iteration-header", number: 4, points: 5, manualBreakDividerId: undefined },
       { kind: "story", story: b },
     ]);
   });
@@ -133,10 +133,10 @@ describe("buildBacklogRows", () => {
     const b = { id: "b", points: 5, story_type: "feature" };
     const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], 8, 3);
     expect(rows).toEqual([
-      { kind: "iteration-header", number: 3, points: 5 },
+      { kind: "iteration-header", number: 3, points: 5, manualBreakDividerId: undefined },
       { kind: "story", story: a },
       { kind: "note", divider: { id: "d1", label: "Phase 2", kind: "note" } },
-      { kind: "iteration-header", number: 4, points: 5 },
+      { kind: "iteration-header", number: 4, points: 5, manualBreakDividerId: undefined },
       { kind: "story", story: b },
     ]);
   });
@@ -149,21 +149,21 @@ describe("buildBacklogRows", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
     const rows = buildBacklogRows([noteItem("d1", "Notes"), storyItem(a)], 8, 3);
     expect(rows).toEqual([
-      { kind: "iteration-header", number: 3, points: 1 },
+      { kind: "iteration-header", number: 3, points: 1, manualBreakDividerId: undefined },
       { kind: "note", divider: { id: "d1", label: "Notes", kind: "note" } },
       { kind: "story", story: a },
     ]);
   });
 
-  it("forces a group boundary at a manual iteration break regardless of remaining capacity", () => {
+  it("forces a group boundary at a manual iteration break regardless of remaining capacity, and stamps the following header with the break's id", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
     const b = { id: "b", points: 1, story_type: "feature" };
     const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk"), storyItem(b)], 8, 3);
     expect(rows).toEqual([
-      { kind: "iteration-header", number: 3, points: 1 },
+      { kind: "iteration-header", number: 3, points: 1, manualBreakDividerId: undefined },
       { kind: "story", story: a },
       { kind: "iteration-break", divider: { id: "brk", label: "", kind: "iteration_break" } },
-      { kind: "iteration-header", number: 4, points: 1 },
+      { kind: "iteration-header", number: 4, points: 1, manualBreakDividerId: "brk" },
       { kind: "story", story: b },
     ]);
   });
@@ -176,12 +176,13 @@ describe("buildBacklogRows", () => {
     // right after b forces a third group for c even though b+c (=6) would fit.
     const rows = buildBacklogRows([storyItem(a), storyItem(b), iterationBreakItem("brk"), storyItem(c)], 8, 3);
     expect(rows).toEqual([
-      { kind: "iteration-header", number: 3, points: 5 },
+      { kind: "iteration-header", number: 3, points: 5, manualBreakDividerId: undefined },
       { kind: "story", story: a },
-      { kind: "iteration-header", number: 4, points: 5 },
+      // Automatic split, not a manual break — no id stamped here either.
+      { kind: "iteration-header", number: 4, points: 5, manualBreakDividerId: undefined },
       { kind: "story", story: b },
       { kind: "iteration-break", divider: { id: "brk", label: "", kind: "iteration_break" } },
-      { kind: "iteration-header", number: 5, points: 1 },
+      { kind: "iteration-header", number: 5, points: 1, manualBreakDividerId: "brk" },
       { kind: "story", story: c },
     ]);
   });
@@ -190,9 +191,9 @@ describe("buildBacklogRows", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
     const rows = buildBacklogRows([iterationBreakItem("brk"), storyItem(a)], 8, 3);
     expect(rows).toEqual([
-      { kind: "iteration-header", number: 3, points: 0 },
+      { kind: "iteration-header", number: 3, points: 0, manualBreakDividerId: undefined },
       { kind: "iteration-break", divider: { id: "brk", label: "", kind: "iteration_break" } },
-      { kind: "iteration-header", number: 4, points: 1 },
+      { kind: "iteration-header", number: 4, points: 1, manualBreakDividerId: "brk" },
       { kind: "story", story: a },
     ]);
   });
@@ -219,21 +220,21 @@ describe("buildBacklogRows", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
     const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk")], 8, 3);
     expect(rows).toEqual([
-      { kind: "iteration-header", number: 3, points: 1 },
+      { kind: "iteration-header", number: 3, points: 1, manualBreakDividerId: undefined },
       { kind: "story", story: a },
       { kind: "iteration-break", divider: { id: "brk", label: "", kind: "iteration_break" } },
-      { kind: "iteration-header", number: 4, points: 0 },
+      { kind: "iteration-header", number: 4, points: 0, manualBreakDividerId: "brk" },
     ]);
   });
 
-  it("consecutive manual breaks each still get their own (empty) header", () => {
+  it("consecutive manual breaks each still get their own (empty) header, each stamped with its own break's id", () => {
     const rows = buildBacklogRows([iterationBreakItem("brk1"), iterationBreakItem("brk2")], 8, 3);
     expect(rows).toEqual([
-      { kind: "iteration-header", number: 3, points: 0 },
+      { kind: "iteration-header", number: 3, points: 0, manualBreakDividerId: undefined },
       { kind: "iteration-break", divider: { id: "brk1", label: "", kind: "iteration_break" } },
-      { kind: "iteration-header", number: 4, points: 0 },
+      { kind: "iteration-header", number: 4, points: 0, manualBreakDividerId: "brk1" },
       { kind: "iteration-break", divider: { id: "brk2", label: "", kind: "iteration_break" } },
-      { kind: "iteration-header", number: 5, points: 0 },
+      { kind: "iteration-header", number: 5, points: 0, manualBreakDividerId: "brk2" },
     ]);
   });
 });

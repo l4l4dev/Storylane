@@ -164,15 +164,27 @@ a physical column.
   `lib/utils/iterations.ts` "buildBacklogRows"):
   - stories, in priority order;
   - user-created rows from `backlog_dividers` (spec/data-model.md): a
-    **note** (dashed labeled row, cosmetic grouping) or a **manual
-    iteration break**, which forces the group to close at that exact spot
-    regardless of remaining capacity — the following group starts under
-    its own numbered header; the break row itself stays draggable and
-    deletable (✕).
-- **Indent distinction (2026-07-07):** note/divider labels start flush at
-  the list's left edge and span full width; story rows are indented
-  slightly to the right, so structure rows and work rows are
-  distinguishable at a glance.
+    **note** (dashed labeled row, cosmetic grouping, draggable/deletable
+    like a story) or a **manual iteration break**, which forces the group
+    to close at that exact spot regardless of remaining capacity.
+  - **Manual break lifecycle (2026-07-11, supersedes "stays draggable and
+    deletable" above — TASK-43):** a break never renders as its own row.
+    The group header it forces the boundary of instead carries a small
+    removable **"manual ×"** badge next to its number — clicking × deletes
+    the break and lets automatic capacity-based splitting decide that spot
+    again. This replaces the original design (the break stayed visible as
+    a permanent, separately-draggable "Iteration break" row) because every
+    break ever placed kept its row forever with no way to feel resolved:
+    the raw row was redundant clutter once the numbered header beside it
+    already announced the same boundary, and it piled up one such row per
+    break across the whole Backlog. A break is no longer independently
+    draggable to a new spot — delete it via its header badge and re-insert
+    at the new spot instead (still exact, via the insert-between
+    affordance below).
+- **Indent distinction (2026-07-07):** note labels start flush at the
+  list's left edge and span full width; story rows are indented slightly
+  to the right, so structure rows and work rows are distinguishable at a
+  glance.
 - **Insert-between affordance:** hovering the gap between any two backlog
   rows reveals a hairline with **+ Note** / **+ Iteration break** buttons —
   clicking inserts at that exact spot (+ Note opens an inline label input).

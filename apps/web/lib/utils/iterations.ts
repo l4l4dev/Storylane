@@ -99,10 +99,18 @@ export type BacklogRow<T> =
   | { kind: "story"; story: T }
   | { kind: "note"; divider: BacklogDivider }
   // Auto-generated, always precedes its group's rows — never draggable.
-  | { kind: "iteration-header"; number: number; points: number }
-  // The manually-placed break itself — a real `backlog_dividers` row, so the
-  // UI can offer to delete it. Carries no number: the header that follows it
-  // already shows the group it opens.
+  // `manualBreakDividerId` is set when this group's boundary was forced by
+  // a manual iteration break rather than capacity alone (TASK-43) — the
+  // break itself has no row of its own (see the `iteration-break` case
+  // below); the UI's only remaining affordance for it is a small removable
+  // badge on this header, keyed by this id.
+  | { kind: "iteration-header"; number: number; points: number; manualBreakDividerId?: string }
+  // The manually-placed break itself — a real `backlog_dividers` row, kept
+  // here only as an insertion anchor (`nextRealRowId`) for the hover
+  // insert-between affordance. Never rendered as its own row (TASK-43) —
+  // the `iteration-header` segment it closes carries `manualBreakDividerId`
+  // instead. Carries no number: the header that follows it already shows
+  // the group it opens.
   | { kind: "iteration-break"; divider: BacklogDivider };
 
 /**
@@ -176,13 +184,19 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
 
   const rows: BacklogRow<T>[] = [];
   let number = startingIterationNumber - 1;
+  // The most recent break segment's divider id, attached to the very next
+  // group's header (TASK-43) then cleared — a break always precedes
+  // exactly the one group it closed into, never a later, unrelated one.
+  let pendingBreakDividerId: string | undefined;
   for (const segment of segments) {
     if (segment.kind === "group") {
       number += 1;
-      rows.push({ kind: "iteration-header", number, points: segment.points });
+      rows.push({ kind: "iteration-header", number, points: segment.points, manualBreakDividerId: pendingBreakDividerId });
+      pendingBreakDividerId = undefined;
       rows.push(...segment.rows);
     } else {
       rows.push({ kind: "iteration-break", divider: segment.divider });
+      pendingBreakDividerId = segment.divider.id;
     }
   }
   return rows;

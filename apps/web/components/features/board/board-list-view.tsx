@@ -159,12 +159,11 @@ function SortableListRow({
   );
 }
 
-// A freeform planning row: dashed border, muted label, delete button. Used
-// for both a user-created note (its own typed label) and a manual iteration
-// break (fixed "Iteration break" label) — unified into one flush-left
-// divider style (spec/screens.md "Indent distinction": "note/
-// divider labels start flush at the list's left edge"); the break's own
-// number now lives on the `IterationHeaderRow` that follows it, not here.
+// A freeform planning row: dashed border, muted label, delete button. Only
+// ever rendered for a user-created note now — a manual iteration break's
+// own row was folded into the `IterationHeaderRow` it creates instead
+// (TASK-43); `divider.kind` is still checked generically since
+// `BacklogDivider` itself covers both kinds.
 function DividerRow({ projectId, divider }: { projectId: string; divider: BacklogDivider }) {
   const [, startTransition] = useTransition();
   const label = divider.kind === "note" ? divider.label : "Iteration break";
@@ -269,7 +268,16 @@ function IterationGoalInput({
 // — group from rendering with no label at all. Not draggable: there's no
 // backlog_dividers row behind it, only `buildBacklogRows`' derived
 // number/points.
-function IterationHeaderRow({
+//
+// `manualBreakDividerId` (TASK-43): when this group's boundary was forced
+// by a manual "iteration break" rather than capacity alone, the raw break
+// row is no longer rendered on its own — it read as redundant clutter
+// stacked right above the header that already announces the same boundary
+// (number, dates, points), and every break ever placed kept its row
+// forever with no way for it to feel "resolved". Its only remaining UI is
+// this small removable badge on the header it created; removing it lets
+// automatic capacity-based splitting reclaim that spot.
+export function IterationHeaderRow({
   number,
   points,
   projectId,
@@ -277,6 +285,7 @@ function IterationHeaderRow({
   projectedDates,
   collapsed,
   onToggle,
+  manualBreakDividerId,
 }: {
   number: number;
   points: number;
@@ -285,7 +294,28 @@ function IterationHeaderRow({
   projectedDates: { start_date: string; end_date: string } | null;
   collapsed: boolean;
   onToggle: () => void;
+  manualBreakDividerId?: string;
 }) {
+  const [isRemoving, startTransition] = useTransition();
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  function handleRemoveManualBreak() {
+    if (!manualBreakDividerId) {
+      return;
+    }
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    formData.set("divider_id", manualBreakDividerId);
+    setRemoveError(null);
+    startTransition(async () => {
+      try {
+        await deleteBacklogDivider(formData);
+      } catch (err) {
+        setRemoveError(err instanceof Error ? err.message : "Failed to remove");
+      }
+    });
+  }
+
   return (
     <li>
       <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
@@ -298,6 +328,29 @@ function IterationHeaderRow({
           {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
         </button>
         <span className="shrink-0 font-medium text-foreground">Iteration #{number}</span>
+        {manualBreakDividerId && (
+          <span
+            className="flex shrink-0 items-center gap-1 rounded border border-dashed border-border px-1.5 py-0.5 text-[10px]"
+            title="This boundary was manually forced, remove it to let capacity decide again"
+          >
+            manual
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={handleRemoveManualBreak}
+              disabled={isRemoving}
+              aria-label="Remove manual iteration break"
+            >
+              <X className="size-3" />
+            </Button>
+          </span>
+        )}
+        {removeError && (
+          <span className="shrink-0 text-destructive" role="alert">
+            {removeError}
+          </span>
+        )}
         {projectedDates && (
           <span className="shrink-0">
             {projectedDates.start_date} – {projectedDates.end_date}
@@ -310,19 +363,19 @@ function IterationHeaderRow({
   );
 }
 
-// A draggable Backlog row: a story, a note, or a manually-placed iteration
-// break — every one of these has a real backing row (a story or a
-// `backlog_dividers` entry), so it can be reordered and deleted like any
-// other item. `iteration-header` rows are never passed here — they render
-// directly via `IterationHeaderRow` instead (see `BacklogSection`).
-// Indent distinction (spec/screens.md): story rows sit slightly right of
-// note/iteration-break dividers, which stay flush at the left edge.
+// A draggable Backlog row: a story or a note — each has a real backing row
+// (a story or a `backlog_dividers` entry), so it can be reordered and
+// deleted like any other item. `iteration-header` rows render directly via
+// `IterationHeaderRow` instead, and `iteration-break` rows render nothing
+// of their own — folded into the header they create (see `BacklogSection`,
+// TASK-43). Indent distinction (spec/screens.md): story rows sit slightly
+// right of note dividers, which stay flush at the left edge.
 function SortableBacklogRow({
   row,
   projectId,
   pointScale,
 }: {
-  row: Extract<BacklogRow<BoardStory>, { kind: "story" | "note" | "iteration-break" }>;
+  row: Extract<BacklogRow<BoardStory>, { kind: "story" | "note" }>;
   projectId: string;
   pointScale: number[];
 }) {
@@ -525,8 +578,9 @@ function nextRealRowId(rows: BacklogRow<BoardStory>[], fromIndex: number): strin
 
 // Backlog section: rows come from `buildBacklogRows`, which interleaves
 // numbered virtual-iteration headers, freeform notes, and manual iteration
-// breaks with the stories in one flat sortable list — a drag across any of
-// them is an ordinary reorder. A hover-revealed insert affordance sits
+// breaks with the stories in one flat sortable list. Stories and notes
+// drag as ordinary rows; a manual break has no row of its own to drag —
+// see the `rows.map` below. A hover-revealed insert affordance sits
 // between every pair of rows so a note or break can be placed at an exact
 // spot instead of appended-then-dragged.
 function BacklogSection({
@@ -563,10 +617,11 @@ function BacklogSection({
   const rows = buildBacklogRows(rowItems, velocity, startingIterationNumber);
 
   // A story/note row is hidden while its group is collapsed, or (a story
-  // only) while it doesn't match the active filter. Headers and
-  // break rows always render — collapsing only hides a group's *contents*,
-  // and a break stays visible/deletable regardless of either neighbor's
-  // group state.
+  // only) while it doesn't match the active filter. Headers always render
+  // — collapsing only hides a group's *contents*. A manual break has no
+  // row/id of its own to add here at all (TASK-43: folded into the header
+  // it creates, see the `rows.map` below) — unlike before, it's never a
+  // member of the sortable/visible set.
   let currentGroupCollapsed = false;
   const visibleRowIds = new Set<string>();
   // Parallel to `rows` — whether the row at that index's group is collapsed,
@@ -580,11 +635,7 @@ function BacklogSection({
       currentGroupCollapsed = collapsedGroups.has(String(row.number));
     }
     rowGroupCollapsed.push(currentGroupCollapsed);
-    if (row.kind === "iteration-header") {
-      continue;
-    }
-    if (row.kind === "iteration-break") {
-      visibleRowIds.add(row.divider.id);
+    if (row.kind === "iteration-header" || row.kind === "iteration-break") {
       continue;
     }
     if (currentGroupCollapsed) {
@@ -606,14 +657,20 @@ function BacklogSection({
         <ul ref={setNodeRef} className="flex min-h-10 flex-col gap-1.5">
           <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, 0)} />
           {rows.map((row, index) => {
+            // A manual break renders nothing of its own — buildBacklogRows
+            // guarantees the very next row is always the iteration-header
+            // it forced (TASK-43), which picks it up via
+            // `manualBreakDividerId` below instead of a separate row.
+            if (row.kind === "iteration-break") {
+              return null;
+            }
+
             // This row is the last one in its virtual-iteration group (or,
             // for an empty group, the header itself) whenever the next row
             // starts a new group/break or there is none — that's exactly
             // the group's bottom edge the per-group composer belongs at.
             const next = rows[index + 1];
-            const isGroupEnd =
-              row.kind !== "iteration-break" &&
-              (!next || next.kind === "iteration-header" || next.kind === "iteration-break");
+            const isGroupEnd = !next || next.kind === "iteration-header" || next.kind === "iteration-break";
             const groupComposer =
               isGroupEnd && !rowGroupCollapsed[index] ? (
                 <li className="pl-3">
@@ -637,6 +694,7 @@ function BacklogSection({
                     projectedDates={projectedDatesFor(row.number)}
                     collapsed={collapsedGroups.has(key)}
                     onToggle={() => onToggleGroup(key)}
+                    manualBreakDividerId={row.manualBreakDividerId}
                   />
                   {groupComposer}
                   <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
