@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 05:17'
-updated_date: '2026-07-11 06:37'
+updated_date: '2026-07-11 07:52'
 labels:
   - web
   - ux
@@ -39,4 +39,14 @@ Architecture-sensitive: touches template seeds, Focus view semantics, possibly a
 
 <!-- SECTION:NOTES:BEGIN -->
 Follow spec/ux-principles.md (landed with TASK-46) — includes the Tracker-parity verification procedure (Wayback) for tracker-mode Focus. End with a fable-advisor design review against that file before manual verification.
+
+DESIGN (Fable, 2026-07-11 — written while Fable is available; treat as the advisor-reviewed design):
+1. FREE MODE: default template seeds Todo / Today / In progress / Done (drop 'This week'). Existing projects untouched; 'This week' remains addable as a normal custom column (TASK-44 provides board-side add).
+2. TRACKER FOCUS = derived Today view, NO new story field. Three sections over the current iteration:
+   - 'In progress' — states started/finished/delivered, in board order;
+   - 'Done today' — completed_at::date = today (completed_at already maintained in both modes, see ARCHITECTURE.md);
+   - 'Up next' — the top N unstarted stories of the current iteration (N≈5): the iteration's priority order IS the queue, per Tracker's work-top-down philosophy.
+3. REJECTED ALTERNATIVE: a manual per-story 'today' flag — daily grooming burden, goes stale, needs schema + RLS + both-mode write paths; the derived view gives the same daily focus for free. Revisit only if dogfooding shows the derived definition misses real usage.
+4. Optional toolbar toggle 'mine only' (assignee = me) — cheap, include if it stays simple.
+5. spec/screens.md must be updated to define the Focus sections and the new free-mode template before implementation (AC #4). Rollover behavior needs no change — Focus reads the current iteration after the standard ensure/finalize call.
 <!-- SECTION:NOTES:END -->
