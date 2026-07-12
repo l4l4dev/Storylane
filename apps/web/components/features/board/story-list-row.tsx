@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bug, Star, Wrench, type LucideIcon } from "lucide-react";
 import { formatPoints, STORY_STATE_META, STORY_TYPE_META, type StoryState, type StoryType } from "@/lib/utils/stories";
@@ -20,10 +21,14 @@ export function StoryListRow({
   story,
   projectId,
   pointScale,
+  insertMenu,
 }: {
   story: StoryCardData;
   projectId: string;
   pointScale: number[];
+  // Row-level "insert note/iteration break here" menu (TASK-42) — Backlog
+  // rows pass this; Current/Icebox rows (no notes/breaks there) don't.
+  insertMenu?: ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -101,6 +106,7 @@ export function StoryListRow({
           pointScale={pointScale}
         />
       </div>
+      {insertMenu}
     </div>
   );
 }

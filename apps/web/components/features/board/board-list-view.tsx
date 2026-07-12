@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronRight, Snowflake, X } from "lucide-react";
+import { ChevronDown, ChevronRight, MoreVertical, Snowflake, X } from "lucide-react";
 import {
   createBacklogDivider,
   deleteBacklogDivider,
@@ -39,13 +39,28 @@ import {
 } from "@/lib/utils/kanban";
 import {
   buildBacklogRows,
+  nextRealRowId,
   projectedIterationDates,
+  rowInsertAnchors,
   type BacklogDivider,
   type BacklogRow,
   type BacklogRowItem,
 } from "@/lib/utils/iterations";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
@@ -164,7 +179,15 @@ function SortableListRow({
 // own row was folded into the `IterationHeaderRow` it creates instead
 // (TASK-43); `divider.kind` is still checked generically since
 // `BacklogDivider` itself covers both kinds.
-function DividerRow({ projectId, divider }: { projectId: string; divider: BacklogDivider }) {
+function DividerRow({
+  projectId,
+  divider,
+  insertMenu,
+}: {
+  projectId: string;
+  divider: BacklogDivider;
+  insertMenu?: ReactNode;
+}) {
   const [, startTransition] = useTransition();
   const label = divider.kind === "note" ? divider.label : "Iteration break";
 
@@ -183,6 +206,7 @@ function DividerRow({ projectId, divider }: { projectId: string; divider: Backlo
       <Button type="button" variant="ghost" size="icon-xs" onClick={handleDelete} aria-label={`Remove "${label}"`}>
         <X />
       </Button>
+      {insertMenu}
     </div>
   );
 }
@@ -363,6 +387,131 @@ export function IterationHeaderRow({
   );
 }
 
+// Row-level "…" menu (TASK-42): the primary path for inserting a note or
+// iteration break at a chosen position, replacing pixel-hunting the
+// hover-line's thin gap (kept below as a secondary shortcut). `aboveId` is
+// this row's own `"story:<id>"` / `"divider:<id>"` pair (always real);
+// `belowId` is the next real row's, or `null` at the very end of the
+// backlog — both are the same `before_item_id` convention
+// createBacklogDivider already uses.
+export function RowInsertMenu({
+  projectId,
+  aboveId,
+  belowId,
+  onError,
+}: {
+  projectId: string;
+  aboveId: string;
+  belowId: string | null;
+  // Reports a failed insert to the shared MutationErrorBanner at the top
+  // of the list (TASK-42) — there's no per-row slot to show it inline
+  // without shifting layout (spec/ux-principles.md principle 3).
+  onError: (message: string) => void;
+}) {
+  const [noteTarget, setNoteTarget] = useState<"above" | "below" | null>(null);
+  const [label, setLabel] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function closeNoteDialog() {
+    setNoteTarget(null);
+    setLabel("");
+    setError(null);
+  }
+
+  function insertBreak(beforeItemId: string | null) {
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    formData.set("kind", "iteration_break");
+    if (beforeItemId) {
+      formData.set("before_item_id", beforeItemId);
+    }
+    startTransition(async () => {
+      try {
+        await createBacklogDivider(formData);
+      } catch (err) {
+        onError(err instanceof Error ? err.message : "Failed to insert iteration break");
+      }
+    });
+  }
+
+  function submitNote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = label.trim();
+    if (!trimmed || !noteTarget) {
+      return;
+    }
+    const beforeItemId = noteTarget === "above" ? aboveId : belowId;
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    formData.set("label", trimmed);
+    formData.set("kind", "note");
+    if (beforeItemId) {
+      formData.set("before_item_id", beforeItemId);
+    }
+    setError(null);
+    startTransition(async () => {
+      try {
+        await createBacklogDivider(formData);
+        closeNoteDialog();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to add note");
+      }
+    });
+  }
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="ghost" size="icon-xs" aria-label="Insert note or iteration break">
+            <MoreVertical />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => setNoteTarget("above")}>Insert note above</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setNoteTarget("below")}>Insert note below</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => insertBreak(aboveId)}>Insert iteration break above</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => insertBreak(belowId)}>Insert iteration break below</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={noteTarget !== null} onOpenChange={(open) => !open && closeNoteDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Insert note {noteTarget}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitNote} className="flex flex-col gap-2">
+            <Input
+              autoFocus
+              value={label}
+              onChange={(event) => {
+                setLabel(event.target.value);
+                setError(null);
+              }}
+              placeholder="Note label"
+              aria-label="New note label"
+            />
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeNoteDialog}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isPending || !label.trim()}>
+                Insert
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // A draggable Backlog row: a story or a note — each has a real backing row
 // (a story or a `backlog_dividers` entry), so it can be reordered and
 // deleted like any other item. `iteration-header` rows render directly via
@@ -374,22 +523,32 @@ function SortableBacklogRow({
   row,
   projectId,
   pointScale,
+  insertAboveId,
+  insertBelowId,
+  onError,
 }: {
   row: Extract<BacklogRow<BoardStory>, { kind: "story" | "note" }>;
   projectId: string;
   pointScale: number[];
+  insertAboveId: string;
+  insertBelowId: string | null;
+  onError: (message: string) => void;
 }) {
   const dragId = row.kind === "story" ? row.story.id : row.divider.id;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: dragId });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const className = `cursor-grab active:cursor-grabbing ${row.kind === "story" ? "pl-3" : ""} ${isDragging ? "opacity-60" : ""}`;
 
+  const insertMenu = (
+    <RowInsertMenu projectId={projectId} aboveId={insertAboveId} belowId={insertBelowId} onError={onError} />
+  );
+
   return (
     <li ref={setNodeRef} style={style} className={className} {...attributes} {...listeners}>
       {row.kind === "story" ? (
-        <StoryListRow story={row.story} projectId={projectId} pointScale={pointScale} />
+        <StoryListRow story={row.story} projectId={projectId} pointScale={pointScale} insertMenu={insertMenu} />
       ) : (
-        <DividerRow projectId={projectId} divider={row.divider} />
+        <DividerRow projectId={projectId} divider={row.divider} insertMenu={insertMenu} />
       )}
     </li>
   );
@@ -469,7 +628,20 @@ function InsertBetweenRows({ projectId, beforeItemId }: { projectId: string; bef
 
   return (
     <li className="group/insert relative -my-1 h-2 shrink-0">
-      <div className="absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/insert:opacity-100">
+      {/* Invisible, oversized hover target (TASK-42, secondary shortcut
+          behind the row "…" menu): the visible gap stays a thin h-2 line so
+          rows don't visually spread apart (no layout shift when this
+          appears), and the hoverable band is h-6 rather than a full row —
+          this li is `position: relative`, so anything absolutely positioned
+          inside it paints above the *static* neighboring row lis regardless
+          of DOM order (CSS stacking: positioned content always paints over
+          in-flow static siblings). A band as tall as a full row would
+          overlap far enough into each neighbor to swallow clicks on its own
+          buttons; h-6 only reaches each neighbor's own padding, well short
+          of its interactive content, while still being a much easier target
+          than the old 8px line. */}
+      <div className="absolute inset-x-0 top-1/2 h-6 -translate-y-1/2" />
+      <div className="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center gap-1.5 opacity-0 transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover/insert:pointer-events-auto group-hover/insert:opacity-100">
         <span className="h-px flex-1 bg-border" />
         <button
           type="button"
@@ -559,23 +731,6 @@ function rowKey(row: BacklogRow<BoardStory>, index: number): string {
   return `header-${row.number}-${index}`;
 }
 
-// Finds the id (`"story:<id>"` / `"divider:<id>"`) of the next *real* row at
-// or after `fromIndex` — skipping over header rows, which aren't stored
-// rows and so have nothing to anchor an insertion to. `null` means "insert
-// at the end" (no real row follows).
-function nextRealRowId(rows: BacklogRow<BoardStory>[], fromIndex: number): string | null {
-  for (let i = fromIndex; i < rows.length; i++) {
-    const row = rows[i];
-    if (row.kind === "story") {
-      return `story:${row.story.id}`;
-    }
-    if (row.kind === "note" || row.kind === "iteration-break") {
-      return `divider:${row.divider.id}`;
-    }
-  }
-  return null;
-}
-
 // Backlog section: rows come from `buildBacklogRows`, which interleaves
 // numbered virtual-iteration headers, freeform notes, and manual iteration
 // breaks with the stories in one flat sortable list. Stories and notes
@@ -594,6 +749,7 @@ function BacklogSection({
   collapsedGroups,
   onToggleGroup,
   pointScale,
+  onError,
 }: {
   // Full, unfiltered backlog (stories + dividers) — the virtual-iteration
   // groups/point sums/dates below must reflect the true backlog regardless
@@ -608,6 +764,9 @@ function BacklogSection({
   collapsedGroups: ReadonlySet<string>;
   onToggleGroup: (key: string) => void;
   pointScale: number[];
+  // Surfaces a row insert-menu failure (TASK-42) in the shared banner at
+  // the top of the list, the same slot drag failures already use.
+  onError: (message: string) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: BACKLOG_COLUMN_ID });
 
@@ -703,10 +862,18 @@ function BacklogSection({
             }
 
             const id = row.kind === "story" ? row.story.id : row.divider.id;
+            const { aboveId, belowId } = rowInsertAnchors(rows, index);
             return (
               <Fragment key={rowKey(row, index)}>
                 {visibleRowIds.has(id) && (
-                  <SortableBacklogRow row={row} projectId={projectId} pointScale={pointScale} />
+                  <SortableBacklogRow
+                    row={row}
+                    projectId={projectId}
+                    pointScale={pointScale}
+                    insertAboveId={aboveId}
+                    insertBelowId={belowId}
+                    onError={onError}
+                  />
                 )}
                 {groupComposer}
                 <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
@@ -809,7 +976,9 @@ export function BoardListView({
   const [synced, setSynced] = useState(initialContainers);
   const [syncedBacklogItems, setSyncedBacklogItems] = useState(initialBacklogItems);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [dragError, setDragError] = useState<string | null>(null);
+  // Shared by drag failures and each row's insert-menu failures (TASK-42) —
+  // one error slot for the whole List view, not "drag" specifically.
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const { collapsed: collapsedGroups, toggle: onToggleGroup } = useCollapsedGroups(projectId);
 
@@ -905,7 +1074,7 @@ export function BoardListView({
     const reordered = reorderContainer(items, String(active.id), String(over.id));
 
     setContainers((prev) => ({ ...prev, [overContainer]: reordered }));
-    setDragError(null);
+    setMutationError(null);
 
     const activeItem = storyById(containers, String(active.id));
     const formData = new FormData();
@@ -924,7 +1093,7 @@ export function BoardListView({
         await dropStoryInList(formData);
       } catch (err) {
         fallback();
-        setDragError(err instanceof Error ? err.message : "Failed to move the story");
+        setMutationError(err instanceof Error ? err.message : "Failed to move the story");
       }
     });
   }
@@ -971,7 +1140,9 @@ export function BoardListView({
     >
       <div className="flex gap-4">
         <div className="flex max-w-3xl flex-1 flex-col gap-6">
-          {dragError && <MutationErrorBanner message={dragError} onDismiss={() => setDragError(null)} />}
+          {mutationError && (
+            <MutationErrorBanner message={mutationError} onDismiss={() => setMutationError(null)} />
+          )}
           <ListSection
             zoneId="current"
             title={
@@ -999,6 +1170,7 @@ export function BoardListView({
             collapsedGroups={collapsedGroups}
             onToggleGroup={onToggleGroup}
             pointScale={pointScale}
+            onError={setMutationError}
           />
         </div>
 

@@ -185,10 +185,18 @@ a physical column.
   list's left edge and span full width; story rows are indented slightly
   to the right, so structure rows and work rows are distinguishable at a
   glance.
-- **Insert-between affordance:** hovering the gap between any two backlog
-  rows reveals a hairline with **+ Note** / **+ Iteration break** buttons —
-  clicking inserts at that exact spot (+ Note opens an inline label input).
-  No append-then-drag needed.
+- **Row insert menu (2026-07-12, primary path — TASK-42):** every Backlog
+  story/note row carries a "…" menu with **Insert note above/below** and
+  **Insert iteration break above/below** — no hover precision needed. Note
+  items open a small label dialog; iteration-break items insert immediately.
+  Not shown on Current/Icebox rows (notes/breaks are Backlog-only).
+- **Insert-between hover line (secondary shortcut):** hovering the gap
+  between any two backlog rows reveals a hairline with **+ Note** / **+
+  Iteration break** buttons — clicking inserts at that exact spot (+ Note
+  opens an inline label input). The visible gap stays a thin line (no
+  layout shift when it appears), but the hoverable band is taller than the
+  line itself so the pointer doesn't have to land on an 8px sliver. No
+  append-then-drag needed either way.
 - **Drag = reorder,** not state transition. Dragging within a zone only
   changes priority order and never touches state. Crossing a zone boundary
   follows the same scheduling rules as before (only an `unstarted` story can

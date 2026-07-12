@@ -203,6 +203,53 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
 }
 
 /**
+ * Finds the id (`"story:<id>"` / `"divider:<id>"`) of the next *real* row at
+ * or after `fromIndex` — skipping over header rows, which aren't stored
+ * rows and so have nothing to anchor an insertion to. `null` means "insert
+ * at the end" (no real row follows). Shared by the hover insert-between
+ * affordance and each row's own insert menu (TASK-42, `rowInsertAnchors`
+ * below) — both need the same "what comes after this point" answer.
+ */
+export function nextRealRowId<T extends BacklogStoryForMarkers & { id: string }>(
+  rows: ReadonlyArray<BacklogRow<T>>,
+  fromIndex: number,
+): string | null {
+  for (let i = fromIndex; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.kind === "story") {
+      return `story:${row.story.id}`;
+    }
+    if (row.kind === "note" || row.kind === "iteration-break") {
+      return `divider:${row.divider.id}`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The "insert above"/"insert below" anchors for a row's own insert menu
+ * (TASK-42), given its index in `buildBacklogRows`' output. `rows[index]`
+ * must be a `"story"` or `"note"` row (the only kinds a row-level menu ever
+ * attaches to). "Above" is the row's own id — always real, never null,
+ * since the row itself is the anchor. "Below" reuses `nextRealRowId`
+ * starting just past this row, the same anchor the hover-line's insert
+ * affordance immediately after it already resolves to — including skipping
+ * past a header to the next real row, or landing on a manual break's own
+ * divider id when one immediately follows.
+ */
+export function rowInsertAnchors<T extends BacklogStoryForMarkers & { id: string }>(
+  rows: ReadonlyArray<BacklogRow<T>>,
+  index: number,
+): { aboveId: string; belowId: string | null } {
+  const row = rows[index];
+  if (row.kind !== "story" && row.kind !== "note") {
+    throw new Error(`rowInsertAnchors: row at index ${index} is a "${row.kind}", not "story" or "note"`);
+  }
+  const aboveId = row.kind === "story" ? `story:${row.story.id}` : `divider:${row.divider.id}`;
+  return { aboveId, belowId: nextRealRowId(rows, index + 1) };
+}
+
+/**
  * Projected date range for a virtual (not-yet-real) iteration, shown on its
  * Backlog group header (spec/screens.md "Backlog groups"). `offset` is
  * 1-based: 1 is the iteration immediately after the current one, computed
