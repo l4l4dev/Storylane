@@ -189,20 +189,32 @@ export function KanbanBoard({
               Focus
             </Button>
           </div>
-          {view === "list" && (
-            <Button
-              type="button"
-              variant={showIcebox ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setShowIcebox((v) => !v)}
-            >
-              <Snowflake className="text-sky-600 dark:text-sky-400" />
-              Icebox
-              {iceboxStories.length > 0 && (
-                <span className="text-xs text-muted-foreground">{iceboxStories.length}</span>
-              )}
-            </Button>
-          )}
+          {/* Always mounted (TASK-35) — only List has an Icebox column to
+              toggle, but unmounting this button for Kanban/Focus shrank the
+              toolbar and shifted the view switcher and filters left/right on
+              every switch (spec/ux-principles.md principle 3: conditional UI
+              never shifts layout). `invisible` reserves its layout box
+              without painting or hit-testing it outside List, and browsers
+              already exclude a `visibility: hidden` element from the tab
+              order; `aria-hidden`/`tabIndex={-1}` make that explicit rather
+              than relying on it. The toggle's own show/hide behavior for
+              List is unchanged. */}
+          <Button
+            type="button"
+            variant={showIcebox ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setShowIcebox((v) => !v)}
+            className={view === "list" ? undefined : "invisible"}
+            aria-hidden={view !== "list" || undefined}
+            tabIndex={view === "list" ? undefined : -1}
+            data-testid="icebox-toggle"
+          >
+            <Snowflake className="text-sky-600 dark:text-sky-400" />
+            Icebox
+            {iceboxStories.length > 0 && (
+              <span className="text-xs text-muted-foreground">{iceboxStories.length}</span>
+            )}
+          </Button>
           {toolbar}
         </div>
       </div>
