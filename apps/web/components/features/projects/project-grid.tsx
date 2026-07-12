@@ -41,6 +41,11 @@ export function ProjectGrid({ projects }: { projects: ProjectCardData[] }) {
   const visibleProjects = visible
     .map((p) => projectById.get(p.id))
     .filter((p): p is ProjectCardData => p !== undefined);
+  // filterAndSortProjects already sorts archived after every active project
+  // — filtering into two groups here just splits that single ordered list
+  // for rendering as separate sections (TASK-32), never mixed together.
+  const activeProjects = visibleProjects.filter((p) => p.archivedAt === null);
+  const archivedProjects = visibleProjects.filter((p) => p.archivedAt !== null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -76,11 +81,25 @@ export function ProjectGrid({ projects }: { projects: ProjectCardData[] }) {
       </div>
 
       {visibleProjects.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleProjects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
+        <>
+          {activeProjects.length > 0 && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {activeProjects.map((project) => (
+                <ProjectCard key={project.id} project={project} />
+              ))}
+            </div>
+          )}
+          {archivedProjects.length > 0 && (
+            <div className="flex flex-col gap-3">
+              <h2 className="text-sm font-semibold text-muted-foreground">Archived</h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {archivedProjects.map((project) => (
+                  <ProjectCard key={project.id} project={project} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <p className="text-sm text-muted-foreground">No projects match your search.</p>
       )}

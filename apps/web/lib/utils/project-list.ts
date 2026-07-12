@@ -30,6 +30,15 @@ export function filterAndSortProjects(
   });
 
   return [...filtered].sort((a, b) => {
+    // Archived always sorts after every active project (TASK-32) —
+    // outranks favorite/sort so a recently-archived project (its
+    // updated_at just changed) can't jump to the top of a "Last updated"
+    // list. ProjectGrid renders the two groups as separate sections; this
+    // ordering just keeps the flat list itself already partitioned that
+    // way.
+    if (a.isArchived !== b.isArchived) {
+      return a.isArchived ? 1 : -1;
+    }
     if (a.isFavorite !== b.isFavorite) {
       return a.isFavorite ? -1 : 1;
     }

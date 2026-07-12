@@ -14,6 +14,7 @@ import { FreeBoard, type CustomStatus, type Swimlane } from "@/components/featur
 import { laneContainerKey } from "@/lib/utils/board";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { StoryPeekHost } from "@/components/features/board/story-peek-host";
+import { InviteFailedBanner, parseInviteFailedCount } from "@/components/features/projects/invite-failed-banner";
 import { ensureCurrentIteration, generateRecurringStories } from "./actions";
 
 export default async function BoardPage({
@@ -21,10 +22,14 @@ export default async function BoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ type?: string; assignee?: string; label?: string; story?: string }>;
+  searchParams: Promise<{ type?: string; assignee?: string; label?: string; story?: string; invite_failed?: string }>;
 }) {
   const { id } = await params;
-  const { type, assignee, label, story: peekStoryId } = await searchParams;
+  const { type, assignee, label, story: peekStoryId, invite_failed } = await searchParams;
+  // TASK-32: project creation now redirects straight to the new project's
+  // board instead of /dashboard, so this is where a partial invite failure
+  // from that flow must surface instead — never silently.
+  const inviteFailedCount = parseInviteFailedCount(invite_failed);
   const supabase = await createClient();
 
   const {
@@ -45,7 +50,14 @@ export default async function BoardPage({
   // lazy rollover below must never run for them.
   if (project.workflow_mode === "free") {
     return (
-      <FreeBoardPage projectId={project.id} type={type} assignee={assignee} label={label} peekStoryId={peekStoryId} />
+      <FreeBoardPage
+        projectId={project.id}
+        type={type}
+        assignee={assignee}
+        label={label}
+        peekStoryId={peekStoryId}
+        inviteFailedCount={inviteFailedCount}
+      />
     );
   }
 
@@ -215,6 +227,10 @@ export default async function BoardPage({
         <span className="text-sm text-muted-foreground">Current velocity: {currentVelocity} pts</span>
       </div>
 
+      {inviteFailedCount !== null && (
+        <InviteFailedBanner count={inviteFailedCount} settingsHref={`/projects/${project.id}/settings`} />
+      )}
+
       <KanbanBoard
         projectId={project.id}
         currentIteration={currentIteration}
@@ -249,12 +265,14 @@ async function FreeBoardPage({
   assignee,
   label,
   peekStoryId,
+  inviteFailedCount,
 }: {
   projectId: string;
   type?: string;
   assignee?: string;
   label?: string;
   peekStoryId?: string;
+  inviteFailedCount: number | null;
 }) {
   const supabase = await createClient();
 
@@ -360,6 +378,10 @@ async function FreeBoardPage({
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Board</h1>
       </div>
+
+      {inviteFailedCount !== null && (
+        <InviteFailedBanner count={inviteFailedCount} settingsHref={`/projects/${projectId}/settings`} />
+      )}
 
       <FreeBoard
         projectId={projectId}

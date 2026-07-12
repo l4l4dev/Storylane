@@ -64,4 +64,37 @@ describe("ProjectGrid", () => {
     render(<ProjectGrid projects={[]} />);
     expect(screen.getByText("No projects yet. Create your first one to get started.")).toBeInTheDocument();
   });
+
+  // TASK-32: archived projects used to sort wherever their own updatedAt
+  // placed them, mixed in with active ones (and could even render first).
+  it("renders archived projects in a separate 'Archived' section below all active ones", () => {
+    const projects = [
+      // Archived most recently, so a flat "Last updated" sort would have
+      // put it first if the two groups weren't kept apart.
+      project({
+        id: "archived",
+        name: "Archived One",
+        archivedAt: "2026-07-11T00:00:00.000Z",
+        updatedAt: "2026-07-11T00:00:00.000Z",
+      }),
+      project({ id: "active", name: "Active One", updatedAt: "2026-01-01T00:00:00.000Z" }),
+    ];
+    render(<ProjectGrid projects={projects} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: /archived/i }));
+
+    const heading = screen.getByRole("heading", { name: "Archived" });
+    const names = screen.getAllByRole("link").map((el) => el.textContent);
+    // Both projects render (Active One first, Archived One after the heading).
+    expect(names).toEqual(["Active One", "Archived One"]);
+    // The heading sits after the active card and before the archived one in
+    // document order — i.e. it's a trailing section, not interleaved.
+    const activeLink = screen.getByRole("link", { name: "Active One" });
+    const archivedLink = screen.getByRole("link", { name: "Archived One" });
+    expect(
+      activeLink.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      heading.compareDocumentPosition(archivedLink) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
 });

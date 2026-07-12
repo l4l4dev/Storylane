@@ -53,7 +53,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2">
-          <CardTitle className="min-w-0 flex-1 truncate">
+          <CardTitle className="min-w-0 flex-1 break-words">
             <Link href={`/projects/${project.id}`} className="hover:underline">
               {project.name}
             </Link>

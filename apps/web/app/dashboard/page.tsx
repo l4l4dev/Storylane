@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureCurrentIteration } from "@/app/projects/[id]/board/actions";
 import { calculateVelocity } from "@/lib/utils/velocity";
 import { InlineCreatePanel } from "@/components/features/projects/inline-create-panel";
+import { InviteFailedBanner, parseInviteFailedCount } from "@/components/features/projects/invite-failed-banner";
 import type { ProjectCardData } from "@/components/features/projects/project-card";
 import { ProjectGrid } from "@/components/features/projects/project-grid";
 import { Button } from "@/components/ui/button";
@@ -52,8 +53,7 @@ export default async function DashboardPage({
   // crafted/garbled query param renders nothing instead of a
   // nonsensical message (React already escapes it, so this is a validity
   // guard, not an XSS fix).
-  const inviteFailedCount = invite_failed ? Number.parseInt(invite_failed, 10) : NaN;
-  const showInviteFailedBanner = Number.isInteger(inviteFailedCount) && inviteFailedCount > 0;
+  const inviteFailedCount = parseInviteFailedCount(invite_failed);
   const supabase = await createClient();
   const {
     data: { user },
@@ -191,12 +191,7 @@ export default async function DashboardPage({
         </div>
       </header>
 
-      {showInviteFailedBanner && (
-        <p className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          Project created, but {inviteFailedCount} invite{inviteFailedCount === 1 ? "" : "s"} could not be sent.
-          Invite them from Project settings instead.
-        </p>
-      )}
+      {inviteFailedCount !== null && <InviteFailedBanner count={inviteFailedCount} />}
 
       <div className="mb-6">
         <InlineCreatePanel />

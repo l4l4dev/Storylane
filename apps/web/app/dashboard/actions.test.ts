@@ -54,7 +54,7 @@ describe("createProject invite handling", () => {
     formData.append("invited_user_ids", "user-a"); // duplicate
     formData.append("invited_user_ids", "creator-1"); // self — must be excluded
 
-    await expect(createProject(formData)).rejects.toThrow("REDIRECT:/dashboard");
+    await expect(createProject(formData)).rejects.toThrow("REDIRECT:/projects/project-1/board");
     expect(rpcMock).toHaveBeenCalledTimes(1);
     expect(rpcMock).toHaveBeenCalledWith("invite_member", {
       p_project_id: "project-1",
@@ -74,7 +74,7 @@ describe("createProject invite handling", () => {
     formData.append("invited_user_ids", "user-a");
     formData.append("invited_user_ids", "user-b");
 
-    await expect(createProject(formData)).rejects.toThrow("REDIRECT:/dashboard?invite_failed=1");
+    await expect(createProject(formData)).rejects.toThrow("REDIRECT:/projects/project-1/board?invite_failed=1");
   });
 
   it("caps invites at 20 ids", async () => {
@@ -103,7 +103,7 @@ describe("createProject invite handling", () => {
     formData.set("name", "My Project");
     formData.set("velocity_window", "0");
 
-    await expect(createProject(formData)).rejects.toThrow("REDIRECT:/dashboard");
+    await expect(createProject(formData)).rejects.toThrow("REDIRECT:/projects/project-1/board");
     expect(insertProjectMock).toHaveBeenCalledWith(expect.objectContaining({ velocity_window: 1 }));
   });
 });

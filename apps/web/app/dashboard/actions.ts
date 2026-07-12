@@ -149,7 +149,14 @@ export async function createProject(formData: FormData) {
   }
 
   revalidatePath("/dashboard");
-  redirect(failedInviteCount > 0 ? `/dashboard?invite_failed=${failedInviteCount}` : "/dashboard");
+  // TASK-32: land on the new project's board instead of back on /dashboard
+  // — creating a project and then having to find and click into it again
+  // was an extra, pointless step. `project` is only ever null here if the
+  // insert somehow returned no row despite no error; falling back to
+  // /dashboard keeps that (unreachable in practice) case from crashing on
+  // `project.id`.
+  const target = project ? `/projects/${project.id}/board` : "/dashboard";
+  redirect(failedInviteCount > 0 ? `${target}?invite_failed=${failedInviteCount}` : target);
 }
 
 export async function archiveProject(formData: FormData): Promise<void> {

@@ -73,4 +73,14 @@ describe("ProjectCard", () => {
     render(<ProjectCard project={baseProject({ archivedAt: "2026-07-10T00:00:00.000Z" })} />);
     expect(screen.getByText("Archived")).toBeInTheDocument();
   });
+
+  // TASK-32: the title used to truncate with an ellipsis at typical card
+  // width — a long name was unreadable. It's allowed to wrap instead now.
+  it("renders a long project name in full, without an ellipsis-truncating class", () => {
+    const longName = "A Very Long Project Name That Would Previously Have Been Truncated With An Ellipsis";
+    render(<ProjectCard project={baseProject({ name: longName })} />);
+    const link = screen.getByRole("link", { name: longName });
+    expect(link).toHaveTextContent(longName);
+    expect(link.parentElement?.className).not.toMatch(/\btruncate\b/);
+  });
 });

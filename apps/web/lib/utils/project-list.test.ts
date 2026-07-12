@@ -65,4 +65,36 @@ describe("filterAndSortProjects", () => {
     const result = filterAndSortProjects(projects, { search: "", sort: "updated", showArchived: false });
     expect(result.map((p) => p.id)).toEqual(["b", "a"]);
   });
+
+  // TASK-32: a project archived just now has its updatedAt bumped to "now"
+  // too, so without an archived-last rule it would jump to the top of a
+  // "Last updated" sort, mixed in above active projects.
+  it("sorts archived projects after all active ones even when the archived one was updated most recently", () => {
+    const projects = [
+      item({ id: "active", updatedAt: "2026-01-01T00:00:00.000Z", isArchived: false }),
+      item({ id: "just-archived", updatedAt: "2026-07-11T00:00:00.000Z", isArchived: true }),
+    ];
+    const result = filterAndSortProjects(projects, { search: "", sort: "updated", showArchived: true });
+    expect(result.map((p) => p.id)).toEqual(["active", "just-archived"]);
+  });
+
+  it("keeps archived-last even ahead of favorite ordering (a favorite active project outranks an archived one)", () => {
+    const projects = [
+      item({ id: "archived-favorite", isFavorite: true, isArchived: true }),
+      item({ id: "active-non-favorite", isFavorite: false, isArchived: false }),
+    ];
+    const result = filterAndSortProjects(projects, { search: "", sort: "updated", showArchived: true });
+    expect(result.map((p) => p.id)).toEqual(["active-non-favorite", "archived-favorite"]);
+  });
+
+  it("still sorts favorites first within each of the active/archived groups", () => {
+    const projects = [
+      item({ id: "active-a", isFavorite: false, isArchived: false }),
+      item({ id: "active-fav", isFavorite: true, isArchived: false }),
+      item({ id: "archived-a", isFavorite: false, isArchived: true }),
+      item({ id: "archived-fav", isFavorite: true, isArchived: true }),
+    ];
+    const result = filterAndSortProjects(projects, { search: "", sort: "updated", showArchived: true });
+    expect(result.map((p) => p.id)).toEqual(["active-fav", "active-a", "archived-fav", "archived-a"]);
+  });
 });
