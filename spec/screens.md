@@ -94,14 +94,32 @@ default**). All views read and write the same stories — the toggle only
 changes how they're grouped and dragged; there is no separate route or
 server state per view. Display comes first in all of them: every board
 interaction happens in place — no page navigation and no blocking modals.
-The iteration bar (current iteration number, date range, inline-editable
-iteration goal, committed points, **"auto-finishes on <end_date>"**, and
-the **Finish iteration** button — see spec/velocity.md "Manual finish")
-and the filters toolbar are shared chrome above whichever view is active.
-The goal input commits on **Enter** with a brief confirmation flash (Esc
-reverts) — there is no Save button. The **Icebox toggle** appears in the
-toolbar in List view only — Backlog/Icebox management lives exclusively in
-the List view.
+Shared chrome above whichever view is active, split into two rows
+(2026-07-13, TASK-45 — replaces the earlier single wrapping row that
+crowded iteration info against the view controls and put an irreversible
+action at the visual center):
+
+- **Info row** (only when a current iteration exists): iteration number
+  (bolder, for hierarchy), a "Current" badge, date range, committed
+  points, **"auto-finishes on <end_date>"**, and the iteration goal.
+  The goal (spec/ux-principles.md principle 5) renders as **text** — the
+  saved goal, or italic **"Add goal…"** ghost text when empty — with a
+  pencil affordance on hover; clicking opens an inline input. **Enter** or
+  **blur** commits and returns to text (only on success; a failed save
+  keeps the input open with the typed value and an inline error); **Esc**
+  discards and returns to text. There is no separate "Saved" flash —
+  returning to text view is the success feedback.
+- **Controls row**: the **List / Kanban / Focus** toggle (**List is the
+  default**; all views read/write the same stories, the toggle only
+  changes grouping/dragging), the **Icebox toggle** (List view only —
+  Backlog/Icebox management lives exclusively there), a single **Filters**
+  button (opens a popover with Type/Assignee/Label selects and shows an
+  active-count badge, e.g. "Filters · 2" — replaces three always-visible
+  selects), and, anchored to this row's right edge, the **Finish
+  iteration** button (spec/velocity.md "Manual finish";
+  spec/ux-principles.md principle 6 — an irreversible action stays off
+  the primary click path, never centered between routine info and
+  controls).
 
 #### Kanban view (multica/Linear style; current iteration only)
 
@@ -153,8 +171,10 @@ a physical column.
   Pivotal-style accordion. Each group has a **header above its stories**:
   a collapse triangle (▸/▾), "Iteration #N", projected dates (computed
   from the current iteration's `end_date` + `iteration_length`), an
-  inline-editable goal (`iteration_goals`, commits on Enter like the
-  iteration bar's), and the group's point sum. The current-iteration
+  inline-editable goal (`iteration_goals`, a compact always-visible input
+  that commits on Enter — unlike the current iteration's own goal above,
+  which is click-to-edit text, see "Board layout" above), and the group's
+  point sum. The current-iteration
   section header gets the same collapse triangle. This fixes the old
   confusion where the first backlog group had no label and an inserted
   break appeared to skip a number: **every group shows its own number**,

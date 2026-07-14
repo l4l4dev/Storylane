@@ -1,8 +1,8 @@
 "use client";
 
-import { type ReactNode, useState, useTransition } from "react";
+import { type ReactNode, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Crosshair, LayoutGrid, List as ListIcon, Snowflake } from "lucide-react";
+import { Crosshair, LayoutGrid, List as ListIcon, Pencil, Snowflake } from "lucide-react";
 import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { sumPoints } from "@/lib/utils/board";
 import { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
@@ -129,37 +129,40 @@ export function KanbanBoard({
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+      {/* TASK-45: split into two rows — iteration info (what a member reads
+          before touching anything) above, controls (view switcher, Icebox,
+          filters, Finish iteration) below. Previously all in one wrapping
+          row, which both cramped the info and put Finish iteration at the
+          horizontal center between the info and the goal input — an
+          irreversible action sitting exactly where routine clicks land
+          (spec/ux-principles.md principle 6). Finish iteration now anchors
+          the controls row's right edge via its own `ml-auto`, away from
+          both the info above and the story rows below. */}
+      <div className="mb-4 flex flex-col gap-2">
         {currentIteration && (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">Iteration #{currentIteration.number}</span>
-              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
-                Current
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {currentIteration.start_date} – {currentIteration.end_date}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {sumPoints(iterationStories)} pts committed
-              </span>
-              <span className="text-xs text-muted-foreground">
-                auto-finishes on {currentIteration.end_date}
-              </span>
-              <FinishIterationButton
-                projectId={projectId}
-                iterationNumber={currentIteration.number}
-                visible={canFinishIteration}
-              />
-            </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="text-base font-semibold">Iteration #{currentIteration.number}</span>
+            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+              Current
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {currentIteration.start_date} – {currentIteration.end_date}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {sumPoints(iterationStories)} pts committed
+            </span>
+            <span className="text-xs text-muted-foreground">
+              auto-finishes on {currentIteration.end_date}
+            </span>
+            <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />
             <IterationGoalBar
               projectId={projectId}
               iterationId={currentIteration.id}
               initialGoal={currentIteration.goal ?? ""}
             />
-          </>
+          </div>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-0.5 rounded-md border border-border p-0.5">
             <Button
               type="button"
@@ -216,6 +219,15 @@ export function KanbanBoard({
             )}
           </Button>
           {toolbar}
+          {currentIteration && (
+            <div className="ml-auto pl-4">
+              <FinishIterationButton
+                projectId={projectId}
+                iterationNumber={currentIteration.number}
+                visible={canFinishIteration}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -260,9 +272,15 @@ export function KanbanBoard({
 
 // The current iteration's goal (spec/screens.md "Board layout": commits on
 // Enter, Esc reverts, no Save button — same UX contract as the Backlog
-// virtual-group goal inputs, board-list-view.tsx's IterationGoalInput). Adds
-// a brief "Saved ✓" confirmation flash on success, matching
-// story-detail-panel.tsx's autosave-status convention.
+// virtual-group goal inputs, board-list-view.tsx's IterationGoalInput).
+// spec/ux-principles.md principle 5: a saved value renders as text, not a
+// live input — a permanently-visible input implies unsaved state even right
+// after a successful save. Clicking the text opens the editor; Enter or
+// blur commits and returns to text (only on success — a failed save stays
+// in edit mode with the typed value and the error still visible, same as
+// before this became click-to-edit); Esc discards and returns to text.
+// Returning to text view *is* the success feedback, so there's no separate
+// "Saved ✓" flash the way story-detail-panel.tsx's always-visible fields use.
 export function IterationGoalBar({
   projectId,
   iterationId,
@@ -272,23 +290,52 @@ export function IterationGoalBar({
   iterationId: string;
   initialGoal: string;
 }) {
+  const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(initialGoal);
   const [synced, setSynced] = useState(initialGoal);
+  // Tracked separately from `synced` so a successful commit's optimistic
+  // `setSynced` isn't immediately clobbered back to the stale `initialGoal`
+  // prop below on the very next render — this only updates (and re-syncs
+  // `synced`/`value` from the prop) once the prop itself actually changes,
+  // i.e. once revalidation has genuinely delivered a new server value.
+  const [lastInitialGoal, setLastInitialGoal] = useState(initialGoal);
   const [error, setError] = useState<string | null>(null);
-  const [showSaved, setShowSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  // Guards against a real double-submission window (fable-advisor review):
+  // marking the input `disabled` while saving made a browser fire its own
+  // blur the instant `isSaving` became true (a disabled element can't hold
+  // focus), which re-triggered commitAndClose — read-only avoids that
+  // trigger entirely, but this ref is the actual correctness guarantee: a
+  // second, overlapping commit() call (from any path) no-ops instead of
+  // resubmitting the same goal or letting whichever call resolves first
+  // decide to close the editor out from under a failure.
+  const savingRef = useRef(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef(false);
 
-  if (synced !== initialGoal) {
+  if (lastInitialGoal !== initialGoal) {
+    setLastInitialGoal(initialGoal);
     setSynced(initialGoal);
     setValue(initialGoal);
     setError(null);
   }
 
-  async function commit() {
+  useEffect(() => {
+    if (!editing && restoreFocusRef.current) {
+      restoreFocusRef.current = false;
+      buttonRef.current?.focus();
+    }
+  }, [editing]);
+
+  async function commit(): Promise<boolean> {
     const trimmed = value.trim();
     if (trimmed === synced) {
-      return;
+      return true;
     }
+    if (savingRef.current) {
+      return false;
+    }
+    savingRef.current = true;
     setError(null);
     setIsSaving(true);
     const formData = new FormData();
@@ -297,41 +344,74 @@ export function IterationGoalBar({
     formData.set("goal", trimmed);
     try {
       await updateIterationGoal(formData);
-      setShowSaved(true);
-      setTimeout(() => setShowSaved(false), 1500);
+      setSynced(trimmed);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save goal");
+      return false;
     } finally {
       setIsSaving(false);
+      savingRef.current = false;
     }
+  }
+
+  async function commitAndClose() {
+    if (await commit()) {
+      restoreFocusRef.current = true;
+      setEditing(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setEditing(true)}
+        aria-label={synced ? `Edit iteration goal: ${synced}` : "Add iteration goal"}
+        className="group flex min-w-0 max-w-md items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm hover:bg-muted"
+      >
+        {synced ? (
+          <span className="truncate">{synced}</span>
+        ) : (
+          <span className="text-muted-foreground italic">Add goal…</span>
+        )}
+        <Pencil
+          className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+          aria-hidden
+        />
+      </button>
+    );
   }
 
   return (
     <div className="flex min-w-56 flex-1 items-center gap-2 sm:max-w-md">
       <input
+        autoFocus
         value={value}
         onChange={(event) => {
           setValue(event.target.value);
           setError(null);
-          setShowSaved(false);
         }}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
-            void commit();
+            void commitAndClose();
           } else if (event.key === "Escape") {
             event.preventDefault();
             setValue(synced);
             setError(null);
-            setShowSaved(false);
+            restoreFocusRef.current = true;
+            setEditing(false);
           }
         }}
+        onBlur={() => void commitAndClose()}
         placeholder="Sprint goal"
         aria-label="Iteration goal"
-        disabled={isSaving}
+        readOnly={isSaving}
+        aria-busy={isSaving || undefined}
         className="h-8 min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 text-sm focus:outline-none disabled:opacity-60"
       />
-      {showSaved && <span className="shrink-0 text-xs text-muted-foreground">Saved ✓</span>}
       {error && <span className="shrink-0 text-xs text-destructive">{error}</span>}
     </div>
   );
