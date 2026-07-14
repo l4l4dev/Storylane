@@ -16,7 +16,7 @@ import { NewProjectInvitePicker } from "./new-project-invite-picker";
 export function InlineCreatePanel() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"tracker" | "free">("tracker");
-  const [freeTemplate, setFreeTemplate] = useState<FreeTemplate>("kanbanflow");
+  const [freeTemplate, setFreeTemplate] = useState<FreeTemplate>("daily");
   const [invitees, setInvitees] = useState<NewProjectInviteResult[]>([]);
 
   async function handleCreate(formData: FormData) {
@@ -101,12 +101,12 @@ export function InlineCreatePanel() {
               <label className="flex items-start gap-2">
                 <input
                   type="radio"
-                  checked={freeTemplate === "kanbanflow"}
-                  onChange={() => setFreeTemplate("kanbanflow")}
+                  checked={freeTemplate === "daily"}
+                  onChange={() => setFreeTemplate("daily")}
                   className="mt-1"
                 />
                 <span>
-                  KanbanFlow
+                  Daily
                   <span className="block text-xs text-muted-foreground">
                     Todo · This week · Today · In progress · Done
                   </span>

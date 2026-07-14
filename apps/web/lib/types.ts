@@ -17,5 +17,5 @@ export const ITERATION_LENGTHS = [7, 14, 21, 28] as const;
 export const POINT_SCALES: PointScale[] = ["fibonacci", "linear", "custom"];
 
 // Free-mode column templates offered at project creation.
-export const FREE_TEMPLATES = ["kanbanflow", "basic"] as const;
+export const FREE_TEMPLATES = ["daily", "basic"] as const;
 export type FreeTemplate = (typeof FREE_TEMPLATES)[number];

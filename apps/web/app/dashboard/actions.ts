@@ -52,7 +52,7 @@ export async function searchUserForNewProject(query: string): Promise<NewProject
 
 // Column templates seeded for a new free-mode project (see
 // spec/screens.md "Projects page" / "Free mode board") — the owner
-// customizes them afterwards in Settings. KanbanFlow's Done column is the
+// customizes them afterwards in Settings. Daily's Done column is the
 // project's only is_done seed; Basic's Done is is_done too, since it's the
 // same "cards land here when work is complete" column, just under a
 // simpler three-column board.
@@ -61,7 +61,7 @@ export async function searchUserForNewProject(query: string): Promise<NewProject
 // plain object export here breaks the whole module ("A 'use server' file
 // can only export async functions, found object").
 const FREE_TEMPLATE_STATUSES: Record<FreeTemplate, { name: string; color: string; position: number; is_done: boolean }[]> = {
-  kanbanflow: [
+  daily: [
     { name: "Todo", color: "#6b7280", position: 0, is_done: false },
     { name: "This week", color: "#a855f7", position: 1, is_done: false },
     { name: "Today", color: "#f59e0b", position: 2, is_done: false },
@@ -83,10 +83,10 @@ export async function createProject(formData: FormData) {
   const velocityWindow = clampVelocityWindow(Number(formData.get("velocity_window") ?? 3));
   // Fixed at creation — there is no mode-change path.
   const workflowMode = formData.get("workflow_mode") === "free" ? "free" : "tracker";
-  const freeTemplateInput = String(formData.get("free_template") ?? "kanbanflow");
+  const freeTemplateInput = String(formData.get("free_template") ?? "daily");
   const freeTemplate: FreeTemplate = FREE_TEMPLATES.includes(freeTemplateInput as FreeTemplate)
     ? (freeTemplateInput as FreeTemplate)
-    : "kanbanflow";
+    : "daily";
 
   if (!name) {
     return;

@@ -151,7 +151,7 @@ function ReadOnlyColumn({
 }
 
 // Focus view (spec/screens.md "Focus view") — a personal,
-// KanbanFlow-inspired execution view over the current iteration's stories.
+// Daily-inspired execution view over the current iteration's stories.
 // Todo/This week/Today are draggable (drag only ever sets/clears `focus`,
 // never state); In progress and Done are read-only, using the same
 // one-click transition buttons as the List view.
