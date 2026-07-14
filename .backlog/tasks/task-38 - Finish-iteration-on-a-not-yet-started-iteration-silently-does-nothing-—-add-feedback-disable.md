@@ -3,11 +3,11 @@ id: TASK-38
 title: >-
   Finish iteration on a not-yet-started iteration silently does nothing — add
   feedback/disable
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 05:18'
-updated_date: '2026-07-14 16:03'
+updated_date: '2026-07-14 16:05'
 labels:
   - web
   - bug
@@ -34,16 +34,6 @@ Fix on the UI side (kanban-board.tsx Finish dialog / board page): when the curre
 - [x] #4 Skipped iterations do not corrupt velocity (rule decided and documented in spec/velocity.md)
 - [x] #5 Double-click / concurrent manual finish remains safe (no runaway iteration creation)
 <!-- AC:END -->
-
-
-
-
-
-
-
-
-
-
 
 ## Implementation Plan
 
@@ -90,3 +80,9 @@ REVIEWS DONE (2026-07-15):
   Non-blocking follow-up noted by advisor (out of scope, candidate for a new task): notifyFinalizeEvents sends a normal 'iteration done velocity 0' Slack message even for skipped iterations — could tailor via event.skipped.
 Post-fix: full suite 425 pass, skip integration test pass, tsc + eslint clean.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Manually finishing a not-yet-started iteration now skips it (finalize_iteration gains iterations.skipped + p_iteration_id target guard); skipped iterations are excluded from the velocity window and shown with a Skipped badge; the Finish dialog reframes as Skip with the start date and never ends in silence (noop reason surfaced). Migration 20260715000002. Verified: skip integration test + 425 unit tests pass, tsc/eslint clean, rls-security-reviewer (no blockers) + fable-advisor (approved, F1 UTC-boundary + F2 start-date-copy fixes applied). Committed as 4099bab.
+<!-- SECTION:FINAL_SUMMARY:END -->
