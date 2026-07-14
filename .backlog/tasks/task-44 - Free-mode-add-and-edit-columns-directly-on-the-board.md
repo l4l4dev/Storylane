@@ -1,11 +1,11 @@
 ---
 id: TASK-44
 title: 'Free mode: add and edit columns directly on the board'
-status: To Do
+status: In Progress
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-11 05:20'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-14 15:15'
 labels:
   - web
   - ux
@@ -24,14 +24,60 @@ User review 2026-07-11: free-mode Board statuses can only be created one by one 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A column can be created from the board without visiting Settings
-- [ ] #2 A column can be renamed inline from its header
-- [ ] #3 Column menu exposes color, done-column flag, and delete (existing rules for is_done/deletion still enforced)
-- [ ] #4 Tests cover add and rename from the board
+- [x] #1 A column can be created from the board without visiting Settings
+- [x] #2 A column can be renamed inline from its header
+- [x] #3 Column menu exposes color, done-column flag, and delete (existing rules for is_done/deletion still enforced)
+- [x] #4 Tests cover add and rename from the board
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extend WipLimitMenu (free-board.tsx) into ColumnMenu: add color input + is_done
+   checkbox (submits via updateCustomStatus with current name preserved), delete
+   button gated on canDelete (deleteCustomStatus), keep existing WIP-limit form as-is.
+2. Add inline click-to-edit for column name in ColumnHeaderContent (h2 -> input on
+   click, commits via updateCustomStatus preserving current color/is_done, Escape
+   cancels, matches ux-principles.md #5).
+3. Add "+ Add column" affordance: inline name input, default color #6b7280, appended
+   via createCustomStatus. Placed at the end of the single-band row and in the lanes
+   header row.
+4. Thread canEdit/canDelete props through FreeBoard -> FreeColumn/FreeBoardLanes/
+   LaneColumnHeader/ColumnHeaderContent, gating edit/add/delete UI (edit/add hidden
+   for viewers, delete owner-only) -- mirrors StatusManager's gating.
+5. board/page.tsx FreeBoardPage: compute myRole/canEdit/canDelete same as settings
+   page.tsx, pass into <FreeBoard>.
+6. Extend free-board.test.tsx: add column from board, inline rename, menu color/done
+   save, delete (owner vs member/viewer visibility).
+7. Run pnpm exec vitest run on free-board.test.tsx, then fable-advisor design review
+   against spec/ux-principles.md, then manual verification steps for the owner.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Follow spec/ux-principles.md (landed with TASK-46), especially principles 4 (create destination visible) and 5 (saved values render as values). End with a fable-advisor design review before manual verification.
+
+IMPLEMENTED: free-board.tsx gained ColumnNameEditor (click-to-edit name, commits
+full name/color/is_done row via updateCustomStatus), AddColumnButton (+ Add column,
+default color #6b7280, createCustomStatus), and ColumnMenu (renamed from
+WipLimitMenu; added color swatch + is_done checkbox + owner-gated Delete column,
+alongside the existing WIP-limit form). canEdit/canDelete threaded through
+FreeBoard -> FreeColumn/FreeBoardLanes/LaneColumnHeader/ColumnHeaderContent.
+board/page.tsx FreeBoardPage now computes myRole/canEdit/canDelete the same way
+settings/page.tsx does (member+ edit, owner-only delete) and passes them to
+<FreeBoard>. No new write paths -- reuses createCustomStatus/updateCustomStatus/
+deleteCustomStatus/setStatusWipLimit from settings/actions.ts.
+
+REVIEWS: web-conventions-reviewer -- no issues. fable-advisor (ux-principles.md) --
+"修正付き承認": Delete column with no confirm dialog is acceptable as-is (kebab
+placement + owner-only + DB FK guard on non-empty columns already satisfy
+principle 6; matches existing status-manager.tsx precedent). Applied 3 required
+fixes before shipping: (1) settings-form button renamed "Save color" -> "Save
+column" since it also commits the is_done toggle, (2) AddColumnButton's Input
+height 8->9 to match the trigger button (principle 3, no layout shift), (3)
+ColumnNameEditor's display button given h-6 to match the edit input (principle 3).
+
+Tests: 16/16 pass in free-board.test.tsx (423/423 across the whole web suite).
+tsc --noEmit and eslint clean on all changed files.
 <!-- SECTION:NOTES:END -->

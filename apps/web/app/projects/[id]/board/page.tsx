@@ -313,6 +313,10 @@ async function FreeBoardPage({
 }) {
   const supabase = await createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   // Lazily generate any due recurring-story instances before reading
   // stories below — must run first, same ordering constraint as
   // ensureCurrentIteration above for tracker mode.
@@ -344,7 +348,7 @@ async function FreeBoardPage({
         .order("id", { ascending: true }),
       supabase.from("labels").select("id, name, color").eq("project_id", projectId).order("name"),
       supabase.from("epics").select("id, name, color").eq("project_id", projectId).order("position", { ascending: true }),
-      supabase.from("project_members").select("user_id, profiles(display_name)").eq("project_id", projectId),
+      supabase.from("project_members").select("user_id, role, profiles(display_name)").eq("project_id", projectId),
     ]);
 
   const statusList: CustomStatus[] = statuses ?? [];
@@ -413,6 +417,12 @@ async function FreeBoardPage({
     return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
   });
 
+  // Same gating as settings/page.tsx's StatusManager (project_role RLS on
+  // custom_statuses) — member+ can add/rename/recolor, owner-only can delete.
+  const myRole = (members ?? []).find((m) => m.user_id === user?.id)?.role;
+  const canEdit = myRole === "owner" || myRole === "member";
+  const canDelete = myRole === "owner";
+
   const peekDetail = peekStoryId ? await getStoryDetail(peekStoryId) : null;
 
   return (
@@ -433,6 +443,8 @@ async function FreeBoardPage({
         statuses={statusList}
         lanes={laneList}
         initialContainers={initialContainers}
+        canEdit={canEdit}
+        canDelete={canDelete}
         toolbar={
           <BoardFilters
             assignees={assigneeOptions}

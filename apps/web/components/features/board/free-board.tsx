@@ -25,7 +25,12 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { MoreHorizontal } from "lucide-react";
 import { dropStoryFree } from "@/app/projects/[id]/board/actions";
-import { setStatusWipLimit } from "@/app/projects/[id]/settings/actions";
+import {
+  createCustomStatus,
+  deleteCustomStatus,
+  setStatusWipLimit,
+  updateCustomStatus,
+} from "@/app/projects/[id]/settings/actions";
 import {
   findContainer,
   isOverWipLimit,
@@ -92,6 +97,8 @@ export function FreeBoard({
   lanes,
   initialContainers,
   toolbar,
+  canEdit = false,
+  canDelete = false,
 }: {
   projectId: string;
   statuses: CustomStatus[];
@@ -100,6 +107,10 @@ export function FreeBoard({
   lanes: Swimlane[];
   initialContainers: Record<string, FreeStoryCardData[]>;
   toolbar?: ReactNode;
+  // Same gating as Settings' status-manager.tsx (project_role RLS on
+  // custom_statuses): member+ can add/rename/recolor, owner-only can delete.
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const hasLanes = lanes.length > 0;
   const [containers, setContainers] = useState(initialContainers);
@@ -222,11 +233,21 @@ export function FreeBoard({
       {dragError && <MutationErrorBanner message={dragError} onDismiss={() => setDragError(null)} />}
 
       {statuses.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          No board columns yet. Add one in Settings → Board statuses.
-        </p>
+        <div className="flex items-start gap-3">
+          <p className="flex-1 rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            {canEdit ? "No board columns yet." : "No board columns yet. Ask a project member to add one."}
+          </p>
+          <AddColumnButton projectId={projectId} canEdit={canEdit} />
+        </div>
       ) : hasLanes ? (
-        <FreeBoardLanes statuses={statuses} lanes={lanes} containers={containers} projectId={projectId} />
+        <FreeBoardLanes
+          statuses={statuses}
+          lanes={lanes}
+          containers={containers}
+          projectId={projectId}
+          canEdit={canEdit}
+          canDelete={canDelete}
+        />
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2">
           {statuses.map((status) => (
@@ -235,8 +256,11 @@ export function FreeBoard({
               status={status}
               stories={containers[status.id] ?? []}
               projectId={projectId}
+              canEdit={canEdit}
+              canDelete={canDelete}
             />
           ))}
+          <AddColumnButton projectId={projectId} canEdit={canEdit} />
         </div>
       )}
 
@@ -259,10 +283,14 @@ function ColumnHeaderContent({
   status,
   stories,
   projectId,
+  canEdit,
+  canDelete,
 }: {
   status: CustomStatus;
   stories: FreeStoryCardData[];
   projectId: string;
+  canEdit: boolean;
+  canDelete: boolean;
 }) {
   const points = sumPoints(stories);
   // A soft WIP limit — over it is purely a warning color, drops are never
@@ -272,13 +300,192 @@ function ColumnHeaderContent({
   return (
     <>
       <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: status.color }} aria-hidden />
-      <h2 className="truncate text-sm font-semibold">{status.name}</h2>
+      {canEdit ? (
+        <ColumnNameEditor projectId={projectId} status={status} />
+      ) : (
+        <h2 className="truncate text-sm font-semibold">{status.name}</h2>
+      )}
       <span className={`text-xs ${overWipLimit ? "font-semibold text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}>
         {status.wip_limit != null ? `${stories.length} / ${status.wip_limit}` : stories.length}
       </span>
       {points > 0 && <span className="text-xs text-muted-foreground">· {points} pts</span>}
-      <WipLimitMenu projectId={projectId} statusId={status.id} currentLimit={status.wip_limit} />
+      <ColumnMenu projectId={projectId} status={status} canEdit={canEdit} canDelete={canDelete} />
     </>
+  );
+}
+
+// Click-to-edit column name (spec/ux-principles.md #5: saved values render
+// as values, not editors). Commits the full row since updateCustomStatus
+// writes name/color/is_done together — color and is_done are resubmitted
+// unchanged so a rename never clobbers them.
+function ColumnNameEditor({ projectId, status }: { projectId: string; status: CustomStatus }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(status.name);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setValue(status.name);
+          setError(null);
+          setEditing(true);
+        }}
+        className="h-6 min-w-0 flex-1 truncate text-left text-sm font-semibold hover:underline"
+      >
+        {status.name}
+      </button>
+    );
+  }
+
+  function submit() {
+    if (isPending) {
+      return;
+    }
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === status.name) {
+      setEditing(false);
+      return;
+    }
+    setError(null);
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    formData.set("status_id", status.id);
+    formData.set("name", trimmed);
+    formData.set("color", status.color);
+    if (status.is_done) {
+      formData.set("is_done", "on");
+    }
+    startTransition(async () => {
+      try {
+        await updateCustomStatus(formData);
+        setEditing(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to rename column");
+      }
+    });
+  }
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col">
+      <input
+        autoFocus
+        value={value}
+        aria-label={`Rename ${status.name}`}
+        // readOnly, not disabled — a disabled input can drop focus mid-blur
+        // and re-fire the commit (same defect class noted on IterationGoalBar).
+        readOnly={isPending}
+        onChange={(event) => {
+          setValue(event.target.value);
+          setError(null);
+        }}
+        onBlur={submit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            submit();
+          } else if (event.key === "Escape") {
+            setValue(status.name);
+            setError(null);
+            setEditing(false);
+          }
+        }}
+        className="h-6 w-full min-w-0 rounded border border-input bg-background px-1 text-sm font-semibold"
+      />
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// "+ Add column" (spec/ux-principles.md #4: the create destination is
+// visible at the point of action) — appended at the end of the row via
+// createCustomStatus; default color matches Settings' status-manager.tsx.
+function AddColumnButton({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  if (!canEdit) {
+    return null;
+  }
+
+  if (!adding) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAdding(true)}
+        className="flex h-9 w-40 shrink-0 items-center justify-center gap-1.5 self-start rounded-lg border border-dashed border-border text-sm text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+      >
+        + Add column
+      </button>
+    );
+  }
+
+  function submit() {
+    if (isPending) {
+      return;
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setAdding(false);
+      return;
+    }
+    setError(null);
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    formData.set("name", trimmed);
+    formData.set("color", "#6b7280");
+    startTransition(async () => {
+      try {
+        await createCustomStatus(formData);
+        setName("");
+        setAdding(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to add column");
+      }
+    });
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+      className="flex w-40 shrink-0 flex-col gap-1.5 self-start"
+    >
+      <Input
+        autoFocus
+        value={name}
+        placeholder="Column name"
+        readOnly={isPending}
+        onChange={(event) => {
+          setName(event.target.value);
+          setError(null);
+        }}
+        onBlur={submit}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setName("");
+            setError(null);
+            setAdding(false);
+          }
+        }}
+        className="h-9 text-sm"
+      />
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </form>
   );
 }
 
@@ -286,10 +493,14 @@ function FreeColumn({
   status,
   stories,
   projectId,
+  canEdit,
+  canDelete,
 }: {
   status: CustomStatus;
   stories: FreeStoryCardData[];
   projectId: string;
+  canEdit: boolean;
+  canDelete: boolean;
 }) {
   const { setNodeRef } = useDroppable({ id: status.id });
 
@@ -311,7 +522,7 @@ function FreeColumn({
   return (
     <section className="flex h-[calc(100dvh-13rem)] w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/30">
       <header className="flex items-center gap-2 px-3 pt-3 pb-2">
-        <ColumnHeaderContent status={status} stories={stories} projectId={projectId} />
+        <ColumnHeaderContent status={status} stories={stories} projectId={projectId} canEdit={canEdit} canDelete={canDelete} />
       </header>
       <div className="px-3 pb-2">
         <QuickAddComposer projectId={projectId} target={{ customStatusId: status.id }} />
@@ -351,11 +562,15 @@ function FreeBoardLanes({
   lanes,
   containers,
   projectId,
+  canEdit,
+  canDelete,
 }: {
   statuses: CustomStatus[];
   lanes: Swimlane[];
   containers: Record<string, FreeStoryCardData[]>;
   projectId: string;
+  canEdit: boolean;
+  canDelete: boolean;
 }) {
   const bands: { id: string | null; name: string }[] = [
     { id: null, name: "No lane" },
@@ -371,8 +586,18 @@ function FreeBoardLanes({
           // there's only one wip_limit per column (spec/data-model.md), not
           // one per lane cell.
           const columnStories = bands.flatMap((band) => containers[laneContainerKey(status.id, band.id)] ?? []);
-          return <LaneColumnHeader key={status.id} status={status} stories={columnStories} projectId={projectId} />;
+          return (
+            <LaneColumnHeader
+              key={status.id}
+              status={status}
+              stories={columnStories}
+              projectId={projectId}
+              canEdit={canEdit}
+              canDelete={canDelete}
+            />
+          );
         })}
+        <AddColumnButton projectId={projectId} canEdit={canEdit} />
       </div>
 
       {bands.map((band) => (
@@ -400,15 +625,19 @@ function LaneColumnHeader({
   status,
   stories,
   projectId,
+  canEdit,
+  canDelete,
 }: {
   status: CustomStatus;
   stories: FreeStoryCardData[];
   projectId: string;
+  canEdit: boolean;
+  canDelete: boolean;
 }) {
   return (
     <section className="w-72 shrink-0">
       <header className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
-        <ColumnHeaderContent status={status} stories={stories} projectId={projectId} />
+        <ColumnHeaderContent status={status} stories={stories} projectId={projectId} canEdit={canEdit} canDelete={canDelete} />
       </header>
     </section>
   );
@@ -488,36 +717,90 @@ function SortableFreeCard({ story, projectId }: { story: FreeStoryCardData; proj
   );
 }
 
-// "Configured from the column header menu" (spec/screens.md) —
-// a small kebab menu next to the count/limit, not the Settings status
-// editor. Soft limit only: this only ever writes wip_limit, never touches
-// drag/drop validation.
-export function WipLimitMenu({
+// The column header's kebab menu (spec/screens.md "Configured from the
+// column header menu"), distinct from the Settings status editor
+// (status-manager.tsx) but writing through the same server actions so
+// there's exactly one place each mutation happens. WIP limit is a pure
+// board affordance (never touches drag/drop validation); color/done/delete
+// mirror the Settings form. Not rendered at all for viewers (canEdit false).
+export function ColumnMenu({
   projectId,
-  statusId,
-  currentLimit,
+  status,
+  canEdit,
+  canDelete,
 }: {
   projectId: string;
-  statusId: string;
-  currentLimit: number | null;
+  status: CustomStatus;
+  canEdit: boolean;
+  canDelete: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState(currentLimit != null ? String(currentLimit) : "");
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
 
-  function submit(nextValue: string) {
-    setError(null);
+  const [limitValue, setLimitValue] = useState(status.wip_limit != null ? String(status.wip_limit) : "");
+  const [limitError, setLimitError] = useState<string | null>(null);
+  const [isLimitPending, startLimitTransition] = useTransition();
+
+  const [color, setColor] = useState(status.color);
+  const [isDone, setIsDone] = useState(status.is_done);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [isSettingsPending, startSettingsTransition] = useTransition();
+
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeletePending, startDeleteTransition] = useTransition();
+
+  if (!canEdit) {
+    return null;
+  }
+
+  function submitLimit(nextValue: string) {
+    setLimitError(null);
     const formData = new FormData();
     formData.set("project_id", projectId);
-    formData.set("status_id", statusId);
+    formData.set("status_id", status.id);
     formData.set("wip_limit", nextValue);
-    startTransition(async () => {
+    startLimitTransition(async () => {
       try {
         await setStatusWipLimit(formData);
         setOpen(false);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to update WIP limit");
+        setLimitError(err instanceof Error ? err.message : "Failed to update WIP limit");
+      }
+    });
+  }
+
+  function submitSettings() {
+    setSettingsError(null);
+    // Full-row write — name is resubmitted unchanged so this never clobbers
+    // a rename made through ColumnNameEditor.
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    formData.set("status_id", status.id);
+    formData.set("name", status.name);
+    formData.set("color", color);
+    if (isDone) {
+      formData.set("is_done", "on");
+    }
+    startSettingsTransition(async () => {
+      try {
+        await updateCustomStatus(formData);
+        setOpen(false);
+      } catch (err) {
+        setSettingsError(err instanceof Error ? err.message : "Failed to update column");
+      }
+    });
+  }
+
+  function submitDelete() {
+    setDeleteError(null);
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    formData.set("status_id", status.id);
+    startDeleteTransition(async () => {
+      try {
+        await deleteCustomStatus(formData);
+        setOpen(false);
+      } catch (err) {
+        setDeleteError(err instanceof Error ? err.message : "Failed to delete column");
       }
     });
   }
@@ -528,8 +811,12 @@ export function WipLimitMenu({
       onOpenChange={(next) => {
         setOpen(next);
         if (next) {
-          setValue(currentLimit != null ? String(currentLimit) : "");
-          setError(null);
+          setLimitValue(status.wip_limit != null ? String(status.wip_limit) : "");
+          setColor(status.color);
+          setIsDone(status.is_done);
+          setLimitError(null);
+          setSettingsError(null);
+          setDeleteError(null);
         }
       }}
     >
@@ -542,56 +829,108 @@ export function WipLimitMenu({
           <MoreHorizontal className="size-3.5" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48 p-2">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit(value);
-          }}
-          className="flex flex-col gap-1.5"
-        >
-          <label htmlFor={`wip-limit-${statusId}`} className="text-xs font-medium text-muted-foreground">
-            WIP limit
-          </label>
-          <Input
-            id={`wip-limit-${statusId}`}
-            type="number"
-            min={1}
-            step={1}
-            value={value}
-            disabled={isPending}
-            onChange={(event) => {
-              setValue(event.target.value);
-              setError(null);
+      <DropdownMenuContent align="start" className="w-56 p-2">
+        <div className="flex flex-col gap-3">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitSettings();
             }}
-            placeholder="No limit"
-            className="h-7 text-xs"
-          />
-          {error && (
-            <p role="alert" className="text-xs text-destructive">
-              {error}
-            </p>
-          )}
-          <div className="flex gap-1.5">
-            <Button type="submit" size="xs" variant="outline" disabled={isPending}>
-              Save
-            </Button>
-            {currentLimit != null && (
-              <Button
-                type="button"
-                size="xs"
-                variant="ghost"
-                disabled={isPending}
-                onClick={() => {
-                  setValue("");
-                  submit("");
-                }}
-              >
-                Clear
-              </Button>
+            className="flex flex-col gap-1.5"
+          >
+            <span className="text-xs font-medium text-muted-foreground">Color</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                aria-label="Column color"
+                value={color}
+                disabled={isSettingsPending}
+                onChange={(event) => setColor(event.target.value)}
+                className="size-7 shrink-0 cursor-pointer rounded border border-border bg-transparent"
+              />
+              <label className="flex items-center gap-1.5 text-sm" title="Counts as done in reports">
+                <input
+                  type="checkbox"
+                  checked={isDone}
+                  disabled={isSettingsPending}
+                  onChange={(event) => setIsDone(event.target.checked)}
+                />
+                Done column
+              </label>
+            </div>
+            {settingsError && (
+              <p role="alert" className="text-xs text-destructive">
+                {settingsError}
+              </p>
             )}
-          </div>
-        </form>
+            <Button type="submit" size="xs" variant="outline" disabled={isSettingsPending}>
+              Save column
+            </Button>
+          </form>
+
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitLimit(limitValue);
+            }}
+            className="flex flex-col gap-1.5"
+          >
+            <label htmlFor={`wip-limit-${status.id}`} className="text-xs font-medium text-muted-foreground">
+              WIP limit
+            </label>
+            <Input
+              id={`wip-limit-${status.id}`}
+              type="number"
+              min={1}
+              step={1}
+              value={limitValue}
+              disabled={isLimitPending}
+              onChange={(event) => {
+                setLimitValue(event.target.value);
+                setLimitError(null);
+              }}
+              placeholder="No limit"
+              className="h-7 text-xs"
+            />
+            {limitError && (
+              <p role="alert" className="text-xs text-destructive">
+                {limitError}
+              </p>
+            )}
+            <div className="flex gap-1.5">
+              <Button type="submit" size="xs" variant="outline" disabled={isLimitPending}>
+                Save limit
+              </Button>
+              {status.wip_limit != null && (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  disabled={isLimitPending}
+                  onClick={() => {
+                    setLimitValue("");
+                    submitLimit("");
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+          </form>
+
+          {canDelete && (
+            <div className="flex flex-col gap-1.5 border-t border-border pt-2">
+              {deleteError && (
+                <p role="alert" className="text-xs text-destructive">
+                  {deleteError}
+                </p>
+              )}
+              <Button type="button" size="xs" variant="destructive" disabled={isDeletePending} onClick={submitDelete}>
+                Delete column
+              </Button>
+            </div>
+          )}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

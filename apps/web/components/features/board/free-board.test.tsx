@@ -1,13 +1,19 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FreeBoard, WipLimitMenu, type CustomStatus, type Swimlane } from "./free-board";
+import { ColumnMenu, FreeBoard, type CustomStatus, type Swimlane } from "./free-board";
 
-const { setStatusWipLimitMock } = vi.hoisted(() => ({
+const { setStatusWipLimitMock, createCustomStatusMock, updateCustomStatusMock, deleteCustomStatusMock } = vi.hoisted(() => ({
   setStatusWipLimitMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  createCustomStatusMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  updateCustomStatusMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  deleteCustomStatusMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
 }));
 
 vi.mock("@/app/projects/[id]/settings/actions", () => ({
   setStatusWipLimit: setStatusWipLimitMock,
+  createCustomStatus: createCustomStatusMock,
+  updateCustomStatus: updateCustomStatusMock,
+  deleteCustomStatus: deleteCustomStatusMock,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -31,18 +37,27 @@ vi.mock("@/app/projects/[id]/board/actions", () => ({
   quickCreateStoryFree: quickCreateStoryFreeMock,
 }));
 
-describe("WipLimitMenu", () => {
+describe("ColumnMenu", () => {
+  const status: CustomStatus = { id: "s1", name: "To do", color: "#111111", position: 0, is_done: false, wip_limit: null };
+
   beforeEach(() => {
     setStatusWipLimitMock.mockClear();
+    updateCustomStatusMock.mockClear();
+    deleteCustomStatusMock.mockClear();
   });
 
-  it("saves a new limit", async () => {
-    render(<WipLimitMenu projectId="p1" statusId="s1" currentLimit={null} />);
+  it("renders nothing for a viewer (canEdit false)", () => {
+    render(<ColumnMenu projectId="p1" status={status} canEdit={false} canDelete={false} />);
+    expect(screen.queryByRole("button", { name: "Column options" })).not.toBeInTheDocument();
+  });
+
+  it("saves a new WIP limit", async () => {
+    render(<ColumnMenu projectId="p1" status={status} canEdit canDelete={false} />);
     fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
 
     const input = await screen.findByLabelText("WIP limit");
     fireEvent.change(input, { target: { value: "5" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save limit" }));
 
     await act(async () => {
       await Promise.resolve();
@@ -58,7 +73,7 @@ describe("WipLimitMenu", () => {
   });
 
   it("shows a Clear button only when a limit is already set, and clearing sends an empty value", async () => {
-    render(<WipLimitMenu projectId="p1" statusId="s1" currentLimit={3} />);
+    render(<ColumnMenu projectId="p1" status={{ ...status, wip_limit: 3 }} canEdit canDelete={false} />);
     fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
 
     await screen.findByLabelText("WIP limit");
@@ -73,26 +88,65 @@ describe("WipLimitMenu", () => {
   });
 
   it("does not show a Clear button when no limit is set", async () => {
-    render(<WipLimitMenu projectId="p1" statusId="s1" currentLimit={null} />);
+    render(<ColumnMenu projectId="p1" status={status} canEdit canDelete={false} />);
     fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
     await screen.findByLabelText("WIP limit");
     expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
   });
 
-  it("shows an error and keeps the menu open when saving fails", async () => {
+  it("shows an error and keeps the menu open when saving the limit fails", async () => {
     // A value that passes the input's own min=1 constraint (jsdom enforces
     // HTML5 validation and silently blocks submission otherwise) — the
     // rejection this asserts on is a server-side failure, not a client
     // validation error.
     setStatusWipLimitMock.mockRejectedValueOnce(new Error("Failed to update WIP limit"));
-    render(<WipLimitMenu projectId="p1" statusId="s1" currentLimit={null} />);
+    render(<ColumnMenu projectId="p1" status={status} canEdit canDelete={false} />);
     fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
 
     const input = await screen.findByLabelText("WIP limit");
     fireEvent.change(input, { target: { value: "5" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save limit" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Failed to update WIP limit");
+  });
+
+  it("saves color and done-column changes, preserving the current name", async () => {
+    render(<ColumnMenu projectId="p1" status={status} canEdit canDelete={false} />);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
+
+    fireEvent.change(await screen.findByLabelText("Column color"), { target: { value: "#00ff00" } });
+    fireEvent.click(screen.getByLabelText("Done column"));
+    fireEvent.click(screen.getByRole("button", { name: "Save column" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(updateCustomStatusMock).toHaveBeenCalledTimes(1);
+    const formData = updateCustomStatusMock.mock.calls[0]?.[0];
+    if (!formData) {
+      throw new Error("updateCustomStatus was not called with FormData");
+    }
+    expect(formData.get("status_id")).toBe("s1");
+    expect(formData.get("name")).toBe("To do");
+    expect(formData.get("color")).toBe("#00ff00");
+    expect(formData.get("is_done")).toBe("on");
+  });
+
+  it("hides Delete column for a member and shows it for an owner", async () => {
+    const { rerender } = render(<ColumnMenu projectId="p1" status={status} canEdit canDelete={false} />);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
+    await screen.findByLabelText("WIP limit");
+    expect(screen.queryByRole("button", { name: "Delete column" })).not.toBeInTheDocument();
+
+    rerender(<ColumnMenu projectId="p1" status={status} canEdit canDelete />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete column" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(deleteCustomStatusMock).toHaveBeenCalledTimes(1);
+    const formData = deleteCustomStatusMock.mock.calls[0]?.[0];
+    expect(formData?.get("status_id")).toBe("s1");
   });
 });
 
@@ -194,5 +248,89 @@ describe("FreeBoard lanes", () => {
     );
 
     expect(screen.getByText("No lane")).toBeInTheDocument();
+  });
+});
+
+// TASK-44 AC #1/#2/#4: add and rename columns from the board itself.
+describe("FreeBoard column management", () => {
+  const statuses: CustomStatus[] = [
+    { id: "st1", name: "To do", color: "#111111", position: 0, is_done: false, wip_limit: null },
+  ];
+
+  beforeEach(() => {
+    createCustomStatusMock.mockClear();
+    updateCustomStatusMock.mockClear();
+  });
+
+  it("does not show Add column or inline rename for a viewer", () => {
+    render(<FreeBoard projectId="p1" statuses={statuses} lanes={[]} initialContainers={{ st1: [] }} canEdit={false} />);
+
+    expect(screen.queryByRole("button", { name: "+ Add column" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "To do" })).not.toBeInTheDocument();
+    expect(screen.getByText("To do")).toBeInTheDocument();
+  });
+
+  it("creates a column from the board", async () => {
+    render(<FreeBoard projectId="p1" statuses={statuses} lanes={[]} initialContainers={{ st1: [] }} canEdit />);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add column" }));
+    const input = screen.getByPlaceholderText("Column name");
+    fireEvent.change(input, { target: { value: "Blocked" } });
+    fireEvent.blur(input);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(createCustomStatusMock).toHaveBeenCalledTimes(1);
+    const formData = createCustomStatusMock.mock.calls[0]?.[0];
+    if (!formData) {
+      throw new Error("createCustomStatus was not called with FormData");
+    }
+    expect(formData.get("project_id")).toBe("p1");
+    expect(formData.get("name")).toBe("Blocked");
+  });
+
+  it("discards an empty column name on blur without calling createCustomStatus", () => {
+    render(<FreeBoard projectId="p1" statuses={statuses} lanes={[]} initialContainers={{ st1: [] }} canEdit />);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add column" }));
+    fireEvent.blur(screen.getByPlaceholderText("Column name"));
+
+    expect(createCustomStatusMock).not.toHaveBeenCalled();
+    expect(screen.queryByPlaceholderText("Column name")).not.toBeInTheDocument();
+  });
+
+  it("renames a column inline, preserving its color and is_done", async () => {
+    render(<FreeBoard projectId="p1" statuses={statuses} lanes={[]} initialContainers={{ st1: [] }} canEdit />);
+
+    fireEvent.click(screen.getByRole("button", { name: "To do" }));
+    const input = screen.getByLabelText("Rename To do");
+    fireEvent.change(input, { target: { value: "Doing" } });
+    fireEvent.blur(input);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(updateCustomStatusMock).toHaveBeenCalledTimes(1);
+    const formData = updateCustomStatusMock.mock.calls[0]?.[0];
+    if (!formData) {
+      throw new Error("updateCustomStatus was not called with FormData");
+    }
+    expect(formData.get("status_id")).toBe("st1");
+    expect(formData.get("name")).toBe("Doing");
+    expect(formData.get("color")).toBe("#111111");
+    expect(formData.get("is_done")).toBeNull();
+  });
+
+  it("cancels an inline rename on Escape without calling updateCustomStatus", () => {
+    render(<FreeBoard projectId="p1" statuses={statuses} lanes={[]} initialContainers={{ st1: [] }} canEdit />);
+
+    fireEvent.click(screen.getByRole("button", { name: "To do" }));
+    const input = screen.getByLabelText("Rename To do");
+    fireEvent.change(input, { target: { value: "Doing" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(updateCustomStatusMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "To do" })).toBeInTheDocument();
   });
 });
