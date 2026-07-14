@@ -39,23 +39,26 @@ export default async function IterationsPage({
   const doneIterations = iterations ?? [];
   const doneIds = doneIterations.map((iteration) => iteration.id);
 
-  const [{ data: stories }, { data: labels }] =
+  const [{ data: stories }, { data: labels }, { data: epics }] =
     doneIds.length > 0
       ? await Promise.all([
           supabase
             .from("stories")
             .select(
-              "id, number, title, description, story_type, state, points, position, iteration_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+              "id, number, title, description, story_type, state, points, position, iteration_id, epic_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
             )
             .in("iteration_id", doneIds)
             .order("position", { ascending: true }),
           supabase.from("labels").select("id, name, color").eq("project_id", id),
+          supabase.from("epics").select("id, name, color").eq("project_id", id),
         ])
-      : [{ data: [] }, { data: [] }];
+      : [{ data: [] }, { data: [] }, { data: [] }];
 
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
+  const epicById = new Map((epics ?? []).map((e) => [e.id, e]));
   const cards = (stories ?? []).map((story) => {
     const assigneeProfile = Array.isArray(story.assignee) ? story.assignee[0] : story.assignee;
+    const epic = story.epic_id ? epicById.get(story.epic_id) : undefined;
     const card: StoryCardData & { iteration_id: string | null } = {
       id: story.id,
       number: story.number,
@@ -70,6 +73,7 @@ export default async function IterationsPage({
         .map((sl) => labelById.get(sl.label_id))
         .filter((l): l is NonNullable<typeof l> => l != null)
         .map((l) => ({ id: l.id, name: l.name, color: l.color })),
+      epic: epic ? { id: epic.id, name: epic.name, color: epic.color } : null,
     };
     return card;
   });

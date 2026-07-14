@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MoreVertical } from "lucide-react";
 import {
   copyStoryToProject,
@@ -103,6 +103,8 @@ function PromoteToEpicDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const taskCount = detail.tasks.length;
@@ -117,7 +119,27 @@ function PromoteToEpicDialog({
       setPending(false);
       return;
     }
-    router.push(`/projects/${detail.projectId}/epics`);
+    // TASK-41: used to jump straight to /epics — the story's own epic
+    // membership is invisible after promotion (this story no longer
+    // exists), but promoting shouldn't eject the user from wherever they
+    // were working either (spec/ux-principles.md principle 8). The board
+    // is the shared destination for both the side peek and the standalone
+    // /stories/[id] page (the promoted story's own page 404s either way);
+    // the new epic's name is the promoted story's title (see the RPC), so
+    // no extra fetch is needed for the confirmation banner.
+    //
+    // fable-advisor review: pushing a bare board URL dropped any active
+    // Type/Assignee/Label/Epic filter when promoting from the board's own
+    // peek — same "preserve other params" convention as
+    // BoardFilters.setParam / StoryCard.openPeek elsewhere in this feature.
+    // The standalone /stories/[id] page has no board search params of its
+    // own to preserve, so it always lands on a bare board URL.
+    const boardPath = `/projects/${detail.projectId}/board`;
+    const params = pathname === boardPath ? new URLSearchParams(searchParams) : new URLSearchParams();
+    params.delete("story");
+    params.set("promoted_epic", result.epicId);
+    params.set("promoted_epic_name", detail.title);
+    router.push(`${boardPath}?${params.toString()}`);
   }
 
   return (

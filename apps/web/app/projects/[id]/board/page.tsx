@@ -15,6 +15,7 @@ import { laneContainerKey } from "@/lib/utils/board";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { StoryPeekHost } from "@/components/features/board/story-peek-host";
 import { InviteFailedBanner, parseInviteFailedCount } from "@/components/features/projects/invite-failed-banner";
+import { parsePromotedEpic, PromotedEpicBanner, type PromotedEpic } from "@/components/features/board/promoted-epic-banner";
 import { ensureCurrentIteration, generateRecurringStories } from "./actions";
 
 export default async function BoardPage({
@@ -22,14 +23,35 @@ export default async function BoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ type?: string; assignee?: string; label?: string; story?: string; invite_failed?: string }>;
+  searchParams: Promise<{
+    type?: string;
+    assignee?: string;
+    label?: string;
+    epic?: string;
+    story?: string;
+    invite_failed?: string;
+    promoted_epic?: string;
+    promoted_epic_name?: string;
+  }>;
 }) {
   const { id } = await params;
-  const { type, assignee, label, story: peekStoryId, invite_failed } = await searchParams;
+  const {
+    type,
+    assignee,
+    label,
+    epic,
+    story: peekStoryId,
+    invite_failed,
+    promoted_epic,
+    promoted_epic_name,
+  } = await searchParams;
   // TASK-32: project creation now redirects straight to the new project's
   // board instead of /dashboard, so this is where a partial invite failure
   // from that flow must surface instead — never silently.
   const inviteFailedCount = parseInviteFailedCount(invite_failed);
+  // TASK-41: "Promote to Epic" (story-peek-menu.tsx) redirects here instead
+  // of jumping to /epics, so this is where its confirmation banner surfaces.
+  const promotedEpic = parsePromotedEpic(promoted_epic, promoted_epic_name);
   const supabase = await createClient();
 
   const {
@@ -55,8 +77,10 @@ export default async function BoardPage({
         type={type}
         assignee={assignee}
         label={label}
+        epic={epic}
         peekStoryId={peekStoryId}
         inviteFailedCount={inviteFailedCount}
+        promotedEpic={promotedEpic}
       />
     );
   }
@@ -66,7 +90,7 @@ export default async function BoardPage({
   // iterations query below.
   await ensureCurrentIteration(project.id);
 
-  const [{ data: iterations }, { data: stories }, { data: labels }, { data: members }, { data: dividers }, { data: pendingGoals }] =
+  const [{ data: iterations }, { data: stories }, { data: labels }, { data: epics }, { data: members }, { data: dividers }, { data: pendingGoals }] =
     await Promise.all([
       supabase
         .from("iterations")
@@ -81,6 +105,7 @@ export default async function BoardPage({
         .eq("project_id", id)
         .order("position", { ascending: true }),
       supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
+      supabase.from("epics").select("id, name, color").eq("project_id", id).order("position", { ascending: true }),
       supabase
         .from("project_members")
         .select("user_id, role, profiles(display_name)")
@@ -112,6 +137,7 @@ export default async function BoardPage({
     allIterations.filter((iteration) => iteration.state === "done").map((iteration) => iteration.id),
   );
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
+  const epicById = new Map((epics ?? []).map((e) => [e.id, e]));
 
   const cards = (stories ?? [])
     // Stories of finalized iterations belong to the history view
@@ -120,6 +146,7 @@ export default async function BoardPage({
     .map((story) => {
       const assigneeProfile = Array.isArray(story.assignee) ? story.assignee[0] : story.assignee;
       const labelIds = story.story_labels.map((sl) => sl.label_id);
+      const epic = story.epic_id ? epicById.get(story.epic_id) : undefined;
       const card: BoardStory = {
         id: story.id,
         number: story.number,
@@ -139,6 +166,8 @@ export default async function BoardPage({
           .filter((l): l is NonNullable<typeof l> => l != null)
           .map((l) => ({ id: l.id, name: l.name, color: l.color })),
         labelIds,
+        epic_id: story.epic_id,
+        epic: epic ? { id: epic.id, name: epic.name, color: epic.color } : null,
       };
       return card;
     });
@@ -150,7 +179,7 @@ export default async function BoardPage({
   // hidden stories' positions, and would make the virtual-iteration
   // groups/point sums/committed-points shift with whatever filter happened
   // to be active.
-  const filter = { type, assigneeId: assignee, labelId: label };
+  const filter = { type, assigneeId: assignee, labelId: label, epicId: epic };
   const initialContainers: Record<string, BoardStory[]> = {
     [BACKLOG_COLUMN_ID]: [],
     [ICEBOX_COLUMN_ID]: [],
@@ -230,6 +259,9 @@ export default async function BoardPage({
       {inviteFailedCount !== null && (
         <InviteFailedBanner count={inviteFailedCount} settingsHref={`/projects/${project.id}/settings`} />
       )}
+      {promotedEpic && (
+        <PromotedEpicBanner projectId={project.id} epicId={promotedEpic.id} epicName={promotedEpic.name} />
+      )}
 
       <KanbanBoard
         projectId={project.id}
@@ -247,6 +279,7 @@ export default async function BoardPage({
           <BoardFilters
             assignees={assigneeOptions}
             labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
+            epics={(epics ?? []).map((e) => ({ id: e.id, name: e.name }))}
           />
         }
       />
@@ -264,15 +297,19 @@ async function FreeBoardPage({
   type,
   assignee,
   label,
+  epic,
   peekStoryId,
   inviteFailedCount,
+  promotedEpic,
 }: {
   projectId: string;
   type?: string;
   assignee?: string;
   label?: string;
+  epic?: string;
   peekStoryId?: string;
   inviteFailedCount: number | null;
+  promotedEpic: PromotedEpic | null;
 }) {
   const supabase = await createClient();
 
@@ -281,7 +318,7 @@ async function FreeBoardPage({
   // ensureCurrentIteration above for tracker mode.
   await generateRecurringStories(projectId);
 
-  const [{ data: statuses }, { data: lanes }, { data: stories }, { data: labels }, { data: members }] =
+  const [{ data: statuses }, { data: lanes }, { data: stories }, { data: labels }, { data: epics }, { data: members }] =
     await Promise.all([
       supabase
         .from("custom_statuses")
@@ -296,7 +333,7 @@ async function FreeBoardPage({
       supabase
         .from("stories")
         .select(
-          "id, number, title, description, story_type, state, points, position, custom_status_id, swimlane_id, completed_at, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+          "id, number, title, description, story_type, state, points, position, custom_status_id, swimlane_id, epic_id, completed_at, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
         )
         .eq("project_id", projectId)
         // Secondary key: once lanes split a column into multiple cells,
@@ -306,16 +343,19 @@ async function FreeBoardPage({
         .order("position", { ascending: true })
         .order("id", { ascending: true }),
       supabase.from("labels").select("id, name, color").eq("project_id", projectId).order("name"),
+      supabase.from("epics").select("id, name, color").eq("project_id", projectId).order("position", { ascending: true }),
       supabase.from("project_members").select("user_id, profiles(display_name)").eq("project_id", projectId),
     ]);
 
   const statusList: CustomStatus[] = statuses ?? [];
   const laneList: Swimlane[] = lanes ?? [];
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
+  const epicById = new Map((epics ?? []).map((e) => [e.id, e]));
 
   const cards = (stories ?? []).map((story) => {
     const assigneeProfile = Array.isArray(story.assignee) ? story.assignee[0] : story.assignee;
     const labelIds = story.story_labels.map((sl) => sl.label_id);
+    const epic = story.epic_id ? epicById.get(story.epic_id) : undefined;
     return {
       id: story.id,
       number: story.number,
@@ -334,10 +374,12 @@ async function FreeBoardPage({
         .filter((l): l is NonNullable<typeof l> => l != null)
         .map((l) => ({ id: l.id, name: l.name, color: l.color })),
       labelIds,
+      epic_id: story.epic_id,
+      epic: epic ? { id: epic.id, name: epic.name, color: epic.color } : null,
     };
   });
 
-  const visible = filterStories(cards, { type, assigneeId: assignee, labelId: label });
+  const visible = filterStories(cards, { type, assigneeId: assignee, labelId: label, epicId: epic });
   const hasLanes = laneList.length > 0;
   const statusIds = new Set(statusList.map((s) => s.id));
   const laneIds = new Set(laneList.map((l) => l.id));
@@ -382,6 +424,9 @@ async function FreeBoardPage({
       {inviteFailedCount !== null && (
         <InviteFailedBanner count={inviteFailedCount} settingsHref={`/projects/${projectId}/settings`} />
       )}
+      {promotedEpic && (
+        <PromotedEpicBanner projectId={projectId} epicId={promotedEpic.id} epicName={promotedEpic.name} />
+      )}
 
       <FreeBoard
         projectId={projectId}
@@ -392,6 +437,7 @@ async function FreeBoardPage({
           <BoardFilters
             assignees={assigneeOptions}
             labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
+            epics={(epics ?? []).map((e) => ({ id: e.id, name: e.name }))}
           />
         }
       />

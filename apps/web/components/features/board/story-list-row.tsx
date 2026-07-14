@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bug, Star, Wrench, type LucideIcon } from "lucide-react";
 import { formatPoints, STORY_STATE_META, STORY_TYPE_META, type StoryState, type StoryType } from "@/lib/utils/stories";
-import { initials, ReleaseMarkerRow, type StoryCardData } from "./story-card";
+import { EpicBadge, initials, ReleaseMarkerRow, type StoryCardData } from "./story-card";
 import { TransitionButtons } from "@/components/features/story/transition-buttons";
 
 const STORY_TYPE_ICON: Record<Exclude<StoryType, "release">, LucideIcon> = {
@@ -69,6 +69,7 @@ export function StoryListRow({
         <span className="truncate text-sm font-medium">{story.title}</span>
       </button>
 
+      {story.epic && <EpicBadge epic={story.epic} />}
       {stateMeta && (
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${stateMeta.className}`}>
           {stateMeta.label}

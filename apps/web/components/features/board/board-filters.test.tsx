@@ -16,6 +16,7 @@ vi.mock("next/navigation", () => ({
 
 const assignees = [{ id: "u1", name: "Alice" }];
 const labels = [{ id: "l1", name: "urgent" }];
+const epics = [{ id: "e1", name: "Checkout revamp" }];
 
 // TASK-45 follow-up (owner feedback 2026-07-13): three always-visible
 // filter selects crowded the control row alongside the view switcher,
@@ -27,32 +28,46 @@ describe("BoardFilters", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams());
   });
 
-  it("shows no count badge and keeps the three selects hidden until opened", () => {
-    render(<BoardFilters assignees={assignees} labels={labels} />);
+  it("shows no count badge and keeps the selects hidden until opened", () => {
+    render(<BoardFilters assignees={assignees} labels={labels} epics={epics} />);
     expect(screen.getByRole("button", { name: /^Filters/ })).toHaveTextContent("Filters");
     expect(screen.queryByRole("combobox", { name: "Filter by type" })).not.toBeInTheDocument();
   });
 
-  it("opens on click and shows all three filters", async () => {
+  it("opens on click and shows all four filters", async () => {
     const user = userEvent.setup();
-    render(<BoardFilters assignees={assignees} labels={labels} />);
+    render(<BoardFilters assignees={assignees} labels={labels} epics={epics} />);
 
     await user.click(screen.getByRole("button", { name: /^Filters/ }));
 
     expect(screen.getByRole("combobox", { name: "Filter by type" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Filter by assignee" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Filter by label" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Filter by epic" })).toBeInTheDocument();
+  });
+
+  // TASK-41: board toolbar can filter stories by epic (AC #2).
+  it("updates the URL when the epic filter changes", async () => {
+    const user = userEvent.setup();
+    render(<BoardFilters assignees={assignees} labels={labels} epics={epics} />);
+    await user.click(screen.getByRole("button", { name: /^Filters/ }));
+
+    const epicSelect = screen.getByRole("combobox", { name: "Filter by epic" });
+    expect(screen.getByRole("option", { name: "Checkout revamp" })).toBeInTheDocument();
+    fireEvent.change(epicSelect, { target: { value: "e1" } });
+
+    expect(replaceMock).toHaveBeenCalledWith("/projects/p1/board?epic=e1");
   });
 
   it("shows a count badge reflecting how many filters are active", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("type=feature&assignee=u1"));
-    render(<BoardFilters assignees={assignees} labels={labels} />);
+    render(<BoardFilters assignees={assignees} labels={labels} epics={epics} />);
     expect(screen.getByRole("button", { name: /^Filters/ })).toHaveTextContent("· 2");
   });
 
   it("updates the URL when a filter changes, without closing the popover", async () => {
     const user = userEvent.setup();
-    render(<BoardFilters assignees={assignees} labels={labels} />);
+    render(<BoardFilters assignees={assignees} labels={labels} epics={epics} />);
     await user.click(screen.getByRole("button", { name: /^Filters/ }));
 
     const typeSelect = screen.getByRole("combobox", { name: "Filter by type" });
@@ -66,7 +81,7 @@ describe("BoardFilters", () => {
   it("clears the URL param when a filter is reset to 'All'", async () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("type=feature"));
     const user = userEvent.setup();
-    render(<BoardFilters assignees={assignees} labels={labels} />);
+    render(<BoardFilters assignees={assignees} labels={labels} epics={epics} />);
     await user.click(screen.getByRole("button", { name: /^Filters/ }));
 
     const typeSelect = screen.getByRole("combobox", { name: "Filter by type" });
@@ -80,9 +95,9 @@ describe("BoardFilters", () => {
   // not tabbing through form controls), which would have made Assignee and
   // Label unreachable by keyboard from Type. Popover (this component's
   // primitive since that review) has no such interception.
-  it("lets a keyboard user Tab from Type through to Assignee and Label", async () => {
+  it("lets a keyboard user Tab from Type through Assignee, Label, and Epic", async () => {
     const user = userEvent.setup();
-    render(<BoardFilters assignees={assignees} labels={labels} />);
+    render(<BoardFilters assignees={assignees} labels={labels} epics={epics} />);
     await user.click(screen.getByRole("button", { name: /^Filters/ }));
 
     const typeSelect = screen.getByRole("combobox", { name: "Filter by type" });
@@ -94,5 +109,8 @@ describe("BoardFilters", () => {
 
     await user.tab();
     expect(screen.getByRole("combobox", { name: "Filter by label" })).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByRole("combobox", { name: "Filter by epic" })).toHaveFocus();
   });
 });

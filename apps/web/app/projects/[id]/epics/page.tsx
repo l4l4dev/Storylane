@@ -56,6 +56,9 @@ export default async function EpicsPage({
             return (
               <li
                 key={epic.id}
+                id={epic.id}
+                // TASK-41: anchor target for the "View epic" link on the
+                // post-promote board banner (promoted-epic-banner.tsx).
                 className="rounded-lg border border-border p-4"
               >
                 <div className="mb-2 flex items-start justify-between gap-3">

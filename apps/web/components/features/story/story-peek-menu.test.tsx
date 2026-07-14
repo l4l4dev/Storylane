@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StoryDetail } from "@/app/stories/[id]/actions";
 import { StoryPeekMenu } from "./story-peek-menu";
 
@@ -8,15 +8,23 @@ import { StoryPeekMenu } from "./story-peek-menu";
 // (task count / empty-epic / comment-deletion warning). Routing and the RPC
 // action itself are stubbed — the RPC's own correctness is covered by
 // lib/utils/promote.integration.test.ts.
+const { pushMock, pathnameMock, searchParamsMock } = vi.hoisted(() => ({
+  pushMock: vi.fn(),
+  pathnameMock: vi.fn<() => string>(() => "/projects/p1/board"),
+  searchParamsMock: vi.fn<() => URLSearchParams>(() => new URLSearchParams()),
+}));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
+  usePathname: () => pathnameMock(),
+  useSearchParams: () => searchParamsMock(),
 }));
 const getMoveTargetProjectsMock = vi.fn();
+const promoteStoryToEpicMock = vi.fn();
 vi.mock("@/app/stories/[id]/actions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/app/stories/[id]/actions")>();
   return {
     ...actual,
-    promoteStoryToEpic: vi.fn(),
+    promoteStoryToEpic: (...args: unknown[]) => promoteStoryToEpicMock(...args),
     getMoveTargetProjects: (...args: unknown[]) => getMoveTargetProjectsMock(...args),
   };
 });
@@ -51,6 +59,14 @@ async function openPromoteDialog() {
 }
 
 describe("StoryPeekMenu", () => {
+  beforeEach(() => {
+    pushMock.mockClear();
+    pathnameMock.mockReturnValue("/projects/p1/board");
+    searchParamsMock.mockReturnValue(new URLSearchParams());
+    promoteStoryToEpicMock.mockReset();
+    promoteStoryToEpicMock.mockResolvedValue({ ok: true, epicId: "e1" });
+  });
+
   it("warns the epic starts empty when the story has no tasks", async () => {
     render(<StoryPeekMenu detail={baseDetail} />);
     await openPromoteDialog();
@@ -95,6 +111,36 @@ describe("StoryPeekMenu", () => {
     await openPromoteDialog();
 
     expect(screen.queryByText(/comment/i)).not.toBeInTheDocument();
+  });
+
+  // fable-advisor review: redirecting to a bare board URL after promoting
+  // used to silently drop any active Type/Assignee/Label/Epic filter when
+  // promoting from the board's own peek — the same "preserve other params"
+  // convention BoardFilters.setParam and StoryCard.openPeek already follow.
+  it("preserves the board's active filters when promoting from the board peek", async () => {
+    pathnameMock.mockReturnValue("/projects/p1/board");
+    searchParamsMock.mockReturnValue(new URLSearchParams("type=feature&story=s1"));
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={baseDetail} />);
+    await openPromoteDialog();
+    await user.click(screen.getByRole("button", { name: "Promote to epic" }));
+
+    expect(pushMock).toHaveBeenCalledWith(
+      "/projects/p1/board?type=feature&promoted_epic=e1&promoted_epic_name=Big+story+to+split",
+    );
+  });
+
+  it("redirects to a bare board URL when promoting from the standalone story page", async () => {
+    pathnameMock.mockReturnValue("/stories/s1");
+    searchParamsMock.mockReturnValue(new URLSearchParams());
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={baseDetail} />);
+    await openPromoteDialog();
+    await user.click(screen.getByRole("button", { name: "Promote to epic" }));
+
+    expect(pushMock).toHaveBeenCalledWith(
+      "/projects/p1/board?promoted_epic=e1&promoted_epic_name=Big+story+to+split",
+    );
   });
 
   it("shows a delete confirmation naming the story and its comment count", async () => {

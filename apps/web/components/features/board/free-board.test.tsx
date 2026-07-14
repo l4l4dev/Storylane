@@ -114,6 +114,7 @@ describe("FreeBoard lanes", () => {
       points: null,
       assigneeName: null,
       labels: [],
+      epic: null,
       completed_at: null,
       swimlane_id: swimlaneId,
     };

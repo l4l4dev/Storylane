@@ -20,6 +20,7 @@ const baseStory: StoryCardData = {
   points: 3,
   assigneeName: null,
   labels: [],
+  epic: null,
 };
 
 describe("StoryCard", () => {
@@ -70,5 +71,22 @@ describe("StoryCard", () => {
   it("shows assignee initials in the meta row", () => {
     render(<StoryCard story={{ ...baseStory, assigneeName: "Mary Evans" }} projectId="p1" />);
     expect(screen.getByTitle("Mary Evans")).toHaveTextContent("ME");
+  });
+
+  // TASK-41: epic membership must stay visible on the card, not just in the
+  // detail panel's editor (spec/ux-principles.md principle 8).
+  it("shows the epic badge when the story belongs to an epic", () => {
+    render(
+      <StoryCard
+        story={{ ...baseStory, epic: { id: "e1", name: "Checkout revamp", color: "#6366f1" } }}
+        projectId="p1"
+      />,
+    );
+    expect(screen.getByText("Checkout revamp")).toBeInTheDocument();
+  });
+
+  it("shows no epic badge when the story has no epic", () => {
+    render(<StoryCard story={baseStory} projectId="p1" />);
+    expect(screen.queryByText("Checkout revamp")).not.toBeInTheDocument();
   });
 });

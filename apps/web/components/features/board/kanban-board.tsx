@@ -30,14 +30,15 @@ export { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID };
 // lib/utils/kanban, lib/utils/stories "matchesStoryFilter"). `position` is
 // the shared cross-state ordinal the List view's current zone sorts on —
 // it's meaningless for the Kanban view's own per-column order,
-// which never reads it. `assignee_id`/`labelIds` are the raw ids filters
-// match on, alongside `assigneeName`/`labels` (from `StoryCardData`), which
-// are only ever used for display.
+// which never reads it. `assignee_id`/`labelIds`/`epic_id` are the raw ids
+// filters match on, alongside `assigneeName`/`labels`/`epic` (from
+// `StoryCardData`), which are only ever used for display.
 export type BoardStory = StoryCardData & {
   iteration_id: string | null;
   position: number;
   assignee_id: string | null;
   labelIds: string[];
+  epic_id: string | null;
   // Focus view only (spec/screens.md "Focus view") — ignored by
   // the List/Kanban views.
   focus: string | null;

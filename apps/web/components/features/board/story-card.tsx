@@ -20,6 +20,10 @@ export type StoryCardData = {
   points: number | null;
   assigneeName: string | null;
   labels: { id: string; name: string; color: string }[];
+  // TASK-41: which epic (if any) this story belongs to — kept visible on
+  // List/Kanban/Focus cards so promoting a story out of the backlog doesn't
+  // make its epic membership invisible (spec/ux-principles.md principle 8).
+  epic: { id: string; name: string; color: string } | null;
 };
 
 // Story-type glyphs live here (client) rather than in the framework-free
@@ -64,6 +68,22 @@ export function ReleaseMarkerRow({ story, onOpen }: { story: StoryCardData; onOp
     >
       {content}
     </Link>
+  );
+}
+
+// Epic badge (TASK-41): a colored dot (matching the Epics panel/page's own
+// dot-plus-name treatment) plus the epic's name, distinguishing it from the
+// plain label pills next to it. Exported so the List view's row can render
+// the same badge.
+export function EpicBadge({ epic }: { epic: { id: string; name: string; color: string } }) {
+  return (
+    <span
+      className="inline-flex max-w-40 min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs"
+      style={{ backgroundColor: `${epic.color}22`, color: epic.color }}
+    >
+      <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: epic.color }} />
+      <span className="truncate">{epic.name}</span>
+    </span>
   );
 }
 
@@ -137,6 +157,7 @@ export function StoryCard({
             {formatPoints(story.points)}
           </span>
         )}
+        {story.epic && <EpicBadge epic={story.epic} />}
         {story.labels.map((label) => (
           <span
             key={label.id}

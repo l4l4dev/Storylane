@@ -10,28 +10,31 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 
 type Option = { id: string; name: string };
 
-// The three filters used to render as always-visible dropdowns alongside
+// Type/Assignee/Label used to render as always-visible dropdowns alongside
 // the view switcher, Icebox toggle, and Finish iteration — eight controls
 // competing for attention in one row (TASK-45 follow-up, owner feedback
-// 2026-07-13). Collapsed into one "Filters" trigger with a count badge;
-// the three selects still live inside, just one click away instead of
-// always on screen.
+// 2026-07-13). Collapsed into one "Filters" trigger with a count badge; the
+// selects still live inside, just one click away instead of always on
+// screen. Epic (TASK-41) joined the same popover rather than adding a fifth
+// always-visible control.
 //
 // Popover, not DropdownMenu (fable-advisor review): Radix's DropdownMenu
 // Content has role="menu" and its own keydown handler unconditionally
 // preventDefaults Tab (@radix-ui/react-menu dist/index.mjs — menus are
 // built for menuitem children navigated by arrow keys, not a Tab sequence
 // through arbitrary form controls), so a keyboard user could open the menu
-// but never Tab from the Type select to Assignee/Label. Popover has no such
-// interception and is non-modal by default (unlike DropdownMenu's
+// but never Tab from the Type select to Assignee/Label/Epic. Popover has no
+// such interception and is non-modal by default (unlike DropdownMenu's
 // modal=true), so it doesn't scroll-lock/aria-hide the board behind it
 // while a member is filtering what they can see.
 export function BoardFilters({
   assignees,
   labels,
+  epics,
 }: {
   assignees: Option[];
   labels: Option[];
+  epics: Option[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -50,7 +53,8 @@ export function BoardFilters({
   const type = searchParams.get("type") ?? "";
   const assignee = searchParams.get("assignee") ?? "";
   const label = searchParams.get("label") ?? "";
-  const activeCount = [type, assignee, label].filter(Boolean).length;
+  const epic = searchParams.get("epic") ?? "";
+  const activeCount = [type, assignee, label, epic].filter(Boolean).length;
 
   return (
     <Popover>
@@ -117,6 +121,26 @@ export function BoardFilters({
             {labels.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="board-filter-epic" className="text-xs text-muted-foreground">
+            Epic
+          </Label>
+          <NativeSelect
+            id="board-filter-epic"
+            aria-label="Filter by epic"
+            value={epic}
+            onChange={(e) => setParam("epic", e.target.value)}
+            className="h-8 w-full"
+          >
+            <option value="">All epics</option>
+            {epics.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
               </option>
             ))}
           </NativeSelect>
