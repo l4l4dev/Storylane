@@ -1,11 +1,11 @@
 ---
 id: TASK-33
 title: Rename free-mode template away from 'KanbanFlow' (existing product name)
-status: To Do
+status: Done
 assignee:
   - '@claude-haiku-4-5'
 created_date: '2026-07-11 05:16'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-14 14:56'
 labels:
   - web
   - copy
@@ -25,9 +25,11 @@ New display name TBD by the owner — candidates proposed: A) 'Daily' B) 'Today 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The string 'KanbanFlow' no longer appears anywhere in the UI
-- [ ] #2 Template still seeds the same columns and creation flow works for both templates
+- [x] #1 The string 'KanbanFlow' no longer appears anywhere in the UI
+- [x] #2 Template still seeds the same columns and creation flow works for both templates
 <!-- AC:END -->
+
+
 
 ## Implementation Notes
 
