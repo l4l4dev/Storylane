@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { describeActivity } from "@/lib/utils/activity";
+import { formatDateTime } from "@/lib/utils/format";
 
 export default async function ProjectActivityPage({
   params,
@@ -43,7 +44,7 @@ export default async function ProjectActivityPage({
                   })}
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">
-                  {new Date(log.created_at).toLocaleString()}
+                  {formatDateTime(log.created_at)}
                 </span>
               </li>
             );

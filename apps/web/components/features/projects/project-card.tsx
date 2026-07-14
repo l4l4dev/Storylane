@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDate } from "@/lib/utils/format";
 import { ProjectCardMenu } from "./project-card-menu";
 
 export type ProjectCardMember = { userId: string; displayName: string; avatarUrl: string | null };
@@ -104,7 +105,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
             )}
           </div>
           <time dateTime={project.updatedAt} className="text-xs text-muted-foreground">
-            {new Date(project.updatedAt).toLocaleDateString()}
+            {formatDate(project.updatedAt)}
           </time>
         </div>
       </CardContent>

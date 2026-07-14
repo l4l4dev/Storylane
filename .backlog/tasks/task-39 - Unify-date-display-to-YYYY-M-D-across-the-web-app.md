@@ -1,11 +1,11 @@
 ---
 id: TASK-39
 title: Unify date display to YYYY/M/D across the web app
-status: To Do
+status: In Progress
 assignee:
   - '@claude-haiku-4-5'
 created_date: '2026-07-11 05:18'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-14 15:33'
 labels:
   - web
   - ux
@@ -23,9 +23,13 @@ User review 2026-07-11: some places render 7/11/2026 (US order). Standardize eve
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All visible dates render as YYYY/M/D (datetimes as YYYY/M/D HH:mm)
-- [ ] #2 A single shared formatter is used; no bare toLocaleDateString/toLocaleString remain in components
+- [x] #1 All visible dates render as YYYY/M/D (datetimes as YYYY/M/D HH:mm)
+- [x] #2 A single shared formatter is used; no bare toLocaleDateString/toLocaleString remain in components
 <!-- AC:END -->
+
+
+
+
 
 ## Implementation Notes
 

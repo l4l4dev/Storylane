@@ -3,6 +3,7 @@
 import { addComment } from "@/app/stories/[id]/actions";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { formatDateTime } from "@/lib/utils/format";
 import { CommentBody } from "./comment-body";
 
 export type CommentData = { id: string; body: string; createdAt: string; authorName: string };
@@ -34,7 +35,7 @@ export function CommentThread({
             <li key={comment.id} className="rounded-md border border-border p-3">
               <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                 <span>{comment.authorName}</span>
-                <span>{new Date(comment.createdAt).toLocaleString()}</span>
+                <span>{formatDateTime(comment.createdAt)}</span>
               </div>
               <CommentBody body={comment.body} />
             </li>
