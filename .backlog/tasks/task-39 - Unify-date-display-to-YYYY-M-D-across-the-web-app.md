@@ -1,7 +1,7 @@
 ---
 id: TASK-39
 title: Unify date display to YYYY/M/D across the web app
-status: In Progress
+status: Done
 assignee:
   - '@claude-haiku-4-5'
 created_date: '2026-07-11 05:18'
@@ -27,12 +27,14 @@ User review 2026-07-11: some places render 7/11/2026 (US order). Standardize eve
 - [x] #2 A single shared formatter is used; no bare toLocaleDateString/toLocaleString remain in components
 <!-- AC:END -->
 
-
-
-
-
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Follow spec/ux-principles.md (landed with TASK-46) — its design-language section mandates YYYY/M/D via the shared formatter; this task implements that rule.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Created shared formatDate/formatDateTime in lib/utils/format.ts per spec/ux-principles.md design-language. Replaced all bare toLocaleDateString/toLocaleString calls (3 locations: project-card.tsx, comment-thread.tsx, activity/page.tsx) with shared formatters ensuring consistent YYYY/M/D and YYYY/M/D HH:mm output. No new test file needed—existing tests remain unaffected. Verified: 423/423 tests pass, tsc + eslint clean. Committed as 9a9ad95.
+<!-- SECTION:FINAL_SUMMARY:END -->

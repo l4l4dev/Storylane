@@ -1,11 +1,11 @@
 ---
 id: TASK-44
 title: 'Free mode: add and edit columns directly on the board'
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-11 05:20'
-updated_date: '2026-07-14 15:15'
+updated_date: '2026-07-14 15:18'
 labels:
   - web
   - ux
@@ -81,3 +81,9 @@ ColumnNameEditor's display button given h-6 to match the edit input (principle 3
 Tests: 16/16 pass in free-board.test.tsx (423/423 across the whole web suite).
 tsc --noEmit and eslint clean on all changed files.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added board-level column management to free-mode boards: + Add column (default color, createCustomStatus), click-to-edit column name (updateCustomStatus, preserves color/is_done), and a column menu with color + Done-flag + owner-only Delete alongside the existing WIP-limit form. Gated canEdit (member+)/canDelete (owner) the same way as Settings' status-manager.tsx, threaded from board/page.tsx's role lookup. No new write paths. Verified: 16 new/updated tests in free-board.test.tsx (423/423 web suite total), tsc + eslint clean, web-conventions-reviewer found no issues, fable-advisor approved with 3 minor UX fixes (button label, two height-consistency tweaks) which were applied. Committed as cf80494.
+<!-- SECTION:FINAL_SUMMARY:END -->
