@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useRef, useState, useTransition } from "reac
 import { useRouter } from "next/navigation";
 import { Crosshair, LayoutGrid, List as ListIcon, Pencil, Snowflake } from "lucide-react";
 import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/actions";
+import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { sumPoints } from "@/lib/utils/board";
 import { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
@@ -53,6 +54,9 @@ export type IterationMeta = {
   end_date: string;
   velocity: number | null;
   state: string;
+  // Manually finished before it started (spec/velocity.md "Skipping") —
+  // excluded from the velocity window.
+  skipped: boolean;
 };
 
 type BoardView = "kanban" | "list" | "focus";
@@ -224,7 +228,9 @@ export function KanbanBoard({
             <div className="ml-auto pl-4">
               <FinishIterationButton
                 projectId={projectId}
+                iterationId={currentIteration.id}
                 iterationNumber={currentIteration.number}
+                iterationStartDate={currentIteration.start_date}
                 visible={canFinishIteration}
               />
             </div>
@@ -418,19 +424,31 @@ export function IterationGoalBar({
   );
 }
 
-// "Finish iteration" (spec/velocity.md "Manual finish"): irreversible, so it
-// confirms before calling the shared finalize_iteration RPC.
+// "Finish iteration" (spec/velocity.md "Manual finish" / "Skipping a
+// not-yet-started iteration"): irreversible, so it confirms before calling
+// the shared finalize_iteration RPC. When the current iteration hasn't
+// started yet (its predecessor was just finished, so it begins tomorrow),
+// finishing it *skips* it — the dialog says so, and every RPC outcome
+// (finished, skipped, or a raced no-op) renders visible feedback rather than
+// ending in silence (spec/ux-principles.md principle 2).
 export function FinishIterationButton({
   projectId,
+  iterationId,
   iterationNumber,
+  iterationStartDate,
   visible,
 }: {
   projectId: string;
+  iterationId: string;
   iterationNumber: number;
+  // The current iteration's start_date (YYYY-MM-DD). When it is in the
+  // future the iteration hasn't started and finishing it is a "skip".
+  iterationStartDate: string;
   visible: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -438,13 +456,32 @@ export function FinishIterationButton({
     return null;
   }
 
+  // UTC boundary, matching finalize_iteration's `v_today` — a local-time
+  // comparison could label a finish "Skip" (or vice-versa) the RPC then
+  // does the opposite of (fable-advisor F1, 2026-07-15).
+  const notStarted = iterationStartDate > utcTodayKey();
+
   function handleConfirm() {
     setError(null);
+    setInfo(null);
     const formData = new FormData();
     formData.set("project_id", projectId);
+    formData.set("iteration_id", iterationId);
     startTransition(async () => {
       try {
-        await finishIteration(formData);
+        const { events } = await finishIteration(formData);
+        // A no-op (nothing to finish, or a racing/double call already
+        // finished this iteration) reports its reason instead of silently
+        // closing — the board didn't change, so the dialog must say why.
+        const noop = events.find((event) => event.kind === "noop");
+        if (noop && !events.some((event) => event.kind === "finalized")) {
+          setInfo(
+            noop.reason === "already_finished"
+              ? "This iteration was already finished — the board is up to date."
+              : "There's no current iteration to finish.",
+          );
+          return;
+        }
         setOpen(false);
         router.refresh();
       } catch (err) {
@@ -460,6 +497,7 @@ export function FinishIterationButton({
         setOpen(next);
         if (next) {
           setError(null);
+          setInfo(null);
         }
       }}
     >
@@ -470,20 +508,32 @@ export function FinishIterationButton({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Finish iteration #{iterationNumber}?</DialogTitle>
+          <DialogTitle>
+            {notStarted ? `Skip iteration #${iterationNumber}?` : `Finish iteration #${iterationNumber}?`}
+          </DialogTitle>
           <DialogDescription>
-            This closes the iteration today instead of on its scheduled end date. Unaccepted stories move
-            to the next iteration. This can&apos;t be undone.
+            {notStarted
+              ? `Iteration #${iterationNumber} starts ${formatDate(iterationStartDate)} and hasn't begun. Finishing it now skips it — its stories move to iteration #${iterationNumber + 1}, and it won't count toward velocity. This can't be undone.`
+              : "This closes the iteration today instead of on its scheduled end date. Unaccepted stories move to the next iteration. This can't be undone."}
           </DialogDescription>
         </DialogHeader>
         {error && <p className="text-sm text-destructive">{error}</p>}
+        {info && <p className="text-sm text-muted-foreground">{info}</p>}
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={isPending}>
-            Cancel
+            {info ? "Done" : "Cancel"}
           </Button>
-          <Button type="button" onClick={handleConfirm} disabled={isPending}>
-            {isPending ? "Finishing…" : "Finish iteration"}
-          </Button>
+          {!info && (
+            <Button type="button" onClick={handleConfirm} disabled={isPending}>
+              {isPending
+                ? notStarted
+                  ? "Skipping…"
+                  : "Finishing…"
+                : notStarted
+                  ? "Skip iteration"
+                  : "Finish iteration"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

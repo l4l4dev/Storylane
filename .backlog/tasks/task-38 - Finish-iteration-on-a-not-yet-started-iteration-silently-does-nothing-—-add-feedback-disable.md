@@ -3,11 +3,11 @@ id: TASK-38
 title: >-
   Finish iteration on a not-yet-started iteration silently does nothing — add
   feedback/disable
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 05:18'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-14 16:03'
 labels:
   - web
   - bug
@@ -28,12 +28,35 @@ Fix on the UI side (kanban-board.tsx Finish dialog / board page): when the curre
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Pressing Finish iteration never results in zero visible feedback
-- [ ] #2 Tests cover the zero-event manual finish path
-- [ ] #3 Manual Finish works on a not-yet-started current iteration (skip), with confirm dialog stating what will happen
-- [ ] #4 Skipped iterations do not corrupt velocity (rule decided and documented in spec/velocity.md)
-- [ ] #5 Double-click / concurrent manual finish remains safe (no runaway iteration creation)
+- [x] #1 Pressing Finish iteration never results in zero visible feedback
+- [x] #2 Tests cover the zero-event manual finish path
+- [x] #3 Manual Finish works on a not-yet-started current iteration (skip), with confirm dialog stating what will happen
+- [x] #4 Skipped iterations do not corrupt velocity (rule decided and documented in spec/velocity.md)
+- [x] #5 Double-click / concurrent manual finish remains safe (no runaway iteration creation)
 <!-- AC:END -->
+
+
+
+
+
+
+
+
+
+
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Migration 20260715000002_skip_iteration.sql: add iterations.skipped bool not null default false; DROP finalize_iteration(uuid,boolean), CREATE finalize_iteration(uuid,boolean,uuid default null). Manual finish requires p_iteration_id (raise if null). Guard: if latest.id<>p_iteration_id OR latest.state='done' return noop 'already_finished'. Skip branch: v_first manual, state<>done, start_date>today -> end_date:=start_date, skipped=true, successor starts start_date+1. Started branch unchanged.
+2. spec/velocity.md: skip semantics + velocity window excludes skipped. spec/data-model.md: add skipped column.
+3. actions.ts: FinalizeIterationEvent gains 'noop' kind + optional skipped on 'finalized'; notifyFinalizeEvents ignores noop; finishIteration takes iteration_id, passes p_iteration_id, returns {events}.
+4. kanban-board.tsx FinishIterationButton: iterationId + iterationStartDate props, notStarted copy, noop feedback, pass iteration_id.
+5. board/page.tsx + dashboard/page.tsx: exclude skipped from velocity window, select skipped. iterations/page.tsx: Skipped badge.
+6. database.types.ts: patch skipped + Args.
+7. Tests: skip integration test (SUPABASE_INTEGRATION), FinishIterationButton noop/future copy component tests. Apply migration locally, regen types.
+8. rls-security-reviewer on migration, fable-advisor review, verification steps.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
@@ -49,4 +72,21 @@ DESIGN (Fable, 2026-07-11 — written while Fable is available so Opus can imple
 4. DOUBLE-CLICK GUARD REPLACEMENT (the start_date<=today check being removed was the guard): make manual finish target-explicit — add p_iteration_id to finalize_iteration's manual branch. The RPC finishes exactly that row iff it is still the project's latest and state <> 'done'; a second click posts the same id (now done) and returns an 'already finished' event instead of cascading into the fresh successor. Lazy (p_manual=false) path unchanged. The advisory lock stays.
 5. UI: confirm dialog for a future-start iteration says what will happen ('Iteration #2 starts 2026/7/12 and hasn't begun — finishing now skips it; its stories move to #3'). Every RPC outcome renders visible feedback (ux-principles.md #2); zero-event responses show the returned reason.
 6. Migration touches finalize_iteration + new column: run rls-security-reviewer; both Web and (future) iOS/MCP inherit the RPC change for free — no client-side logic.
+
+IMPLEMENTED (2026-07-15, Opus 4.8):
+- Migration 20260715000002_skip_iteration.sql: added iterations.skipped bool not null default false; dropped finalize_iteration(uuid,boolean), created finalize_iteration(uuid,boolean,uuid default null). Manual finish requires p_iteration_id (raises if null - the double-click guard). Guard returns noop 'already_finished' when p_iteration_id != latest or latest is done; 'nothing_to_finish' when no iterations. Skip branch: future-start current -> end_date:=start_date, skipped=true, successor starts start_date+1. Started branch unchanged (truncate end_date to today). Advisory lock + membership checks preserved. Migration applied locally, types regenerated (skipped + p_iteration_id present).
+- spec/velocity.md: 'Skipping a not-yet-started iteration' section + velocity-window exclusion. spec/data-model.md: skipped column.
+- actions.ts: FinalizeIterationEvent gains 'noop' kind + skipped flag on 'finalized'; notifyFinalizeEvents skips 'noop'; finishIteration takes iteration_id, passes p_iteration_id, returns {events}.
+- kanban-board.tsx FinishIterationButton: iterationId + iterationStartDate props; future-start copy ('Skip iteration #N?', stories move to #N+1, won't count toward velocity); noop shows reason inline with a Done button instead of closing silently; real finish/skip closes+refreshes.
+- board/page.tsx + dashboard/page.tsx: exclude skipped from velocity window. iterations/page.tsx: 'Skipped' badge.
+- Tests: skip-iteration.integration.test.ts (SUPABASE_INTEGRATION gate) verifies skip semantics + double-click noop + no runaway creation + skipped flag, PASSED against local Supabase. kanban-board.test.tsx: added skip-copy + noop-feedback tests. Full suite 425 pass. tsc + eslint clean.
+Reviews launched: rls-security-reviewer + fable-advisor (in progress).
+
+REVIEWS DONE (2026-07-15):
+- rls-security-reviewer: no blocking issues. search_path/membership checks unchanged & fail-closed; p_iteration_id cannot touch another project (v_latest is project-scoped, only produces noop); advisory lock preserved; drop+recreate correctly re-inherits EXECUTE for authenticated via default privileges (no gap window). Two informational, non-blocking, pre-existing: (a) PUBLIC EXECUTE grant on all RPCs (inert here due to fail-closed null checks; belongs to TASK-55 grant lockdown), (b) skipped column directly UPDATEable by owner/member via existing table policy, same trust boundary as velocity/state/end_date already.
+- fable-advisor: 修正付き承認. Applied both fixes:
+  F1 (mandatory): client notStarted used LOCAL date but RPC uses UTC -> dialog copy could contradict actual behavior across TZ boundary. Added shared utcTodayKey() to lib/utils/format.ts (UTC, matches finalize_iteration v_today); kanban-board.tsx uses it; actions.ts todayDateOnly now delegates to it (single source).
+  F2 (recommended): skip dialog now names the start date via formatDate(iterationStartDate) per approved design point 5 ('Iteration #N starts YYYY/M/D and hasn't begun...'). Test asserts the date (timezone-independent via formatDate).
+  Non-blocking follow-up noted by advisor (out of scope, candidate for a new task): notifyFinalizeEvents sends a normal 'iteration done velocity 0' Slack message even for skipped iterations — could tailor via event.skipped.
+Post-fix: full suite 425 pass, skip integration test pass, tsc + eslint clean.
 <!-- SECTION:NOTES:END -->

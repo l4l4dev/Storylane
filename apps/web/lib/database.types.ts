@@ -317,6 +317,7 @@ export type Database = {
           id: string
           number: number
           project_id: string
+          skipped: boolean
           start_date: string
           state: string
           velocity: number | null
@@ -328,6 +329,7 @@ export type Database = {
           id?: string
           number: number
           project_id: string
+          skipped?: boolean
           start_date: string
           state?: string
           velocity?: number | null
@@ -339,6 +341,7 @@ export type Database = {
           id?: string
           number?: number
           project_id?: string
+          skipped?: boolean
           start_date?: string
           state?: string
           velocity?: number | null
@@ -791,7 +794,11 @@ export type Database = {
         Returns: Json
       }
       finalize_iteration: {
-        Args: { p_manual: boolean; p_project_id: string }
+        Args: {
+          p_iteration_id?: string
+          p_manual: boolean
+          p_project_id: string
+        }
         Returns: Json
       }
       generate_recurring_stories: {

@@ -31,7 +31,7 @@ export default async function IterationsPage({
 
   const { data: iterations } = await supabase
     .from("iterations")
-    .select("id, number, goal, start_date, end_date, velocity, state")
+    .select("id, number, goal, start_date, end_date, velocity, state, skipped")
     .eq("project_id", id)
     .eq("state", "done")
     .order("number", { ascending: false });
@@ -96,9 +96,15 @@ export default async function IterationsPage({
             <section key={iteration.id} className="rounded-lg border border-border bg-muted/40 p-4">
               <div className="mb-1 flex items-center justify-between">
                 <h2 className="font-semibold">Iteration #{iteration.number}</h2>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  {iteration.velocity ?? 0} pts
-                </span>
+                {iteration.skipped ? (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    Skipped
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    {iteration.velocity ?? 0} pts
+                  </span>
+                )}
               </div>
               <p className="mb-2 text-xs text-muted-foreground">
                 {iteration.start_date} – {iteration.end_date}

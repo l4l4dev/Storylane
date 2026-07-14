@@ -8,6 +8,8 @@ velocity = AVG( sum of accepted points across the last velocity_window completed
 
 - Stories with `story_type = 'chore'` or `'release'` are excluded from point counts
 - `iterations.velocity` is finalized when an iteration transitions to `state = 'done'`
+- **Skipped iterations (`iterations.skipped = true`) are excluded from the velocity window** —
+  see "Skipping a not-yet-started iteration" below
 - Auto-assignment: stories are pulled from the top of the backlog to fill the next iteration up to the current velocity
 
 ## Automatic scheduling & rollover (updated 2026-07-02 for Pivotal Tracker parity)
@@ -78,6 +80,36 @@ Automatic rollover stays in place — manual finish is an early-exit on top
 of it, not a replacement. The iteration bar always shows
 "auto-finishes on <end_date>" so the automatic behavior is discoverable.
 
+### Skipping a not-yet-started iteration (2026-07-15, TASK-38)
+
+Manually finishing iteration #N creates its successor #N+1 starting the next
+day. Pressing "Finish iteration" again the same day therefore acts on a
+current iteration that **has not started yet** (`start_date > today`). This is
+a valid action — it **skips** #N+1:
+
+1. The skipped iteration keeps its `start_date` and collapses `end_date` onto
+   `start_date` (a zero-length row — `end_date` must never precede
+   `start_date`).
+2. It finalizes like any other iteration (velocity = accepted-point sum,
+   normally 0 since a future iteration has no accepted stories; unaccepted
+   stories carry to the successor), and is flagged `skipped = true`.
+3. The successor starts the day after the skipped iteration's `start_date`
+   with a full `iteration_length`.
+
+**Velocity:** a skipped iteration is **excluded from the velocity window** so
+its (normally 0) velocity never drags the running average down. The UI shows a
+"skipped" badge in its place, not "velocity 0".
+
+**Concurrency / double-click:** manual finish is *target-explicit* — the client
+sends the id of the iteration it is finishing (`p_iteration_id`). The RPC acts
+only if that id is still the project's latest, non-done row; a raced or
+double-clicked second call names the now-finished predecessor, sees a newer
+latest row, and returns a no-op event instead of skipping the fresh successor
+(which would create iterations without end). Every outcome — finalized,
+skipped, or no-op — returns a visible result to the client
+(spec/ux-principles.md principle 2); the "Finish iteration" dialog never ends
+in silence.
+
 ### Finalization concurrency & permissions (2026-07-08)
 
 Rollover and manual finish share **one finalization RPC**, and several
@@ -109,4 +141,6 @@ clicked twice, Finish racing a page-load rollover). Rules:
   revalidation; a rejected drop surfaces the existing
   "finalized iteration" error message.
 - A manually shortened iteration counts in the velocity window like any
-  other done iteration — no proration (Pivotal behavior).
+  other done iteration — no proration (Pivotal behavior). A *skipped*
+  iteration (finished before it started, see "Skipping" above) is the one
+  exception: it is excluded from the window.

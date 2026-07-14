@@ -16,6 +16,7 @@ import {
   type ListZoneId,
 } from "@/lib/utils/kanban";
 import { evaluateFocusDrop, type FocusDragTarget } from "@/lib/utils/focus";
+import { utcTodayKey } from "@/lib/utils/format";
 import { isUnestimatedFeature, nextPosition, parsePoints, pointScaleValues, reorderPositions } from "@/lib/utils/stories";
 import {
   applyTransition,
@@ -24,9 +25,8 @@ import {
   type StoryTransitionAction,
 } from "@/lib/utils/story-state";
 
-function todayDateOnly(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+// Single UTC date convention shared with the DB — see utcTodayKey.
+const todayDateOnly = utcTodayKey;
 
 /**
  * Creates a story from a column's inline quick-add composer (see
@@ -795,8 +795,12 @@ export async function estimateStory(formData: FormData) {
 }
 
 type FinalizeIterationEvent =
-  | { kind: "finalized"; number: number; velocity: number }
-  | { kind: "started"; number: number; start_date: string; end_date: string };
+  | { kind: "finalized"; number: number; velocity: number; skipped?: boolean }
+  | { kind: "started"; number: number; start_date: string; end_date: string }
+  // A manual finish that changed nothing (nothing to finish, or the named
+  // iteration was already finished by a racing/double call). Surfaced to the
+  // user instead of silence — spec/ux-principles.md principle 2.
+  | { kind: "noop"; reason: "nothing_to_finish" | "already_finished" };
 
 function parseFinalizeEvents(raw: unknown): FinalizeIterationEvent[] {
   if (!Array.isArray(raw)) {
@@ -816,9 +820,10 @@ function notifyFinalizeEvents(projectId: string, events: FinalizeIterationEvent[
   for (const event of events) {
     if (event.kind === "finalized") {
       after(() => notifySlack(projectId, iterationDoneMessage(event.number, event.velocity)));
-    } else {
+    } else if (event.kind === "started") {
       after(() => notifySlack(projectId, iterationStartedMessage(event.number, event.start_date, event.end_date)));
     }
+    // 'noop' events carry no state change — nothing to notify.
   }
 }
 
@@ -864,29 +869,37 @@ export async function ensureCurrentIteration(projectId: string) {
 }
 
 /**
- * "Finish iteration" button (owner/member, spec/velocity.md "Manual
- * finish"): closes the current iteration early via the same
- * `finalize_iteration` RPC with `p_manual: true`, which truncates
- * `end_date` to today before finalizing. A double-click or a lazy rollover
- * racing this call is safe — the RPC's advisory lock serializes them and a
- * call that finds nothing left to finish returns no events.
+ * "Finish iteration" button (owner/member, spec/velocity.md "Manual finish"
+ * / "Skipping a not-yet-started iteration"): closes the current iteration
+ * early via the shared `finalize_iteration` RPC with `p_manual: true`. A
+ * started iteration has its `end_date` truncated to today; a not-yet-started
+ * one is skipped. `iteration_id` makes the finish target-explicit — the RPC
+ * acts only if that id is still the project's latest, non-done row, so a
+ * double-click or a lazy rollover racing this call returns a `noop` event
+ * instead of cascading into the fresh successor. Returns the RPC's events so
+ * the caller can surface visible feedback for every outcome (principle 2).
  */
-export async function finishIteration(formData: FormData) {
+export async function finishIteration(formData: FormData): Promise<{ events: FinalizeIterationEvent[] }> {
   const projectId = String(formData.get("project_id"));
+  const iterationId = String(formData.get("iteration_id"));
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("finalize_iteration", {
     p_project_id: projectId,
     p_manual: true,
+    p_iteration_id: iterationId,
   });
   if (error) {
     throw new Error(error.message);
   }
 
-  notifyFinalizeEvents(projectId, parseFinalizeEvents(data));
+  const events = parseFinalizeEvents(data);
+  notifyFinalizeEvents(projectId, events);
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);
+
+  return { events };
 }
 
 export async function updateIterationGoal(formData: FormData) {

@@ -2,6 +2,16 @@
 // to ensure consistent YYYY/M/D or YYYY/M/D HH:mm display per
 // spec/ux-principles.md design-language section.
 
+// Today as a YYYY-MM-DD key in **UTC** — the single date convention shared
+// with the DB. `finalize_iteration` computes `v_today` as
+// `(now() at time zone 'utc')::date` (supabase/migrations/
+// 20260715000002_skip_iteration.sql), so any client that decides
+// started-vs-not-yet-started (e.g. the Finish/Skip dialog) must use the same
+// UTC boundary or its copy can contradict what the RPC actually does.
+export function utcTodayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function formatDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
   const year = d.getFullYear();

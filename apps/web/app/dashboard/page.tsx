@@ -73,7 +73,7 @@ export default async function DashboardPage({
   // one project's rollover failure can't 500 the whole page for everyone.
   await Promise.all(projectsNeedingRollover(trackerProjects).map((p) => rolloverIterationSafely(p.id)));
 
-  type IterationRow = { number: number; velocity: number | null; state: string };
+  type IterationRow = { number: number; velocity: number | null; state: string; skipped: boolean };
   type MemberRow = {
     user_id: string;
     role: string;
@@ -84,7 +84,7 @@ export default async function DashboardPage({
   async function fetchIterations(projectId: string): Promise<readonly [string, IterationRow[]]> {
     const { data } = await supabase
       .from("iterations")
-      .select("number, velocity, state")
+      .select("number, velocity, state, skipped")
       .eq("project_id", projectId)
       .order("number", { ascending: false });
     return [projectId, data ?? []] as const;
@@ -142,7 +142,8 @@ export default async function DashboardPage({
     if (project.workflow_mode === "tracker") {
       const iterations = iterationsById.get(project.id) ?? [];
       const current = iterations.find((it) => it.state !== "done") ?? null;
-      const done = iterations.filter((it) => it.state === "done");
+      // Skipped iterations are excluded from the velocity window (spec/velocity.md).
+      const done = iterations.filter((it) => it.state === "done" && !it.skipped);
       return {
         id: project.id,
         name: project.name,

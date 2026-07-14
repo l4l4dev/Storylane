@@ -94,7 +94,7 @@ export default async function BoardPage({
     await Promise.all([
       supabase
         .from("iterations")
-        .select("id, number, goal, start_date, end_date, velocity, state")
+        .select("id, number, goal, start_date, end_date, velocity, state, skipped")
         .eq("project_id", id)
         .order("number", { ascending: true }),
       supabase
@@ -216,8 +216,10 @@ export default async function BoardPage({
     .sort((a, b) => a.position - b.position)
     .map((entry) => entry.item);
 
+  // Skipped iterations are done but excluded from the velocity window so
+  // their (normally 0) velocity doesn't drag the average (spec/velocity.md).
   const completed = allIterations
-    .filter((iteration) => iteration.state === "done")
+    .filter((iteration) => iteration.state === "done" && !iteration.skipped)
     .sort((a, b) => b.number - a.number);
   const currentVelocity = calculateVelocity(completed, project.velocity_window);
   const nextVirtualIterationNumber =

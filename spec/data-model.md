@@ -197,6 +197,9 @@ iterations (
   end_date    date NOT NULL,
   velocity    int,                        -- finalized velocity (total accepted points) when done
   state       text DEFAULT 'planned' CHECK (state IN ('planned', 'active', 'done')),
+  skipped     boolean NOT NULL DEFAULT false, -- true when manually finished before it started
+                                          -- (spec/velocity.md "Skipping"); excluded from the
+                                          -- velocity window so its 0 doesn't drag the average
   created_at  timestamptz DEFAULT now(),
   UNIQUE (project_id, number)
 )

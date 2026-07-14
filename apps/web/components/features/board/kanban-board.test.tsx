@@ -1,14 +1,19 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { formatDate } from "@/lib/utils/format";
 import { FinishIterationButton, IterationGoalBar } from "./kanban-board";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
+type FinishResult = { events: Array<Record<string, unknown>> };
+
 const { updateIterationGoalMock, finishIterationMock } = vi.hoisted(() => ({
   updateIterationGoalMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
-  finishIterationMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  finishIterationMock: vi.fn<(formData: FormData) => Promise<{ events: Array<Record<string, unknown>> }>>(() =>
+    Promise.resolve({ events: [{ kind: "finalized", number: 3, velocity: 5, skipped: false }] }),
+  ),
 }));
 
 vi.mock("@/app/projects/[id]/board/actions", () => ({
@@ -168,19 +173,41 @@ describe("IterationGoalBar", () => {
 });
 
 describe("FinishIterationButton", () => {
+  // A comfortably-past start date so the default render is the "started"
+  // (Finish, not Skip) path; the skip test overrides it with a future date.
+  const STARTED = "2020-01-01";
+  const FUTURE = "2999-01-01";
+
   beforeEach(() => {
     finishIterationMock.mockClear();
+    finishIterationMock.mockResolvedValue({
+      events: [{ kind: "finalized", number: 3, velocity: 5, skipped: false }],
+    } satisfies FinishResult);
   });
 
   it("renders nothing when not visible (viewer role)", () => {
     const { container } = render(
-      <FinishIterationButton projectId="p1" iterationNumber={3} visible={false} />,
+      <FinishIterationButton
+        projectId="p1"
+        iterationId="i3"
+        iterationNumber={3}
+        iterationStartDate={STARTED}
+        visible={false}
+      />,
     );
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("requires confirmation before calling finishIteration", async () => {
-    render(<FinishIterationButton projectId="p1" iterationNumber={3} visible={true} />);
+  it("requires confirmation before calling finishIteration, and sends the iteration id", async () => {
+    render(
+      <FinishIterationButton
+        projectId="p1"
+        iterationId="i3"
+        iterationNumber={3}
+        iterationStartDate={STARTED}
+        visible={true}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Finish iteration" }));
     expect(finishIterationMock).not.toHaveBeenCalled();
@@ -201,11 +228,20 @@ describe("FinishIterationButton", () => {
       throw new Error("finishIteration was not called with FormData");
     }
     expect(formData.get("project_id")).toBe("p1");
+    expect(formData.get("iteration_id")).toBe("i3");
   });
 
   it("shows an error and keeps the dialog open when finishIteration fails", async () => {
     finishIterationMock.mockRejectedValueOnce(new Error("Only project owners or members can finish an iteration"));
-    render(<FinishIterationButton projectId="p1" iterationNumber={3} visible={true} />);
+    render(
+      <FinishIterationButton
+        projectId="p1"
+        iterationId="i3"
+        iterationNumber={3}
+        iterationStartDate={STARTED}
+        visible={true}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Finish iteration" }));
     const dialogButtons = await screen.findAllByRole("button", { name: "Finish iteration" });
@@ -219,5 +255,69 @@ describe("FinishIterationButton", () => {
       await Promise.resolve();
     });
     expect(screen.getByText("Only project owners or members can finish an iteration")).toBeInTheDocument();
+  });
+
+  // TASK-38 AC #3: a not-yet-started iteration is finishable (skip), with a
+  // confirm dialog that says what will happen.
+  it("frames a not-yet-started iteration as a skip", async () => {
+    render(
+      <FinishIterationButton
+        projectId="p1"
+        iterationId="i3"
+        iterationNumber={3}
+        iterationStartDate={FUTURE}
+        visible={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish iteration" }));
+
+    expect(await screen.findByText("Skip iteration #3?")).toBeInTheDocument();
+    // The dialog names the start date (fable-advisor F2) and the skip
+    // consequences. Expected date is computed via the same formatter so the
+    // assertion is timezone-independent.
+    expect(
+      screen.getByText(new RegExp(`starts ${formatDate(FUTURE).replace(/\//g, "\\/")} and hasn't begun`)),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/its stories move to iteration #4/)).toBeInTheDocument();
+    const confirmButton = screen.getByRole("button", { name: "Skip iteration" });
+    fireEvent.click(confirmButton);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(finishIterationMock).toHaveBeenCalledTimes(1);
+    expect(finishIterationMock.mock.calls[0]?.[0]?.get("iteration_id")).toBe("i3");
+  });
+
+  // TASK-38 AC #1/#2: a zero-change finish never ends in silence — the
+  // no-op reason renders in the dialog instead (spec/ux-principles.md #2).
+  it("shows the reason and keeps the dialog open when the finish is a no-op", async () => {
+    finishIterationMock.mockResolvedValueOnce({
+      events: [{ kind: "noop", reason: "already_finished" }],
+    } satisfies FinishResult);
+    render(
+      <FinishIterationButton
+        projectId="p1"
+        iterationId="i3"
+        iterationNumber={3}
+        iterationStartDate={STARTED}
+        visible={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish iteration" }));
+    const dialogButtons = await screen.findAllByRole("button", { name: "Finish iteration" });
+    fireEvent.click(dialogButtons[dialogButtons.length - 1]!);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/already finished/i)).toBeInTheDocument();
+    // Dialog stays open with a Done affordance; the confirm action is gone
+    // (the trigger outside the modal is aria-hidden while it's open, so no
+    // "Finish iteration" button is reachable).
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Finish iteration" })).not.toBeInTheDocument();
   });
 });
