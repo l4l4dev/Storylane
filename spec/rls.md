@@ -22,6 +22,20 @@
   `invite_member` (existing), user search for invites (capped results, minimal
   columns: id / username / display_name / avatar_url), and story Move/Copy
   between projects (caller must be a member of **both** projects)
+- Function EXECUTE (2026-07-15, TASK-55): `authenticated`/`anon` no longer have
+  a blanket EXECUTE grant on public functions (the old `20260630000002` grant +
+  the built-in PUBLIC default were the real remote-call surface). EXECUTE is
+  granted explicitly to `authenticated` only for the policy-referenced helpers
+  (`project_role`, `is_project_member`, `shares_project_with`) and the web
+  `.rpc()` entry points; internal helpers/trigger bodies and service-role-only
+  RPCs are not. The schema is **not** private-by-default, so every new function
+  manages its own grants (see `.claude/commands/db-migrate.md` item 5); the
+  `grant-lockdown` integration test is the backstop
+- activity_logs (2026-07-15, TASK-55): the client INSERT policy was **dropped** —
+  all writers are SECURITY DEFINER now (the `log_*` triggers, the move/copy RPCs,
+  and `promote_story_to_epic`, converted to SECURITY DEFINER for this), so a
+  direct client insert is denied. A composite FK `(story_id, project_id) →
+  stories(id, project_id)` makes a cross-project story reference impossible
 - Membership admin (2026-07-15, TASK-54): role changes and removals are
   **RPC-only** — `change_member_role` / `remove_member` (SECURITY DEFINER,
   per-project `membership:` advisory lock). The direct owner UPDATE/DELETE

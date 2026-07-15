@@ -114,6 +114,9 @@ describe.skipIf(!RUN)("search_users_for_new_project RPC (integration)", () => {
     const anonClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     const { error } = await anonClient.rpc("search_users_for_new_project", { p_query: "anyone" });
     expect(error).not.toBeNull();
-    expect(error?.message).toMatch(/not signed in/i);
+    // Post-TASK-55: anon has no EXECUTE grant on the function, so PostgREST
+    // rejects it at the permission layer before the internal "not signed in"
+    // guard even runs — defense in depth. Either message is a valid rejection.
+    expect(error?.message).toMatch(/permission denied for function|not signed in/i);
   });
 });

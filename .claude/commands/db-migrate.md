@@ -15,15 +15,23 @@ supabase migration new <name>
 2. Always define RLS policies in the same migration
 3. Write a DOWN migration for rollback
 4. Check the impact on existing data when adding or modifying columns
-5. `SECURITY DEFINER` RPC — pick the auth boundary and make it airtight:
+5. **Every new function manages its own EXECUTE grants** — the schema is NOT
+   private-by-default (Postgres grants EXECUTE to PUBLIC on `CREATE FUNCTION`,
+   and `alter default privileges ... revoke` does not suppress that once a
+   pg_default_acl row exists, TASK-55). Forgetting = the function ships callable
+   by `authenticated`/`anon`. Pick the auth boundary:
    - **User-facing RPC** (called with the anon key by a logged-in user): keep an
      internal `project_role()` / `is_project_member()` check that fails closed
-     (see `finalize_iteration`). It inherits PUBLIC/`authenticated` EXECUTE.
+     (see `finalize_iteration`), and add it to `AUTHENTICATED_ALLOWLIST` in
+     `apps/web/lib/utils/grant-lockdown.integration.test.ts`. It relies on the
+     inherited PUBLIC/`authenticated` EXECUTE.
    - **Service-role-only RPC** (called by an Edge Function under the service-role
-     key, e.g. `finish_story_from_git`): the grant is the *only* boundary, so
+     key, e.g. `finish_story_from_git`) **or an internal helper / trigger body**:
      `revoke execute on function … from public, authenticated;` in the same
-     migration. `service_role` keeps EXECUTE via its default privileges. Never
-     leave such an RPC PUBLIC-executable.
+     migration. `service_role` keeps EXECUTE via its default privileges.
+   - The `grant-lockdown` integration test fails if any public function outside
+     the allowlist is `authenticated`/`anon`-executable — run it after adding a
+     function.
 
 ## RLS Policy Template
 

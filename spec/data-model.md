@@ -317,8 +317,14 @@ activity_logs (
   actor_id    uuid REFERENCES profiles(id),
   action      text NOT NULL,  -- e.g. 'story.created' | 'story.state_changed' | 'comment.added'
   payload     jsonb,          -- before/after values etc.
-  created_at  timestamptz DEFAULT now()
+  created_at  timestamptz DEFAULT now(),
+  -- TASK-55: cross-project reference guard. Requires stories UNIQUE(id, project_id).
+  -- ON DELETE NO ACTION — the single-column story_id FK's SET NULL fires first on
+  -- a story delete, so the log survives with story_id nulled + project_id intact.
+  FOREIGN KEY (story_id, project_id) REFERENCES stories(id, project_id) ON DELETE NO ACTION
 )
+-- Inserted only by SECURITY DEFINER trigger/RPC paths (no client INSERT policy,
+-- TASK-55) — see spec/rls.md.
 ```
 
 ### integrations

@@ -84,6 +84,13 @@ export type Database = {
             referencedRelation: "stories"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "activity_logs_story_project_fk"
+            columns: ["story_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id", "project_id"]
+          },
         ]
       }
       backlog_dividers: {
@@ -789,6 +796,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _grant_audit: {
+        Args: never
+        Returns: {
+          anon: boolean
+          auth: boolean
+          name: string
+        }[]
+      }
       change_member_role: {
         Args: { p_project_id: string; p_role: string; p_user_id: string }
         Returns: undefined
