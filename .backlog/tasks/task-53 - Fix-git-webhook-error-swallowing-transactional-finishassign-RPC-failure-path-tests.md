@@ -3,11 +3,11 @@ id: TASK-53
 title: >-
   Fix git-webhook error swallowing: transactional finish+assign RPC,
   failure-path tests
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:10'
-updated_date: '2026-07-15 00:47'
+updated_date: '2026-07-15 00:48'
 labels:
   - bug
   - webhook
@@ -61,3 +61,9 @@ Reviews: rls-security-reviewer in progress.
 
 REVIEW DONE (rls-security-reviewer, 2026-07-15): no issues, no fixes required. All 6 points verified against the live local DB: search_path pinned; grant lockdown airtight (has_function_privilege anon=false/auth=false/service_role=true) and is the sole boundary (Edge Function HMAC-verifies per-project secret before calling); UPDATE + iteration lookup correctly scoped to p_project_id (tested with two projects sharing story number 1 — no cross-project effect); reject_done_iteration trigger no gap under the shared advisory lock; SECURITY DEFINER writes are the intended service-role path (stories RLS still enabled); grant lockdown is a net improvement over the codebase's PUBLIC-EXECUTE RPCs. Optional follow-up (non-blocking): documented the service-role-only revoke pattern in .claude/commands/db-migrate.md so future RPCs of this shape don't get left PUBLIC-executable (relates to TASK-55 grant lockdown).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Moved the git-webhook's finish + current-iteration assignment into one SECURITY DEFINER RPC (finish_story_from_git, migration 20260715000003) under the same advisory lock as finalize_iteration, so a rollover can't interleave and a failed assignment can't leave a finished story stranded. The Edge Function now calls the RPC once per matched story number and returns a retryable 5xx on any failure (was 200-on-failure); tracker-mode enforcement moved into the RPC (single point); injected client narrow-typed (no bare any); EXECUTE revoked from public/authenticated (service_role-only, the sole auth boundary). Verified: 6 deno unit tests (incl. 5xx path), 4 service-role integration tests against the real RPC, 425 web tests, tsc/eslint/deno check clean, rls-security-reviewer no issues. Committed as aeedc1b.
+<!-- SECTION:FINAL_SUMMARY:END -->
