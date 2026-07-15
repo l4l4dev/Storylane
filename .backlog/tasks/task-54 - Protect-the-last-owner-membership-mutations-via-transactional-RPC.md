@@ -1,11 +1,11 @@
 ---
 id: TASK-54
 title: 'Protect the last owner: membership mutations via transactional RPC'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:10'
-updated_date: '2026-07-15 01:13'
+updated_date: '2026-07-15 01:48'
 labels:
   - security
   - rls
@@ -62,3 +62,9 @@ Reviews: rls-security-reviewer in progress.
 
 REVIEW DONE (rls-security-reviewer, 2026-07-15): no High/Medium issues, ready to ship. Verified via supabase db reset + psql: migration applies cleanly; project_members RLS enabled with only SELECT + owner-INSERT policies (both UPDATE/DELETE dropped); all 3 functions prosecdef + search_path=public; authenticated has EXECUTE (correct user-facing-RPC pattern, vs finish_story_from_git's service-role-only). Traced the last-owner TOCTOU across two concurrent-owner interleavings — the pre-lock permission check is benign, the owner-count recheck under the advisory lock is the airtight invariant. invite_member not taking the lock is safe (insert-only can only raise owner count). Retained owner-INSERT policy is inert (invite_member is SECURITY DEFINER) and harmless if hit directly (PK blocks role overwrite, FK/check still enforced). Self-leave scoped to caller's own row. Only nit (#9, cosmetic, non-blocking): DOWN block for invite_member was a pointer comment — inlined the full old body. spec/rls.md confirmed in sync.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Membership role changes and removals are now RPC-only (change_member_role, remove_member — SECURITY DEFINER, per-project membership advisory lock, last-owner invariant rechecked under the lock). Dropped the direct owner UPDATE/DELETE policies on project_members so no table write bypasses the invariant; invite_member is insert-only (no role overwrite); remove_member adds non-owner self-leave. Settings UI moved to the RPCs with inline last-owner errors. Migration 20260715000004. Verified: 9-case two-user integration test, 425 web tests, tsc/eslint clean, rls-security-reviewer no High/Medium issues. Committed as abb5e51.
+<!-- SECTION:FINAL_SUMMARY:END -->
