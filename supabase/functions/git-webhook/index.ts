@@ -3,7 +3,8 @@
 // title or storylane/123 in the branch name) is merged.
 //
 // Auth: no JWT (config.toml sets verify_jwt = false) — instead each request
-// is HMAC-signed with the project's webhook_secret from integrations.config.
+// is HMAC-signed with the project's integrations.webhook_secret (a dedicated
+// column authenticated cannot SELECT — TASK-63; service_role reads it here).
 // The URL identifies the project: /functions/v1/git-webhook?project=<id>.
 // Writes go through the service role client, scoped to that project.
 
@@ -110,7 +111,7 @@ export async function handleGitWebhookRequest(
 
   const { data: integration } = await supabase
     .from("integrations")
-    .select("config, is_active")
+    .select("webhook_secret, is_active")
     .eq("project_id", projectId)
     .eq("provider", provider)
     .maybeSingle();
@@ -119,7 +120,7 @@ export async function handleGitWebhookRequest(
     return json(404, { error: `No active ${provider} integration for this project` });
   }
 
-  const secret = (integration.config as { webhook_secret?: string }).webhook_secret;
+  const secret = (integration as { webhook_secret?: string }).webhook_secret;
   if (!secret) {
     return json(422, { error: "Integration has no webhook_secret configured" });
   }

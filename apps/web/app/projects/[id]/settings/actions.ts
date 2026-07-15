@@ -537,6 +537,11 @@ type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
  * Creates or updates a project's integration for one provider (see
  * spec/integrations.md for the config shape per provider). RLS limits this
  * to project owners; one row per (project_id, provider).
+ *
+ * webhook_secret lives in its own column, not `config` — authenticated has no
+ * SELECT on it (TASK-63), so it is set/rotate-only: a blank field on edit keeps
+ * the stored secret (the column is simply omitted from the upsert payload, and
+ * PostgREST leaves unlisted columns untouched — no read-back needed).
  */
 export async function saveIntegration(formData: FormData) {
   const projectId = String(formData.get("project_id"));
@@ -547,31 +552,59 @@ export async function saveIntegration(formData: FormData) {
     throw new Error(`Unknown provider: ${provider}`);
   }
 
-  const config =
-    provider === "slack"
-      ? { webhook_url: String(formData.get("webhook_url") ?? "").trim() }
-      : {
-          repo_url: String(formData.get("repo_url") ?? "").trim(),
-          webhook_secret: String(formData.get("webhook_secret") ?? "").trim(),
-        };
+  const supabase = await createClient();
 
-  // Server-side mirror of the form's `required` fields — an integration
-  // without its secret/URL can only ever no-op (git-webhook 422s, the Slack
-  // helper skips), so reject it here instead of storing a dud row.
-  if (provider === "slack" && !("webhook_url" in config && config.webhook_url)) {
-    throw new Error("webhook_url is required");
+  if (provider === "slack") {
+    const webhookUrl = String(formData.get("webhook_url") ?? "").trim();
+    // Server-side mirror of the form's `required` field — a Slack integration
+    // without its URL can only no-op (the helper skips), so reject a dud row.
+    if (!webhookUrl) {
+      throw new Error("webhook_url is required");
+    }
+    const { error } = await supabase
+      .from("integrations")
+      .upsert(
+        { project_id: projectId, provider, config: { webhook_url: webhookUrl }, is_active: isActive },
+        { onConflict: "project_id,provider" },
+      );
+    if (error) {
+      throw new Error(error.message);
+    }
+    revalidatePath(`/projects/${projectId}/settings`);
+    return;
   }
-  if (provider !== "slack" && !("webhook_secret" in config && config.webhook_secret)) {
+
+  const repoUrl = String(formData.get("repo_url") ?? "").trim();
+  const secret = String(formData.get("webhook_secret") ?? "").trim();
+
+  // Does a row already exist? (id is SELECTable; webhook_secret is not.) On
+  // create the secret is mandatory; on edit a blank field keeps the stored one.
+  const { data: existing } = await supabase
+    .from("integrations")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("provider", provider)
+    .maybeSingle();
+
+  if (!existing && !secret) {
     throw new Error("webhook_secret is required");
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("integrations")
-    .upsert(
-      { project_id: projectId, provider, config, is_active: isActive },
-      { onConflict: "project_id,provider" },
-    );
+  // Not upsert: an upsert carrying webhook_secret asks PostgREST for a
+  // representation it can no longer read (webhook_secret is not SELECTable),
+  // so it 42501s. Plain insert/update run return=minimal and omit the secret
+  // from the payload on a blank edit, leaving the stored value intact.
+  const fields: { config: { repo_url: string }; is_active: boolean; webhook_secret?: string } = {
+    config: { repo_url: repoUrl },
+    is_active: isActive,
+  };
+  if (secret) {
+    fields.webhook_secret = secret;
+  }
+
+  const { error } = existing
+    ? await supabase.from("integrations").update(fields).eq("project_id", projectId).eq("provider", provider)
+    : await supabase.from("integrations").insert({ project_id: projectId, provider, ...fields });
 
   if (error) {
     throw new Error(error.message);

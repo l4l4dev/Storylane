@@ -6,7 +6,9 @@ import { Label } from "@/components/ui/label";
 export type IntegrationRow = {
   id: string;
   provider: string;
-  config: { repo_url?: string; webhook_secret?: string; webhook_url?: string };
+  // webhook_secret is never returned to the client (TASK-63) — it lives in its
+  // own non-SELECTable column, not here.
+  config: { repo_url?: string; webhook_url?: string };
   is_active: boolean;
 };
 
@@ -59,12 +61,14 @@ export function IntegrationSettings({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`${provider}-webhook-secret`}>Webhook secret</Label>
+              {/* Set/rotate only — the stored secret is never sent to the client
+                  (TASK-63). Blank on an existing integration keeps it. */}
               <Input
                 id={`${provider}-webhook-secret`}
                 name="webhook_secret"
-                placeholder="Same secret as configured on the repo webhook"
-                defaultValue={existing?.config.webhook_secret ?? ""}
-                required
+                type="password"
+                placeholder={existing ? "Leave blank to keep the current secret" : "Same secret as configured on the repo webhook"}
+                required={!existing}
               />
             </div>
             <div className="flex items-center gap-2">

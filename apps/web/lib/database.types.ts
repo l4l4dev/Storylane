@@ -260,6 +260,7 @@ export type Database = {
           is_active: boolean
           project_id: string
           provider: string
+          webhook_secret: string | null
         }
         Insert: {
           config: Json
@@ -268,6 +269,7 @@ export type Database = {
           is_active?: boolean
           project_id: string
           provider: string
+          webhook_secret?: string | null
         }
         Update: {
           config?: Json
@@ -276,6 +278,7 @@ export type Database = {
           is_active?: boolean
           project_id?: string
           provider?: string
+          webhook_secret?: string | null
         }
         Relationships: [
           {

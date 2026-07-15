@@ -68,7 +68,7 @@ const MERGED_PR = JSON.stringify({
 });
 
 const ACTIVE_INTEGRATION: FakeResult = {
-  data: { config: { webhook_secret: SECRET }, is_active: true },
+  data: { webhook_secret: SECRET, is_active: true },
   error: null,
 };
 
