@@ -789,6 +789,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      change_member_role: {
+        Args: { p_project_id: string; p_role: string; p_user_id: string }
+        Returns: undefined
+      }
       copy_story_to_project: {
         Args: { p_story_id: string; p_target_project_id: string }
         Returns: Json
@@ -821,6 +825,10 @@ export type Database = {
       }
       project_role: { Args: { p_project_id: string }; Returns: string }
       promote_story_to_epic: { Args: { p_story_id: string }; Returns: Json }
+      remove_member: {
+        Args: { p_project_id: string; p_user_id: string }
+        Returns: undefined
+      }
       search_users_for_invite: {
         Args: { p_project_id: string; p_query: string }
         Returns: {

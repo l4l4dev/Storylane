@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ITERATION_LENGTHS, POINT_SCALES } from "@/lib/types";
 import { IntegrationSettings, type IntegrationRow } from "@/components/features/projects/integration-settings";
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
+import { MemberList } from "@/components/features/projects/member-list";
 import { LabelManager } from "@/components/features/projects/label-manager";
 import { LaneManager } from "@/components/features/projects/lane-manager";
 import { RecurringStoryManager } from "@/components/features/projects/recurring-story-manager";
@@ -12,9 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { updateProject, updateMemberRole, removeMember } from "./actions";
-
-const ROLES = ["owner", "member", "viewer"] as const;
+import { updateProject } from "./actions";
 
 export default async function ProjectSettingsPage({
   params,
@@ -176,60 +175,19 @@ export default async function ProjectSettingsPage({
           </div>
         )}
 
-        <ul className="flex flex-col divide-y divide-border">
-          {members?.map((member) => {
-            const profile = Array.isArray(member.profiles)
-              ? member.profiles[0]
-              : member.profiles;
-            const isSelf = member.user_id === user?.id;
-            return (
-              <li
-                key={member.user_id}
-                className="flex items-center justify-between gap-3 py-3"
-              >
-                <span className="text-sm">
-                  {profile?.display_name ?? member.user_id.slice(0, 8)}
-                  {isSelf && <span className="ml-1 text-muted-foreground">(you)</span>}
-                </span>
-
-                {isOwner ? (
-                  <div className="flex items-center gap-2">
-                    <form action={updateMemberRole} className="flex items-center gap-2">
-                      <input type="hidden" name="project_id" value={project.id} />
-                      <input type="hidden" name="user_id" value={member.user_id} />
-                      <NativeSelect
-                        name="role"
-                        defaultValue={member.role}
-                        aria-label={`Role for ${profile?.display_name ?? "member"}`}
-                        className="h-8 w-auto"
-                      >
-                        {ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </NativeSelect>
-                      <Button type="submit" variant="outline" size="sm">
-                        Save
-                      </Button>
-                    </form>
-                    {!isSelf && (
-                      <form action={removeMember}>
-                        <input type="hidden" name="project_id" value={project.id} />
-                        <input type="hidden" name="user_id" value={member.user_id} />
-                        <Button type="submit" variant="destructive" size="sm">
-                          Remove
-                        </Button>
-                      </form>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-sm text-muted-foreground">{member.role}</span>
-                )}
-              </li>
-            );
+        <MemberList
+          projectId={project.id}
+          currentUserId={user?.id}
+          canManage={isOwner}
+          members={(members ?? []).map((member) => {
+            const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
+            return {
+              userId: member.user_id,
+              role: member.role,
+              displayName: profile?.display_name ?? member.user_id.slice(0, 8),
+            };
           })}
-        </ul>
+        />
       </section>
 
       {/* Board statuses (free-mode projects only) */}

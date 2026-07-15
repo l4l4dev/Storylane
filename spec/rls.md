@@ -22,6 +22,16 @@
   `invite_member` (existing), user search for invites (capped results, minimal
   columns: id / username / display_name / avatar_url), and story Move/Copy
   between projects (caller must be a member of **both** projects)
+- Membership admin (2026-07-15, TASK-54): role changes and removals are
+  **RPC-only** — `change_member_role` / `remove_member` (SECURITY DEFINER,
+  per-project `membership:` advisory lock). The direct owner UPDATE/DELETE
+  policies on `project_members` were **dropped** so no table write can bypass
+  the **last-owner invariant** (the sole owner can never be demoted or removed
+  by any path — RPC, direct write, or re-invite). `invite_member` is
+  insert-only (re-inviting an existing member is rejected, never a role
+  overwrite). `remove_member` also permits **self-leave** by a non-owner
+  (member/viewer), which the old owner-only DELETE policy blocked. The
+  `project_members` SELECT and owner INSERT policies remain
 - Project archive (`projects.archived_at`): set/cleared by owner only (no
   dedicated policy — covered by the existing owner-gated `projects` UPDATE
   policy). Read-only enforcement is scoped to (a) the Move/Copy story RPCs,

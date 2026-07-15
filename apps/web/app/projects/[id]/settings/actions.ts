@@ -95,39 +95,54 @@ export async function inviteMember(
   return { success: `Added ${displayName}` };
 }
 
-export async function updateMemberRole(formData: FormData) {
+// Membership admin runs through the change_member_role / remove_member RPCs
+// (TASK-54): the direct project_members UPDATE/DELETE policies were dropped,
+// so a table write here would now be denied — and the RPCs are where the
+// last-owner invariant lives. Both return a state object so the settings UI
+// can surface the "last owner" error inline (spec/ux-principles.md #2) rather
+// than throwing an error page.
+export type MemberActionState = { error?: string };
+
+export async function updateMemberRole(
+  _prev: MemberActionState,
+  formData: FormData,
+): Promise<MemberActionState> {
   const id = String(formData.get("project_id"));
   const userId = String(formData.get("user_id"));
   const role = String(formData.get("role"));
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("project_members")
-    .update({ role })
-    .eq("project_id", id)
-    .eq("user_id", userId);
+  const { error } = await supabase.rpc("change_member_role", {
+    p_project_id: id,
+    p_user_id: userId,
+    p_role: role,
+  });
 
   if (error) {
-    throw new Error(error.message);
+    return { error: error.message };
   }
   revalidatePath(`/projects/${id}/settings`);
+  return {};
 }
 
-export async function removeMember(formData: FormData) {
+export async function removeMember(
+  _prev: MemberActionState,
+  formData: FormData,
+): Promise<MemberActionState> {
   const id = String(formData.get("project_id"));
   const userId = String(formData.get("user_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("project_members")
-    .delete()
-    .eq("project_id", id)
-    .eq("user_id", userId);
+  const { error } = await supabase.rpc("remove_member", {
+    p_project_id: id,
+    p_user_id: userId,
+  });
 
   if (error) {
-    throw new Error(error.message);
+    return { error: error.message };
   }
   revalidatePath(`/projects/${id}/settings`);
+  return {};
 }
 
 export async function createLabel(formData: FormData) {
