@@ -1,11 +1,11 @@
 ---
 id: TASK-56
 title: Consolidate board drag/drop mutations into transactional reorder RPCs
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:11'
-updated_date: '2026-07-11 19:32'
+updated_date: '2026-07-15 07:01'
 labels:
   - concurrency
   - db
@@ -32,6 +32,25 @@ Fix: a small set of transactional Postgres RPCs (advisory or row locks per proje
 - [ ] #4 Concurrency tests (or deterministic simulation) cover mid-flight failure and competing drags
 <!-- AC:END -->
 
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+ADVISOR-REVISED (Opus, 2026-07-15) — supersedes the high-level notes DESIGN on the RPC signature:
+RPC move_story_board(p_project_id, p_story_id, p_view text, p_expected jsonb, p_deltas jsonb, p_anchor jsonb):
+  - SECURITY DEFINER, internal role check project_role in (owner,member), explicit EXECUTE grant to authenticated (TASK-55 lockdown).
+  - pg_advisory_xact_lock(hashtext('positions:'||project_id)).
+  - SELECT story FOR UPDATE; verify ALL p_expected columns (state,iteration_id,custom_status_id,swimlane_id,focus) still match → else raise 'stale' (client refreshes).
+  - Apply p_deltas. iteration='current' is NOT passed as an id — RPC re-resolves the latest non-done iteration inside the lock; raise if none.
+  - Derive the resequence zone from the story's OWN post-delta columns, discriminated by p_view (tracker=iteration_id+state, free=custom_status_id+swimlane_id, focus=iteration_id+focus, list=zoneForStory 3-way, icebox=unscheduled). NOT from a client-passed predicate (avoids TOCTOU).
+  - Resequence: read zone rows by position, remove moved, insert at p_anchor {kind, id?|to_end}, dense-rewrite.
+  - list_backlog: stories(iteration_id null, state<>unscheduled)+backlog_dividers merged; extract internal _resequence_backlog(project_id) shared with TASK-51; predicate must match buildBacklogRows; divider moves touch no story columns.
+Server actions (dropStory/dropStoryFree/setStoryFocus/dropStoryInList): keep evaluateDrop/etc validation in TS (optimistic UI), compute deltas+expected snapshot+anchor, call the RPC as thin callers mapping 'stale' → visible refresh cue.
+Clients (4 board components): send anchor (before/after id + kind) + expected snapshot instead of full ordered_ids.
+Migration-period: persistBacklogOrder (still used by createBacklogDivider until TASK-51) takes the SAME advisory lock.
+AC#3 (no per-view duplication) partially deferred to TASK-51 (tracked).
+Tests: pgTAP/integration for mid-flight failure + competing drags + stale rejection + iteration re-resolution.
+<!-- SECTION:PLAN:END -->
+
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
@@ -47,4 +66,8 @@ RPC FAMILY (one migration, all SECURITY DEFINER, internal role check project_rol
 3. swap_adjacent(p_table in ('custom_statuses','swimlanes'), p_id, p_direction in ('up','down')) — TASK-57; rejects any other direction value; both UPDATEs in the function = atomic.
 INVARIANTS (TASK-58 layer, after the RPCs land): deferrable UNIQUE (initially deferred) per position scope where the scope is a single column set; document the dense-order invariant in spec/data-model.md. max+1 creation sites (addTask, epics, lanes, recurring) either move behind insert_board_item-style allocation or take the same advisory lock.
 NOTES: transitions embedded in a move fire the existing activity trigger (state column change) — no bespoke logging. Web actions become thin callers mapping RPC errors to visible UI feedback (ux-principles #2). EXECUTE granted explicitly per TASK-55's lockdown. Rollout order: TASK-56 (RPCs + 4 drop paths) → TASK-51 (3 insert sites) → TASK-57 (swaps) → TASK-58 (constraints + leftovers).
+
+SLICE 1 done (2026-07-15): migration 20260715000008_move_story_board.sql — move_story_board RPC (SECURITY DEFINER, project_role owner/member guard, iteration_finalize→positions advisory locks, expected-snapshot stale guard, iteration='current' re-resolved in-lock, post-delta zone derivation, two-table backlog splice via internal _resequence_backlog). Added to grant-lockdown allowlist; DB types regenerated. New move-story-board.integration.test.ts (7 tests): dense reorder, transition+reseat, stale rejection, competing drags, current re-resolution, backlog story+divider splice, cross-tenant divider guard.
+rls-security-reviewer found a REAL cross-tenant bug (divider branch lacked a project-ownership check → could overwrite another project's divider position under SECURITY DEFINER). FIXED: added 'divider not found' guard + regression test. Reviewer re-confirm pending is not needed — fix mirrors the story-branch guard and the regression test passes.
+REMAINING (slice 2+): rewrite dropStory/dropStoryFree/setStoryFocus/dropStoryInList as thin move_story_board callers (compute deltas+expected snapshot+anchor, keep evaluateDrop validation server-side, map 'stale' P0001 → visible refresh cue); rewrite the 4 board client drag handlers to send anchor(before kind+id)+expected instead of ordered_ids; add same advisory lock to persistBacklogOrder (migration-period, still used by createBacklogDivider until TASK-51); failure-path/competing-drag tests at the action layer. AC#3 (no per-view dup) partially deferred to TASK-51.
 <!-- SECTION:NOTES:END -->

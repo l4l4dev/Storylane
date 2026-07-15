@@ -37,6 +37,7 @@ const AUTHENTICATED_ALLOWLIST = new Set([
   "search_users_for_new_project",
   "toggle_project_favorite",
   "update_story",
+  "move_story_board",
 ]);
 
 type FnPriv = { name: string; auth: boolean; anon: boolean };

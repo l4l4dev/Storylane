@@ -807,6 +807,14 @@ export type Database = {
           name: string
         }[]
       }
+      _resequence_backlog: {
+        Args: {
+          p_divider_ids: string[]
+          p_kinds: string[]
+          p_story_ids: string[]
+        }
+        Returns: undefined
+      }
       change_member_role: {
         Args: { p_project_id: string; p_role: string; p_user_id: string }
         Returns: undefined
@@ -837,6 +845,17 @@ export type Database = {
         Returns: undefined
       }
       is_project_member: { Args: { p_project_id: string }; Returns: boolean }
+      move_story_board: {
+        Args: {
+          p_anchor: Json
+          p_deltas: Json
+          p_expected: Json
+          p_item: Json
+          p_project_id: string
+          p_view: string
+        }
+        Returns: undefined
+      }
       move_story_to_project: {
         Args: { p_story_id: string; p_target_project_id: string }
         Returns: Json
