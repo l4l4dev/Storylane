@@ -15,6 +15,15 @@ supabase migration new <name>
 2. Always define RLS policies in the same migration
 3. Write a DOWN migration for rollback
 4. Check the impact on existing data when adding or modifying columns
+5. `SECURITY DEFINER` RPC — pick the auth boundary and make it airtight:
+   - **User-facing RPC** (called with the anon key by a logged-in user): keep an
+     internal `project_role()` / `is_project_member()` check that fails closed
+     (see `finalize_iteration`). It inherits PUBLIC/`authenticated` EXECUTE.
+   - **Service-role-only RPC** (called by an Edge Function under the service-role
+     key, e.g. `finish_story_from_git`): the grant is the *only* boundary, so
+     `revoke execute on function … from public, authenticated;` in the same
+     migration. `service_role` keeps EXECUTE via its default privileges. Never
+     leave such an RPC PUBLIC-executable.
 
 ## RLS Policy Template
 

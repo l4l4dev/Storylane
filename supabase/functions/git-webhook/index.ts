@@ -9,6 +9,21 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// Narrow structural interface for exactly what this handler calls on the
+// Supabase client (Codex: the injected client was a bare `any`, so column
+// names and the RPC contract had no compile-time checking). The real
+// service-role client and the test fake both satisfy this.
+type QueryResult = { data: Record<string, unknown> | null; error: { message: string } | null };
+interface WebhookQuery {
+  select(columns: string): WebhookQuery;
+  eq(column: string, value: unknown): WebhookQuery;
+  maybeSingle(): Promise<QueryResult>;
+}
+export interface WebhookClient {
+  from(table: string): WebhookQuery;
+  rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }>;
+}
+
 // Story references: `[SL-123]` (PR title convention) and `storylane/123`
 // (branch name convention) — see spec/integrations.md.
 export function extractStoryNumbers(title: string, branch: string): number[] {
@@ -60,11 +75,10 @@ function json(status: number, body: Record<string, unknown>): Response {
 // client; only tests pass an override.
 export async function handleGitWebhookRequest(
   req: Request,
-  // Untyped, matching createClient's own default (no Database generic is
-  // supplied here, same as the pre-refactor inline call) — tests inject a
-  // minimal fake with only the methods this handler actually calls.
-  // deno-lint-ignore no-explicit-any
-  client?: any,
+  // Narrow-typed (see WebhookClient) — tests inject a minimal fake with only
+  // the methods this handler actually calls (from().select().eq().maybeSingle()
+  // and rpc()).
+  client?: WebhookClient,
 ): Promise<Response> {
   if (req.method !== "POST") {
     return json(405, { error: "Method not allowed" });
@@ -87,9 +101,12 @@ export async function handleGitWebhookRequest(
 
   const body = await req.text();
 
-  const supabase =
+  const supabase: WebhookClient =
     client ??
-    createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    (createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    ) as unknown as WebhookClient);
 
   const { data: integration } = await supabase
     .from("integrations")
@@ -118,19 +135,10 @@ export async function handleGitWebhookRequest(
     return json(401, { error: "Invalid signature" });
   }
 
-  // Applies to tracker-mode projects only (2026-07-11 owner decision, see
-  // spec/integrations.md) — free mode doesn't use story state for its
-  // workflow, so this writes nothing for it rather than force-finishing a
-  // story whose state column the free-mode board ignores.
-  const { data: project } = await supabase
-    .from("projects")
-    .select("workflow_mode")
-    .eq("id", projectId)
-    .maybeSingle();
-  if (project?.workflow_mode !== "tracker") {
-    return json(200, { ignored: "free mode" });
-  }
-
+  // The tracker-mode-only rule (2026-07-11 owner decision, spec/integrations.md
+  // — free mode ignores story state) is enforced inside finish_story_from_git,
+  // the single enforcement point; a free-mode project just gets 'ignored'
+  // events back.
   if (event !== "pull_request") {
     return json(200, { ignored: `event ${event}` });
   }
@@ -157,51 +165,28 @@ export async function handleGitWebhookRequest(
     return json(200, { matched: 0 });
   }
 
-  // Force-finish (2026-07-07 decision, spec/integrations.md): stories not
-  // yet finished jump to `finished` regardless of the usual one-step state
-  // machine; anything at finished or beyond is left alone.
-  const { data: updated, error } = await supabase
-    .from("stories")
-    .update({ state: "finished" })
-    .eq("project_id", projectId)
-    .in("number", numbers)
-    .in("state", ["unscheduled", "unstarted", "started"])
-    .select("id, number");
-
-  if (error) {
-    return json(500, { error: error.message });
-  }
-
-  // A story finished from the Backlog/Icebox would otherwise be stranded
-  // there (only `unstarted` stories may cross zones on the board), so a
-  // just-finished story with no iteration is pulled into the current one —
-  // a merged PR means the work happened in this iteration.
-  if (updated && updated.length > 0) {
-    const { data: currentRows } = await supabase
-      .from("iterations")
-      .select("id")
-      .eq("project_id", projectId)
-      .neq("state", "done")
-      .order("number", { ascending: false })
-      .limit(1);
-
-    const currentIterationId = currentRows?.[0]?.id;
-    if (currentIterationId) {
-      await supabase
-        .from("stories")
-        .update({ iteration_id: currentIterationId })
-        .in(
-          "id",
-          updated.map((s: { id: string }) => s.id),
-        )
-        .is("iteration_id", null);
+  // Force-finish + current-iteration assignment happen together in the
+  // transactional finish_story_from_git RPC (one advisory-locked transaction
+  // per story, so a rollover can't interleave and a failed assignment can't
+  // leave a finished story stranded — Codex, doc-1). One call per matched
+  // number; any RPC failure returns a retryable 5xx so the git provider
+  // resends the whole delivery (the RPC is idempotent — an already-finished
+  // story comes back 'not_transitionable').
+  const events: unknown[] = [];
+  for (const number of numbers) {
+    const { data, error } = await supabase.rpc("finish_story_from_git", {
+      p_project_id: projectId,
+      p_story_number: number,
+    });
+    if (error) {
+      return json(500, { error: error.message, matched: numbers });
+    }
+    if (Array.isArray(data)) {
+      events.push(...data);
     }
   }
 
-  return json(200, {
-    matched: numbers,
-    finished: (updated ?? []).map((s: { number: number }) => s.number),
-  });
+  return json(200, { matched: numbers, events });
 }
 
 // `import.meta.main` is false when this module is imported (e.g. from
@@ -209,5 +194,8 @@ export async function handleGitWebhookRequest(
 // file directly (as Supabase does when deploying/serving the function)
 // starts the server.
 if (import.meta.main) {
-  Deno.serve(handleGitWebhookRequest);
+  // Wrapped so the client parameter stays defaulted (undefined → real
+  // service-role client); passing the handler directly would bind Deno.serve's
+  // ServeHandlerInfo to the typed `client` param.
+  Deno.serve((req) => handleGitWebhookRequest(req));
 }

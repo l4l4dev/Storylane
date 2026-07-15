@@ -801,6 +801,10 @@ export type Database = {
         }
         Returns: Json
       }
+      finish_story_from_git: {
+        Args: { p_project_id: string; p_story_number: number }
+        Returns: Json
+      }
       generate_recurring_stories: {
         Args: { p_project_id: string }
         Returns: undefined
