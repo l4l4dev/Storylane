@@ -3,11 +3,11 @@ id: TASK-55
 title: >-
   Pre-deploy security hardening: function grant lockdown + activity_logs
   composite FK
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:11'
-updated_date: '2026-07-15 05:37'
+updated_date: '2026-07-15 05:39'
 labels:
   - security
   - rls
@@ -69,3 +69,9 @@ Migration 2 verified: composite FK blocks cross-project refs; story delete + log
 Minor (addressed): promote DOWN placeholder clarified; spec/rls.md + spec/data-model.md updated with the activity_logs FK + insert-lockdown + function-grant notes.
 Post-fix: 61 integration tests + 425 web tests pass, tsc/eslint clean.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Function EXECUTE grant lockdown (revoke PUBLIC/authenticated blanket grant; re-grant only the 12 web RPC entry points + 3 policy-referenced helpers; _grant_audit + grant-lockdown integration test as the backstop since the schema is not private-by-default) and activity_logs cross-project integrity (stories UNIQUE(id,project_id) + composite FK; promote_story_to_epic -> SECURITY DEFINER; drop the client INSERT policy). Migrations 20260715000005/6. Sub-area 3 (webhook_secret) split to TASK-63. Verified: 61 integration tests (incl. new grant-lockdown backstop) + 425 web tests, tsc/eslint clean, rls-security-reviewer (HIGH private-by-default claim corrected + backstopped). Committed as ceaffd2.
+<!-- SECTION:FINAL_SUMMARY:END -->
