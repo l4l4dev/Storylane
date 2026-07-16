@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ColumnMenu, FreeBoard, type CustomStatus, type Swimlane } from "./free-board";
+import { BoardPermissionsProvider, ColumnMenu, FreeBoard, type CustomStatus, type Swimlane } from "./free-board";
 
 const { setStatusWipLimitMock, createCustomStatusMock, updateCustomStatusMock, deleteCustomStatusMock } = vi.hoisted(() => ({
   setStatusWipLimitMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
@@ -40,6 +40,14 @@ vi.mock("@/app/projects/[id]/board/actions", () => ({
 describe("ColumnMenu", () => {
   const status: CustomStatus = { id: "s1", name: "To do", color: "#111111", position: 0, is_done: false, wip_limit: null };
 
+  function columnMenu(canEdit: boolean, canDelete: boolean, value = status) {
+    return (
+      <BoardPermissionsProvider permissions={{ canEdit, canDelete }}>
+        <ColumnMenu projectId="p1" status={value} />
+      </BoardPermissionsProvider>
+    );
+  }
+
   beforeEach(() => {
     setStatusWipLimitMock.mockClear();
     updateCustomStatusMock.mockClear();
@@ -47,12 +55,12 @@ describe("ColumnMenu", () => {
   });
 
   it("renders nothing for a viewer (canEdit false)", () => {
-    render(<ColumnMenu projectId="p1" status={status} canEdit={false} canDelete={false} />);
+    render(columnMenu(false, false));
     expect(screen.queryByRole("button", { name: "Column options" })).not.toBeInTheDocument();
   });
 
   it("saves a new WIP limit", async () => {
-    render(<ColumnMenu projectId="p1" status={status} canEdit canDelete={false} />);
+    render(columnMenu(true, false));
     fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
 
     const input = await screen.findByLabelText("WIP limit");
@@ -73,7 +81,7 @@ describe("ColumnMenu", () => {
   });
 
   it("shows a Clear button only when a limit is already set, and clearing sends an empty value", async () => {
-    render(<ColumnMenu projectId="p1" status={{ ...status, wip_limit: 3 }} canEdit canDelete={false} />);
+    render(columnMenu(true, false, { ...status, wip_limit: 3 }));
     fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
 
     await screen.findByLabelText("WIP limit");
@@ -88,7 +96,7 @@ describe("ColumnMenu", () => {
   });
 
   it("does not show a Clear button when no limit is set", async () => {
-    render(<ColumnMenu projectId="p1" status={status} canEdit canDelete={false} />);
+    render(columnMenu(true, false));
     fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
     await screen.findByLabelText("WIP limit");
     expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
@@ -100,7 +108,7 @@ describe("ColumnMenu", () => {
     // rejection this asserts on is a server-side failure, not a client
     // validation error.
     setStatusWipLimitMock.mockRejectedValueOnce(new Error("Failed to update WIP limit"));
-    render(<ColumnMenu projectId="p1" status={status} canEdit canDelete={false} />);
+    render(columnMenu(true, false));
     fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
 
     const input = await screen.findByLabelText("WIP limit");
@@ -111,7 +119,7 @@ describe("ColumnMenu", () => {
   });
 
   it("saves color and done-column changes, preserving the current name", async () => {
-    render(<ColumnMenu projectId="p1" status={status} canEdit canDelete={false} />);
+    render(columnMenu(true, false));
     fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
 
     fireEvent.change(await screen.findByLabelText("Column color"), { target: { value: "#00ff00" } });
@@ -133,12 +141,12 @@ describe("ColumnMenu", () => {
   });
 
   it("hides Delete column for a member and shows it for an owner", async () => {
-    const { rerender } = render(<ColumnMenu projectId="p1" status={status} canEdit canDelete={false} />);
+    const { rerender } = render(columnMenu(true, false));
     fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
     await screen.findByLabelText("WIP limit");
     expect(screen.queryByRole("button", { name: "Delete column" })).not.toBeInTheDocument();
 
-    rerender(<ColumnMenu projectId="p1" status={status} canEdit canDelete />);
+    rerender(columnMenu(true, true));
     fireEvent.click(screen.getByRole("button", { name: "Delete column" }));
 
     await act(async () => {

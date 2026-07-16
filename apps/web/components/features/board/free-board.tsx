@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type ReactNode, useState, useTransition } from "react";
+import { createContext, Fragment, type ReactNode, useContext, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -76,6 +76,20 @@ export type Swimlane = {
 // swimlane_id so a lane-less board can be told apart from a card
 // explicitly sitting in the No lane band.
 type FreeStoryCardData = StoryCardData & { completed_at: string | null; swimlane_id: string | null };
+
+type BoardPermissions = { canEdit: boolean; canDelete: boolean };
+
+const BoardPermissionsContext = createContext<BoardPermissions>({ canEdit: false, canDelete: false });
+
+export function BoardPermissionsProvider({
+  permissions,
+  children,
+}: {
+  permissions: BoardPermissions;
+  children: ReactNode;
+}) {
+  return <BoardPermissionsContext.Provider value={permissions}>{children}</BoardPermissionsContext.Provider>;
+}
 
 function todayLocalDateKey(): string {
   const now = new Date();
@@ -224,60 +238,59 @@ export function FreeBoard({
   }
 
   const activeStory = activeId ? storyById(containers, activeId) : undefined;
+  const permissions = { canEdit, canDelete };
 
   return (
-    <DndContext
-      id="free-board"
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveId(null)}
-    >
-      {toolbar && <div className="mb-4 flex items-center justify-end gap-2">{toolbar}</div>}
-      {dragError && <MutationErrorBanner message={dragError} onDismiss={() => setDragError(null)} />}
+    <BoardPermissionsProvider permissions={permissions}>
+      <DndContext
+        id="free-board"
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveId(null)}
+      >
+        {toolbar && <div className="mb-4 flex items-center justify-end gap-2">{toolbar}</div>}
+        {dragError && <MutationErrorBanner message={dragError} onDismiss={() => setDragError(null)} />}
 
-      {statuses.length === 0 ? (
-        <div className="flex items-start gap-3">
-          <p className="flex-1 rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            {canEdit ? "No board columns yet." : "No board columns yet. Ask a project member to add one."}
-          </p>
-          <AddColumnButton projectId={projectId} canEdit={canEdit} />
-        </div>
-      ) : hasLanes ? (
-        <FreeBoardLanes
-          statuses={statuses}
-          lanes={lanes}
-          containers={containers}
-          projectId={projectId}
-          canEdit={canEdit}
-          canDelete={canDelete}
-        />
-      ) : (
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {statuses.map((status) => (
-            <FreeColumn
-              key={status.id}
-              status={status}
-              stories={containers[status.id] ?? []}
-              projectId={projectId}
-              canEdit={canEdit}
-              canDelete={canDelete}
-            />
-          ))}
-          <AddColumnButton projectId={projectId} canEdit={canEdit} />
-        </div>
-      )}
-
-      <DragOverlay>
-        {activeStory && (
-          <div className="w-64 rotate-1 cursor-grabbing">
-            <StoryCard story={activeStory} projectId={projectId} />
+        {statuses.length === 0 ? (
+          <div className="flex items-start gap-3">
+            <p className="flex-1 rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+              {canEdit ? "No board columns yet." : "No board columns yet. Ask a project member to add one."}
+            </p>
+            <AddColumnButton projectId={projectId} />
+          </div>
+        ) : hasLanes ? (
+          <FreeBoardLanes
+            statuses={statuses}
+            lanes={lanes}
+            containers={containers}
+            projectId={projectId}
+          />
+        ) : (
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {statuses.map((status) => (
+              <FreeColumn
+                key={status.id}
+                status={status}
+                stories={containers[status.id] ?? []}
+                projectId={projectId}
+              />
+            ))}
+            <AddColumnButton projectId={projectId} />
           </div>
         )}
-      </DragOverlay>
-    </DndContext>
+
+        <DragOverlay>
+          {activeStory && (
+            <div className="w-64 rotate-1 cursor-grabbing">
+              <StoryCard story={activeStory} projectId={projectId} />
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+    </BoardPermissionsProvider>
   );
 }
 
@@ -289,15 +302,12 @@ function ColumnHeaderContent({
   status,
   stories,
   projectId,
-  canEdit,
-  canDelete,
 }: {
   status: CustomStatus;
   stories: FreeStoryCardData[];
   projectId: string;
-  canEdit: boolean;
-  canDelete: boolean;
 }) {
+  const { canEdit } = useContext(BoardPermissionsContext);
   const points = sumPoints(stories);
   // A soft WIP limit — over it is purely a warning color, drops are never
   // blocked (spec/screens.md "Free mode board").
@@ -315,7 +325,7 @@ function ColumnHeaderContent({
         {status.wip_limit != null ? `${stories.length} / ${status.wip_limit}` : stories.length}
       </span>
       {points > 0 && <span className="text-xs text-muted-foreground">· {points} pts</span>}
-      <ColumnMenu projectId={projectId} status={status} canEdit={canEdit} canDelete={canDelete} />
+      <ColumnMenu projectId={projectId} status={status} />
     </>
   );
 }
@@ -412,7 +422,8 @@ function ColumnNameEditor({ projectId, status }: { projectId: string; status: Cu
 // "+ Add column" (spec/ux-principles.md #4: the create destination is
 // visible at the point of action) — appended at the end of the row via
 // createCustomStatus; default color matches Settings' status-manager.tsx.
-function AddColumnButton({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+function AddColumnButton({ projectId }: { projectId: string }) {
+  const { canEdit } = useContext(BoardPermissionsContext);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -499,14 +510,10 @@ function FreeColumn({
   status,
   stories,
   projectId,
-  canEdit,
-  canDelete,
 }: {
   status: CustomStatus;
   stories: FreeStoryCardData[];
   projectId: string;
-  canEdit: boolean;
-  canDelete: boolean;
 }) {
   const { setNodeRef } = useDroppable({ id: status.id });
 
@@ -528,7 +535,7 @@ function FreeColumn({
   return (
     <section className="flex h-[calc(100dvh-13rem)] w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/30">
       <header className="flex items-center gap-2 px-3 pt-3 pb-2">
-        <ColumnHeaderContent status={status} stories={stories} projectId={projectId} canEdit={canEdit} canDelete={canDelete} />
+        <ColumnHeaderContent status={status} stories={stories} projectId={projectId} />
       </header>
       <div className="px-3 pb-2">
         <QuickAddComposer projectId={projectId} target={{ customStatusId: status.id }} />
@@ -568,15 +575,11 @@ function FreeBoardLanes({
   lanes,
   containers,
   projectId,
-  canEdit,
-  canDelete,
 }: {
   statuses: CustomStatus[];
   lanes: Swimlane[];
   containers: Record<string, FreeStoryCardData[]>;
   projectId: string;
-  canEdit: boolean;
-  canDelete: boolean;
 }) {
   const bands: { id: string | null; name: string }[] = [
     { id: null, name: "No lane" },
@@ -598,12 +601,10 @@ function FreeBoardLanes({
               status={status}
               stories={columnStories}
               projectId={projectId}
-              canEdit={canEdit}
-              canDelete={canDelete}
             />
           );
         })}
-        <AddColumnButton projectId={projectId} canEdit={canEdit} />
+        <AddColumnButton projectId={projectId} />
       </div>
 
       {bands.map((band) => (
@@ -631,19 +632,15 @@ function LaneColumnHeader({
   status,
   stories,
   projectId,
-  canEdit,
-  canDelete,
 }: {
   status: CustomStatus;
   stories: FreeStoryCardData[];
   projectId: string;
-  canEdit: boolean;
-  canDelete: boolean;
 }) {
   return (
     <section className="w-72 shrink-0">
       <header className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
-        <ColumnHeaderContent status={status} stories={stories} projectId={projectId} canEdit={canEdit} canDelete={canDelete} />
+        <ColumnHeaderContent status={status} stories={stories} projectId={projectId} />
       </header>
     </section>
   );
@@ -732,14 +729,11 @@ function SortableFreeCard({ story, projectId }: { story: FreeStoryCardData; proj
 export function ColumnMenu({
   projectId,
   status,
-  canEdit,
-  canDelete,
 }: {
   projectId: string;
   status: CustomStatus;
-  canEdit: boolean;
-  canDelete: boolean;
 }) {
+  const { canEdit, canDelete } = useContext(BoardPermissionsContext);
   const [open, setOpen] = useState(false);
 
   const [limitValue, setLimitValue] = useState(status.wip_limit != null ? String(status.wip_limit) : "");

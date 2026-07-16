@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import {
   BACKLOG_COLUMN_ID,
@@ -81,6 +82,7 @@ export default async function BoardPage({
         peekStoryId={peekStoryId}
         inviteFailedCount={inviteFailedCount}
         promotedEpic={promotedEpic}
+        user={user}
       />
     );
   }
@@ -303,6 +305,7 @@ async function FreeBoardPage({
   peekStoryId,
   inviteFailedCount,
   promotedEpic,
+  user,
 }: {
   projectId: string;
   type?: string;
@@ -312,12 +315,9 @@ async function FreeBoardPage({
   peekStoryId?: string;
   inviteFailedCount: number | null;
   promotedEpic: PromotedEpic | null;
+  user: User | null;
 }) {
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   // Lazily generate any due recurring-story instances before reading
   // stories below — must run first, same ordering constraint as

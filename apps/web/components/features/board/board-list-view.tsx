@@ -39,9 +39,7 @@ import {
 } from "@/lib/utils/kanban";
 import {
   buildBacklogRows,
-  nextRealRowId,
   projectedIterationDates,
-  rowInsertAnchors,
   type BacklogDivider,
   type BacklogRow,
   type BacklogRowItem,
@@ -774,6 +772,16 @@ function BacklogSection({
     item.kind === "story" ? { kind: "story", story: item.story } : { kind: "divider", divider: item.divider },
   );
   const rows = buildBacklogRows(rowItems, velocity, startingIterationNumber);
+  const nextRealRowIds: Array<string | null> = Array(rows.length + 1).fill(null);
+  for (let index = rows.length - 1; index >= 0; index--) {
+    const row = rows[index];
+    nextRealRowIds[index] =
+      row.kind === "story"
+        ? `story:${row.story.id}`
+        : row.kind === "note" || row.kind === "iteration-break"
+          ? `divider:${row.divider.id}`
+          : nextRealRowIds[index + 1];
+  }
 
   // A story/note row is hidden while its group is collapsed, or (a story
   // only) while it doesn't match the active filter. Headers always render
@@ -814,7 +822,7 @@ function BacklogSection({
       </header>
       <SortableContext items={[...visibleRowIds]} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-10 flex-col gap-1.5">
-          <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, 0)} />
+          <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowIds[0]} />
           {rows.map((row, index) => {
             // A manual break renders nothing of its own — buildBacklogRows
             // guarantees the very next row is always the iteration-header
@@ -836,7 +844,7 @@ function BacklogSection({
                   <QuickAddComposer
                     projectId={projectId}
                     target="backlog"
-                    beforeItemId={nextRealRowId(rows, index + 1) ?? undefined}
+                    beforeItemId={nextRealRowIds[index + 1] ?? undefined}
                   />
                 </li>
               ) : null;
@@ -856,13 +864,14 @@ function BacklogSection({
                     manualBreakDividerId={row.manualBreakDividerId}
                   />
                   {groupComposer}
-                  <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
+                  <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowIds[index + 1]} />
                 </Fragment>
               );
             }
 
             const id = row.kind === "story" ? row.story.id : row.divider.id;
-            const { aboveId, belowId } = rowInsertAnchors(rows, index);
+            const aboveId = row.kind === "story" ? `story:${row.story.id}` : `divider:${row.divider.id}`;
+            const belowId = nextRealRowIds[index + 1];
             return (
               <Fragment key={rowKey(row, index)}>
                 {visibleRowIds.has(id) && (
@@ -876,7 +885,7 @@ function BacklogSection({
                   />
                 )}
                 {groupComposer}
-                <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowId(rows, index + 1)} />
+                <InsertBetweenRows projectId={projectId} beforeItemId={belowId} />
               </Fragment>
             );
           })}
