@@ -17,10 +17,8 @@ import {
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
   Circle,
   CircleCheck,
@@ -31,12 +29,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { dropStory } from "@/app/projects/[id]/board/actions";
-import { beforeAnchorId, findContainer, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
+import { beforeAnchorId, findContainer, moveBetweenContainers, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
 import { STATE_COLUMNS, columnForStory, evaluateDrop, type KanbanColumnId, type StateColumnId } from "@/lib/utils/kanban";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard } from "./story-card";
+import { SortableItem } from "./sortable-item";
 import type { BoardStory, IterationMeta } from "./kanban-board";
 
 type ColumnMeta = { label: string; icon: LucideIcon; iconClass: string; tintClass: string };
@@ -87,20 +86,10 @@ const COLUMN_META: Record<StateColumnId, ColumnMeta> = {
 // dnd-kit only intercepts the click once the pointer has actually moved past
 // its activation threshold, so it doesn't fire for a stationary click.
 function SortableStoryRow({ story, projectId }: { story: BoardStory; projectId: string }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: story.id,
-  });
-
   return (
-    <li
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`cursor-grab active:cursor-grabbing ${isDragging ? "opacity-60" : ""}`}
-      {...attributes}
-      {...listeners}
-    >
+    <SortableItem id={story.id}>
       <StoryCard story={story} projectId={projectId} />
-    </li>
+    </SortableItem>
   );
 }
 
@@ -234,34 +223,12 @@ export function KanbanColumnsBoard({
       return;
     }
 
-    const activeContainer = findContainer(containers, String(active.id));
     const overContainer = findContainer(containers, String(over.id));
-    if (!activeContainer || !overContainer || activeContainer === overContainer) {
-      return;
-    }
-    // Invalid targets don't accept the card visually either — the card
-    // simply refuses to enter the column.
-    if (!isAllowedMove(String(active.id), overContainer)) {
+    if (!overContainer) {
       return;
     }
 
-    setContainers((prev) => {
-      const activeItems = prev[activeContainer];
-      const overItems = prev[overContainer];
-      const activeIndex = activeItems.findIndex((s) => s.id === active.id);
-      const overIndex = overItems.findIndex((s) => s.id === over.id);
-      const insertAt = overIndex >= 0 ? overIndex : overItems.length;
-      const moved = activeItems[activeIndex];
-      if (!moved) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        [activeContainer]: activeItems.filter((s) => s.id !== active.id),
-        [overContainer]: [...overItems.slice(0, insertAt), moved, ...overItems.slice(insertAt)],
-      };
-    });
+    setContainers((prev) => moveBetweenContainers(prev, String(active.id), overContainer, String(over.id), isAllowedMove));
   }
 
   function handleDragEnd(event: DragEndEvent) {

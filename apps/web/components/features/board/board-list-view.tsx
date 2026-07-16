@@ -17,10 +17,8 @@ import {
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, ChevronRight, MoreVertical, Snowflake, X } from "lucide-react";
 import {
   createBacklogDivider,
@@ -28,7 +26,7 @@ import {
   dropStoryInList,
   upsertIterationGoal,
 } from "@/app/projects/[id]/board/actions";
-import { beforeAnchorId, findContainer, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
+import { beforeAnchorId, findContainer, moveBetweenContainers, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
 import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
@@ -63,6 +61,7 @@ import { Input } from "@/components/ui/input";
 import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryListRow } from "./story-list-row";
+import { SortableItem } from "./sortable-item";
 import type { BoardStory, IterationMeta } from "./kanban-board";
 
 // Collapse state for the Backlog's virtual-iteration groups and the Current
@@ -157,18 +156,14 @@ function SortableListRow({
   projectId: string;
   pointScale: number[];
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
-  const style = { transform: CSS.Transform.toString(transform), transition };
-  const className = `cursor-grab active:cursor-grabbing ${isDragging ? "opacity-60" : ""}`;
-
   return (
-    <li ref={setNodeRef} style={style} className={className} {...attributes} {...listeners}>
+    <SortableItem id={item.id}>
       {item.kind === "divider" ? (
         <DividerRow projectId={projectId} divider={item.divider} />
       ) : (
         <StoryListRow story={item.story} projectId={projectId} pointScale={pointScale} />
       )}
-    </li>
+    </SortableItem>
   );
 }
 
@@ -533,22 +528,19 @@ function SortableBacklogRow({
   onError: (message: string) => void;
 }) {
   const dragId = row.kind === "story" ? row.story.id : row.divider.id;
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: dragId });
-  const style = { transform: CSS.Transform.toString(transform), transition };
-  const className = `cursor-grab active:cursor-grabbing ${row.kind === "story" ? "pl-3" : ""} ${isDragging ? "opacity-60" : ""}`;
 
   const insertMenu = (
     <RowInsertMenu projectId={projectId} aboveId={insertAboveId} belowId={insertBelowId} onError={onError} />
   );
 
   return (
-    <li ref={setNodeRef} style={style} className={className} {...attributes} {...listeners}>
+    <SortableItem id={dragId} className={row.kind === "story" ? "pl-3" : ""}>
       {row.kind === "story" ? (
         <StoryListRow story={row.story} projectId={projectId} pointScale={pointScale} insertMenu={insertMenu} />
       ) : (
         <DividerRow projectId={projectId} divider={row.divider} insertMenu={insertMenu} />
       )}
-    </li>
+    </SortableItem>
   );
 }
 
@@ -1031,32 +1023,12 @@ export function BoardListView({
       return;
     }
 
-    const activeContainer = findContainer(containers, String(active.id));
     const overContainer = findContainer(containers, String(over.id));
-    if (!activeContainer || !overContainer || activeContainer === overContainer) {
-      return;
-    }
-    if (!isAllowedMove(String(active.id), overContainer)) {
+    if (!overContainer) {
       return;
     }
 
-    setContainers((prev) => {
-      const activeItems = prev[activeContainer];
-      const overItems = prev[overContainer];
-      const activeIndex = activeItems.findIndex((item) => item.id === active.id);
-      const overIndex = overItems.findIndex((item) => item.id === over.id);
-      const insertAt = overIndex >= 0 ? overIndex : overItems.length;
-      const moved = activeItems[activeIndex];
-      if (!moved) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        [activeContainer]: activeItems.filter((item) => item.id !== active.id),
-        [overContainer]: [...overItems.slice(0, insertAt), moved, ...overItems.slice(insertAt)],
-      };
-    });
+    setContainers((prev) => moveBetweenContainers(prev, String(active.id), overContainer, String(over.id), isAllowedMove));
   }
 
   function handleDragEnd(event: DragEndEvent) {

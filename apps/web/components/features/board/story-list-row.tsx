@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bug, Star, Wrench, type LucideIcon } from "lucide-react";
 import { formatPoints, STORY_STATE_META, STORY_TYPE_META, type StoryState, type StoryType } from "@/lib/utils/stories";
-import { EpicBadge, initials, ReleaseMarkerRow, type StoryCardData } from "./story-card";
+import { initials } from "@/lib/utils/format";
+import { EpicBadge, ReleaseMarkerRow, type StoryCardData } from "./story-card";
 import { TransitionButtons } from "@/components/features/story/transition-buttons";
 
 const STORY_TYPE_ICON: Record<Exclude<StoryType, "release">, LucideIcon> = {

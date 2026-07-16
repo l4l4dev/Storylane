@@ -1,11 +1,7 @@
-// Pure, framework-free helpers for the unified backlog + iterations board.
+// Shared helpers for the unified backlog + iterations board.
 
+import { arrayMove } from "@dnd-kit/sortable";
 import { storyTypeUsesPoints } from "./stories";
-
-// Container ids for the two non-iteration panels (see spec/screens.md
-// "Board layout"). Iteration panels are keyed by their own `iterations.id`.
-export const BACKLOG_CONTAINER_ID = "backlog";
-export const ICEBOX_CONTAINER_ID = "icebox";
 
 export type GroupableStory = { iteration_id: string | null };
 
@@ -27,22 +23,6 @@ export function groupStoriesByIteration<T extends GroupableStory>(
   }
 
   return { byIteration, backlog };
-}
-
-export type IceboxableStory = { state: string };
-
-/** Splits off `unscheduled` (Icebox) stories from everything else — see spec/screens.md. */
-export function partitionIcebox<T extends IceboxableStory>(
-  stories: ReadonlyArray<T>,
-): { icebox: T[]; rest: T[] } {
-  const icebox: T[] = [];
-  const rest: T[] = [];
-
-  for (const story of stories) {
-    (story.state === "unscheduled" ? icebox : rest).push(story);
-  }
-
-  return { icebox, rest };
 }
 
 export type PointedStory = { points: number | null; story_type: string };
@@ -114,6 +94,35 @@ export function storyById<T extends { id: string }>(
   return undefined;
 }
 
+/** Moves an item between two drag containers, preserving the hovered insertion behavior. */
+export function moveBetweenContainers<T extends { id: string }>(
+  containers: Record<string, T[]>,
+  activeId: string,
+  overContainer: string,
+  overId: string,
+  isAllowed: (activeId: string, overContainer: string) => boolean,
+): Record<string, T[]> {
+  const activeContainer = findContainer(containers, activeId);
+  if (!activeContainer || activeContainer === overContainer || !isAllowed(activeId, overContainer)) {
+    return containers;
+  }
+
+  const activeItems = containers[activeContainer] ?? [];
+  const overItems = containers[overContainer] ?? [];
+  const moved = activeItems.find((item) => item.id === activeId);
+  if (!moved) {
+    return containers;
+  }
+  const overIndex = overItems.findIndex((item) => item.id === overId);
+  const insertAt = overIndex >= 0 ? overIndex : overItems.length;
+
+  return {
+    ...containers,
+    [activeContainer]: activeItems.filter((item) => item.id !== activeId),
+    [overContainer]: [...overItems.slice(0, insertAt), moved, ...overItems.slice(insertAt)],
+  };
+}
+
 /**
  * The "before" anchor for the intent-based board move RPC (move_story_board,
  * TASK-56): given a container's post-move order and the moved item's id,
@@ -138,8 +147,8 @@ export function beforeAnchorId<T extends { id: string; kind?: string }>(
 
 /**
  * Moves the item `activeId` to sit where `overId` currently sits — the same
- * single-element relocation dnd-kit's own `arrayMove` performs (replicated
- * here to keep this module framework-free), exposed as a pure helper so
+ * single-element relocation dnd-kit's own `arrayMove` performs, exposed as
+ * a helper so
  * callers always run it against a container's *full*, unfiltered item
  * list. `activeId`/`overId` only ever come from currently-rendered
  * (visible) rows, but indexing into the full list still finds them
@@ -157,7 +166,5 @@ export function reorderContainer<T extends { id: string }>(
   if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
     return [...items];
   }
-  const result = items.slice();
-  result.splice(newIndex, 0, result.splice(oldIndex, 1)[0]);
-  return result;
+  return arrayMove([...items], oldIndex, newIndex);
 }

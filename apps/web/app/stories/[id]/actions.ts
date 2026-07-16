@@ -257,47 +257,36 @@ export type MoveCopyResult =
   | { ok: true; projectId: string; storyId: string }
   | { ok: false; message: string };
 
+async function transferStoryToProject(
+  operation: "move" | "copy",
+  storyId: string,
+  targetProjectId: string,
+): Promise<MoveCopyResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc(`${operation}_story_to_project`, {
+    p_story_id: storyId,
+    p_target_project_id: targetProjectId,
+  });
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+  const result = data as { story_id: string; project_id: string } | null;
+  return result
+    ? { ok: true, storyId: result.story_id, projectId: result.project_id }
+    : { ok: false, message: `${operation === "move" ? "Move" : "Copy"} failed` };
+}
+
 /**
  * Moves a story to another project via the `move_story_to_project` RPC —
  * see its migration for the full atomicity/permission/carry-over design.
  */
 export async function moveStoryToProject(storyId: string, targetProjectId: string): Promise<MoveCopyResult> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("move_story_to_project", {
-    p_story_id: storyId,
-    p_target_project_id: targetProjectId,
-  });
-
-  if (error) {
-    return { ok: false, message: error.message };
-  }
-
-  const result = data as { story_id: string; project_id: string } | null;
-  if (!result) {
-    return { ok: false, message: "Move failed" };
-  }
-
-  return { ok: true, storyId: result.story_id, projectId: result.project_id };
+  return transferStoryToProject("move", storyId, targetProjectId);
 }
 
 /** Copies a story to another project via the `copy_story_to_project` RPC. */
 export async function copyStoryToProject(storyId: string, targetProjectId: string): Promise<MoveCopyResult> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("copy_story_to_project", {
-    p_story_id: storyId,
-    p_target_project_id: targetProjectId,
-  });
-
-  if (error) {
-    return { ok: false, message: error.message };
-  }
-
-  const result = data as { story_id: string; project_id: string } | null;
-  if (!result) {
-    return { ok: false, message: "Copy failed" };
-  }
-
-  return { ok: true, storyId: result.story_id, projectId: result.project_id };
+  return transferStoryToProject("copy", storyId, targetProjectId);
 }
 
 export async function addComment(formData: FormData) {

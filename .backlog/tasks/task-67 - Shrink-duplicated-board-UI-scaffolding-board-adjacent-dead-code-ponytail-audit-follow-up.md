@@ -3,10 +3,11 @@ id: TASK-67
 title: >-
   Shrink duplicated board/UI scaffolding + board-adjacent dead code (ponytail
   audit follow-up)
-status: To Do
+status: Done
 assignee:
-  - '@claude-sonnet-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-16 04:19'
+updated_date: '2026-07-16 16:16'
 labels:
   - web
   - refactor
@@ -16,7 +17,7 @@ dependencies:
   - TASK-57
   - TASK-58
 priority: low
-ordinal: 1500
+ordinal: 250
 ---
 
 ## Description
@@ -42,7 +43,13 @@ Board-adjacent deletes deferred from TASK-66:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The four board views share one container-move helper and one SortableItem; no drag/drop behavior change (existing board tests pass unchanged)
-- [ ] #2 Route error boundaries render identically via a shared component
-- [ ] #3 All listed duplications and board-adjacent dead symbols are gone; tsc and full vitest pass
+- [x] #1 The four board views share one container-move helper and one SortableItem; no drag/drop behavior change (existing board tests pass unchanged)
+- [x] #2 Route error boundaries render identically via a shared component
+- [x] #3 All listed duplications and board-adjacent dead symbols are gone; tsc and full vitest pass
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Codex (@codex-gpt-5) 実装、Opus が独立検証+web-conventions レビュー。11 findings 全て適用(skip なし)。net -373行(199挿入/572削除)。共有化: moveBetweenContainers(4 board views の onDragOver)/SortableItem(useSortable li ×5)/RouteError(error.tsx ×4)/ReorderableListManager(Lane/Status)/transferStoryToProject(move/copy twins)。集約: reorderContainer→@dnd-kit arrayMove、localDateKey/todayLocalDateKey→focus.ts、initials→format.ts、invite result 型→lib/types.ts。削除: ThemeProvider(NextThemesProvider 直接使用)、board.ts の BACKLOG/ICEBOX_CONTAINER_ID・partitionIcebox・IceboxableStory(+専用テスト)、kanban-board dead re-export、todayDateOnly alias。検証: tsc 0/eslint 0/vitest 514 pass(統合込み、独立実行)。web-conventions-reviewer clean。挙動差1件(意図的・オーナー要確認): initials() を story-card 版(単語1つで2文字 'John'→'JO')に統一、project-card は従来1文字 'J' だったため単語1つの表示名アバターが2文字化。2実装が衝突するため dedup 上どちらか選択必須、spec は文字数未規定。.backlog のオーナー編集(task-3/49/51/57)はこのコミットに非同梱。
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -6,7 +6,6 @@ import {
   isOverWipLimit,
   laneContainerKey,
   parseLaneContainerKey,
-  partitionIcebox,
   reorderContainer,
   storyById,
   sumPoints,
@@ -38,26 +37,6 @@ describe("groupStoriesByIteration", () => {
     const { byIteration, backlog } = groupStoriesByIteration(stories);
     expect(backlog.map((s) => s.id)).toEqual(["1", "2"]);
     expect(byIteration.size).toBe(0);
-  });
-});
-
-describe("partitionIcebox", () => {
-  it("splits unscheduled stories from everything else", () => {
-    const stories = [
-      { id: "1", state: "unscheduled" },
-      { id: "2", state: "unstarted" },
-      { id: "3", state: "unscheduled" },
-      { id: "4", state: "accepted" },
-    ];
-    const { icebox, rest } = partitionIcebox(stories);
-    expect(icebox.map((s) => s.id)).toEqual(["1", "3"]);
-    expect(rest.map((s) => s.id)).toEqual(["2", "4"]);
-  });
-
-  it("returns empty results for an empty input", () => {
-    const { icebox, rest } = partitionIcebox([]);
-    expect(icebox).toEqual([]);
-    expect(rest).toEqual([]);
   });
 });
 

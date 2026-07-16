@@ -76,6 +76,16 @@ export function evaluateFocusDrop(story: Pick<FocusStory, "state">, to: FocusDra
 
 export type DoneGroup<T> = { label: string; dateKey: string; stories: T[] };
 
+export function todayLocalDateKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+export function localDateKey(iso: string): string {
+  const date = new Date(iso);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function dateKeyMinusOneDay(dateKey: string): string {
   const [year, month, day] = dateKey.split("-").map(Number);
   const ms = Date.UTC(year, month - 1, day) - 86_400_000;

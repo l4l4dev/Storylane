@@ -4,15 +4,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import { clampVelocityWindow } from "@/lib/utils/velocity";
+import type { InviteSearchResult } from "@/lib/types";
+
+export type { InviteSearchResult } from "@/lib/types";
 
 export type InviteState = { error?: string; success?: string };
-
-export type InviteSearchResult = {
-  id: string;
-  username: string;
-  displayName: string;
-  avatarUrl: string | null;
-};
 
 /**
  * Backs the invite picker's search box (spec/features.md "Invite members

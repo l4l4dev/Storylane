@@ -17,18 +17,18 @@ import {
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { Circle, CircleCheckBig, CircleDot, ListTodo, PlayCircle, type LucideIcon } from "lucide-react";
 import { setStoryFocus } from "@/app/projects/[id]/board/actions";
-import { beforeAnchorId, findContainer, reorderContainer, storyById } from "@/lib/utils/board";
+import { beforeAnchorId, findContainer, moveBetweenContainers, reorderContainer, storyById } from "@/lib/utils/board";
 import {
   FOCUS_DRAG_TARGETS,
   evaluateFocusDrop,
   focusColumnForStory,
   groupDoneStories,
+  localDateKey,
+  todayLocalDateKey,
   type FocusColumnId,
   type FocusDragTarget,
 } from "@/lib/utils/focus";
@@ -37,6 +37,7 @@ import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard } from "./story-card";
 import { StoryListRow } from "./story-list-row";
+import { SortableItem } from "./sortable-item";
 import type { BoardStory, IterationMeta } from "./kanban-board";
 
 type DragColumnMeta = { label: string; icon: LucideIcon };
@@ -47,31 +48,11 @@ const DRAG_COLUMN_META: Record<FocusDragTarget, DragColumnMeta> = {
   today: { label: "Today", icon: CircleDot },
 };
 
-function todayLocalDateKey(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-function localDateKey(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function SortableFocusCard({ story, projectId }: { story: BoardStory; projectId: string }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: story.id,
-  });
-
   return (
-    <li
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`cursor-grab active:cursor-grabbing ${isDragging ? "opacity-60" : ""}`}
-      {...attributes}
-      {...listeners}
-    >
+    <SortableItem id={story.id}>
       <StoryCard story={story} projectId={projectId} />
-    </li>
+    </SortableItem>
   );
 }
 
@@ -233,30 +214,12 @@ export function FocusBoard({
     if (!over) {
       return;
     }
-    const activeContainer = findContainer(dragContainers, String(active.id));
     const overContainer = findContainer(dragContainers, String(over.id));
-    if (!activeContainer || !overContainer || activeContainer === overContainer) {
-      return;
-    }
-    if (!isAllowedMove(String(active.id), overContainer)) {
+    if (!overContainer) {
       return;
     }
 
-    setContainers((prev) => {
-      const overItems = prev[overContainer] ?? [];
-      const activeIndex = (prev[activeContainer] ?? []).findIndex((s) => s.id === active.id);
-      const overIndex = overItems.findIndex((s) => s.id === over.id);
-      const insertAt = overIndex >= 0 ? overIndex : overItems.length;
-      const moved = (prev[activeContainer] ?? [])[activeIndex];
-      if (!moved) {
-        return prev;
-      }
-      return {
-        ...prev,
-        [activeContainer]: (prev[activeContainer] ?? []).filter((s) => s.id !== active.id),
-        [overContainer]: [...overItems.slice(0, insertAt), moved, ...overItems.slice(insertAt)],
-      };
-    });
+    setContainers((prev) => moveBetweenContainers(prev, String(active.id), overContainer, String(over.id), isAllowedMove));
   }
 
   function handleDragEnd(event: DragEndEvent) {

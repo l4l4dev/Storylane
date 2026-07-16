@@ -6,7 +6,7 @@ import { Crosshair, LayoutGrid, List as ListIcon, Pencil, Snowflake } from "luci
 import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { sumPoints } from "@/lib/utils/board";
-import { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
+import { ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
 import type { StoryFilter } from "@/lib/utils/stories";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
@@ -24,8 +24,6 @@ import { BoardListView } from "./board-list-view";
 import { FocusBoard } from "./focus-board";
 import { KanbanColumnsBoard } from "./kanban-columns-board";
 import type { StoryCardData } from "./story-card";
-
-export { BACKLOG_COLUMN_ID, ICEBOX_COLUMN_ID };
 
 // Card data plus the fields the drop validation and filters need (see
 // lib/utils/kanban, lib/utils/stories "matchesStoryFilter"). `position` is

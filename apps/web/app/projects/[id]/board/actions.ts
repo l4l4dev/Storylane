@@ -26,7 +26,6 @@ import {
 } from "@/lib/utils/story-state";
 
 // Single UTC date convention shared with the DB — see utcTodayKey.
-const todayDateOnly = utcTodayKey;
 
 // TASK-56: the four board drop paths (dropStory / dropStoryFree /
 // setStoryFocus / dropStoryInList) are thin callers of move_story_board, the
@@ -787,7 +786,7 @@ function notifyFinalizeEvents(projectId: string, events: FinalizeIterationEvent[
  */
 export async function ensureCurrentIteration(projectId: string) {
   const supabase = await createClient();
-  const today = todayDateOnly();
+  const today = utcTodayKey();
 
   const { data: latestRows } = await supabase
     .from("iterations")

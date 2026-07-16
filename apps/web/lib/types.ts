@@ -9,6 +9,13 @@ export type Epic = Tables["epics"]["Row"];
 export type Label = Tables["labels"]["Row"];
 export type Iteration = Tables["iterations"]["Row"];
 
+export type InviteSearchResult = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+};
+
 export type PointScale = "fibonacci" | "linear" | "custom";
 
 export const ITERATION_LENGTHS = [7, 14, 21, 28] as const;

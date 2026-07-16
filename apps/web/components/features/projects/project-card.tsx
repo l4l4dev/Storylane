@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDate } from "@/lib/utils/format";
+import { formatDate, initials } from "@/lib/utils/format";
 import { ProjectCardMenu } from "./project-card-menu";
 
 export type ProjectCardMember = { userId: string; displayName: string; avatarUrl: string | null };
@@ -24,14 +24,6 @@ export type ProjectCardData = {
 };
 
 const MAX_VISIBLE_AVATARS = 4;
-
-function initials(displayName: string): string {
-  const parts = displayName.trim().split(/\s+/);
-  return parts
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-}
 
 function summaryLine(project: ProjectCardData): string | null {
   if (project.workflowMode === "tracker") {

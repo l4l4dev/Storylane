@@ -4,15 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
-import { FREE_TEMPLATES, type FreeTemplate } from "@/lib/types";
+import { FREE_TEMPLATES, type FreeTemplate, type InviteSearchResult } from "@/lib/types";
 import { clampVelocityWindow } from "@/lib/utils/velocity";
 
-export type NewProjectInviteResult = {
-  id: string;
-  username: string;
-  displayName: string;
-  avatarUrl: string | null;
-};
+export type NewProjectInviteResult = InviteSearchResult;
 
 export type NewProjectInviteSearchResult =
   | { status: "found"; user: NewProjectInviteResult }

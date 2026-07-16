@@ -8,6 +8,7 @@ import {
   STORY_TYPE_META,
   type StoryType,
 } from "@/lib/utils/stories";
+import { initials } from "@/lib/utils/format";
 
 export type StoryCardData = {
   id: string;
@@ -90,14 +91,6 @@ export function EpicBadge({ epic }: { epic: { id: string; name: string; color: s
 // Initials for the assignee avatar chip: first letter of the first two words
 // ("Mary Evans" -> "ME"), or the first two characters of a single-word name.
 // Exported so the List view's compact row can reuse the same treatment.
-export function initials(name: string): string {
-  const words = name.trim().split(/\s+/);
-  if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
-  }
-  return name.slice(0, 2).toUpperCase();
-}
-
 // Multica-style story card (spec/screens.md "Story card UX"): type icon,
 // title, one-line description, then a meta row of points / labels / assignee.
 // State transitions happen by dragging between columns — no buttons here.

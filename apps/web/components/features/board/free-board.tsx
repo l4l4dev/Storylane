@@ -19,10 +19,8 @@ import {
   SortableContext,
   arrayMove,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { MoreHorizontal } from "lucide-react";
 import { dropStoryFree } from "@/app/projects/[id]/board/actions";
 import {
@@ -36,11 +34,12 @@ import {
   findContainer,
   isOverWipLimit,
   laneContainerKey,
+  moveBetweenContainers,
   parseLaneContainerKey,
   storyById,
   sumPoints,
 } from "@/lib/utils/board";
-import { groupDoneStories } from "@/lib/utils/focus";
+import { groupDoneStories, localDateKey, todayLocalDateKey } from "@/lib/utils/focus";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +51,7 @@ import { Input } from "@/components/ui/input";
 import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard, type StoryCardData } from "./story-card";
+import { SortableItem } from "./sortable-item";
 
 export type CustomStatus = {
   id: string;
@@ -89,16 +89,6 @@ export function BoardPermissionsProvider({
   children: ReactNode;
 }) {
   return <BoardPermissionsContext.Provider value={permissions}>{children}</BoardPermissionsContext.Provider>;
-}
-
-function todayLocalDateKey(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-function localDateKey(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // Free-mode board (spec/screens.md): a pure Trello-style kanban.
@@ -157,29 +147,12 @@ export function FreeBoard({
       return;
     }
 
-    const activeContainer = findContainer(containers, String(active.id));
     const overContainer = findContainer(containers, String(over.id));
-    if (!activeContainer || !overContainer || activeContainer === overContainer) {
+    if (!overContainer) {
       return;
     }
 
-    setContainers((prev) => {
-      const activeItems = prev[activeContainer];
-      const overItems = prev[overContainer];
-      const activeIndex = activeItems.findIndex((s) => s.id === active.id);
-      const overIndex = overItems.findIndex((s) => s.id === over.id);
-      const insertAt = overIndex >= 0 ? overIndex : overItems.length;
-      const moved = activeItems[activeIndex];
-      if (!moved) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        [activeContainer]: activeItems.filter((s) => s.id !== active.id),
-        [overContainer]: [...overItems.slice(0, insertAt), moved, ...overItems.slice(insertAt)],
-      };
-    });
+    setContainers((prev) => moveBetweenContainers(prev, String(active.id), overContainer, String(over.id), () => true));
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -705,18 +678,10 @@ function LaneCell({
 }
 
 function SortableFreeCard({ story, projectId }: { story: FreeStoryCardData; projectId: string }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: story.id });
-
   return (
-    <li
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`cursor-grab active:cursor-grabbing ${isDragging ? "opacity-60" : ""}`}
-      {...attributes}
-      {...listeners}
-    >
+    <SortableItem id={story.id}>
       <StoryCard story={story} projectId={projectId} />
-    </li>
+    </SortableItem>
   );
 }
 
