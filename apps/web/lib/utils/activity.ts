@@ -18,6 +18,11 @@ export function describeActivity(log: ActivityLog): string {
       return `${log.actorName} created ${story}`;
     case "story.state_changed":
       return `${log.actorName} moved ${story} from ${String(payload.from)} to ${String(payload.to)}`;
+    case "story.column_changed": {
+      const from = payload.from ? `"${String(payload.from)}"` : "no column";
+      const to = payload.to ? `"${String(payload.to)}"` : "no column";
+      return `${log.actorName} moved ${story} from ${from} to ${to}`;
+    }
     case "comment.added":
       return `${log.actorName} commented on ${story}`;
     case "story.promoted_to_epic": {

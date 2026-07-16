@@ -50,6 +50,7 @@ const baseDetail: StoryDetail = {
   members: [],
   comments: [],
   tasks: [],
+  history: [],
 };
 
 async function openPromoteDialog() {

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { updateStory, type StoryDetail } from "@/app/stories/[id]/actions";
 import { useStoryRealtime, type StoryRealtimeRow } from "@/lib/supabase/realtime";
+import { describeActivity } from "@/lib/utils/activity";
+import { formatDateTime } from "@/lib/utils/format";
 import { STORY_TYPES } from "@/lib/utils/stories";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -488,6 +490,29 @@ export function StoryDetailPanel({
         comments={detail.comments}
         onMutated={onMutated}
       />
+
+      {detail.history.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h3 className="text-sm font-semibold">History</h3>
+          <ul className="flex flex-col gap-1.5">
+            {detail.history.map((entry) => (
+              <li key={entry.id} className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+                <span>
+                  {describeActivity({
+                    action: entry.action,
+                    payload: entry.payload,
+                    actorName: entry.actorName,
+                    storyTitle: detail.title,
+                  })}
+                </span>
+                <time className="shrink-0" dateTime={entry.createdAt}>
+                  {formatDateTime(entry.createdAt)}
+                </time>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

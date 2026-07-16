@@ -30,6 +30,9 @@ export type StoryDetail = {
   members: { id: string; name: string }[];
   comments: { id: string; body: string; createdAt: string; authorName: string }[];
   tasks: { id: string; title: string; is_done: boolean }[];
+  // Chronological status/column history from activity_logs (newest first).
+  // `payload` is the raw activity_logs payload, shaped for describeActivity.
+  history: { id: string; action: string; payload: unknown; actorName: string; createdAt: string }[];
 };
 
 /**
@@ -51,7 +54,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     return null;
   }
 
-  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: customStatuses }] =
+  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: customStatuses }, { data: history }] =
     await Promise.all([
       supabase
         .from("projects")
@@ -75,6 +78,16 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .select("id, name")
         .eq("project_id", story.project_id)
         .order("position", { ascending: true }),
+      // Status/column history only — comment.added already renders in the
+      // comment thread, and letting it in would both duplicate it here and
+      // let comments crowd real status changes out of the 50-row window.
+      supabase
+        .from("activity_logs")
+        .select("id, action, payload, created_at, actor:profiles(display_name)")
+        .eq("story_id", storyId)
+        .in("action", ["story.created", "story.state_changed", "story.column_changed"])
+        .order("created_at", { ascending: false })
+        .limit(50),
     ]);
 
   return {
@@ -109,6 +122,16 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
       };
     }),
     tasks: tasks ?? [],
+    history: (history ?? []).map((entry) => {
+      const actor = Array.isArray(entry.actor) ? entry.actor[0] : entry.actor;
+      return {
+        id: entry.id,
+        action: entry.action,
+        payload: entry.payload,
+        actorName: actor?.display_name ?? "Someone",
+        createdAt: entry.created_at,
+      };
+    }),
   };
 }
 

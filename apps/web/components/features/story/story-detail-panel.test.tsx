@@ -45,6 +45,7 @@ const baseDetail: StoryDetail = {
   members: [],
   comments: [],
   tasks: [],
+  history: [],
 };
 
 describe("StoryDetailPanel", () => {
@@ -58,6 +59,40 @@ describe("StoryDetailPanel", () => {
     render(<StoryDetailPanel detail={baseDetail} />);
     expect(screen.getByRole("button", { name: "Start" })).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "State" })).not.toBeInTheDocument();
+  });
+
+  it("renders a chronological status/column history with actor and timestamp", () => {
+    render(
+      <StoryDetailPanel
+        detail={{
+          ...baseDetail,
+          history: [
+            {
+              id: "h1",
+              action: "story.state_changed",
+              payload: { from: "unstarted", to: "started" },
+              actorName: "Dev User",
+              createdAt: "2026-07-17T09:00:00Z",
+            },
+            {
+              id: "h2",
+              action: "story.column_changed",
+              payload: { from: "To do", to: "Doing" },
+              actorName: "Dev User",
+              createdAt: "2026-07-17T10:00:00Z",
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("History")).toBeInTheDocument();
+    expect(screen.getByText(/moved "Add login" from unstarted to started/)).toBeInTheDocument();
+    expect(screen.getByText(/moved "Add login" from "To do" to "Doing"/)).toBeInTheDocument();
+  });
+
+  it("omits the History section when there is no history", () => {
+    render(<StoryDetailPanel detail={baseDetail} />);
+    expect(screen.queryByText("History")).not.toBeInTheDocument();
   });
 
   it("renders the task checklist and comment thread sections", () => {

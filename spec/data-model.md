@@ -317,7 +317,7 @@ activity_logs (
   project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
   story_id    uuid REFERENCES stories(id) ON DELETE SET NULL,
   actor_id    uuid REFERENCES profiles(id),
-  action      text NOT NULL,  -- e.g. 'story.created' | 'story.state_changed' | 'comment.added'
+  action      text NOT NULL,  -- e.g. 'story.created' | 'story.state_changed' | 'story.column_changed' | 'comment.added'
   payload     jsonb,          -- before/after values etc.
   created_at  timestamptz DEFAULT now(),
   -- TASK-55: cross-project reference guard. Requires stories UNIQUE(id, project_id).
