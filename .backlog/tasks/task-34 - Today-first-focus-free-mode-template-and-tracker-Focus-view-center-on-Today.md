@@ -3,9 +3,9 @@ id: TASK-34
 title: 'Today-first focus: free-mode template and tracker Focus view center on Today'
 status: To Do
 assignee:
-  - '@claude-opus-4-8'
+  - '@claude-sonnet-5'
 created_date: '2026-07-11 05:17'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-16 02:23'
 labels:
   - web
   - ux
@@ -51,3 +51,13 @@ DESIGN (Fable, 2026-07-11 — written while Fable is available; treat as the adv
 4. Optional toolbar toggle 'mine only' (assignee = me) — cheap, include if it stays simple.
 5. spec/screens.md must be updated to define the Focus sections and the new free-mode template before implementation (AC #4). Rollover behavior needs no change — Focus reads the current iteration after the standard ensure/finalize call.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-fable-5
+created: 2026-07-16 02:23
+---
+Reassigned opus→sonnet (2026-07-16): the architecture-sensitive part (Today-view design) is already advisor-approved in the notes; remaining work is standard implementation per that design. Escalate back if implementation hits design gaps.
+---
+<!-- COMMENTS:END -->

@@ -3,8 +3,9 @@ id: TASK-64
 title: Board render efficiency cleanups (code review 2026-07-16)
 status: To Do
 assignee:
-  - '@claude-sonnet-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-15 23:54'
+updated_date: '2026-07-16 02:23'
 labels:
   - web
   - refactor
@@ -33,3 +34,13 @@ Behavior must not change; this is refactor + perf only.
 - [ ] #2 Free-mode board page issues no duplicate auth.getUser() and starts its parallel fetches without a serialized auth round-trip
 - [ ] #3 canEdit/canDelete reach their consumers without pass-through-only props; no visible permission behavior change
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-fable-5
+created: 2026-07-16 02:23
+---
+Reassigned sonnet→codex (2026-07-16): Codex CLI is now connected. Precisely-scoped, behavior-preserving refactor/perf work with exact file/line targets and existing tests — ideal for Codex, and runs on the separate ChatGPT quota instead of Claude tokens.
+---
+<!-- COMMENTS:END -->

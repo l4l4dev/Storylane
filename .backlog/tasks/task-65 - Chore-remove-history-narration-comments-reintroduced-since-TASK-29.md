@@ -1,10 +1,11 @@
 ---
 id: TASK-65
 title: 'Chore: remove history-narration comments reintroduced since TASK-29'
-status: To Do
+status: In Progress
 assignee:
-  - '@claude-haiku-4-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-15 23:55'
+updated_date: '2026-07-16 01:35'
 labels:
   - web
   - chore
@@ -34,3 +35,12 @@ For each: delete the narration, keeping (rewritten in present tense) only whatev
 - [ ] #1 None of the six comments narrates past behavior; any surviving text states only a current constraint in present tense
 - [ ] #2 grep -rn 'used to' over apps/web (comments near TASK- refs) reports no history narration
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-16 01:35
+---
+Delegated to Codex (owner-approved delegation trial, 2026-07-16). Constraint: must not touch the TASK-56 slice-2 uncommitted files (board/actions.ts, board-list-view.tsx, free-board.tsx, focus-board.tsx, kanban-columns-board.tsx, lib/utils/board.ts, database.types.ts).
+---
+<!-- COMMENTS:END -->
