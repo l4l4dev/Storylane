@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  beforeAnchorId,
   findContainer,
   groupStoriesByIteration,
   isOverWipLimit,
@@ -196,5 +197,32 @@ describe("reorderContainer", () => {
     ];
     const reordered = reorderContainer(backlog, "story:s3", "story:s1");
     expect(reordered.map((i) => i.id)).toEqual(["story:s3", "story:s1", "story:s2-hidden", "divider:d1"]);
+  });
+});
+
+describe("beforeAnchorId", () => {
+  // TASK-56: the drop handlers send only this "before" anchor instead of the
+  // whole ordered sequence — the server re-derives dense positions from it.
+  it("returns the neighbour the moved item now sits before, as story:<id>", () => {
+    const reordered = [{ id: "a" }, { id: "moved" }, { id: "b" }];
+    expect(beforeAnchorId(reordered, "moved")).toBe("story:b");
+  });
+
+  it("returns null (append) when the moved item landed last", () => {
+    const reordered = [{ id: "a" }, { id: "b" }, { id: "moved" }];
+    expect(beforeAnchorId(reordered, "moved")).toBeNull();
+  });
+
+  it("returns null when the moved item is absent", () => {
+    expect(beforeAnchorId([{ id: "a" }, { id: "b" }], "missing")).toBeNull();
+  });
+
+  it("preserves each item's own kind for the List view's mixed story/divider order", () => {
+    const reordered = [
+      { id: "s1", kind: "story" },
+      { id: "moved", kind: "story" },
+      { id: "d1", kind: "divider" },
+    ];
+    expect(beforeAnchorId(reordered, "moved")).toBe("divider:d1");
   });
 });

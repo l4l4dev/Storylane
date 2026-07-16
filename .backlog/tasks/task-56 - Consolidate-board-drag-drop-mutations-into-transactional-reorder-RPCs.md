@@ -1,11 +1,11 @@
 ---
 id: TASK-56
 title: Consolidate board drag/drop mutations into transactional reorder RPCs
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:11'
-updated_date: '2026-07-15 23:53'
+updated_date: '2026-07-16 01:33'
 labels:
   - concurrency
   - db
@@ -26,11 +26,13 @@ Fix: a small set of transactional Postgres RPCs (advisory or row locks per proje
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A failed or concurrent drop can no longer produce duplicate/gapped positions or a state change without its reorder
-- [ ] #2 Stale-state transitions are rejected (expected-state predicate), surfaced as a visible refresh cue in the UI
-- [ ] #3 The four board mutation paths share the RPC-backed implementation; no per-view duplication remains
-- [ ] #4 Concurrency tests (or deterministic simulation) cover mid-flight failure and competing drags
+- [x] #1 A failed or concurrent drop can no longer produce duplicate/gapped positions or a state change without its reorder
+- [x] #2 Stale-state transitions are rejected (expected-state predicate), surfaced as a visible refresh cue in the UI
+- [x] #3 The four board mutation paths share the RPC-backed implementation; no per-view duplication remains
+- [x] #4 Concurrency tests (or deterministic simulation) cover mid-flight failure and competing drags
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 

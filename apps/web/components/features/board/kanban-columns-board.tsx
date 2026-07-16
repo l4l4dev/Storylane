@@ -31,7 +31,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { dropStory } from "@/app/projects/[id]/board/actions";
-import { findContainer, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
+import { beforeAnchorId, findContainer, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
 import { STATE_COLUMNS, columnForStory, evaluateDrop, type KanbanColumnId, type StateColumnId } from "@/lib/utils/kanban";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import { MutationErrorBanner } from "./mutation-error-banner";
@@ -293,7 +293,13 @@ export function KanbanColumnsBoard({
     formData.set("project_id", projectId);
     formData.set("story_id", String(active.id));
     formData.set("target_column", overContainer);
-    reordered.forEach((s) => formData.append("ordered_ids", s.id));
+    // Intent, not a full sequence: the neighbour the card now sits before (or
+    // nothing = append). The server re-derives dense positions from current DB
+    // order, so a stale client can't overwrite a concurrent drag (TASK-56).
+    const beforeId = beforeAnchorId(reordered, String(active.id));
+    if (beforeId) {
+      formData.set("before_item_id", beforeId);
+    }
     // Awaited and caught — the server re-derives the transition from the
     // story's *current* state (see dropStory), so a stale client
     // (e.g. another user already accepted this story) gets a rejection

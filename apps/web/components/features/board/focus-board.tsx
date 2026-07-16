@@ -23,7 +23,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Circle, CircleCheckBig, CircleDot, ListTodo, PlayCircle, type LucideIcon } from "lucide-react";
 import { setStoryFocus } from "@/app/projects/[id]/board/actions";
-import { findContainer, reorderContainer, storyById } from "@/lib/utils/board";
+import { beforeAnchorId, findContainer, reorderContainer, storyById } from "@/lib/utils/board";
 import {
   FOCUS_DRAG_TARGETS,
   evaluateFocusDrop,
@@ -283,7 +283,12 @@ export function FocusBoard({
     formData.set("project_id", projectId);
     formData.set("story_id", String(active.id));
     formData.set("target", overContainer);
-    reordered.forEach((s) => formData.append("ordered_ids", s.id));
+    // Intent, not a full sequence: the neighbour the card now sits before (or
+    // nothing = append) — the server re-derives dense positions (TASK-56).
+    const beforeId = beforeAnchorId(reordered, String(active.id));
+    if (beforeId) {
+      formData.set("before_item_id", beforeId);
+    }
     startTransition(async () => {
       try {
         await setStoryFocus(formData);

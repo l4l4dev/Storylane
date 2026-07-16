@@ -115,6 +115,28 @@ export function storyById<T extends { id: string }>(
 }
 
 /**
+ * The "before" anchor for the intent-based board move RPC (move_story_board,
+ * TASK-56): given a container's post-move order and the moved item's id,
+ * returns `"<kind>:<id>"` for the item the moved one now sits directly before,
+ * or null when it landed last (append). Replaces sending the whole ordered_ids
+ * sequence — the server re-derives dense positions from the current DB order,
+ * so only this single neighbour is needed to place the moved item. `kind`
+ * defaults to "story" for the Kanban/Free/Focus views whose items are all
+ * stories; the List view's items carry their own story/divider kind.
+ */
+export function beforeAnchorId<T extends { id: string; kind?: string }>(
+  reordered: ReadonlyArray<T>,
+  movedId: string,
+): string | null {
+  const index = reordered.findIndex((item) => item.id === movedId);
+  if (index < 0 || index === reordered.length - 1) {
+    return null;
+  }
+  const next = reordered[index + 1];
+  return `${next.kind ?? "story"}:${next.id}`;
+}
+
+/**
  * Moves the item `activeId` to sit where `overId` currently sits — the same
  * single-element relocation dnd-kit's own `arrayMove` performs (replicated
  * here to keep this module framework-free), exposed as a pure helper so

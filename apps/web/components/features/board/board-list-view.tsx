@@ -28,7 +28,7 @@ import {
   dropStoryInList,
   upsertIterationGoal,
 } from "@/app/projects/[id]/board/actions";
-import { findContainer, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
+import { beforeAnchorId, findContainer, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
 import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
@@ -1082,7 +1082,14 @@ export function BoardListView({
     formData.set("item_kind", activeItem?.kind ?? "story");
     formData.set("item_id", String(active.id));
     formData.set("target_zone", overContainer);
-    reordered.forEach((item) => formData.append("ordered_ids", `${item.kind}:${item.id}`));
+    // Intent, not a full sequence: the neighbour ("story:<id>"/"divider:<id>")
+    // the item now sits before (or nothing = append to the zone's end). The
+    // server re-derives dense positions across both tables from current DB
+    // order, so a stale client can't overwrite a concurrent drag (TASK-56).
+    const beforeId = beforeAnchorId(reordered, String(active.id));
+    if (beforeId) {
+      formData.set("before_item_id", beforeId);
+    }
     // Awaited and caught — the server re-derives the move from the
     // story's *current* row (see dropStoryInList), so a stale client (e.g.
     // another user already accepted this story) gets a rejection here even

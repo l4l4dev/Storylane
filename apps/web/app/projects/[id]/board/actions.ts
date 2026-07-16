@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { assertAllSucceeded } from "@/lib/supabase/assert";
 import { notifySlack } from "@/lib/integrations/slack";
 import { iterationDoneMessage, iterationStartedMessage, storyStateChangeMessage } from "@/lib/utils/slack";
 import {
@@ -17,7 +16,7 @@ import {
 } from "@/lib/utils/kanban";
 import { evaluateFocusDrop, type FocusDragTarget } from "@/lib/utils/focus";
 import { utcTodayKey } from "@/lib/utils/format";
-import { isUnestimatedFeature, nextPosition, parsePoints, pointScaleValues, reorderPositions } from "@/lib/utils/stories";
+import { isUnestimatedFeature, nextPosition, parsePoints, pointScaleValues } from "@/lib/utils/stories";
 import {
   applyTransition,
   shouldAssignCurrentIteration,
@@ -27,6 +26,52 @@ import {
 
 // Single UTC date convention shared with the DB — see utcTodayKey.
 const todayDateOnly = utcTodayKey;
+
+// TASK-56: the four board drop paths (dropStory / dropStoryFree /
+// setStoryFocus / dropStoryInList) are thin callers of move_story_board, the
+// single transactional move+reorder RPC (20260715000008). Each still reads the
+// story and runs the same pure evaluate* validation server-side (never trust
+// the client), then hands the RPC an intent — deltas + an expected snapshot +
+// a "before" anchor — and the RPC applies the column change and dense reorder
+// atomically under one advisory lock. Shared plumbing lives here.
+
+const STALE_MOVE_MESSAGE = "This story changed on the board. Refresh and try again.";
+
+// Every zone-determining column, snapshotted from the action's trusted read.
+// The RPC re-reads these FOR UPDATE and rejects (P0001 "stale") if any moved
+// between this read and the locked write — closing that TOCTOU window.
+function moveExpected(row: {
+  state: string;
+  iteration_id: string | null;
+  custom_status_id: string | null;
+  swimlane_id: string | null;
+  focus: string | null;
+}) {
+  return {
+    state: row.state,
+    iteration_id: row.iteration_id,
+    custom_status_id: row.custom_status_id,
+    swimlane_id: row.swimlane_id,
+    focus: row.focus,
+  };
+}
+
+// The client's "before" anchor ("story:<id>" / "divider:<id>"; absent = append
+// to the zone's end) into the RPC's p_anchor shape.
+function moveAnchor(beforeItemId: string | null): { before?: { kind: string; id: string } } {
+  if (!beforeItemId) {
+    return {};
+  }
+  const separator = beforeItemId.indexOf(":");
+  return { before: { kind: beforeItemId.slice(0, separator), id: beforeItemId.slice(separator + 1) } };
+}
+
+// The RPC raises P0001 for BOTH a stale snapshot and "no active iteration";
+// only a stale snapshot is a refresh cue, distinguished by its message. Anything
+// else (P0002 not-found, 42501 not-authorized, …) surfaces its own message.
+function moveErrorMessage(error: { code?: string; message: string }): string {
+  return error.code === "P0001" && error.message.includes("stale") ? STALE_MOVE_MESSAGE : error.message;
+}
 
 /**
  * Creates a story from a column's inline quick-add composer (see
@@ -213,14 +258,14 @@ export async function dropStoryFree(formData: FormData) {
   const hasLaneField = formData.has("swimlane_id");
   const swimlaneRaw = String(formData.get("swimlane_id") ?? "");
   const swimlaneId = swimlaneRaw === "" ? null : swimlaneRaw;
-  const orderedIds = formData.getAll("ordered_ids").map(String).filter(Boolean);
+  const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
 
   const supabase = await createClient();
 
   const [{ data: story, error: fetchError }, { data: status }] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, custom_status_id, swimlane_id")
+      .select("number, title, state, iteration_id, custom_status_id, swimlane_id, focus")
       .eq("id", storyId)
       .eq("project_id", projectId)
       .single(),
@@ -247,34 +292,32 @@ export async function dropStoryFree(formData: FormData) {
   }
 
   const statusChanged = story.custom_status_id !== statusId;
-  const laneChanged = hasLaneField && story.swimlane_id !== swimlaneId;
 
-  if (statusChanged || laneChanged) {
-    const updates: { custom_status_id?: string; swimlane_id?: string | null } = {};
-    if (statusChanged) {
-      updates.custom_status_id = statusId;
-    }
-    if (laneChanged) {
-      updates.swimlane_id = swimlaneId;
-    }
-    const { error } = await supabase.from("stories").update(updates).eq("id", storyId);
-    if (error) {
-      throw new Error(error.message);
-    }
-    // Lane-only moves aren't a state change worth notifying about.
-    if (statusChanged) {
-      after(() => notifySlack(projectId, storyStateChangeMessage(story, status.name)));
-    }
+  // Free mode has no state machine — any story may move to any status. The
+  // status is always in the deltas (idempotent when unchanged, so a pure
+  // in-column reorder still routes through the same RPC); the lane column is
+  // only touched when the board actually has lanes (its absence = "don't
+  // touch", told apart from an explicit move into No lane).
+  const deltas: { custom_status_id: string; swimlane_id?: string | null } = { custom_status_id: statusId };
+  if (hasLaneField) {
+    deltas.swimlane_id = swimlaneId;
   }
 
-  if (orderedIds.length > 0) {
-    await assertAllSucceeded(
-      await Promise.all(
-        reorderPositions(orderedIds).map(({ id, position }) =>
-          supabase.from("stories").update({ position }).eq("id", id).eq("project_id", projectId),
-        ),
-      ),
-    );
+  const { error } = await supabase.rpc("move_story_board", {
+    p_project_id: projectId,
+    p_item: { kind: "story", id: storyId },
+    p_view: "free",
+    p_expected: moveExpected(story),
+    p_deltas: deltas,
+    p_anchor: moveAnchor(beforeItemId),
+  });
+  if (error) {
+    throw new Error(moveErrorMessage(error));
+  }
+
+  // Lane-only moves aren't a state change worth notifying about.
+  if (statusChanged) {
+    after(() => notifySlack(projectId, storyStateChangeMessage(story, status.name)));
   }
 
   revalidatePath(`/projects/${projectId}/board`);
@@ -292,14 +335,14 @@ export async function dropStory(formData: FormData) {
   const projectId = String(formData.get("project_id"));
   const storyId = String(formData.get("story_id"));
   const targetColumn = String(formData.get("target_column")) as KanbanColumnId;
-  const orderedIds = formData.getAll("ordered_ids").map(String).filter(Boolean);
+  const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
 
   const supabase = await createClient();
 
   const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, state, story_type, points, iteration_id")
+      .select("number, title, state, story_type, points, iteration_id, custom_status_id, swimlane_id, focus")
       .eq("id", storyId)
       .eq("project_id", projectId)
       .single(),
@@ -327,43 +370,45 @@ export async function dropStory(formData: FormData) {
     throw new Error(evaluation.reason);
   }
 
-  const update: { state?: string; iteration_id?: string | null } = {};
+  const deltas = trackerDeltas(evaluation);
+
+  const { error } = await supabase.rpc("move_story_board", {
+    p_project_id: projectId,
+    p_item: { kind: "story", id: storyId },
+    p_view: "tracker",
+    p_expected: moveExpected(story),
+    p_deltas: deltas,
+    p_anchor: moveAnchor(beforeItemId),
+  });
+  if (error) {
+    throw new Error(moveErrorMessage(error));
+  }
+
   if (evaluation.state) {
-    update.state = evaluation.state;
-  }
-  if (evaluation.iteration === "current") {
-    update.iteration_id = currentIterationId;
-  } else if (evaluation.iteration === "none") {
-    update.iteration_id = null;
-  }
-
-  if (Object.keys(update).length > 0) {
-    const { error } = await supabase
-      .from("stories")
-      .update(update)
-      .eq("id", storyId)
-      .eq("project_id", projectId);
-    if (error) {
-      throw new Error(error.message);
-    }
-    if (evaluation.state) {
-      const newState = evaluation.state;
-      after(() => notifySlack(projectId, storyStateChangeMessage(story, newState)));
-    }
-  }
-
-  if (orderedIds.length > 0) {
-    await assertAllSucceeded(
-      await Promise.all(
-        reorderPositions(orderedIds).map(({ id, position }) =>
-          supabase.from("stories").update({ position }).eq("id", id).eq("project_id", projectId),
-        ),
-      ),
-    );
+    const newState = evaluation.state;
+    after(() => notifySlack(projectId, storyStateChangeMessage(story, newState)));
   }
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/stories/${storyId}`);
+}
+
+// State/iteration deltas from an evaluateDrop/evaluateListDrop result. The RPC
+// re-resolves iteration='current' to the latest non-done iteration under its
+// lock, so the id is never passed from here (a concurrent rollover would make
+// a client-resolved id stale).
+function trackerDeltas(evaluation: {
+  state?: string;
+  iteration: "current" | "none" | "keep";
+}): { state?: string; iteration?: "current" | "none" } {
+  const deltas: { state?: string; iteration?: "current" | "none" } = {};
+  if (evaluation.state) {
+    deltas.state = evaluation.state;
+  }
+  if (evaluation.iteration !== "keep") {
+    deltas.iteration = evaluation.iteration;
+  }
+  return deltas;
 }
 
 /**
@@ -376,14 +421,14 @@ export async function setStoryFocus(formData: FormData) {
   const projectId = String(formData.get("project_id"));
   const storyId = String(formData.get("story_id"));
   const target = String(formData.get("target")) as FocusDragTarget;
-  const orderedIds = formData.getAll("ordered_ids").map(String).filter(Boolean);
+  const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
 
   const supabase = await createClient();
 
   const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
     supabase
       .from("stories")
-      .select("state, iteration_id")
+      .select("state, iteration_id, custom_status_id, swimlane_id, focus")
       .eq("id", storyId)
       .eq("project_id", projectId)
       .single(),
@@ -410,23 +455,16 @@ export async function setStoryFocus(formData: FormData) {
     throw new Error(evaluation.reason);
   }
 
-  const { error } = await supabase
-    .from("stories")
-    .update({ focus: evaluation.focus })
-    .eq("id", storyId)
-    .eq("project_id", projectId);
+  const { error } = await supabase.rpc("move_story_board", {
+    p_project_id: projectId,
+    p_item: { kind: "story", id: storyId },
+    p_view: "focus",
+    p_expected: moveExpected(story),
+    p_deltas: { focus: evaluation.focus },
+    p_anchor: moveAnchor(beforeItemId),
+  });
   if (error) {
-    throw new Error(error.message);
-  }
-
-  if (orderedIds.length > 0) {
-    await assertAllSucceeded(
-      await Promise.all(
-        reorderPositions(orderedIds).map(({ id, position }) =>
-          supabase.from("stories").update({ position }).eq("id", id).eq("project_id", projectId),
-        ),
-      ),
-    );
+    throw new Error(moveErrorMessage(error));
   }
 
   revalidatePath(`/projects/${projectId}/board`);
@@ -435,16 +473,15 @@ export async function setStoryFocus(formData: FormData) {
 /**
  * Handles a List-view drop (see spec/screens.md "Board layout: List view"),
  * the flat-list counterpart to `dropStory`. List view merges every
- * current-iteration state into one "current" zone, so reorders always
- * persist across the whole destination zone rather than a single state's
- * column — otherwise a reorder spanning two states would look like an
- * (invalid) attempted state transition to `evaluateDrop`.
+ * current-iteration state into one "current" zone; the RPC derives that zone
+ * from the story's post-delta columns, so a reorder spanning two states no
+ * longer looks like an (invalid) attempted state transition.
  *
  * The dragged item can be a story or a freeform backlog divider
- * (`item_kind`) — a divider never changes state/iteration, only its
- * position, and can only be reordered within the Backlog zone. `ordered_ids`
- * entries are `"story:<id>"` / `"divider:<id>"` pairs (Backlog can mix both;
- * Current/Icebox only ever contain stories) so positions are written to the
+ * (`item_kind`) — a divider never changes state/iteration, only its position,
+ * and can only be reordered within the Backlog zone. The `before_item_id`
+ * anchor is a `"story:<id>"` / `"divider:<id>"` pair (Backlog can mix both;
+ * Current/Icebox only ever contain stories) so the RPC splices it into the
  * right table — see `lib/utils/iterations.ts` "buildBacklogRows" for why the
  * two tables' positions must interleave consistently.
  */
@@ -453,115 +490,129 @@ export async function dropStoryInList(formData: FormData) {
   const itemKind = String(formData.get("item_kind") ?? "story");
   const itemId = String(formData.get("item_id"));
   const targetZone = String(formData.get("target_zone")) as ListZoneId;
-  const orderedItems = formData.getAll("ordered_ids").map(String).filter(Boolean);
+  const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
 
   const supabase = await createClient();
 
+  // A divider only ever reorders within the Backlog zone — it carries no
+  // state/iteration, so the RPC gets empty deltas + an empty expected snapshot
+  // (the RPC skips the stale guard for a divider) and just resequences the
+  // two-table backlog.
   if (itemKind === "divider") {
     if (targetZone !== BACKLOG_COLUMN_ID) {
       throw new Error("Dividers can only be reordered within the backlog");
     }
-  } else {
-    const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
-      supabase
-        .from("stories")
-        .select("number, title, state, story_type, points, iteration_id")
-        .eq("id", itemId)
-        .eq("project_id", projectId)
-        .single(),
-      supabase
-        .from("iterations")
-        .select("id")
-        .eq("project_id", projectId)
-        .neq("state", "done")
-        .order("number", { ascending: false })
-        .limit(1),
-    ]);
 
-    if (fetchError || !story) {
-      throw new Error(fetchError?.message ?? "Story not found");
+    const { error } = await supabase.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "divider", id: itemId },
+      p_view: "list",
+      p_expected: {},
+      p_deltas: {},
+      p_anchor: moveAnchor(beforeItemId),
+    });
+    if (error) {
+      throw new Error(moveErrorMessage(error));
     }
 
-    const currentIterationId = currentRows?.[0]?.id ?? null;
-    if (!currentIterationId) {
-      throw new Error("No active iteration");
-    }
-
-    const from = zoneForStory(story, currentIterationId);
-    const evaluation = evaluateListDrop(story, from, targetZone);
-    if (!evaluation.ok) {
-      throw new Error(evaluation.reason);
-    }
-
-    const update: { state?: string; iteration_id?: string | null } = {};
-    if (evaluation.state) {
-      update.state = evaluation.state;
-    }
-    if (evaluation.iteration === "current") {
-      update.iteration_id = currentIterationId;
-    } else if (evaluation.iteration === "none") {
-      update.iteration_id = null;
-    }
-
-    if (Object.keys(update).length > 0) {
-      const { error } = await supabase
-        .from("stories")
-        .update(update)
-        .eq("id", itemId)
-        .eq("project_id", projectId);
-      if (error) {
-        throw new Error(error.message);
-      }
-      if (evaluation.state) {
-        const newState = evaluation.state;
-        after(() => notifySlack(projectId, storyStateChangeMessage(story, newState)));
-      }
-    }
+    revalidatePath(`/projects/${projectId}/board`);
+    return;
   }
 
-  if (orderedItems.length > 0) {
-    await persistBacklogOrder(supabase, projectId, orderedItems);
+  const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
+    supabase
+      .from("stories")
+      .select("number, title, state, story_type, points, iteration_id, custom_status_id, swimlane_id, focus")
+      .eq("id", itemId)
+      .eq("project_id", projectId)
+      .single(),
+    supabase
+      .from("iterations")
+      .select("id")
+      .eq("project_id", projectId)
+      .neq("state", "done")
+      .order("number", { ascending: false })
+      .limit(1),
+  ]);
+
+  if (fetchError || !story) {
+    throw new Error(fetchError?.message ?? "Story not found");
+  }
+
+  const currentIterationId = currentRows?.[0]?.id ?? null;
+  if (!currentIterationId) {
+    throw new Error("No active iteration");
+  }
+
+  const from = zoneForStory(story, currentIterationId);
+  const evaluation = evaluateListDrop(story, from, targetZone);
+  if (!evaluation.ok) {
+    throw new Error(evaluation.reason);
+  }
+
+  const { error } = await supabase.rpc("move_story_board", {
+    p_project_id: projectId,
+    p_item: { kind: "story", id: itemId },
+    p_view: "list",
+    p_expected: moveExpected(story),
+    p_deltas: trackerDeltas(evaluation),
+    p_anchor: moveAnchor(beforeItemId),
+  });
+  if (error) {
+    throw new Error(moveErrorMessage(error));
+  }
+
+  if (evaluation.state) {
+    const newState = evaluation.state;
+    after(() => notifySlack(projectId, storyStateChangeMessage(story, newState)));
   }
 
   revalidatePath(`/projects/${projectId}/board`);
-  if (itemKind !== "divider") {
-    revalidatePath(`/stories/${itemId}`);
-  }
+  revalidatePath(`/stories/${itemId}`);
 }
 
 /**
  * Writes positions for a full ordered backlog sequence — `entries` are
- * `"story:<id>"` / `"divider:<id>"` pairs, in final display order — to the
- * right table per item. Shared by `dropStoryInList` (drag reorder) and
- * `createBacklogDivider` (inserting a new row at an exact spot), since both
- * need to resequence the *entire* zone together (see
- * `lib/utils/iterations.ts` "buildBacklogRows": stories and dividers share
- * one dense position sequence within the backlog).
+ * `"story:<id>"` / `"divider:<id>"` pairs, in final display order. Now only
+ * the insert paths (`createBacklogDivider`, `quickCreateStory`'s backlog
+ * branch) reach it — the drag paths went through `move_story_board` (TASK-56).
+ * The dense write runs inside `resequence_backlog_order`, which takes the SAME
+ * `positions:` advisory lock as `move_story_board`, so a concurrent board drag
+ * and a divider insert can't interleave their rewrites (migration-period; full
+ * insert atomicity is TASK-51's insert_board_item). Stories and dividers share
+ * one dense position sequence (see `lib/utils/iterations.ts` "buildBacklogRows"),
+ * so both tables are renumbered together in that one call.
  */
 async function persistBacklogOrder(
   supabase: Awaited<ReturnType<typeof createClient>>,
   projectId: string,
   entries: ReadonlyArray<string>,
 ) {
-  const storyUpdates: { id: string; position: number }[] = [];
-  const dividerUpdates: { id: string; position: number }[] = [];
-  entries.forEach((entry, position) => {
+  const kinds: string[] = [];
+  const storyIds: string[] = [];
+  const dividerIds: string[] = [];
+  entries.forEach((entry) => {
     const separator = entry.indexOf(":");
     const kind = entry.slice(0, separator);
     const id = entry.slice(separator + 1);
-    (kind === "divider" ? dividerUpdates : storyUpdates).push({ id, position });
+    if (kind === "divider") {
+      kinds.push("divider");
+      dividerIds.push(id);
+    } else {
+      kinds.push("story");
+      storyIds.push(id);
+    }
   });
 
-  await assertAllSucceeded(
-    await Promise.all([
-      ...storyUpdates.map(({ id, position }) =>
-        supabase.from("stories").update({ position }).eq("id", id).eq("project_id", projectId),
-      ),
-      ...dividerUpdates.map(({ id, position }) =>
-        supabase.from("backlog_dividers").update({ position }).eq("id", id).eq("project_id", projectId),
-      ),
-    ]),
-  );
+  const { error } = await supabase.rpc("resequence_backlog_order", {
+    p_project_id: projectId,
+    p_kinds: kinds,
+    p_story_ids: storyIds,
+    p_divider_ids: dividerIds,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 /**

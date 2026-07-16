@@ -866,6 +866,15 @@ export type Database = {
         Args: { p_project_id: string; p_user_id: string }
         Returns: undefined
       }
+      resequence_backlog_order: {
+        Args: {
+          p_divider_ids: string[]
+          p_kinds: string[]
+          p_project_id: string
+          p_story_ids: string[]
+        }
+        Returns: undefined
+      }
       search_users_for_invite: {
         Args: { p_project_id: string; p_query: string }
         Returns: {

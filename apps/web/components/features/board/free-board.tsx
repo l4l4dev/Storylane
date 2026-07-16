@@ -32,6 +32,7 @@ import {
   updateCustomStatus,
 } from "@/app/projects/[id]/settings/actions";
 import {
+  beforeAnchorId,
   findContainer,
   isOverWipLimit,
   laneContainerKey,
@@ -203,7 +204,12 @@ export function FreeBoard({
     if (hasLanes) {
       formData.set("swimlane_id", laneId ?? "");
     }
-    reordered.forEach((s) => formData.append("ordered_ids", s.id));
+    // Intent, not a full sequence: the neighbour the card now sits before (or
+    // nothing = append) — the server re-derives dense positions (TASK-56).
+    const beforeId = beforeAnchorId(reordered, String(active.id));
+    if (beforeId) {
+      formData.set("before_item_id", beforeId);
+    }
     // Awaited and caught so a failed/RLS-filtered write reverts the
     // optimistic move and surfaces an error instead of leaving the card in
     // a column the server never actually applied.
