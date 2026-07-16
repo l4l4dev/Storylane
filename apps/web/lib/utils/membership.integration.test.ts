@@ -173,8 +173,22 @@ describe.skipIf(!RUN)("membership admin RPCs (integration)", () => {
       p_user_id: ownerId,
       p_role: "member",
     });
-    expect(error?.message).toMatch(/only project owners/i);
+    // TASK-58 item (c): the owner gate is now require_project_role, which
+    // raises the unified "not authorized" (42501).
+    expect(error?.message).toMatch(/not authorized/i);
     expect(await roleOf(ownerId)).toBe("owner");
+  });
+
+  // TASK-58 item (c): invite_member's owner gate also runs through
+  // require_project_role now — pin that a member cannot invite.
+  it("a non-owner cannot invite members", async () => {
+    await resetMembership();
+    const { error } = await asMember.rpc("invite_member", {
+      p_project_id: projectId,
+      p_user_id: ownerId,
+      p_role: "member",
+    });
+    expect(error?.message).toMatch(/not authorized/i);
   });
 
   it("a member can remove themselves (self-leave)", async () => {

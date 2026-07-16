@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:12'
-updated_date: '2026-07-16 09:30'
+updated_date: '2026-07-16 15:36'
 labels:
   - bug
   - concurrency
@@ -89,4 +89,15 @@ ITEM 4 done (Opus 4.8, 2026-07-16) — AC#4(project 作成の all-or-nothing):
 - jsonb_to_recordset + WITH ORDINALITY は 42601 syntax error になるため jsonb_array_elements WITH ORDINALITY に変更(実機で確認)。
 検証: db reset で全 migration 適用 → 515 pass(統合込み)、tsc 0、eslint 0。rls-security-reviewer で穴なし(SECURITY INVOKER の妥当性・grant・v_project_id が caller 入力でないこと等を実機 has_function_privilege で確認)。
 REMAINING: item (c)(guard helper 抽出: require_project_role/current_iteration/_assert_not_last_owner)のみ。
+
+ITEM (c) done (Opus 4.8, 2026-07-17) — guard helper 抽出(漸進採用):
+- advisor 判定で『全 ~12 関数一括再emit』は却下 → 漸進採用。2方言は意味的に等価で現在 privilege hole は無く、一括再emit は挙動修正ゼロで transcription risk だけ買う。
+- migration 20260717000001: require_project_role(project_id, variadic roles)[SECURITY INVOKER、project_role に委譲するので権限不要]、assert_not_last_owner(project_id, user_id)[SECURITY DEFINER、owner を RLS フィルタ無しで数える必要]。両者 revoke from public,authenticated(内部 helper、呼び手は全て DEFINER)。
+- 変換したのは membership RPC 3本のみ(_assert_not_last_owner 抽出でどのみち再emit する family): change_member_role(owner gate→require_project_role + demotion 時 assert_not_last_owner)、remove_member(assert_not_last_owner のみ。self-leave 許容の bespoke guard は require_project_role で表現不可のため維持)、invite_member(owner gate→require_project_role = 2つ目の実 caller)。3本とも 20260715000004 のテキストから verbatim コピー、guard 行のみ差替(記憶で書かない)。
+- 他 ~10 RPC の inline 方言は残置。spec/rls.md に規則追記: 新規 SECURITY DEFINER RPC の role guard は require_project_role を使う/inline coalesce・null 判定を書かない/既存は次に触る時に変換/plain role-list でない guard(remove_member self-leave 等)は bespoke のまま。
+- current_iteration(id 版)は今回不実施: 採用に move_story_board(~160行)と finish_story_from_git の全文再emit が必要で、5行 select の共通化に danger zone 2本書き写すのは割に合わない。発動条件=次にどちらかの関数を実質変更する時にその migration 内で抽出。finalize/skip の record+rollover 版は形が違うので統合しない(抽象の捏造回避)。
+- エラーメッセージ変更: change_member_role/invite_member の owner gate が 'not authorized'(42501)に統一、last-owner が 'Cannot demote or remove the last owner'(demote/remove 統合)に。TS 依存を grep 済み → membership.integration:176 を /not authorized/i に更新(他に文字列依存なし)。
+- 追加テスト: 'a non-owner cannot invite members'(invite_member の owner gate 直接検証。rls-reviewer 指摘のカバレッジ隙を解消。guard 除去で落ちること実機確認済み)。
+検証: db reset で全 migration 適用 → 516 pass(統合込み)、tsc 0、eslint 0。helper の prosecdef/auth_exec を実測(require_project_role=invoker/exec不可、assert_not_last_owner=definer/exec不可)。rls-security-reviewer で穴なし(旧新の関数本体を difflib で機械 diff、guard 差替のみで他無変更を確認)。
+TASK-58 完了: AC#1-4 全達成 + review add-on(activity_logs index / guard helper / zone canonical doc)完了。
 <!-- SECTION:NOTES:END -->

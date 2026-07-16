@@ -56,3 +56,14 @@
   directly to an archived project's data via PostgREST/the REST API,
   bypassing the UI. Full DB-level read-only enforcement is tracked as
   follow-up work (see Backlog), not implemented here.
+- RPC role guards (2026-07-17, TASK-58): a new SECURITY DEFINER RPC that gates
+  on role uses `require_project_role(project_id, variadic roles)` — it raises
+  `not authorized` (42501) for a non-member or a role outside the list. Do
+  **not** hand-write `coalesce(project_role(...), '') <> ...` or `role is null
+  or role not in (...)` inline; the whole reason for the helper is that a
+  forgotten NULL check in one of those is a privilege hole (`NULL <> 'owner'`
+  is NULL, which `if` treats as false). The last-owner invariant is enforced
+  by `assert_not_last_owner(project_id, user_id)`. Existing RPCs still carry
+  the old inline dialects — they are converted as each is next touched, not in
+  one sweep. A guard that is not a plain role-list check (e.g. `remove_member`'s
+  self-leave allowance) stays bespoke
