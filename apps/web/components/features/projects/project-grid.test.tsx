@@ -65,8 +65,6 @@ describe("ProjectGrid", () => {
     expect(screen.getByText("No projects yet. Create your first one to get started.")).toBeInTheDocument();
   });
 
-  // TASK-32: archived projects used to sort wherever their own updatedAt
-  // placed them, mixed in with active ones (and could even render first).
   it("renders archived projects in a separate 'Archived' section below all active ones", () => {
     const projects = [
       // Archived most recently, so a flat "Last updated" sort would have

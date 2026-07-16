@@ -48,9 +48,6 @@ function baseProps() {
   };
 }
 
-// TASK-35: the Icebox toggle used to unmount entirely outside List view,
-// shrinking the toolbar and shifting the view switcher/filters on every
-// switch. It's now always mounted; only its visibility changes.
 describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
   it("keeps the Icebox button mounted (not removed) across all three views", () => {
     render(<KanbanBoard {...baseProps()} />);

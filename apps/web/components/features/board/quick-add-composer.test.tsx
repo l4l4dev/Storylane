@@ -105,10 +105,6 @@ describe("QuickAddComposer", () => {
     expect(input).toBeInTheDocument();
   });
 
-  // TASK-22: the typed title used to be cleared *before* the (void,
-  // unawaited) create call — a failure lost the text with no story
-  // created and no feedback. It must now survive a failed create and
-  // surface an error instead.
   it("keeps the typed title and shows an error when creation fails", async () => {
     quickCreateStoryMock.mockRejectedValueOnce(new Error("No active iteration"));
     render(<QuickAddComposer projectId="p1" target="unstarted" />);

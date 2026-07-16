@@ -95,12 +95,9 @@ export async function inviteMember(
   return { success: `Added ${displayName}` };
 }
 
-// Membership admin runs through the change_member_role / remove_member RPCs
-// (TASK-54): the direct project_members UPDATE/DELETE policies were dropped,
-// so a table write here would now be denied — and the RPCs are where the
-// last-owner invariant lives. Both return a state object so the settings UI
-// can surface the "last owner" error inline (spec/ux-principles.md #2) rather
-// than throwing an error page.
+// Membership admin must use these RPCs because direct table writes are denied
+// and the RPCs enforce the last-owner invariant. Their state results let the
+// settings UI surface that error inline (spec/ux-principles.md #2).
 export type MemberActionState = { error?: string };
 
 export async function updateMemberRole(

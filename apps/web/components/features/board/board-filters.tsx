@@ -10,13 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 
 type Option = { id: string; name: string };
 
-// Type/Assignee/Label used to render as always-visible dropdowns alongside
-// the view switcher, Icebox toggle, and Finish iteration — eight controls
-// competing for attention in one row (TASK-45 follow-up, owner feedback
-// 2026-07-13). Collapsed into one "Filters" trigger with a count badge; the
-// selects still live inside, just one click away instead of always on
-// screen. Epic (TASK-41) joined the same popover rather than adding a fifth
-// always-visible control.
+// Filters live in a popover because eight always-visible controls compete in one row.
 //
 // Popover, not DropdownMenu (fable-advisor review): Radix's DropdownMenu
 // Content has role="menu" and its own keydown handler unconditionally

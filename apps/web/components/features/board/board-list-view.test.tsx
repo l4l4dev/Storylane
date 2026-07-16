@@ -15,10 +15,6 @@ vi.mock("@/app/projects/[id]/board/actions", () => ({
   upsertIterationGoal: vi.fn(),
 }));
 
-// TASK-43: a manual iteration break's own row no longer renders (it used to
-// linger forever as a separate "Iteration break" line, duplicated across
-// however many groups a break had ever forced) — its only remaining UI is
-// this removable badge on the header its boundary created.
 describe("IterationHeaderRow", () => {
   beforeEach(() => {
     deleteBacklogDividerMock.mockClear();

@@ -119,21 +119,8 @@ function PromoteToEpicDialog({
       setPending(false);
       return;
     }
-    // TASK-41: used to jump straight to /epics — the story's own epic
-    // membership is invisible after promotion (this story no longer
-    // exists), but promoting shouldn't eject the user from wherever they
-    // were working either (spec/ux-principles.md principle 8). The board
-    // is the shared destination for both the side peek and the standalone
-    // /stories/[id] page (the promoted story's own page 404s either way);
-    // the new epic's name is the promoted story's title (see the RPC), so
-    // no extra fetch is needed for the confirmation banner.
-    //
-    // fable-advisor review: pushing a bare board URL dropped any active
-    // Type/Assignee/Label/Epic filter when promoting from the board's own
-    // peek — same "preserve other params" convention as
-    // BoardFilters.setParam / StoryCard.openPeek elsewhere in this feature.
-    // The standalone /stories/[id] page has no board search params of its
-    // own to preserve, so it always lands on a bare board URL.
+    // Promotion removes the source story, so both entry points return to the
+    // board. Preserve active board filters when promotion starts from its peek.
     const boardPath = `/projects/${detail.projectId}/board`;
     const params = pathname === boardPath ? new URLSearchParams(searchParams) : new URLSearchParams();
     params.delete("story");
