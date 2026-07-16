@@ -83,9 +83,9 @@ function moveErrorMessage(error: { code?: string; message: string }): string {
  * `backlog` additionally accepts `before_item_id` (TASK-36, same
  * `"story:<id>"` / `"divider:<id>"` convention as `createBacklogDivider`) so
  * the List view's per-virtual-iteration-group composer can land the new
- * story at that group's bottom instead of always the whole backlog's —
- * reuses the same fetch-merge-splice-persist sequence `createBacklogDivider`
- * already uses to insert at an exact spot.
+ * story at that group's bottom instead of always the whole backlog's. The
+ * insert + reposition run atomically in the `insert_board_item` RPC (TASK-51),
+ * shared with `createBacklogDivider`.
  */
 export async function quickCreateStory(formData: FormData) {
   const projectId = String(formData.get("project_id"));
@@ -100,31 +100,16 @@ export async function quickCreateStory(formData: FormData) {
 
   if (target === "backlog") {
     const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
-    const merged = await fetchBacklogOrder(supabase, projectId);
 
-    const { data: created, error: insertError } = await supabase
-      .from("stories")
-      .insert({
-        project_id: projectId,
-        title,
-        story_type: "feature",
-        state: "unstarted",
-        iteration_id: null,
-        position: merged.length,
-      })
-      .select("id")
-      .single();
-
-    if (insertError || !created) {
-      throw new Error(insertError?.message ?? "Failed to create story");
+    const { error } = await supabase.rpc("insert_board_item", {
+      p_project_id: projectId,
+      p_kind: "story",
+      p_payload: { title },
+      p_anchor: moveAnchor(beforeItemId),
+    });
+    if (error) {
+      throw new Error(error.message);
     }
-
-    const beforeIndex = beforeItemId ? merged.findIndex((item) => `${item.kind}:${item.id}` === beforeItemId) : -1;
-    const insertAt = beforeIndex >= 0 ? beforeIndex : merged.length;
-    const ordered = merged.map((item) => `${item.kind}:${item.id}`);
-    ordered.splice(insertAt, 0, `story:${created.id}`);
-
-    await persistBacklogOrder(supabase, projectId, ordered);
 
     revalidatePath(`/projects/${projectId}/board`);
     return;
@@ -572,80 +557,6 @@ export async function dropStoryInList(formData: FormData) {
 }
 
 /**
- * Writes positions for a full ordered backlog sequence — `entries` are
- * `"story:<id>"` / `"divider:<id>"` pairs, in final display order. Now only
- * the insert paths (`createBacklogDivider`, `quickCreateStory`'s backlog
- * branch) reach it — the drag paths went through `move_story_board` (TASK-56).
- * The dense write runs inside `resequence_backlog_order`, which takes the SAME
- * `positions:` advisory lock as `move_story_board`, so a concurrent board drag
- * and a divider insert can't interleave their rewrites (migration-period; full
- * insert atomicity is TASK-51's insert_board_item). Stories and dividers share
- * one dense position sequence (see `lib/utils/iterations.ts` "buildBacklogRows"),
- * so both tables are renumbered together in that one call.
- */
-async function persistBacklogOrder(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  projectId: string,
-  entries: ReadonlyArray<string>,
-) {
-  const kinds: string[] = [];
-  const storyIds: string[] = [];
-  const dividerIds: string[] = [];
-  entries.forEach((entry) => {
-    const separator = entry.indexOf(":");
-    const kind = entry.slice(0, separator);
-    const id = entry.slice(separator + 1);
-    if (kind === "divider") {
-      kinds.push("divider");
-      dividerIds.push(id);
-    } else {
-      kinds.push("story");
-      storyIds.push(id);
-    }
-  });
-
-  const { error } = await supabase.rpc("resequence_backlog_order", {
-    p_project_id: projectId,
-    p_kinds: kinds,
-    p_story_ids: storyIds,
-    p_divider_ids: dividerIds,
-  });
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
-/**
- * Fetches the backlog's current stories + dividers together, sorted by
- * their shared position sequence — the same merge `board/page.tsx` does
- * server-side to build the List view's initial row order (see
- * `lib/utils/iterations.ts` "buildBacklogRows").
- *
- * Matches `zoneForStory`'s actual backlog definition (not unscheduled, no
- * iteration assigned) — a stray story left `started` with
- * `iteration_id: null` (see `transitionStory`) must stay included here, or
- * `before_item_id` lookups for it always miss (`findIndex` = -1) and new
- * dividers silently append at the end instead of landing where the user
- * dropped them.
- */
-async function fetchBacklogOrder(supabase: Awaited<ReturnType<typeof createClient>>, projectId: string) {
-  const [{ data: stories }, { data: dividers }] = await Promise.all([
-    supabase
-      .from("stories")
-      .select("id, position")
-      .eq("project_id", projectId)
-      .neq("state", "unscheduled")
-      .is("iteration_id", null),
-    supabase.from("backlog_dividers").select("id, position").eq("project_id", projectId),
-  ]);
-
-  return [
-    ...(stories ?? []).map((s) => ({ kind: "story" as const, id: s.id, position: s.position })),
-    ...(dividers ?? []).map((d) => ({ kind: "divider" as const, id: d.id, position: d.position })),
-  ].sort((a, b) => a.position - b.position);
-}
-
-/**
  * Creates a freeform planning row (see spec/screens.md "Board layout: List
  * view") at an exact spot in the backlog — immediately before
  * `before_item_id` (a `"story:<id>"` / `"divider:<id>"` pair), or at the end
@@ -653,6 +564,10 @@ async function fetchBacklogOrder(supabase: Awaited<ReturnType<typeof createClien
  * `kind` distinguishes a cosmetic `note` (needs a label) from an
  * `iteration_break` (forces a velocity-group boundary there, see
  * `lib/utils/iterations.ts` "buildBacklogRows"; no label required).
+ *
+ * The insert + reposition run atomically in the `insert_board_item` RPC
+ * (TASK-51), shared with `quickCreateStory`'s backlog branch — stories and
+ * dividers share one dense position sequence, so the RPC interleaves them.
  */
 export async function createBacklogDivider(formData: FormData) {
   const projectId = String(formData.get("project_id"));
@@ -665,24 +580,16 @@ export async function createBacklogDivider(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const merged = await fetchBacklogOrder(supabase, projectId);
 
-  const { data: created, error: insertError } = await supabase
-    .from("backlog_dividers")
-    .insert({ project_id: projectId, label, kind, position: merged.length })
-    .select("id")
-    .single();
-
-  if (insertError || !created) {
-    throw new Error(insertError?.message ?? "Failed to create divider");
+  const { error } = await supabase.rpc("insert_board_item", {
+    p_project_id: projectId,
+    p_kind: "divider",
+    p_payload: { label, kind },
+    p_anchor: moveAnchor(beforeItemId),
+  });
+  if (error) {
+    throw new Error(error.message);
   }
-
-  const beforeIndex = beforeItemId ? merged.findIndex((item) => `${item.kind}:${item.id}` === beforeItemId) : -1;
-  const insertAt = beforeIndex >= 0 ? beforeIndex : merged.length;
-  const ordered = merged.map((item) => `${item.kind}:${item.id}`);
-  ordered.splice(insertAt, 0, `divider:${created.id}`);
-
-  await persistBacklogOrder(supabase, projectId, ordered);
 
   revalidatePath(`/projects/${projectId}/board`);
 }

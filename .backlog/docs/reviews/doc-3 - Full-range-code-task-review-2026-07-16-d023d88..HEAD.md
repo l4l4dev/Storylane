@@ -3,7 +3,7 @@ id: doc-3
 title: Full-range code & task review 2026-07-16 (d023d88..HEAD)
 type: other
 created_date: '2026-07-15 23:56'
-updated_date: '2026-07-15 23:56'
+updated_date: '2026-07-16 04:06'
 ---
 # Full-range code & task review — 2026-07-16
 
@@ -11,7 +11,7 @@ Scope: commits `d023d88..HEAD` (everything since the Codex full-codebase review,
 
 ## Findings (ranked)
 
-1. **[CONFIRMED bug] move_story_board NULL-unsafe zone predicate** — `supabase/migrations/20260715000008_move_story_board.sql:195`. `not (v_current_id is not null and v_new_iteration = v_current_id)` evaluates NULL for a backlog story when an active iteration exists → zone misclassified 'single' → the list else-branch densely renumbers the CURRENT iteration's stories and skips the two-table backlog splice. Masked by the integration test deleting all iterations first. → Fix scheduled into TASK-56 slice 2 (notes updated).
+1. **[CONFIRMED bug — RESOLVED] move_story_board NULL-unsafe zone predicate** — `supabase/migrations/20260715000008_move_story_board.sql:195`. `not (v_current_id is not null and v_new_iteration = v_current_id)` evaluates NULL for a backlog story when an active iteration exists → zone misclassified 'single' → the list else-branch densely renumbers the CURRENT iteration's stories and skips the two-table backlog splice. Masked by the integration test deleting all iterations first. → RESOLVED in TASK-51 (migration `20260716000001_insert_board_item.sql`, 2026-07-16): predicate replaced with `and (v_current_id is null or v_new_iteration is distinct from v_current_id)` via `create or replace`, plus a regression test that drops into the Backlog zone WHILE an active iteration exists. (Escaped TASK-56 slice 2, which closed before the fix landed; folded into TASK-51 as it shares the same backlog splice surface, per fable-advisor.)
 2. **[CONFIRMED] Backlog-zone rule triple-defined** — same predicate independently in move_story_board.sql, board/actions.ts fetchBacklogOrder, lib/utils/kanban.ts zoneForStory. Drift = silent mis-resequencing. → TASK-58 note (document canonical source in spec/data-model.md).
 3. **[CONFIRMED] activity_logs FKs unindexed on referencing side** — 20260715000006 composite FK + older SET NULL FK; only project_id is indexed. Story DELETE / promote_story_to_epic scans activity_logs. → TASK-58: add index on activity_logs(story_id).
 4. **[PLAUSIBLE] git-webhook per-number RPC loop drops per-delivery atomicity** — supabase/functions/git-webhook/index.ts:177. Multi-number PR + permanent error on a later number leaves earlier stories finished while the delivery stays red. Transient errors recover via retry + idempotency (by design); only permanent-error case is observable. Accepted for now; revisit if multi-story PRs become common.
@@ -26,7 +26,7 @@ Rejected candidates (with reasons): unwired move_story_board RPC (deliberate sli
 
 ## Task review outcomes (applied 2026-07-16)
 
-- TASK-56: NULL-bug fix + regression test appended to slice 2 scope.
+- TASK-56: NULL-bug fix + regression test were appended to slice 2 scope, but slice 2 closed before landing; the fix ultimately shipped in TASK-51 (migration 20260716000001, 2026-07-16).
 - TASK-58: item 5 (webhook client typing) struck — done by TASK-53 (WebhookClient); added index/guard-helper/zone-doc items.
 - TASK-50: note added — move-path transitions must share transition_story's DB-side guard when TASK-48 lands.
 - TASK-51: priority raised to High (must precede TASK-57 per the advisor rollout order 56→51→57→58).

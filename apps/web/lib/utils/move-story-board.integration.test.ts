@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // TASK-56: the transactional board move + reorder RPC (move_story_board,
 // 20260715000008). Exercises the RPC directly to prove the properties the
@@ -208,6 +208,52 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
     const { data: dRow } = await asService.from("backlog_dividers").select("position").eq("id", d!.id).single();
     expect(sp).toEqual([0, 1]);
     expect((dRow as { position: number }).position).toBe(2);
+  });
+
+  it("splices into the Backlog zone while an active iteration exists (doc-3 #1 regression)", async () => {
+    // The List Backlog zone predicate was NULL-unsafe: a backlog story has
+    // iteration_id NULL, so `v_new_iteration = v_current_id` was NULL and the
+    // zone fell through to 'single' whenever an active iteration existed —
+    // renumbering the CURRENT iteration's stories instead of the two-table
+    // backlog. This seeds BOTH an active iteration and a backlog, moves within
+    // the backlog, and asserts the iteration is untouched.
+    await asService.from("stories").delete().eq("project_id", projectId);
+    await asService.from("iterations").delete().eq("project_id", projectId);
+    await asService.from("backlog_dividers").delete().eq("project_id", projectId);
+    const { data: iter } = await asService
+      .from("iterations")
+      .insert({ project_id: projectId, number: 1, state: "active", start_date: "2026-07-01", end_date: "2026-07-14" })
+      .select("id")
+      .single();
+    // A scheduled story at a non-dense position 5 — if the buggy 'single' path
+    // renumbers the current iteration, this becomes 0.
+    const { data: iterStory } = await asService.from("stories")
+      .insert({ project_id: projectId, title: "scheduled", state: "started", iteration_id: iter!.id, position: 5, created_by: ownerId }).select("id").single();
+    // Backlog: story sb0(pos0), divider d(pos1), story sb1(pos2).
+    const { data: sb0 } = await asService.from("stories")
+      .insert({ project_id: projectId, title: "sb0", state: "unstarted", iteration_id: null, position: 0, created_by: ownerId }).select("id").single();
+    const { data: d } = await asService.from("backlog_dividers")
+      .insert({ project_id: projectId, label: "note", kind: "note", position: 1 }).select("id").single();
+    const { data: sb1 } = await asService.from("stories")
+      .insert({ project_id: projectId, title: "sb1", state: "unstarted", iteration_id: null, position: 2, created_by: ownerId }).select("id").single();
+
+    // Move sb1 before the divider → backlog order sb0(0), sb1(1), d(2).
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: sb1!.id },
+      p_view: "list",
+      p_expected: { state: "unstarted", iteration_id: null, custom_status_id: null, swimlane_id: null, focus: null },
+      p_deltas: {},
+      p_anchor: { before: { kind: "divider", id: d!.id } },
+    });
+    expect(error).toBeNull();
+    expect(await positionsOf([sb0!.id, sb1!.id])).toEqual([0, 1]);
+    const { data: dRow } = await asService.from("backlog_dividers").select("position").eq("id", d!.id).single();
+    expect((dRow as { position: number }).position).toBe(2);
+    // The active iteration's story keeps its position — the backlog splice must
+    // not have touched the 'single' current-iteration zone.
+    const { data: iterRow } = await asService.from("stories").select("position").eq("id", iterStory!.id).single();
+    expect((iterRow as { position: number }).position).toBe(5);
   });
 
   it("rejects moving a divider that isn't in this project (cross-tenant guard)", async () => {

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:11'
-updated_date: '2026-07-16 01:33'
+updated_date: '2026-07-16 04:05'
 labels:
   - concurrency
   - db
@@ -31,8 +31,6 @@ Fix: a small set of transactional Postgres RPCs (advisory or row locks per proje
 - [x] #3 The four board mutation paths share the RPC-backed implementation; no per-view duplication remains
 - [x] #4 Concurrency tests (or deterministic simulation) cover mid-flight failure and competing drags
 <!-- AC:END -->
-
-
 
 ## Implementation Plan
 
@@ -77,3 +75,13 @@ SLICE 2 done (2026-07-16): wired the 4 drop paths (dropStory/dropStoryFree/setSt
 
 CODE REVIEW (2026-07-16, full-range review d023d88..HEAD): CONFIRMED bug in 20260715000008_move_story_board.sql line ~195 — the List Backlog zone test 'not (v_current_id is not null and v_new_iteration = v_current_id)' is NULL-unsafe: for a backlog story (v_new_iteration NULL) with an active iteration present, 'NULL = uuid' makes the whole elsif NULL→false, so v_zone becomes 'single' and the list else-branch resequences the CURRENT iteration's stories instead of the two-table backlog splice. Fix in slice 2 via a follow-up migration (replace the predicate with e.g. 'and (v_current_id is null or v_new_iteration is distinct from v_current_id)') + a regression test that drops into the Backlog zone WHILE an active iteration exists (the existing backlog test deletes all iterations first, which is why it passes).
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-opus-4-8
+created: 2026-07-16 04:05
+---
+doc-3 finding#1(move_story_board の List Backlog zone 述語 NULL-unsafe、当タスクで『slice 2 で修正』としたが Done 時点で未修正だったもの)を TASK-51 のマイグレーション 20260716000001 で消化。create or replace で述語を 'and (v_current_id is null or v_new_iteration is distinct from v_current_id)' に修正し、アクティブ iteration 存在下で Backlog へドロップする回帰テストを move-story-board.integration.test.ts に追加(fable-advisor 承認条件)。
+---
+<!-- COMMENTS:END -->

@@ -13,7 +13,7 @@ const fixtures: Record<
   { single?: { data: unknown; error: unknown }; list?: { data: unknown; error: unknown }; insertResult?: { data: unknown; error: unknown } }
 > = {};
 // Per-RPC-name canned results (TASK-56: the drop actions call move_story_board;
-// persistBacklogOrder calls resequence_backlog_order). Default: success.
+// TASK-51: the backlog insert actions call insert_board_item). Default: success.
 const rpcResults: Record<string, { data: unknown; error: unknown }> = {};
 
 function chainable(table: string): {
@@ -167,100 +167,112 @@ describe("estimateStory", () => {
   });
 });
 
-describe("quickCreateStory (backlog target, per-group insertion — TASK-36)", () => {
+// TASK-51: the backlog insert paths are thin callers of insert_board_item —
+// the insert + reposition is one transaction in the RPC. These assert the
+// action forwards the right kind/payload/anchor; the actual splice + dense
+// resequence is proven against the real DB in insert-board-item.integration.test.ts.
+describe("backlog insert actions -> insert_board_item", () => {
   beforeEach(() => {
-    insertMock.mockReset();
-    updateMock.mockReset();
     rpcMock.mockReset();
-    fixtures.stories = {
-      list: {
-        data: [
-          { id: "s1", position: 0 },
-          { id: "s2", position: 2 },
-        ],
-        error: null,
-      },
-      insertResult: { data: { id: "new-story" }, error: null },
-    };
-    fixtures.backlog_dividers = {
-      list: { data: [{ id: "d1", position: 1 }], error: null },
-    };
+    for (const key of Object.keys(rpcResults)) {
+      delete rpcResults[key];
+    }
   });
 
-  function formData(beforeItemId?: string) {
-    const data = new FormData();
-    data.set("project_id", "project-1");
-    data.set("title", "New backlog story");
-    data.set("target", "backlog");
-    if (beforeItemId) {
-      data.set("before_item_id", beforeItemId);
-    }
-    return data;
-  }
-
-  // Reconstructs id -> position from the resequence_backlog_order RPC call
-  // persistBacklogOrder now makes: p_kinds interleaves both tables, and each
-  // item's position is its index in that dense order (see _resequence_backlog).
-  function persistedPositions(): Record<string, number> {
-    const call = rpcMock.mock.calls.find(([fn]) => fn === "resequence_backlog_order");
+  // The single insert_board_item call an action made, as its args object.
+  function insertCall() {
+    const call = rpcMock.mock.calls.find(([fn]) => fn === "insert_board_item");
     if (!call) {
-      return {};
+      throw new Error("insert_board_item was not called");
     }
-    const { p_kinds, p_story_ids, p_divider_ids } = call[1] as {
-      p_kinds: string[];
-      p_story_ids: string[];
-      p_divider_ids: string[];
+    return call[1] as {
+      p_project_id: string;
+      p_kind: string;
+      p_payload: Record<string, unknown>;
+      p_anchor: Record<string, unknown>;
     };
-    const positions: Record<string, number> = {};
-    let storyIndex = 0;
-    let dividerIndex = 0;
-    p_kinds.forEach((kind, index) => {
-      positions[kind === "divider" ? p_divider_ids[dividerIndex++] : p_story_ids[storyIndex++]] = index;
-    });
-    return positions;
   }
 
-  it("creates the story as an unstarted, unscheduled feature", async () => {
-    const { quickCreateStory } = await import("./actions");
+  describe("quickCreateStory (backlog target, per-group insertion — TASK-36)", () => {
+    function formData(beforeItemId?: string) {
+      const data = new FormData();
+      data.set("project_id", "project-1");
+      data.set("title", "New backlog story");
+      data.set("target", "backlog");
+      if (beforeItemId) {
+        data.set("before_item_id", beforeItemId);
+      }
+      return data;
+    }
 
-    await quickCreateStory(formData());
+    it("forwards a story insert with the title payload and no anchor when none is given", async () => {
+      const { quickCreateStory } = await import("./actions");
 
-    expect(insertMock).toHaveBeenCalledWith(
-      "stories",
-      expect.objectContaining({
-        project_id: "project-1",
-        title: "New backlog story",
-        story_type: "feature",
-        state: "unstarted",
-        iteration_id: null,
-      }),
-    );
+      await quickCreateStory(formData());
+
+      expect(insertCall()).toEqual({
+        p_project_id: "project-1",
+        p_kind: "story",
+        p_payload: { title: "New backlog story" },
+        p_anchor: {},
+      });
+    });
+
+    it("passes the before_item_id as the anchor so it lands at that group's bottom", async () => {
+      const { quickCreateStory } = await import("./actions");
+
+      await quickCreateStory(formData("divider:d1"));
+
+      expect(insertCall().p_anchor).toEqual({ before: { kind: "divider", id: "d1" } });
+    });
+
+    it("does not call the RPC for a blank title", async () => {
+      const { quickCreateStory } = await import("./actions");
+      const data = new FormData();
+      data.set("project_id", "project-1");
+      data.set("title", "   ");
+      data.set("target", "backlog");
+
+      await quickCreateStory(data);
+
+      expect(rpcMock).not.toHaveBeenCalled();
+    });
   });
 
-  it("appends at the end of the backlog when no before_item_id is given", async () => {
-    const { quickCreateStory } = await import("./actions");
+  describe("createBacklogDivider", () => {
+    function formData(kind: string, opts?: { label?: string; beforeItemId?: string }) {
+      const data = new FormData();
+      data.set("project_id", "project-1");
+      data.set("kind", kind);
+      if (opts?.label !== undefined) {
+        data.set("label", opts.label);
+      }
+      if (opts?.beforeItemId) {
+        data.set("before_item_id", opts.beforeItemId);
+      }
+      return data;
+    }
 
-    await quickCreateStory(formData());
+    it("forwards a divider insert with the label + kind payload and the anchor", async () => {
+      const { createBacklogDivider } = await import("./actions");
 
-    const positions = persistedPositions();
-    // Merged order was s1(0), d1(1), s2(2) — appended puts it last.
-    expect(positions["new-story"]).toBe(3);
-    expect(positions.s1).toBe(0);
-    expect(positions.d1).toBe(1);
-    expect(positions.s2).toBe(2);
-  });
+      await createBacklogDivider(formData("note", { label: "Planning", beforeItemId: "story:s1" }));
 
-  it("inserts before a specific item, so it lands at that group's bottom instead of the whole backlog's", async () => {
-    const { quickCreateStory } = await import("./actions");
+      expect(insertCall()).toEqual({
+        p_project_id: "project-1",
+        p_kind: "divider",
+        p_payload: { label: "Planning", kind: "note" },
+        p_anchor: { before: { kind: "story", id: "s1" } },
+      });
+    });
 
-    await quickCreateStory(formData("divider:d1"));
+    it("does not call the RPC for a note with a blank label", async () => {
+      const { createBacklogDivider } = await import("./actions");
 
-    const positions = persistedPositions();
-    // New story slots in between s1 and d1; d1 and s2 shift down by one.
-    expect(positions.s1).toBe(0);
-    expect(positions["new-story"]).toBe(1);
-    expect(positions.d1).toBe(2);
-    expect(positions.s2).toBe(3);
+      await createBacklogDivider(formData("note", { label: "" }));
+
+      expect(rpcMock).not.toHaveBeenCalled();
+    });
   });
 });
 

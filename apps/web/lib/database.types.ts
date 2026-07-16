@@ -815,6 +815,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      _splice_backlog: {
+        Args: {
+          p_before_id: string
+          p_before_kind: string
+          p_id: string
+          p_kind: string
+          p_project_id: string
+        }
+        Returns: undefined
+      }
       change_member_role: {
         Args: { p_project_id: string; p_role: string; p_user_id: string }
         Returns: undefined
@@ -840,6 +850,15 @@ export type Database = {
         Returns: undefined
       }
       generate_username: { Args: { base: string }; Returns: string }
+      insert_board_item: {
+        Args: {
+          p_anchor: Json
+          p_kind: string
+          p_payload: Json
+          p_project_id: string
+        }
+        Returns: string
+      }
       invite_member: {
         Args: { p_project_id: string; p_role?: string; p_user_id: string }
         Returns: undefined
@@ -864,15 +883,6 @@ export type Database = {
       promote_story_to_epic: { Args: { p_story_id: string }; Returns: Json }
       remove_member: {
         Args: { p_project_id: string; p_user_id: string }
-        Returns: undefined
-      }
-      resequence_backlog_order: {
-        Args: {
-          p_divider_ids: string[]
-          p_kinds: string[]
-          p_project_id: string
-          p_story_ids: string[]
-        }
         Returns: undefined
       }
       search_users_for_invite: {
