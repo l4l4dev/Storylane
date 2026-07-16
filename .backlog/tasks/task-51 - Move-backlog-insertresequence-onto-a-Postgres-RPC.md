@@ -1,11 +1,11 @@
 ---
 id: TASK-51
 title: Move backlog insert+resequence onto a Postgres RPC
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 11:29'
-updated_date: '2026-07-16 04:19'
+updated_date: '2026-07-16 15:41'
 labels:
   - web
   - refactor
@@ -67,3 +67,9 @@ tests: insert-board-item.integration.test.ts 6件(anchor 有/無/miss=末尾, di
 
 AC#1: dropStoryInList の挿入パスは TASK-56 の move_story_board(atomic splice)で充足。doc-3 finding#1 を本パスで消化(TASK-56/doc-3 に記録)。
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Consolidated backlog insert+resequence into the transactional insert_board_item RPC shared by quickCreateStory (backlog target), createBacklogDivider, and dropStoryInList (commit f7bb8fe). Partial failure can no longer orphan a story/divider; tests updated to the new call shape.
+<!-- SECTION:FINAL_SUMMARY:END -->

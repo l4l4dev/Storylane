@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-07 08:44'
-updated_date: '2026-07-16 09:55'
+updated_date: '2026-07-16 15:45'
 labels: []
 milestone: m-1
 dependencies:
@@ -13,7 +13,7 @@ dependencies:
   - TASK-10
   - TASK-23
 priority: high
-ordinal: 500
+ordinal: 1650
 ---
 
 ## Description

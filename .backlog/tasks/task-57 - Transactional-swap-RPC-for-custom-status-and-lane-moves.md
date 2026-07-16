@@ -1,11 +1,11 @@
 ---
 id: TASK-57
 title: Transactional swap RPC for custom-status and lane moves
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:11'
-updated_date: '2026-07-16 04:30'
+updated_date: '2026-07-16 15:42'
 labels:
   - concurrency
   - db
@@ -58,3 +58,9 @@ doc-1 の該当2 finding(High: 並列 swap の非 atomicity / Low: direction coe
 
 rls-security-reviewer: セキュリティ指摘なし(role gate/cross-tenant/whitelist/grant/lock順序すべて既存規約と整合)。ただし新テストの flaky を検出: 重複position正規化テストが a,b を同 position=0 で seed し RPC の order by position,id のタイが UUID 乱数依存で ~50% fail していた(関数は正しい、テスト前提の誤り)。修正: タイ後の canonical 順序を service-role で実読取して期待値を組み立てる形に変更、5回連続 pass で決定化。
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added the transactional swap_adjacent RPC for custom-status and lane moves (migration 20260716000002, commit 1a0fee1): both rows move atomically or not at all, invalid directions are rejected, and swap-adjacent.integration.test.ts covers concurrency and half-failure.
+<!-- SECTION:FINAL_SUMMARY:END -->
