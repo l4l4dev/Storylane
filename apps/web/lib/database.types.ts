@@ -907,6 +907,15 @@ export type Database = {
         Args: { p_target_user_id: string }
         Returns: boolean
       }
+      swap_adjacent: {
+        Args: {
+          p_direction: string
+          p_id: string
+          p_project_id: string
+          p_table: string
+        }
+        Returns: undefined
+      }
       toggle_project_favorite: {
         Args: { p_favorite: boolean; p_project_id: string }
         Returns: undefined

@@ -1,53 +1,41 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-type EqResult = { error: { message: string } | null };
-
-let listData: Array<{ id: string; position: number }> = [];
-let updateResults: EqResult[] = [];
-const updateCalls: Array<{ payload: unknown; eqCalls: [string, unknown][] }> = [];
+// TASK-57: moveCustomStatus / moveLane are thin callers of the swap_adjacent
+// RPC (the atomic dense-rewrite is proven against the real DB in
+// swap-adjacent.integration.test.ts). These assert the action forwards the
+// right table/id/direction and rejects an invalid direction instead of
+// coercing it to 'down' (doc-1 Low).
+const rpcMock = vi.fn();
+const rpcResults: Record<string, { data: unknown; error: unknown }> = {};
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          order: () => Promise.resolve({ data: listData }),
-        }),
-      }),
-      update: (payload: unknown) => {
-        const call: { payload: unknown; eqCalls: [string, unknown][] } = { payload, eqCalls: [] };
-        updateCalls.push(call);
-        const result = updateResults[updateCalls.length - 1] ?? { error: null };
-        const chain: {
-          eq: (col: string, val: unknown) => typeof chain;
-          then: (resolve: (v: EqResult) => void) => void;
-        } = {
-          eq: (col: string, val: unknown) => {
-            call.eqCalls.push([col, val]);
-            return chain;
-          },
-          then: (resolve: (v: EqResult) => void) => resolve(result),
-        };
-        return chain;
-      },
-    }),
+    rpc: (fn: string, args: unknown) => {
+      rpcMock(fn, args);
+      return Promise.resolve(rpcResults[fn] ?? { data: null, error: null });
+    },
   }),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
+function swapCall() {
+  const call = rpcMock.mock.calls.find(([fn]) => fn === "swap_adjacent");
+  if (!call) {
+    throw new Error("swap_adjacent was not called");
+  }
+  return call[1] as { p_project_id: string; p_table: string; p_id: string; p_direction: string };
+}
+
 describe("moveCustomStatus", () => {
   beforeEach(() => {
-    updateCalls.length = 0;
-    updateResults = [];
-    listData = [
-      { id: "status-a", position: 0 },
-      { id: "status-b", position: 1 },
-    ];
+    rpcMock.mockReset();
+    for (const key of Object.keys(rpcResults)) {
+      delete rpcResults[key];
+    }
   });
 
-  it("filters both swap updates by project_id", async () => {
-    updateResults = [{ error: null }, { error: null }];
+  it("forwards the swap to the custom_statuses table with the id and direction", async () => {
     const { moveCustomStatus } = await import("./actions");
 
     const formData = new FormData();
@@ -57,54 +45,67 @@ describe("moveCustomStatus", () => {
 
     await moveCustomStatus(formData);
 
-    expect(updateCalls).toHaveLength(2);
-    for (const call of updateCalls) {
-      expect(call.eqCalls).toContainEqual(["project_id", "project-1"]);
-    }
+    expect(swapCall()).toEqual({
+      p_project_id: "project-1",
+      p_table: "custom_statuses",
+      p_id: "status-a",
+      p_direction: "down",
+    });
   });
 
-  it("throws when one of the two swap updates fails", async () => {
-    updateResults = [{ error: null }, { error: { message: "row not found" } }];
+  it("throws the RPC error message", async () => {
+    rpcResults.swap_adjacent = { data: null, error: { message: "row not found" } };
     const { moveCustomStatus } = await import("./actions");
 
     const formData = new FormData();
     formData.set("status_id", "status-a");
     formData.set("project_id", "project-1");
-    formData.set("direction", "down");
+    formData.set("direction", "up");
 
     await expect(moveCustomStatus(formData)).rejects.toThrow("row not found");
+  });
+
+  it("rejects an invalid direction without calling the RPC", async () => {
+    const { moveCustomStatus } = await import("./actions");
+
+    const formData = new FormData();
+    formData.set("status_id", "status-a");
+    formData.set("project_id", "project-1");
+    formData.set("direction", "sideways");
+
+    await expect(moveCustomStatus(formData)).rejects.toThrow("Invalid direction");
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 });
 
 describe("moveLane", () => {
   beforeEach(() => {
-    updateCalls.length = 0;
-    updateResults = [];
-    listData = [
-      { id: "lane-a", position: 0 },
-      { id: "lane-b", position: 1 },
-    ];
-  });
-
-  it("filters both swap updates by project_id", async () => {
-    updateResults = [{ error: null }, { error: null }];
-    const { moveLane } = await import("./actions");
-
-    const formData = new FormData();
-    formData.set("lane_id", "lane-a");
-    formData.set("project_id", "project-1");
-    formData.set("direction", "down");
-
-    await moveLane(formData);
-
-    expect(updateCalls).toHaveLength(2);
-    for (const call of updateCalls) {
-      expect(call.eqCalls).toContainEqual(["project_id", "project-1"]);
+    rpcMock.mockReset();
+    for (const key of Object.keys(rpcResults)) {
+      delete rpcResults[key];
     }
   });
 
-  it("throws when one of the two swap updates fails", async () => {
-    updateResults = [{ error: { message: "row not found" } }, { error: null }];
+  it("forwards the swap to the swimlanes table with the id and direction", async () => {
+    const { moveLane } = await import("./actions");
+
+    const formData = new FormData();
+    formData.set("lane_id", "lane-a");
+    formData.set("project_id", "project-1");
+    formData.set("direction", "up");
+
+    await moveLane(formData);
+
+    expect(swapCall()).toEqual({
+      p_project_id: "project-1",
+      p_table: "swimlanes",
+      p_id: "lane-a",
+      p_direction: "up",
+    });
+  });
+
+  it("throws the RPC error message", async () => {
+    rpcResults.swap_adjacent = { data: null, error: { message: "not authorized" } };
     const { moveLane } = await import("./actions");
 
     const formData = new FormData();
@@ -112,6 +113,18 @@ describe("moveLane", () => {
     formData.set("project_id", "project-1");
     formData.set("direction", "down");
 
-    await expect(moveLane(formData)).rejects.toThrow("row not found");
+    await expect(moveLane(formData)).rejects.toThrow("not authorized");
+  });
+
+  it("rejects an invalid direction without calling the RPC", async () => {
+    const { moveLane } = await import("./actions");
+
+    const formData = new FormData();
+    formData.set("lane_id", "lane-a");
+    formData.set("project_id", "project-1");
+    formData.set("direction", "");
+
+    await expect(moveLane(formData)).rejects.toThrow("Invalid direction");
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 });

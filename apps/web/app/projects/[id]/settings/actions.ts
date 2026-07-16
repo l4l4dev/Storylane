@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { assertAllSucceeded } from "@/lib/supabase/assert";
 import { clampVelocityWindow } from "@/lib/utils/velocity";
 
 export type InviteState = { error?: string; success?: string };
@@ -281,39 +280,30 @@ export async function setStatusWipLimit(formData: FormData) {
 }
 
 /** Swaps the status with its neighbor above/below — one step per click. */
+// Reject any direction that isn't exactly 'up'/'down' rather than coercing the
+// unknown case to 'down' (doc-1 Low: a tampered request could silently reorder).
+function parseSwapDirection(raw: FormDataEntryValue | null): "up" | "down" {
+  if (raw === "up" || raw === "down") {
+    return raw;
+  }
+  throw new Error("Invalid direction");
+}
+
 export async function moveCustomStatus(formData: FormData) {
   const id = String(formData.get("status_id"));
   const projectId = String(formData.get("project_id"));
-  const direction = String(formData.get("direction")) === "up" ? "up" : "down";
+  const direction = parseSwapDirection(formData.get("direction"));
 
   const supabase = await createClient();
-  const { data: statuses } = await supabase
-    .from("custom_statuses")
-    .select("id, position")
-    .eq("project_id", projectId)
-    .order("position", { ascending: true });
-
-  const list = statuses ?? [];
-  const index = list.findIndex((s) => s.id === id);
-  const swapWith = direction === "up" ? index - 1 : index + 1;
-  if (index < 0 || swapWith < 0 || swapWith >= list.length) {
-    return;
+  const { error } = await supabase.rpc("swap_adjacent", {
+    p_project_id: projectId,
+    p_table: "custom_statuses",
+    p_id: id,
+    p_direction: direction,
+  });
+  if (error) {
+    throw new Error(error.message);
   }
-
-  await assertAllSucceeded(
-    await Promise.all([
-      supabase
-        .from("custom_statuses")
-        .update({ position: list[swapWith].position })
-        .eq("id", list[index].id)
-        .eq("project_id", projectId),
-      supabase
-        .from("custom_statuses")
-        .update({ position: list[index].position })
-        .eq("id", list[swapWith].id)
-        .eq("project_id", projectId),
-    ]),
-  );
 
   revalidatePath(`/projects/${projectId}/settings`);
   revalidatePath(`/projects/${projectId}/board`);
@@ -381,36 +371,18 @@ export async function deleteLane(formData: FormData) {
 export async function moveLane(formData: FormData) {
   const id = String(formData.get("lane_id"));
   const projectId = String(formData.get("project_id"));
-  const direction = String(formData.get("direction")) === "up" ? "up" : "down";
+  const direction = parseSwapDirection(formData.get("direction"));
 
   const supabase = await createClient();
-  const { data: lanes } = await supabase
-    .from("swimlanes")
-    .select("id, position")
-    .eq("project_id", projectId)
-    .order("position", { ascending: true });
-
-  const list = lanes ?? [];
-  const index = list.findIndex((l) => l.id === id);
-  const swapWith = direction === "up" ? index - 1 : index + 1;
-  if (index < 0 || swapWith < 0 || swapWith >= list.length) {
-    return;
+  const { error } = await supabase.rpc("swap_adjacent", {
+    p_project_id: projectId,
+    p_table: "swimlanes",
+    p_id: id,
+    p_direction: direction,
+  });
+  if (error) {
+    throw new Error(error.message);
   }
-
-  await assertAllSucceeded(
-    await Promise.all([
-      supabase
-        .from("swimlanes")
-        .update({ position: list[swapWith].position })
-        .eq("id", list[index].id)
-        .eq("project_id", projectId),
-      supabase
-        .from("swimlanes")
-        .update({ position: list[index].position })
-        .eq("id", list[swapWith].id)
-        .eq("project_id", projectId),
-    ]),
-  );
 
   revalidatePath(`/projects/${projectId}/settings`);
   revalidatePath(`/projects/${projectId}/board`);
