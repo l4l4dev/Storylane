@@ -1,11 +1,11 @@
 ---
 id: TASK-58
 title: Correctness & position hardening bundle (Codex review remainder)
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:12'
-updated_date: '2026-07-16 15:36'
+updated_date: '2026-07-16 15:42'
 labels:
   - bug
   - concurrency
@@ -101,3 +101,9 @@ ITEM (c) done (Opus 4.8, 2026-07-17) — guard helper 抽出(漸進採用):
 検証: db reset で全 migration 適用 → 516 pass(統合込み)、tsc 0、eslint 0。helper の prosecdef/auth_exec を実測(require_project_role=invoker/exec不可、assert_not_last_owner=definer/exec不可)。rls-security-reviewer で穴なし(旧新の関数本体を difflib で機械 diff、guard 差替のみで他無変更を確認)。
 TASK-58 完了: AC#1-4 全達成 + review add-on(activity_logs index / guard helper / zone canonical doc)完了。
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Hardening bundle complete across five slices (Opus 4.8, 2026-07-16/17): zero-row mutation guards repo-wide; position allocation moved to per-table sequences with the corrected all-INSERTs-consume invariant (+ promote shift/deadlock fixes); invariant documented in spec/data-model.md with deferrable UNIQUE constraints and the canonical backlog-zone predicate; atomic create_project RPC; activity_logs(story_id) index; require_project_role/assert_not_last_owner guard helpers with incremental adoption rule in spec/rls.md. Verified per slice with full-migration db reset, 516 tests incl. integration, and rls-security-reviewer passes.
+<!-- SECTION:FINAL_SUMMARY:END -->
