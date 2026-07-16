@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 07:09'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-16 04:20'
 labels:
   - mcp
   - feature
@@ -13,7 +13,7 @@ milestone: m-3
 dependencies:
   - TASK-47
 priority: medium
-ordinal: 15400
+ordinal: 800
 ---
 
 ## Description

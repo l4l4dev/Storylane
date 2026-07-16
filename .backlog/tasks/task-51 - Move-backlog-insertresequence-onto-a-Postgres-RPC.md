@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 11:29'
-updated_date: '2026-07-16 04:05'
+updated_date: '2026-07-16 04:19'
 labels:
   - web
   - refactor
@@ -13,7 +13,7 @@ labels:
 milestone: m-2
 dependencies: []
 priority: high
-ordinal: 15750
+ordinal: 100
 ---
 
 ## Description

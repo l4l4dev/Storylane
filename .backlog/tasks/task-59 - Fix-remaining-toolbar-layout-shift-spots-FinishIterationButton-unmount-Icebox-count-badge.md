@@ -7,14 +7,14 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-12 09:27'
-updated_date: '2026-07-15 23:54'
+updated_date: '2026-07-16 04:20'
 labels:
   - web
   - ux
 milestone: m-0
 dependencies: []
 priority: low
-ordinal: 43000
+ordinal: 1100
 ---
 
 ## Description

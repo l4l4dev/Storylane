@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-11 07:50'
-updated_date: '2026-07-15 23:54'
+updated_date: '2026-07-16 04:20'
 labels:
   - web
   - refactor
@@ -13,7 +13,7 @@ milestone: m-3
 dependencies:
   - TASK-48
 priority: medium
-ordinal: 15500
+ordinal: 300
 ---
 
 ## Description

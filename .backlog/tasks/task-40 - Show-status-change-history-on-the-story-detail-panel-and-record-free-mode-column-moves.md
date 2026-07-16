@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 05:18'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-16 04:20'
 labels:
   - web
   - db
@@ -15,7 +15,7 @@ labels:
 milestone: m-0
 dependencies: []
 priority: medium
-ordinal: 13000
+ordinal: 700
 ---
 
 ## Description

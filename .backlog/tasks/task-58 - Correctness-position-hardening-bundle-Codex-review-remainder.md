@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:12'
-updated_date: '2026-07-15 23:53'
+updated_date: '2026-07-16 04:20'
 labels:
   - bug
   - concurrency
@@ -13,7 +13,7 @@ labels:
 milestone: m-2
 dependencies: []
 priority: medium
-ordinal: 15900
+ordinal: 200
 ---
 
 ## Description
