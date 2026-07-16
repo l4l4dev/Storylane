@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-11 07:50'
-updated_date: '2026-07-11 17:26'
+updated_date: '2026-07-15 23:54'
 labels:
   - web
   - refactor
@@ -27,3 +27,9 @@ Follow-up mandated by the TASK-47 advisor verdict: TASK-48 creates a transition_
 - [ ] #1 transitionStory delegates to the transition_story RPC; no duplicate guard logic remains in the action
 - [ ] #2 Existing transition and TASK-19 regression tests pass unchanged (or updated only for error-message plumbing)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+NOTE (code review 2026-07-16): move_story_board (TASK-56) applies state changes during drops with transition validation still in TS (evaluateDrop). When transition_story lands (TASK-48) and this task wires transitionStory onto it, the move path must share the same DB-side guard — either move_story_board calls the same validation internally or the guard function is shared — otherwise the DB has two transition paths that can drift (exactly what this task exists to prevent).
+<!-- SECTION:NOTES:END -->
