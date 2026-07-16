@@ -151,6 +151,88 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
     expect((log?.payload as { task_count: number })?.task_count).toBe(2);
   });
 
+  // TASK-58 slice 2a: positions are allocated by stories_position_seq, which
+  // only appends if it stays ahead of every position in use. Promotion shifts
+  // its siblings' positions UP to make room for the task-stories, so it is the
+  // one path that can push a position past the sequence. The fixtures here
+  // must not pass an explicit position — that would bypass the sequence and
+  // hide exactly what this asserts.
+  it("keeps a story created after a promote at the end of the project", async () => {
+    async function createSequenced(title: string) {
+      const { data, error } = await supabase
+        .from("stories")
+        .insert({ project_id: projectId, title, story_type: "feature", state: "unstarted" })
+        .select("id, position")
+        .single();
+      if (error || !data) throw new Error(`Failed to create story: ${error?.message}`);
+      return data;
+    }
+
+    const target = await createSequenced("Promote me (seq)");
+    await createSequenced("Sibling after target (seq)");
+    await supabase.from("tasks").insert([
+      { story_id: target.id, title: "t1" },
+      { story_id: target.id, title: "t2" },
+      { story_id: target.id, title: "t3" },
+    ]);
+
+    const { error: promoteError } = await supabase.rpc("promote_story_to_epic", { p_story_id: target.id });
+    expect(promoteError).toBeNull();
+
+    const created = await createSequenced("Created after promote (must be last)");
+
+    const { data: rows } = await supabase.from("stories").select("id, position").eq("project_id", projectId);
+    const others = rows?.filter((r) => r.id !== created.id) ?? [];
+    expect(others.length).toBeGreaterThan(0);
+    expect(Math.max(...others.map((o) => o.position))).toBeLessThan(created.position);
+  });
+
+  // Predates the sequence: the shift moved stories but not backlog_dividers,
+  // which share the backlog's one position sequence (20260707000001), so a
+  // story sitting right before a divider jumped over it whenever the promoted
+  // story had 2+ tasks.
+  it("keeps a divider's place in the backlog when an earlier story is promoted", async () => {
+    // Built through insert_board_item because that is how the backlog is really
+    // populated: it splices and re-densifies stories+dividers together, which
+    // is the interleaved state the shift has to preserve. Inserting a divider
+    // directly would leave it at the default position 0 and prove nothing.
+    async function addItem(kind: "story" | "divider", payload: Record<string, string>) {
+      const { data, error } = await supabase.rpc("insert_board_item", {
+        p_project_id: projectId,
+        p_kind: kind,
+        p_payload: payload,
+        p_anchor: {},
+      });
+      if (error || !data) throw new Error(`insert_board_item failed: ${error?.message}`);
+      return data as string;
+    }
+
+    const targetId = await addItem("story", { title: "Promote me (before divider)" });
+    const betweenId = await addItem("story", { title: "Between target and divider" });
+    const dividerId = await addItem("divider", { label: "--- divider ---", kind: "note" });
+    const afterId = await addItem("story", { title: "After the divider" });
+
+    await supabase.from("tasks").insert([
+      { story_id: targetId, title: "t1" },
+      { story_id: targetId, title: "t2" },
+      { story_id: targetId, title: "t3" },
+    ]);
+
+    const { error } = await supabase.rpc("promote_story_to_epic", { p_story_id: targetId });
+    expect(error).toBeNull();
+
+    const { data: between } = await supabase.from("stories").select("position").eq("id", betweenId).single();
+    const { data: divider } = await supabase
+      .from("backlog_dividers")
+      .select("position")
+      .eq("id", dividerId)
+      .single();
+    const { data: after } = await supabase.from("stories").select("position").eq("id", afterId).single();
+
+    expect(between!.position).toBeLessThan(divider!.position);
+    expect(divider!.position).toBeLessThan(after!.position);
+  });
+
   it("promotes a story with zero tasks into an empty epic (AC #4)", async () => {
     const story = await createStory({ title: "No tasks here" });
 
