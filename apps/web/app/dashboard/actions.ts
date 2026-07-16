@@ -60,9 +60,10 @@ export async function searchUserForNewProject(query: string): Promise<NewProject
 // positions here would leave the sequence behind the rows it never issued, and
 // the next created column would land mid-board.
 const FREE_TEMPLATE_STATUSES: Record<FreeTemplate, { name: string; color: string; is_done: boolean }[]> = {
+  // No 'This week' seeded — users add it themselves as a normal custom
+  // column if they want a weekly staging lane.
   daily: [
     { name: "Todo", color: "#6b7280", is_done: false },
-    { name: "This week", color: "#a855f7", is_done: false },
     { name: "Today", color: "#f59e0b", is_done: false },
     { name: "In progress", color: "#3b82f6", is_done: false },
     { name: "Done", color: "#22c55e", is_done: true },

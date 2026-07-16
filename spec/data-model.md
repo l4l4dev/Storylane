@@ -252,10 +252,12 @@ stories (
                                             -- free-mode projects leave this at its default and
                                             -- ignore it entirely — custom_status_id drives the
                                             -- board column instead (Task 14)
-  focus        text CHECK (focus IN ('today', 'this_week')),
+  focus        text CHECK (focus IN ('today')),
                                             -- 2026-07-07: Focus-view bucket (tracker mode only,
                                             -- see spec/screens.md "Focus view"). NULL = plain Todo.
-                                            -- Shared per story (not per user) in Phase 1
+                                            -- Shared per story (not per user) in Phase 1.
+                                            -- 'this_week' dropped 2026-07-17 (TASK-34,
+                                            -- 20260717000002_focus_drop_this_week.sql)
   completed_at timestamptz,                 -- 2026-07-07: when the story was completed.
                                             -- Tracker: set on the transition to 'accepted' and
                                             -- cleared whenever the state leaves 'accepted'.

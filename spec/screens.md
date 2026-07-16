@@ -39,9 +39,8 @@ UsernameEditor is removed from this page (moved to `/settings`).
     so the difference is visible at a glance, not radio buttons;
   - Tracker settings: iteration length (7/14/21/28 days), point scale
     (+ custom points), velocity window;
-  - Free settings: column template (**KanbanFlow**: Todo / This week /
-    Today / In progress / Done, Done seeded `is_done` / **Basic**: To do /
-    Doing / Done);
+  - Free settings: column template (**Daily**: Todo / Today / In progress /
+    Done, Done seeded `is_done` / **Basic**: To do / Doing / Done);
   - initial member invites via an exact-match username picker (optional,
     addable later) — deliberately not the fuzzy search-as-you-type picker
     used in project settings, since that RPC requires an existing
@@ -298,16 +297,16 @@ Conflict & failure rules (2026-07-08):
   **Move / Copy to another project** (behavior in spec/features.md
   "Story Management"), alongside Delete.
 
-#### Focus view (tracker mode, added 2026-07-07)
+#### Focus view (tracker mode, added 2026-07-07; Today-first since 2026-07-17)
 
-A personal, KanbanFlow-inspired execution view over the **current
-iteration's stories** — the third option in the view toggle. Columns:
+A personal, Today-first execution view over the **current iteration's
+stories** — the third option in the view toggle. Columns:
 
 - **Todo** — current-iteration stories with `focus IS NULL`, not yet
   started;
-- **This week** / **Today** — stories bucketed via `stories.focus`
-  (spec/data-model.md); dragging between Todo / This week / Today sets or
-  clears `focus` and never touches state;
+- **Today** — stories with `stories.focus = 'today'` (spec/data-model.md);
+  dragging between Todo / Today sets or clears `focus` and never touches
+  state;
 - **In progress** — stories in `started` / `finished` / `delivered` /
   `rejected` (state badge shown on the card; `rejected` groups here rather
   than getting its own column since it still needs action — the Restart
@@ -322,6 +321,13 @@ buttons** (same rules as the List view) — the In progress and Done columns
 are not drop targets, keeping the state machine intact. Quick-add and the
 side peek work the same as the other views. `focus` values persist until
 changed (they survive rollover on carried-over stories).
+
+TASK-34 (2026-07-17): the view previously had a third draggable column,
+**This week**, dropped to keep the view centered on *today* rather than the
+week — the user's actual ask. `stories.focus` no longer accepts
+`'this_week'` (CHECK constraint narrowed to `'today'` only,
+`20260717000002_focus_drop_this_week.sql`); any story that was in This week
+fell back to Todo (`focus` set to `NULL`).
 
 #### Free mode board (Task 14, added 2026-07-07)
 

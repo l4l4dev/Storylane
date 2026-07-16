@@ -5,13 +5,13 @@
 // timestamp to the viewer's local calendar date before calling
 // `groupDoneStories`, this module never touches `Date`/`Intl` itself.
 
-export const FOCUS_COLUMNS = ["todo", "this_week", "today", "in_progress", "done"] as const;
+export const FOCUS_COLUMNS = ["todo", "today", "in_progress", "done"] as const;
 export type FocusColumnId = (typeof FOCUS_COLUMNS)[number];
 
-// The three columns a card can actually be dragged into — In progress and
+// The two columns a card can actually be dragged into — In progress and
 // Done are state-driven and read-only (spec/screens.md: "In progress and
 // Done columns are not drop targets").
-export const FOCUS_DRAG_TARGETS = ["todo", "this_week", "today"] as const;
+export const FOCUS_DRAG_TARGETS = ["todo", "today"] as const;
 export type FocusDragTarget = (typeof FOCUS_DRAG_TARGETS)[number];
 
 export type FocusStory = {
@@ -47,9 +47,6 @@ export function focusColumnForStory(
       if (story.focus === "today") {
         return "today";
       }
-      if (story.focus === "this_week") {
-        return "this_week";
-      }
       return "todo";
     default:
       // unscheduled (Icebox) never belongs to the current iteration's view.
@@ -62,10 +59,10 @@ export type FocusDropEvaluation =
   | { ok: false; reason: string };
 
 /**
- * Validates dragging `story` onto `to` (Todo / This week / Today). Drag
- * only ever sets or clears `focus` and never touches state (spec/screens.md)
- * — only `unstarted` stories can be dragged here at all, since In progress
- * and Done aren't drop sources in the UI; re-checked server-side too.
+ * Validates dragging `story` onto `to` (Todo / Today). Drag only ever sets
+ * or clears `focus` and never touches state (spec/screens.md) — only
+ * `unstarted` stories can be dragged here at all, since In progress and
+ * Done aren't drop sources in the UI; re-checked server-side too.
  */
 export function evaluateFocusDrop(story: Pick<FocusStory, "state">, to: FocusDragTarget): FocusDropEvaluation {
   if (story.state !== "unstarted") {

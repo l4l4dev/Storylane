@@ -1,11 +1,11 @@
 ---
 id: TASK-34
 title: 'Today-first focus: free-mode template and tracker Focus view center on Today'
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-11 05:17'
-updated_date: '2026-07-16 04:20'
+updated_date: '2026-07-16 23:26'
 labels:
   - web
   - ux
@@ -30,10 +30,10 @@ Architecture-sensitive: touches template seeds, Focus view semantics, possibly a
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 New free-mode projects seed a today-centric column set without 'This week'
-- [ ] #2 'This week' can still be added manually as a normal custom column
-- [ ] #3 Tracker Focus view visually centers on today's work with a clear definition of what appears there
-- [ ] #4 spec/screens.md updated to describe the Today-first behavior for both modes
+- [x] #1 New free-mode projects seed a today-centric column set without 'This week'
+- [x] #2 'This week' can still be added manually as a normal custom column
+- [x] #3 Tracker Focus view visually centers on today's work with a clear definition of what appears there
+- [x] #4 spec/screens.md updated to describe the Today-first behavior for both modes
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -50,6 +50,18 @@ DESIGN (Fable, 2026-07-11 — written while Fable is available; treat as the adv
 3. REJECTED ALTERNATIVE: a manual per-story 'today' flag — daily grooming burden, goes stale, needs schema + RLS + both-mode write paths; the derived view gives the same daily focus for free. Revisit only if dogfooding shows the derived definition misses real usage.
 4. Optional toolbar toggle 'mine only' (assignee = me) — cheap, include if it stays simple.
 5. spec/screens.md must be updated to define the Focus sections and the new free-mode template before implementation (AC #4). Rollover behavior needs no change — Focus reads the current iteration after the standard ensure/finalize call.
+
+DESIGN CORRECTION (Fable advisor, 2026-07-17): the 2026-07-11 DESIGN block above (derived 3-section Tracker Focus, 'NO new story field', rejecting 'a manual per-story today flag') did not account for the shipped stories.focus column (20260709000004_focus_view.sql, 2 days before that design was written) and its later investment in move_story_board (20260715000008, TASK-56). That design is superseded.
+
+REVISED SCOPE (implemented 2026-07-17): keep the existing shipped focus system (Todo/Today/In progress/Done + manual focus drag), drop only the 'This week' column/value — the minimal change satisfying the user's actual ask ('both modes should focus on TODAY, not the week'). No schema addition, no Focus-view rewrite, no 'mine only' toggle (out of scope).
+
+Changes: apps/web/app/dashboard/actions.ts (daily template drops This week), apps/web/lib/utils/focus.ts + focus-board.tsx (FOCUS_COLUMNS/FOCUS_DRAG_TARGETS drop this_week, stale this_week values fall back to todo), apps/web/components/features/projects/inline-create-panel.tsx (template preview text), supabase/migrations/20260717000002_focus_drop_this_week.sql (owner-approved: existing focus='this_week' rows -> NULL, CHECK narrowed to ('today') only), spec/screens.md + spec/features.md + spec/data-model.md updated to match shipped Today-only behavior.
+
+Verified: tsc 0, eslint 0, full vitest 515 pass (incl. SUPABASE_INTEGRATION), db reset applies cleanly from empty, CHECK constraint confirmed narrowed via psql (stories_focus_check now CHECK (focus = 'today')).
+REMAINING: fable-advisor design review against spec/ux-principles.md + owner manual verification (per Implementation Notes) — not yet run this session.
+
+UX PARITY CHECK (fable-advisor, 2026-07-17): Pivotal Tracker has no Focus/Today-view equivalent — the Focus view is a recorded, intentional Storylane divergence (spec/screens.md, added 2026-07-07, KanbanFlow-inspired). No PT precedent exists to check against for removing the This week column.
+Design review verdict: approved with 2 corrections (both applied) — comment history-narration removed from dashboard/actions.ts, this parity finding recorded. No code-behavior changes required.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

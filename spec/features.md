@@ -138,20 +138,23 @@
   here — not on the Projects page, not per project. Avatar comes from OAuth
   (`avatar_url`); avatar upload is Phase 2.
 
-#### Focus View (Tracker mode, 2026-07-07)
-- A third board view (List / Kanban / **Focus**) for personal focus,
-  KanbanFlow-inspired: columns **Todo / This week / Today / In progress /
-  Done** over the current iteration's stories (see spec/screens.md
-  "Focus view"). Dragging between Todo / This week / Today sets
-  `stories.focus`; state changes use the on-card transition buttons; Done
-  groups accepted stories by acceptance date (`stories.completed_at`).
+#### Focus View (Tracker mode, 2026-07-07; Today-first since 2026-07-17)
+- A third board view (List / Kanban / **Focus**) for personal focus:
+  columns **Todo / Today / In progress / Done** over the current
+  iteration's stories (see spec/screens.md "Focus view"). Dragging between
+  Todo / Today sets `stories.focus`; state changes use the on-card
+  transition buttons; Done groups accepted stories by acceptance date
+  (`stories.completed_at`). A **This week** column existed until TASK-34
+  (2026-07-17), dropped to keep the view centered on today rather than the
+  week.
 
 #### Free Mode (Trello-style board; KanbanFlow parity 2026-07-07)
 - Custom columns (`custom_statuses`), any-to-any drag, no
   iterations/velocity — see spec/screens.md "Free mode board"
-- Column templates at creation: **KanbanFlow** (Todo / This week / Today /
-  In progress / Done) or **Basic** (To do / Doing / Done); Done columns are
-  seeded with `is_done = true`
+- Column templates at creation: **Daily** (Todo / Today / In progress /
+  Done) or **Basic** (To do / Doing / Done); Done columns are seeded with
+  `is_done = true`. Daily dropped its **This week** column in TASK-34
+  (2026-07-17), same Today-first reasoning as the Focus view above.
 - Done-date display: cards in `is_done` columns show and group by
   completion date (`stories.completed_at`)
 - WIP limits per column (`custom_statuses.wip_limit`) — soft limit: the

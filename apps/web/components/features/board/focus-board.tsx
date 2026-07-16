@@ -19,7 +19,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { Circle, CircleCheckBig, CircleDot, ListTodo, PlayCircle, type LucideIcon } from "lucide-react";
+import { CircleCheckBig, CircleDot, ListTodo, PlayCircle, type LucideIcon } from "lucide-react";
 import { setStoryFocus } from "@/app/projects/[id]/board/actions";
 import { beforeAnchorId, findContainer, moveBetweenContainers, reorderContainer, storyById } from "@/lib/utils/board";
 import {
@@ -44,7 +44,6 @@ type DragColumnMeta = { label: string; icon: LucideIcon };
 
 const DRAG_COLUMN_META: Record<FocusDragTarget, DragColumnMeta> = {
   todo: { label: "Todo", icon: ListTodo },
-  this_week: { label: "This week", icon: Circle },
   today: { label: "Today", icon: CircleDot },
 };
 
@@ -133,9 +132,9 @@ function ReadOnlyColumn({
 
 // Focus view (spec/screens.md "Focus view") — a personal,
 // Daily-inspired execution view over the current iteration's stories.
-// Todo/This week/Today are draggable (drag only ever sets/clears `focus`,
-// never state); In progress and Done are read-only, using the same
-// one-click transition buttons as the List view.
+// Todo/Today are draggable (drag only ever sets/clears `focus`, never
+// state); In progress and Done are read-only, using the same one-click
+// transition buttons as the List view.
 export function FocusBoard({
   projectId,
   currentIteration,
@@ -165,7 +164,6 @@ export function FocusBoard({
 
   const buckets: Record<FocusColumnId, BoardStory[]> = {
     todo: [],
-    this_week: [],
     today: [],
     in_progress: [],
     done: [],
@@ -188,12 +186,11 @@ export function FocusBoard({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // Only Todo/This week/Today ever appear as dnd-kit containers — In
-  // progress/Done cards aren't draggable, so they're never registered as
+  // Only Todo/Today ever appear as dnd-kit containers — In progress/Done
+  // cards aren't draggable, so they're never registered as
   // sortable/droppable and can't be reached by this lookup.
   const dragContainers: Record<string, BoardStory[]> = {
     todo: buckets.todo,
-    this_week: buckets.this_week,
     today: buckets.today,
   };
 

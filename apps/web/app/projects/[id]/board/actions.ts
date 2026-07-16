@@ -392,7 +392,7 @@ function trackerDeltas(evaluation: {
 }
 
 /**
- * Handles a Focus-view drop between Todo / This week / Today (spec/screens.md
+ * Handles a Focus-view drop between Todo / Today (spec/screens.md
  * "Focus view"). Unlike `dropStory`, this only ever sets or
  * clears `focus` — state and iteration_id are never touched here; state
  * changes go through the on-card transition buttons instead.

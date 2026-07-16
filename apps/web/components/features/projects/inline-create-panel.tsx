@@ -108,7 +108,7 @@ export function InlineCreatePanel() {
                 <span>
                   Daily
                   <span className="block text-xs text-muted-foreground">
-                    Todo · This week · Today · In progress · Done
+                    Todo · Today · In progress · Done
                   </span>
                 </span>
               </label>

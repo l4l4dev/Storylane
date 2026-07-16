@@ -19,11 +19,17 @@ describe("focusColumnForStory", () => {
   });
 
   it("buckets an unstarted story by its focus value", () => {
-    expect(focusColumnForStory({ state: "unstarted", focus: "this_week", iteration_id: CURRENT }, CURRENT)).toBe(
-      "this_week",
-    );
     expect(focusColumnForStory({ state: "unstarted", focus: "today", iteration_id: CURRENT }, CURRENT)).toBe(
       "today",
+    );
+  });
+
+  // TASK-34: 'this_week' was removed from the focus CHECK constraint
+  // (20260709000004 -> the follow-up migration), but any stale value from
+  // before the migration falls back to todo rather than throwing.
+  it("falls back to todo for a stale 'this_week' focus value", () => {
+    expect(focusColumnForStory({ state: "unstarted", focus: "this_week", iteration_id: CURRENT }, CURRENT)).toBe(
+      "todo",
     );
   });
 
@@ -43,14 +49,10 @@ describe("focusColumnForStory", () => {
 });
 
 describe("evaluateFocusDrop", () => {
-  it("allows moving an unstarted story between todo/this_week/today", () => {
+  it("allows moving an unstarted story between todo/today", () => {
     expect(evaluateFocusDrop({ state: "unstarted" }, "today")).toEqual({
       ok: true,
       focus: "today",
-    });
-    expect(evaluateFocusDrop({ state: "unstarted" }, "this_week")).toEqual({
-      ok: true,
-      focus: "this_week",
     });
   });
 
