@@ -1,59 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  autoAssignStoryIds,
   buildBacklogRows,
-  isIterationEditable,
   nextRealRowId,
   projectedIterationDates,
   rowInsertAnchors,
   splitBacklogIntoVirtualIterations,
   type BacklogRowItem,
 } from "./iterations";
-
-describe("isIterationEditable", () => {
-  it("is false once an iteration is done", () => {
-    expect(isIterationEditable({ state: "done" })).toBe(false);
-  });
-
-  it("is true for planned or otherwise non-done states", () => {
-    expect(isIterationEditable({ state: "planned" })).toBe(true);
-    expect(isIterationEditable({ state: "active" })).toBe(true);
-  });
-});
-
-describe("autoAssignStoryIds", () => {
-  it("fills up to the velocity budget", () => {
-    const backlog = [
-      { id: "1", points: 3, story_type: "feature" },
-      { id: "2", points: 5, story_type: "feature" },
-      { id: "3", points: 2, story_type: "bug" },
-    ];
-    expect(autoAssignStoryIds(backlog, 8)).toEqual(["1", "2"]);
-  });
-
-  it("always includes at least the first story, even if it exceeds the budget", () => {
-    const backlog = [{ id: "1", points: 13, story_type: "feature" }];
-    expect(autoAssignStoryIds(backlog, 5)).toEqual(["1"]);
-  });
-
-  it("pulls in chore/release stories without them counting against the budget", () => {
-    const backlog = [
-      { id: "1", points: 3, story_type: "feature" },
-      { id: "2", points: null, story_type: "chore" },
-      { id: "3", points: 5, story_type: "feature" },
-    ];
-    expect(autoAssignStoryIds(backlog, 8)).toEqual(["1", "2", "3"]);
-  });
-
-  it("assigns nothing when velocity is 0", () => {
-    const backlog = [{ id: "1", points: 3, story_type: "feature" }];
-    expect(autoAssignStoryIds(backlog, 0)).toEqual([]);
-  });
-
-  it("assigns nothing for an empty backlog", () => {
-    expect(autoAssignStoryIds([], 10)).toEqual([]);
-  });
-});
 
 describe("splitBacklogIntoVirtualIterations", () => {
   it("breaks a new group once the next story would exceed capacity", () => {

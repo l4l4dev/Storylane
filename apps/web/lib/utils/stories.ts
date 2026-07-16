@@ -73,11 +73,6 @@ export function nextPosition(stories: ReadonlyArray<{ position: number }>): numb
   return stories.reduce((max, story) => Math.max(max, story.position), -1) + 1;
 }
 
-/** Maps an ordered list of ids to dense, zero-based positions. */
-export function reorderPositions(orderedIds: ReadonlyArray<string>): { id: string; position: number }[] {
-  return orderedIds.map((id, index) => ({ id, position: index }));
-}
-
 export type StoryFilter = {
   type?: string | null;
   assigneeId?: string | null;

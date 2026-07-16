@@ -6,7 +6,6 @@ import {
   nextPosition,
   parsePoints,
   pointScaleValues,
-  reorderPositions,
   storyTypeUsesPoints,
 } from "./stories";
 
@@ -29,20 +28,6 @@ describe("nextPosition", () => {
 
   it("returns one past the max position", () => {
     expect(nextPosition([{ position: 0 }, { position: 4 }, { position: 2 }])).toBe(5);
-  });
-});
-
-describe("reorderPositions", () => {
-  it("maps ids to dense zero-based positions", () => {
-    expect(reorderPositions(["c", "a", "b"])).toEqual([
-      { id: "c", position: 0 },
-      { id: "a", position: 1 },
-      { id: "b", position: 2 },
-    ]);
-  });
-
-  it("returns an empty array for no ids", () => {
-    expect(reorderPositions([])).toEqual([]);
   });
 });
 

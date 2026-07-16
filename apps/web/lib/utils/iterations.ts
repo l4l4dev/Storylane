@@ -15,42 +15,6 @@ function formatDateOnly(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** Done iterations are frozen: no drag, no goal edits, no manual story moves. */
-export function isIterationEditable(iteration: { state: string }): boolean {
-  return iteration.state !== "done";
-}
-
-export type BacklogStoryForAssignment = {
-  id: string;
-  points: number | null;
-  story_type: string;
-};
-
-/**
- * Pulls stories from the top of the backlog (already ordered by position) to
- * fill the next iteration up to `velocity` points. Non-pointable stories
- * (chore/release) don't count against the budget but are still pulled in if
- * encountered before the cutoff; the first story is always included even if
- * it alone exceeds the budget.
- */
-export function autoAssignStoryIds(
-  backlog: ReadonlyArray<BacklogStoryForAssignment>,
-  velocity: number,
-): string[] {
-  const assigned: string[] = [];
-  let sum = 0;
-  for (const story of backlog) {
-    if (sum >= velocity) {
-      break;
-    }
-    assigned.push(story.id);
-    if (storyTypeUsesPoints(story.story_type)) {
-      sum += story.points ?? 0;
-    }
-  }
-  return assigned;
-}
-
 export type BacklogStoryForMarkers = { points: number | null; story_type: string };
 
 /**

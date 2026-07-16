@@ -219,24 +219,3 @@ export function flattenCurrentZone<T extends { position: number }>(
 ): T[] {
   return STATE_COLUMNS.flatMap((column) => containers[column] ?? []).sort((a, b) => a.position - b.position);
 }
-
-/** Buckets current-iteration stories into their state columns, preserving input order. */
-export function groupByStateColumn<T extends { state: string }>(
-  stories: ReadonlyArray<T>,
-): Record<StateColumnId, T[]> {
-  const grouped = {
-    unstarted: [],
-    started: [],
-    finished: [],
-    delivered: [],
-    accepted: [],
-    rejected: [],
-  } as Record<StateColumnId, T[]>;
-  for (const story of stories) {
-    const bucket = grouped[story.state as StateColumnId];
-    if (bucket) {
-      bucket.push(story);
-    }
-  }
-  return grouped;
-}

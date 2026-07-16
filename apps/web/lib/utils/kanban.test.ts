@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { reorderPositions } from "./stories";
 import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
@@ -7,7 +6,6 @@ import {
   evaluateDrop,
   evaluateListDrop,
   flattenCurrentZone,
-  groupByStateColumn,
   zoneForStory,
   type KanbanStory,
 } from "./kanban";
@@ -200,24 +198,6 @@ describe("evaluateListDrop", () => {
   });
 });
 
-describe("groupByStateColumn", () => {
-  it("buckets stories by state preserving order and fills empty columns", () => {
-    const grouped = groupByStateColumn([
-      { state: "started", id: "a" },
-      { state: "unstarted", id: "b" },
-      { state: "started", id: "c" },
-    ]);
-    expect(grouped.started.map((s) => s.id)).toEqual(["a", "c"]);
-    expect(grouped.unstarted.map((s) => s.id)).toEqual(["b"]);
-    expect(grouped.accepted).toEqual([]);
-  });
-
-  it("ignores stories whose state has no column (unscheduled)", () => {
-    const grouped = groupByStateColumn([{ state: "unscheduled", id: "x" }]);
-    expect(Object.values(grouped).flat()).toEqual([]);
-  });
-});
-
 describe("flattenCurrentZone", () => {
   it("merges state-column buckets into one list ordered by position, not by state", () => {
     // A started story at position 0 must render above an unstarted story at
@@ -233,23 +213,5 @@ describe("flattenCurrentZone", () => {
 
   it("returns an empty list when every bucket is empty", () => {
     expect(flattenCurrentZone({})).toEqual([]);
-  });
-
-  it("a reorder of one item leaves every other item's relative order untouched", () => {
-    const containers = {
-      unstarted: [{ id: "b", position: 1 }, { id: "d", position: 3 }],
-      started: [{ id: "a", position: 0 }],
-      finished: [{ id: "c", position: 2 }],
-    };
-    const displayed = flattenCurrentZone(containers).map((s) => s.id);
-    expect(displayed).toEqual(["a", "b", "c", "d"]);
-
-    // Drag "d" (last) to just after "a" (first) — only "d" should move;
-    // a/b/c must keep their relative order in the persisted positions.
-    const dragged = [displayed[0], "d", displayed[1], displayed[2]];
-    const persisted = reorderPositions(dragged);
-    const orderAfter = persisted.slice().sort((x, y) => x.position - y.position).map((p) => p.id);
-    const others = orderAfter.filter((id) => id !== "d");
-    expect(others).toEqual(["a", "b", "c"]);
   });
 });
