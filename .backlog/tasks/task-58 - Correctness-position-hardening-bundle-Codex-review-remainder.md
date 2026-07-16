@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:12'
-updated_date: '2026-07-16 09:12'
+updated_date: '2026-07-16 09:30'
 labels:
   - bug
   - concurrency
@@ -33,7 +33,7 @@ Sequencing: pick up AFTER TASK-56/57 so position rules land once, not twice.
 - [x] #1 No remaining mutation reports success on zero affected rows (repo-wide check)
 - [x] #2 Position allocation is race-safe or collision-tolerant everywhere it is derived from max+1
 - [x] #3 Position ordering invariant documented and DB-enforced where feasible
-- [ ] #4 Project creation is all-or-nothing including default statuses
+- [x] #4 Project creation is all-or-nothing including default statuses
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -79,4 +79,14 @@ SLICE 2b done (Opus 4.8, 2026-07-16) — AC#3(不変条件 doc + DB 制約)+ ite
 - 追加テスト: position-sequence.integration.test.ts に UNIQUE 違反(23505)の検証。
 検証: db reset で空DBから全 migration 適用 → 511 pass(統合込み)、tsc 0、eslint 0。deferrable UNIQUE 下で swap_adjacent の full-zone rewrite が通ることを実機確認(A,B,C→B,A,C)。rls-security-reviewer で 005/006/007 をレビュー → 穴なし(has_function_privilege/relrowsecurity/grant-lockdown allowlist を実測突合)。
 REMAINING: item 4(create_project transactional RPC = AC#4)、item (c)(guard helper 抽出: require_project_role/current_iteration/_assert_not_last_owner)。
+
+ITEM 4 done (Opus 4.8, 2026-07-16) — AC#4(project 作成の all-or-nothing):
+- migration 20260716000008: create_project(p_name, p_iteration_length, p_point_scale, p_velocity_window, p_workflow_mode, p_statuses jsonb, p_description default null) returns uuid。projects insert + free テンプレ custom_statuses insert を1トランザクションに。SECURITY INVOKER(handle_new_project トリガーが同一tx内で作成者を owner 登録 → STABLE project_role が custom_statuses INSERT policy でそれを見る)。position は省略で sequence default(2a 不変条件)、jsonb_array_elements WITH ORDINALITY + order by ord で配列順保存。
+- invite ループは advisor 指示どおり TS に残置(AC は statuses までの atomicity、招待失敗で project ごと巻き戻すのは UX 劣化)。?invite_failed=N 挙動を保存。
+- dashboard/actions.ts: 2回の insert を supabase.rpc('create_project') 1発に。p_description は description ?? undefined(生成型が optional)。redirect の project.id 参照を projectId に更新。
+- database.types.ts 再生成(create_project 追加)。grant-lockdown allowlist に create_project 追加。
+- テスト: create-project.integration.test.ts(owner 登録・テンプレ順序・空 statuses で0列・不正 status で project ごと rollback=atomicity)。dashboard/actions.test.ts を rpc('create_project')→rpc('invite_member') の新コールシェイプに書き換え + free/tracker で p_statuses が渡る/空になる検証を追加。
+- jsonb_to_recordset + WITH ORDINALITY は 42601 syntax error になるため jsonb_array_elements WITH ORDINALITY に変更(実機で確認)。
+検証: db reset で全 migration 適用 → 515 pass(統合込み)、tsc 0、eslint 0。rls-security-reviewer で穴なし(SECURITY INVOKER の妥当性・grant・v_project_id が caller 入力でないこと等を実機 has_function_privilege で確認)。
+REMAINING: item (c)(guard helper 抽出: require_project_role/current_iteration/_assert_not_last_owner)のみ。
 <!-- SECTION:NOTES:END -->

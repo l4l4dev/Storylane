@@ -833,6 +833,18 @@ export type Database = {
         Args: { p_story_id: string; p_target_project_id: string }
         Returns: Json
       }
+      create_project: {
+        Args: {
+          p_description?: string
+          p_iteration_length: number
+          p_name: string
+          p_point_scale: string
+          p_statuses: Json
+          p_velocity_window: number
+          p_workflow_mode: string
+        }
+        Returns: string
+      }
       finalize_iteration: {
         Args: {
           p_iteration_id?: string

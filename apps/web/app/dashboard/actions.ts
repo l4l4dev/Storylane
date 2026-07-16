@@ -112,37 +112,29 @@ export async function createProject(formData: FormData) {
     .filter((id) => id && id !== user?.id)
     .slice(0, 20);
 
-  const { data: project, error } = await supabase
-    .from("projects")
-    .insert({
-      name,
-      description,
-      iteration_length: iterationLength,
-      point_scale: pointScale,
-      velocity_window: velocityWindow,
-      workflow_mode: workflowMode,
-    })
-    .select("id")
-    .single();
+  // Project + free-mode template columns commit together (TASK-58 AC#4): a
+  // free project must never exist without board columns to drop onto.
+  const { data: projectId, error } = await supabase.rpc("create_project", {
+    p_name: name,
+    p_description: description ?? undefined,
+    p_iteration_length: iterationLength,
+    p_point_scale: pointScale,
+    p_velocity_window: velocityWindow,
+    p_workflow_mode: workflowMode,
+    p_statuses: workflowMode === "free" ? FREE_TEMPLATE_STATUSES[freeTemplate] : [],
+  });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  if (workflowMode === "free" && project) {
-    const { error: statusError } = await supabase
-      .from("custom_statuses")
-      .insert(FREE_TEMPLATE_STATUSES[freeTemplate].map((status) => ({ ...status, project_id: project.id })));
-    if (statusError) {
-      throw new Error(statusError.message);
-    }
-  }
-
+  // Invitations stay outside the transaction: a failed lookup must not undo the
+  // project, so failures are counted and surfaced, not fatal.
   let failedInviteCount = 0;
-  if (project) {
+  if (projectId) {
     for (const userId of invitedUserIds) {
       const { error: inviteError } = await supabase.rpc("invite_member", {
-        p_project_id: project.id,
+        p_project_id: projectId,
         p_user_id: userId,
         p_role: "member",
       });
@@ -155,11 +147,10 @@ export async function createProject(formData: FormData) {
   revalidatePath("/dashboard");
   // TASK-32: land on the new project's board instead of back on /dashboard
   // — creating a project and then having to find and click into it again
-  // was an extra, pointless step. `project` is only ever null here if the
-  // insert somehow returned no row despite no error; falling back to
-  // /dashboard keeps that (unreachable in practice) case from crashing on
-  // `project.id`.
-  const target = project ? `/projects/${project.id}/board` : "/dashboard";
+  // was an extra, pointless step. `projectId` is only ever null here if the
+  // RPC somehow returned no id despite no error; falling back to /dashboard
+  // keeps that (unreachable in practice) case from crashing.
+  const target = projectId ? `/projects/${projectId}/board` : "/dashboard";
   redirect(failedInviteCount > 0 ? `${target}?invite_failed=${failedInviteCount}` : target);
 }
 

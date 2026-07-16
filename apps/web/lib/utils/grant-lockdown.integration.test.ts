@@ -40,6 +40,7 @@ const AUTHENTICATED_ALLOWLIST = new Set([
   "move_story_board",
   "insert_board_item",
   "swap_adjacent",
+  "create_project",
 ]);
 
 type FnPriv = { name: string; auth: boolean; anon: boolean };
