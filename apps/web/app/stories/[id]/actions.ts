@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { assertRowAffected } from "@/lib/supabase/assert";
 import { nextPosition, pointScaleValues } from "@/lib/utils/stories";
 
 export type StoryDetail = {
@@ -348,11 +349,9 @@ export async function toggleTask(formData: FormData) {
   const isDone = formData.get("is_done") === "true";
 
   const supabase = await createClient();
-  const { error } = await supabase.from("tasks").update({ is_done: !isDone }).eq("id", taskId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase.from("tasks").update({ is_done: !isDone }).eq("id", taskId).select("id"),
+  );
 
   revalidatePath(`/stories/${storyId}`);
 }
@@ -362,11 +361,7 @@ export async function deleteTask(formData: FormData) {
   const storyId = String(formData.get("story_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("tasks").delete().eq("id", taskId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(await supabase.from("tasks").delete().eq("id", taskId).select("id"));
 
   revalidatePath(`/stories/${storyId}`);
 }
@@ -376,11 +371,7 @@ export async function deleteStory(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("stories").delete().eq("id", id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(await supabase.from("stories").delete().eq("id", id).select("id"));
 
   revalidatePath(`/projects/${projectId}/board`);
   redirect(`/projects/${projectId}/board`);

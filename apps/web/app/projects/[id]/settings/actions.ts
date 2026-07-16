@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { assertRowAffected } from "@/lib/supabase/assert";
 import { clampVelocityWindow } from "@/lib/utils/velocity";
 
 export type InviteState = { error?: string; success?: string };
@@ -50,20 +51,19 @@ export async function updateProject(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("projects")
-    .update({
-      name,
-      description,
-      iteration_length: iterationLength,
-      point_scale: pointScale,
-      velocity_window: velocityWindow,
-    })
-    .eq("id", id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase
+      .from("projects")
+      .update({
+        name,
+        description,
+        iteration_length: iterationLength,
+        point_scale: pointScale,
+        velocity_window: velocityWindow,
+      })
+      .eq("id", id)
+      .select("id"),
+  );
   revalidatePath(`/projects/${id}/settings`);
 }
 
@@ -164,11 +164,9 @@ export async function deleteLabel(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("labels").delete().eq("id", id).eq("project_id", projectId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase.from("labels").delete().eq("id", id).eq("project_id", projectId).select("id"),
+  );
   revalidatePath(`/projects/${projectId}/settings`);
 }
 
@@ -212,14 +210,14 @@ export async function updateCustomStatus(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("custom_statuses")
-    .update({ name, color, is_done: isDone })
-    .eq("id", id)
-    .eq("project_id", projectId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase
+      .from("custom_statuses")
+      .update({ name, color, is_done: isDone })
+      .eq("id", id)
+      .eq("project_id", projectId)
+      .select("id"),
+  );
   revalidatePath(`/projects/${projectId}/settings`);
   revalidatePath(`/projects/${projectId}/board`);
 }
@@ -229,11 +227,12 @@ export async function deleteCustomStatus(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("custom_statuses")
     .delete()
     .eq("id", id)
-    .eq("project_id", projectId);
+    .eq("project_id", projectId)
+    .select("id");
   if (error) {
     // 23503 = the stories.custom_status FK — a column with cards on it
     // can't be removed (see the workflow_modes migration).
@@ -242,6 +241,7 @@ export async function deleteCustomStatus(formData: FormData) {
     }
     throw new Error(error.message);
   }
+  await assertRowAffected({ data, error });
   revalidatePath(`/projects/${projectId}/settings`);
   revalidatePath(`/projects/${projectId}/board`);
 }
@@ -268,14 +268,14 @@ export async function setStatusWipLimit(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("custom_statuses")
-    .update({ wip_limit: wipLimit })
-    .eq("id", statusId)
-    .eq("project_id", projectId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase
+      .from("custom_statuses")
+      .update({ wip_limit: wipLimit })
+      .eq("id", statusId)
+      .eq("project_id", projectId)
+      .select("id"),
+  );
   revalidatePath(`/projects/${projectId}/board`);
 }
 
@@ -341,10 +341,9 @@ export async function updateLane(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("swimlanes").update({ name }).eq("id", id).eq("project_id", projectId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase.from("swimlanes").update({ name }).eq("id", id).eq("project_id", projectId).select("id"),
+  );
   revalidatePath(`/projects/${projectId}/settings`);
   revalidatePath(`/projects/${projectId}/board`);
 }
@@ -354,7 +353,12 @@ export async function deleteLane(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("swimlanes").delete().eq("id", id).eq("project_id", projectId);
+  const { data, error } = await supabase
+    .from("swimlanes")
+    .delete()
+    .eq("id", id)
+    .eq("project_id", projectId)
+    .select("id");
   if (error) {
     // 23503 = the stories.swimlane_id FK — a lane with cards on it can't
     // be removed (see the free_mode_swimlanes migration).
@@ -363,6 +367,7 @@ export async function deleteLane(formData: FormData) {
     }
     throw new Error(error.message);
   }
+  await assertRowAffected({ data, error });
   revalidatePath(`/projects/${projectId}/settings`);
   revalidatePath(`/projects/${projectId}/board`);
 }
@@ -467,23 +472,23 @@ export async function updateRecurringStory(formData: FormData) {
   const { cadence, weekday, day_of_month } = parseRecurringCadence(formData);
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("recurring_stories")
-    .update({
-      title,
-      description,
-      custom_status_id: customStatusId,
-      swimlane_id: swimlaneId,
-      cadence,
-      weekday,
-      day_of_month,
-      is_active: isActive,
-    })
-    .eq("id", id)
-    .eq("project_id", projectId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase
+      .from("recurring_stories")
+      .update({
+        title,
+        description,
+        custom_status_id: customStatusId,
+        swimlane_id: swimlaneId,
+        cadence,
+        weekday,
+        day_of_month,
+        is_active: isActive,
+      })
+      .eq("id", id)
+      .eq("project_id", projectId)
+      .select("id"),
+  );
   revalidatePath(`/projects/${projectId}/settings`);
 }
 
@@ -492,10 +497,9 @@ export async function deleteRecurringStory(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("recurring_stories").delete().eq("id", id).eq("project_id", projectId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase.from("recurring_stories").delete().eq("id", id).eq("project_id", projectId).select("id"),
+  );
   revalidatePath(`/projects/${projectId}/settings`);
 }
 
@@ -586,10 +590,8 @@ export async function deleteIntegration(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("integrations").delete().eq("id", id).eq("project_id", projectId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase.from("integrations").delete().eq("id", id).eq("project_id", projectId).select("id"),
+  );
   revalidatePath(`/projects/${projectId}/settings`);
 }

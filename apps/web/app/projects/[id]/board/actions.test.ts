@@ -10,7 +10,12 @@ const rpcMock = vi.fn();
 // - `insertResult`: what `.insert(...).select().single()` resolves to
 const fixtures: Record<
   string,
-  { single?: { data: unknown; error: unknown }; list?: { data: unknown; error: unknown }; insertResult?: { data: unknown; error: unknown } }
+  {
+    single?: { data: unknown; error: unknown };
+    list?: { data: unknown; error: unknown };
+    insertResult?: { data: unknown; error: unknown };
+    writeResult?: { data: unknown; error: unknown };
+  }
 > = {};
 // Per-RPC-name canned results (TASK-56: the drop actions call move_story_board;
 // TASK-51: the backlog insert actions call insert_board_item). Default: success.
@@ -42,6 +47,35 @@ function chainable(table: string): {
   return node as unknown as ReturnType<typeof chainable>;
 }
 
+// update()/delete() write chains: chainable `.eq()`, awaitable directly (for
+// callers that don't read rows), and terminable with `.select("id")` returning
+// a row so `assertRowAffected` (TASK-58) sees an affected row. `writeResult`
+// per table overrides the default single-row success. For update(), the first
+// `.eq()` value is captured into updateMock like the old mock did.
+function writeChain(table: string, payload?: unknown) {
+  let captured = false;
+  const result = () => fixtures[table]?.writeResult ?? { data: [{ id: "mock-id" }], error: null };
+  const node = {
+    eq: (_col: string, val: string) => {
+      if (payload !== undefined && !captured) {
+        captured = true;
+        updateMock(table, payload, val);
+      }
+      return node;
+    },
+    select: () => Promise.resolve(result()),
+    then: (
+      onFulfilled?: ((value: { data: unknown; error: unknown }) => unknown) | null,
+      onRejected?: ((reason: unknown) => unknown) | null,
+    ) => Promise.resolve(result()).then(onFulfilled, onRejected),
+  };
+  return node as unknown as {
+    eq: (col: string, val: string) => typeof node;
+    select: () => Promise<{ data: unknown; error: unknown }>;
+    then: Promise<{ data: unknown; error: unknown }>["then"];
+  };
+}
+
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     rpc: (fn: string, args: unknown) => {
@@ -53,11 +87,7 @@ vi.mock("@/lib/supabase/server", () => ({
         upsertMock(payload);
         return Promise.resolve({ error: null });
       },
-      delete: () => ({
-        eq: () => ({
-          eq: () => Promise.resolve({ error: null }),
-        }),
-      }),
+      delete: () => writeChain(table),
       select: () => chainable(table),
       insert: (payload: unknown) => {
         insertMock(table, payload);
@@ -67,12 +97,7 @@ vi.mock("@/lib/supabase/server", () => ({
           }),
         };
       },
-      update: (payload: unknown) => ({
-        eq: (_col: string, id: string) => {
-          updateMock(table, payload, id);
-          return { eq: () => Promise.resolve({ error: null }) };
-        },
-      }),
+      update: (payload: unknown) => writeChain(table, payload),
     }),
   }),
 }));
@@ -164,6 +189,18 @@ describe("estimateStory", () => {
     await estimateStory(baseFormData());
 
     expect(updateMock).toHaveBeenCalledWith("stories", { points: 5 }, "story-1");
+  });
+
+  it("throws when the points update matches no row (TASK-58 zero-row guard)", async () => {
+    // The story was fetched successfully but the update hit zero rows (deleted
+    // or RLS-filtered between the read and the write) — must surface, not no-op.
+    fixtures.stories = {
+      single: { data: { story_type: "feature", points: null }, error: null },
+      writeResult: { data: [], error: null },
+    };
+    const { estimateStory } = await import("./actions");
+
+    await expect(estimateStory(baseFormData())).rejects.toThrow(/no matching row/i);
   });
 });
 

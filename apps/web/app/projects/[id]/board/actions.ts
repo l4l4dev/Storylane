@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { assertRowAffected } from "@/lib/supabase/assert";
 import { notifySlack } from "@/lib/integrations/slack";
 import { iterationDoneMessage, iterationStartedMessage, storyStateChangeMessage } from "@/lib/utils/slack";
 import {
@@ -599,14 +600,9 @@ export async function deleteBacklogDivider(formData: FormData) {
   const dividerId = String(formData.get("divider_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("backlog_dividers")
-    .delete()
-    .eq("id", dividerId)
-    .eq("project_id", projectId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase.from("backlog_dividers").delete().eq("id", dividerId).eq("project_id", projectId).select("id"),
+  );
 
   revalidatePath(`/projects/${projectId}/board`);
 }
@@ -738,14 +734,9 @@ export async function estimateStory(formData: FormData) {
     throw new Error("Invalid point value");
   }
 
-  const { error } = await supabase
-    .from("stories")
-    .update({ points })
-    .eq("id", storyId)
-    .eq("project_id", projectId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase.from("stories").update({ points }).eq("id", storyId).eq("project_id", projectId).select("id"),
+  );
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);

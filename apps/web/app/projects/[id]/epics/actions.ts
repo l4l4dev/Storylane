@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { assertRowAffected } from "@/lib/supabase/assert";
 import { nextPosition } from "@/lib/utils/stories";
 
 export async function createEpic(formData: FormData) {
@@ -48,14 +49,9 @@ export async function updateEpic(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("epics")
-    .update({ name, description, color })
-    .eq("id", id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(
+    await supabase.from("epics").update({ name, description, color }).eq("id", id).select("id"),
+  );
 
   revalidatePath(`/projects/${projectId}/epics`);
 }
@@ -65,11 +61,7 @@ export async function deleteEpic(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.from("epics").delete().eq("id", id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  await assertRowAffected(await supabase.from("epics").delete().eq("id", id).select("id"));
 
   revalidatePath(`/projects/${projectId}/epics`);
 }
