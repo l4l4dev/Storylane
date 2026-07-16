@@ -68,11 +68,6 @@ export function isUnestimatedFeature(type: string, points: number | null): boole
   return type === "feature" && points === null;
 }
 
-/** Position to append a new story at the bottom of the backlog. */
-export function nextPosition(stories: ReadonlyArray<{ position: number }>): number {
-  return stories.reduce((max, story) => Math.max(max, story.position), -1) + 1;
-}
-
 export type StoryFilter = {
   type?: string | null;
   assigneeId?: string | null;

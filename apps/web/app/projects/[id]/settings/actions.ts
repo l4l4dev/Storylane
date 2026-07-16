@@ -182,15 +182,7 @@ export async function createCustomStatus(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { data: existing } = await supabase
-    .from("custom_statuses")
-    .select("position")
-    .eq("project_id", projectId);
-  const position = (existing ?? []).reduce((max, s) => Math.max(max, s.position), -1) + 1;
-
-  const { error } = await supabase
-    .from("custom_statuses")
-    .insert({ project_id: projectId, name, color, position });
+  const { error } = await supabase.from("custom_statuses").insert({ project_id: projectId, name, color });
   if (error) {
     throw new Error(error.message);
   }
@@ -320,10 +312,7 @@ export async function createLane(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { data: existing } = await supabase.from("swimlanes").select("position").eq("project_id", projectId);
-  const position = (existing ?? []).reduce((max, s) => Math.max(max, s.position), -1) + 1;
-
-  const { error } = await supabase.from("swimlanes").insert({ project_id: projectId, name, position });
+  const { error } = await supabase.from("swimlanes").insert({ project_id: projectId, name });
   if (error) {
     throw new Error(error.message);
   }

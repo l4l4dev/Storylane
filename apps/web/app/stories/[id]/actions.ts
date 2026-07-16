@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
-import { nextPosition, pointScaleValues } from "@/lib/utils/stories";
+import { pointScaleValues } from "@/lib/utils/stories";
 
 export type StoryDetail = {
   id: string;
@@ -331,10 +331,7 @@ export async function addTask(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { data: existing } = await supabase.from("tasks").select("position").eq("story_id", storyId);
-  const { error } = await supabase
-    .from("tasks")
-    .insert({ story_id: storyId, title, position: nextPosition(existing ?? []) });
+  const { error } = await supabase.from("tasks").insert({ story_id: storyId, title });
 
   if (error) {
     throw new Error(error.message);

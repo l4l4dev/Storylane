@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
-import { nextPosition } from "@/lib/utils/stories";
 
 export async function createEpic(formData: FormData) {
   const projectId = String(formData.get("project_id"));
@@ -17,17 +16,11 @@ export async function createEpic(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { data: existing } = await supabase
-    .from("epics")
-    .select("position")
-    .eq("project_id", projectId);
-
   const { error } = await supabase.from("epics").insert({
     project_id: projectId,
     name,
     description,
     color,
-    position: nextPosition(existing ?? []),
   });
 
   if (error) {

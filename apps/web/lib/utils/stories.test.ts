@@ -3,7 +3,6 @@ import {
   filterStories,
   formatPoints,
   isUnestimatedFeature,
-  nextPosition,
   parsePoints,
   pointScaleValues,
   storyTypeUsesPoints,
@@ -18,16 +17,6 @@ describe("storyTypeUsesPoints", () => {
   it("returns false for chore and release", () => {
     expect(storyTypeUsesPoints("chore")).toBe(false);
     expect(storyTypeUsesPoints("release")).toBe(false);
-  });
-});
-
-describe("nextPosition", () => {
-  it("returns 0 for an empty backlog", () => {
-    expect(nextPosition([])).toBe(0);
-  });
-
-  it("returns one past the max position", () => {
-    expect(nextPosition([{ position: 0 }, { position: 4 }, { position: 2 }])).toBe(5);
   });
 });
 

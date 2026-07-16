@@ -17,7 +17,7 @@ import {
 } from "@/lib/utils/kanban";
 import { evaluateFocusDrop, type FocusDragTarget } from "@/lib/utils/focus";
 import { utcTodayKey } from "@/lib/utils/format";
-import { isUnestimatedFeature, nextPosition, parsePoints, pointScaleValues } from "@/lib/utils/stories";
+import { isUnestimatedFeature, parsePoints, pointScaleValues } from "@/lib/utils/stories";
 import {
   applyTransition,
   shouldAssignCurrentIteration,
@@ -116,18 +116,16 @@ export async function quickCreateStory(formData: FormData) {
     return;
   }
 
-  const [{ data: existing }, { data: currentRows }] = await Promise.all([
-    supabase.from("stories").select("position").eq("project_id", projectId),
+  const { data: currentRows } =
     target === "unstarted"
-      ? supabase
+      ? await supabase
           .from("iterations")
           .select("id")
           .eq("project_id", projectId)
           .neq("state", "done")
           .order("number", { ascending: false })
           .limit(1)
-      : Promise.resolve({ data: null }),
-  ]);
+      : { data: null };
 
   let iterationId: string | null = null;
   if (target === "unstarted") {
@@ -143,7 +141,6 @@ export async function quickCreateStory(formData: FormData) {
     story_type: "feature",
     state: target === "icebox" ? "unscheduled" : "unstarted",
     iteration_id: iterationId,
-    position: nextPosition(existing ?? []),
   });
 
   if (error) {
@@ -197,7 +194,6 @@ export async function quickCreateStoryFree(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { data: existing } = await supabase.from("stories").select("position").eq("project_id", projectId);
 
   // The composite FK also rejects a status of another project — this check
   // just turns that into a readable error.
@@ -216,7 +212,6 @@ export async function quickCreateStoryFree(formData: FormData) {
     title,
     story_type: "feature",
     custom_status_id: statusId,
-    position: nextPosition(existing ?? []),
   });
 
   if (error) {

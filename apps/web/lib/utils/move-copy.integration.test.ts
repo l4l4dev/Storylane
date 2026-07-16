@@ -106,11 +106,9 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
   });
 
   async function createStory(projectId: string, overrides: Record<string, unknown> = {}) {
-    const { data: existing } = await supabase.from("stories").select("position").eq("project_id", projectId);
-    const position = existing?.reduce((max, s) => Math.max(max, s.position), -1) ?? -1;
     const { data: story, error } = await supabase
       .from("stories")
-      .insert({ project_id: projectId, title: "Movable story", story_type: "feature", position: position + 1, ...overrides })
+      .insert({ project_id: projectId, title: "Movable story", story_type: "feature", ...overrides })
       .select("id")
       .single();
     if (error || !story) throw new Error(`Failed to create test story: ${error?.message}`);
@@ -176,6 +174,24 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
       .eq("story_id", result.story_id)
       .eq("action", "story.moved_in");
     expect(inLog).toHaveLength(1);
+  });
+
+  it("lands the moved story after every story already in the target project", async () => {
+    const occupant = await createStory(freeProjectId, { title: "Already in the target" });
+    const story = await createStory(trackerProjectId, { title: "Move me to the end" });
+
+    const { data, error } = await supabase.rpc("move_story_to_project", {
+      p_story_id: story.id,
+      p_target_project_id: freeProjectId,
+    });
+    expect(error).toBeNull();
+    const result = data as { story_id: string };
+
+    const { data: rows } = await supabase.from("stories").select("id, position").eq("project_id", freeProjectId);
+    const moved = rows?.find((r) => r.id === result.story_id);
+    const others = rows?.filter((r) => r.id !== result.story_id) ?? [];
+    expect(others.some((o) => o.id === occupant.id)).toBe(true);
+    expect(Math.max(...others.map((o) => o.position))).toBeLessThan(moved!.position);
   });
 
   it("moves a free story to a tracker project: state unscheduled, custom_status_id cleared", async () => {
