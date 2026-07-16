@@ -338,3 +338,40 @@ integrations (
   created_at   timestamptz DEFAULT now()
 )
 ```
+
+## Position ordering invariant
+
+`position` columns (stories, backlog_dividers, tasks, epics, custom_statuses,
+swimlanes) are an **ordering** key, not a dense index. Readers sort by it; no
+one reads it as an array index, and gaps are legal.
+
+Two rules keep it consistent (TASK-58, migrations `20260716000004`–`000005`):
+
+1. **Every INSERT into a positioned table takes `position` from that table's
+   sequence default — never an explicit value.** The one exception is
+   `copy_story_to_project`, which copies a source story's tasks preserving their
+   existing order (a rewrite, not an append); safe only because tasks have no
+   other dense-rewrite writer today — revisit if task reordering is added.
+   `backlog_dividers` draws from `stories_position_seq` (not its own), because it
+   shares the backlog's single order space with `stories.position`.
+2. **Rewrites (reorder/splice/compaction) only ever lower a position** to a
+   dense rank `0..n-1` within a scope. A rank is always `< n ≤` the sequence
+   frontier, so a subsequent default insert still lands last. Upward shifts are
+   forbidden — `promote_story_to_epic` opens its gap by inserting from the
+   sequence and then lowering, never by pushing existing rows past the frontier
+   (the bug that motivated rule 1).
+
+DB-enforced where the scope is flat: `UNIQUE(project_id, position)` on
+custom_statuses / swimlanes / epics and `UNIQUE(story_id, position)` on tasks,
+both `DEFERRABLE INITIALLY DEFERRED` (a rewrite collides mid-statement and
+reconciles at commit). `stories` and `backlog_dividers` are **not** constrained:
+their position is scoped by zone, not by a single column, and the two tables
+share one backlog order space, so no single-column UNIQUE expresses it.
+
+### Backlog zone predicate (canonical)
+
+A story belongs to the **backlog zone** when `iteration_id is null and state <>
+'unscheduled'`. The canonical definition lives in the DB, in `_splice_backlog`
+(`20260716000001`); `move_story_board`, the board's `buildBacklogRows`, and
+`lib/utils/kanban.ts` `zoneForStory` all mirror it and must be changed together
+with it. (decision-1: invariants are authoritative server-side.)

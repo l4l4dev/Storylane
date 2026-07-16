@@ -139,43 +139,11 @@ describe.skipIf(!RUN)("swap_adjacent RPC (integration)", () => {
     expect(byId.get(la!.id)).toBe(1);
   });
 
-  it("normalises a pre-existing duplicate-position state (dense-rewrite, AC #1)", async () => {
-    // The old non-atomic path could leave two rows sharing a position; a bare
-    // value-swap would preserve it. Seed a, b both at 0 and c at 1.
-    const [, , c] = await seedStatuses([0, 0, 1]);
-
-    // The RPC tie-breaks the duplicate 0s by id (order by position, id), which
-    // is a random UUID — so read the canonical pre-swap order the RPC will see
-    // rather than assuming seed order, then apply the one-step move in JS.
-    const { data: pre } = await asService
-      .from("custom_statuses")
-      .select("id")
-      .eq("project_id", projectId)
-      .order("position", { ascending: true })
-      .order("id", { ascending: true });
-    const preIds = (pre as { id: string }[]).map((r) => r.id);
-    const ci = preIds.indexOf(c);
-    const expected = [...preIds];
-    [expected[ci - 1], expected[ci]] = [expected[ci], expected[ci - 1]]; // move c up one
-
-    const { error } = await asOwner.rpc("swap_adjacent", {
-      p_project_id: projectId,
-      p_table: "custom_statuses",
-      p_id: c,
-      p_direction: "up",
-    });
-    expect(error).toBeNull();
-
-    // Positions are rewritten dense + unique (the normalisation), in the moved order.
-    const { data: post } = await asService
-      .from("custom_statuses")
-      .select("id, position")
-      .eq("project_id", projectId)
-      .order("position", { ascending: true });
-    const postRows = post as { id: string; position: number }[];
-    expect(postRows.map((r) => r.position)).toEqual([0, 1, 2]);
-    expect(postRows.map((r) => r.id)).toEqual(expected);
-  });
+  // The old "normalises a pre-existing duplicate-position state" test was
+  // dropped in TASK-58 slice 2b: custom_statuses now carries
+  // UNIQUE(project_id, position), so two rows sharing a position can no longer
+  // be seeded — the state it recovered from is unrepresentable. swap_adjacent's
+  // dense rewrite is still covered by the ordinary before/after ordering tests.
 
   it("rejects an invalid direction", async () => {
     const [a] = await seedStatuses([0, 1, 2]);

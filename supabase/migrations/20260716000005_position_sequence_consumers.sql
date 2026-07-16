@@ -29,11 +29,11 @@
 -- ============================================================
 
 -- Dividers join the stories sequence (they had no sequence of their own; their
--- position still defaulted to the literal 0 from 20260707000001).
+-- position still defaulted to the literal 0 from 20260707000001). USAGE on the
+-- sequence is already granted (20260716000004 + the blanket grant in
+-- 20260630000002), so no new grant is needed for dividers to draw from it.
 alter table public.backlog_dividers
   alter column position set default nextval('public.stories_position_seq');
-
-grant usage, select on sequence public.stories_position_seq to authenticated, service_role;
 
 -- Re-base every sequence above BOTH the highest position and the row count.
 -- 20260716000004 based them on max(position) + 1 only, which is short whenever

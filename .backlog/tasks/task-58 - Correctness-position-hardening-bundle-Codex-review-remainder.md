@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 16:12'
-updated_date: '2026-07-16 05:40'
+updated_date: '2026-07-16 09:12'
 labels:
   - bug
   - concurrency
@@ -32,7 +32,7 @@ Sequencing: pick up AFTER TASK-56/57 so position rules land once, not twice.
 <!-- AC:BEGIN -->
 - [x] #1 No remaining mutation reports success on zero affected rows (repo-wide check)
 - [x] #2 Position allocation is race-safe or collision-tolerant everywhere it is derived from max+1
-- [ ] #3 Position ordering invariant documented and DB-enforced where feasible
+- [x] #3 Position ordering invariant documented and DB-enforced where feasible
 - [ ] #4 Project creation is all-or-nothing including default statuses
 <!-- AC:END -->
 
@@ -60,4 +60,23 @@ SLICE 2a done (Opus 4.8, 2026-07-16) — AC#2(max+1 races):
 - 結果: repo-wide で stories.position の max+1 残存ゼロ(ライブ3関数を pg_get_functiondef で確認済み)。
 検証: supabase db reset で空DBから全migration適用 → 全506 pass(統合込み、SUPABASE_INTEGRATION=1)、tsc 0、eslint 0。move-copy 統合テストに着地位置の assert(具体値でなく順序)を追加し、関数を position=0 に細工して落ちること(expected 50 to be less than 0)を確認済み。database.types.ts は再生成不要(position は既に default 有りで Insert 型は optional のまま)。
 REMAINING: item 3(不変条件 doc + deferrable UNIQUE)、item 3d(zone 述語 canonical)、item 4(create_project RPC)、item (c)(guard helper 抽出)。
+
+2a FIX + promote fix (Opus 4.8, 2026-07-16) — commits 2933740, 9f49adb:
+- 2a の不変条件は誤りだった(訂正版): 「密化ライターも sequence を消費」ではなく「**全 INSERT が sequence を消費する**」が正しい条件。密化が書くのは rank 0..n-1 のみで max rank < 行数、全 INSERT が消費すれば 行数 ≤ frontier、ゆえに rank < frontier。rewrite(_splice_backlog/move_story_board/swap_adjacent)側は書き直し不要。
+- 実バグは「消費しない INSERT」が4経路残っていたこと: insert_board_item(story/divider とも explicit position 0)、backlog_dividers.position の default 0(stories と order 空間共有なので同一 sequence を消費させる必要)、dashboard の FREE_TEMPLATE_STATUSES(explicit 0..4 → 2b の UNIQUE 下では制約違反になる予備軍)、promote のループ insert(explicit X..X+k-1)。
+- migration 20260716000005: 上記を全て default 経由に。全5 sequence を greatest(max(position), 行数)+1 に再基準化(2a の max+1 のみは複数ゾーン密化時に不足)。
+- migration 20260716000006(promote): (1) positions lock を story_number lock より前に取得(assign_story_number トリガーが全 stories INSERT で story_number を取るため、insert_board_item の実効順は positions→story_number。逆順は AB-BA デッドロック)、(2) shift を backlog_dividers にも適用 = **2a 以前から存在した既存バグ**(k≥2 で divider 直前の story が divider を飛び越える。実機再現 'expected 3 to be less than 2')、(3) delete 後に project 全体を (position,id) rank で単調 compaction(単調写像は任意部分集合の順序を保存するのでゾーン述語不要、既存の膨張・重複も自己修復)。
+- probe 再現手順(2a のバグ): fresh project に insert_board_item ×5 → positions {0,1,2,3,4} なのに stories_position_seq.last_value が不動。→ 密化された zone に後から default insert すると中央着地・position 衝突。
+- テスト設計の教訓: 「密化 zone より上に着地する」assert は sequence が偶然高いと無条件に通る(実際それで見逃した)。frontier は **2つの probe の差分**で測ること(position-sequence.integration.test.ts)。sabotage で落ちることを確認済み。
+検証: db reset で空DBから全migration適用 → 511 pass(統合込み)、tsc 0、eslint 0。
+REMAINING: 2b(不変条件 doc + deferrable UNIQUE)、item 3d(zone 述語 canonical)、item 4(create_project RPC)、item (c)(guard helper 抽出)。2b の spec 文言は訂正版の不変条件で書くこと。
+
+SLICE 2b done (Opus 4.8, 2026-07-16) — AC#3(不変条件 doc + DB 制約)+ item 3d(zone 述語 canonical):
+- migration 20260716000007: custom_statuses/swimlanes/epics に UNIQUE(project_id,position)、tasks に UNIQUE(story_id,position)、全て DEFERRABLE INITIALLY DEFERRED(swap_adjacent 等の mid-statement 衝突を commit で解消)。制約付与前に per-scope で (position,id) 順に resequence(promote 産の position=0 群・旧 max+1 race の重複を解消。単調 remap なので既存順序保存)。stories/backlog_dividers は zone スコープ+2テーブル共有につき単純 UNIQUE 不可で対象外。
+- spec/data-model.md に『Position ordering invariant』節を追加(訂正版の不変条件: 全 INSERT が sequence を消費 / rewrite は rank<n しか書かない / 上方向 shift 禁止、copy_story_to_project の task コピーのみ例外)+『Backlog zone predicate (canonical)』節(item 3d: canonical は DB の _splice_backlog、move_story_board/buildBacklogRows/kanban.ts zoneForStory は mirror)。
+- 冗長だった 005 の stories_position_seq 再 grant を1行削除(004 で既出、rls-security-reviewer が無害と確認)。
+- 既存テスト削除: swap-adjacent の『normalises a pre-existing duplicate-position state』は UNIQUE 制約で二重 position が表現不能になり前提消滅。dense-rewrite 自体は通常の swap テストがカバー。
+- 追加テスト: position-sequence.integration.test.ts に UNIQUE 違反(23505)の検証。
+検証: db reset で空DBから全 migration 適用 → 511 pass(統合込み)、tsc 0、eslint 0。deferrable UNIQUE 下で swap_adjacent の full-zone rewrite が通ることを実機確認(A,B,C→B,A,C)。rls-security-reviewer で 005/006/007 をレビュー → 穴なし(has_function_privilege/relrowsecurity/grant-lockdown allowlist を実測突合)。
+REMAINING: item 4(create_project transactional RPC = AC#4)、item (c)(guard helper 抽出: require_project_role/current_iteration/_assert_not_last_owner)。
 <!-- SECTION:NOTES:END -->

@@ -164,4 +164,20 @@ describe.skipIf(!RUN)("position sequence invariant (integration)", () => {
     expect(after - before).toBeGreaterThanOrEqual(6);
     expect(after).toBeGreaterThan(Math.max(...(seeded ?? []).map((s) => s.position)));
   });
+
+  // TASK-58 slice 2b: UNIQUE(project_id, position), deferrable but enforced at
+  // commit. Forcing a collision by hand must be rejected.
+  it("rejects two custom_statuses sharing a position in a project", async () => {
+    const { data: first, error: firstError } = await asService
+      .from("custom_statuses")
+      .insert({ project_id: freeProjectId, name: "constraint probe A", color: "#000000" })
+      .select("position")
+      .single();
+    expect(firstError).toBeNull();
+
+    const { error } = await asService
+      .from("custom_statuses")
+      .insert({ project_id: freeProjectId, name: "constraint probe B", color: "#000000", position: first!.position });
+    expect(error?.code).toBe("23505");
+  });
 });
