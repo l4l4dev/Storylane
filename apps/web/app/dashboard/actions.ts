@@ -60,18 +60,22 @@ export async function searchUserForNewProject(query: string): Promise<NewProject
 // Not exported: a "use server" file may only export async functions — a
 // plain object export here breaks the whole module ("A 'use server' file
 // can only export async functions, found object").
-const FREE_TEMPLATE_STATUSES: Record<FreeTemplate, { name: string; color: string; position: number; is_done: boolean }[]> = {
+// Order comes from the array order: custom_statuses.position is assigned by its
+// sequence default, evaluated per row in VALUES order. Passing explicit
+// positions here would leave the sequence behind the rows it never issued, and
+// the next created column would land mid-board.
+const FREE_TEMPLATE_STATUSES: Record<FreeTemplate, { name: string; color: string; is_done: boolean }[]> = {
   daily: [
-    { name: "Todo", color: "#6b7280", position: 0, is_done: false },
-    { name: "This week", color: "#a855f7", position: 1, is_done: false },
-    { name: "Today", color: "#f59e0b", position: 2, is_done: false },
-    { name: "In progress", color: "#3b82f6", position: 3, is_done: false },
-    { name: "Done", color: "#22c55e", position: 4, is_done: true },
+    { name: "Todo", color: "#6b7280", is_done: false },
+    { name: "This week", color: "#a855f7", is_done: false },
+    { name: "Today", color: "#f59e0b", is_done: false },
+    { name: "In progress", color: "#3b82f6", is_done: false },
+    { name: "Done", color: "#22c55e", is_done: true },
   ],
   basic: [
-    { name: "To do", color: "#6b7280", position: 0, is_done: false },
-    { name: "Doing", color: "#3b82f6", position: 1, is_done: false },
-    { name: "Done", color: "#22c55e", position: 2, is_done: true },
+    { name: "To do", color: "#6b7280", is_done: false },
+    { name: "Doing", color: "#3b82f6", is_done: false },
+    { name: "Done", color: "#22c55e", is_done: true },
   ],
 };
 
