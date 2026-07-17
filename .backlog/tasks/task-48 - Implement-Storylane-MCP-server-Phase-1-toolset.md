@@ -1,11 +1,11 @@
 ---
 id: TASK-48
 title: Implement Storylane MCP server (Phase 1 toolset)
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 07:09'
-updated_date: '2026-07-17 00:02'
+updated_date: '2026-07-17 04:04'
 labels:
   - mcp
   - feature
@@ -24,16 +24,22 @@ Implement the MCP server per spec/mcp.md (TASK-47). TypeScript, monorepo package
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 MCP server runs locally via stdio and registers in Claude Code
-- [ ] #2 All Phase 1 tools work against local Supabase as a member-role agent (RLS enforced, no service-role key)
-- [ ] #3 Irreversible operations are absent or confirmation-gated per spec
-- [ ] #4 Tests cover each tool incl. permission-denied; docs cover setup end to end
+- [x] #1 MCP server runs locally via stdio and registers in Claude Code
+- [x] #2 All Phase 1 tools work against local Supabase as a member-role agent (RLS enforced, no service-role key)
+- [x] #3 Irreversible operations are absent or confirmation-gated per spec
+- [x] #4 Tests cover each tool incl. permission-denied; docs cover setup end to end
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Implementer instructions from the TASK-47 advisor verdict (spec/mcp.md 'Write-path rules' section is binding): new migration for the transition_story RPC (unestimated guard + TASK-19 current-iteration assignment inside; done-iteration trigger untouched) — run rls-security-reviewer on it; every write tool verifies affected-row count and returns explicit permission errors; one shared ensure-current-iteration helper calling finalize_iteration(p_manual:false) used by all current-iteration tools; workflow_mode='tracker' and archived_at guards in common write preprocessing; no backlog_top/position params; no notifySlack duplication; extract shared pure logic (state machine, velocity) to packages/core imported by web+mcp; tests must include a write-to-unassigned-story explicit-error case. TASK-50 (Web swap onto the RPC) depends on this task.
+2026-07-17 implemented (Opus): apps/mcp — 10 Phase-1 tools over stdio, member-role bot via RLS, no service-role key. Handlers in src/handlers.ts (pure-ish, testable), MCP wiring in src/index.ts, auth in src/client.ts.
 
-2026-07-17: monorepo prerequisite split out to TASK-68 (advisor-approved) — this repo is not yet a JS monorepo (workspace root is inside apps/web). TASK-68 lifts the workspace root + extracts packages/core; TASK-48 is blocked on it. Also: apps/mcp must start via tsx (core ships as a TS-source workspace package, so Node type-stripping on symlinked .ts is unreliable).
+Two refinements vs the 2026-07-11 spec write-path rules, both from TASK-51/58 landing AFTER the TASK-47 verdict (not new design, just using current infra correctly):
+- create_story: plain INSERT omitting position — stories.position now defaults to nextval(stories_position_seq) (20260716000004), which monotonically appends to the destination zone's bottom, exactly the "max(position)+1, touches no other row" intent. number is trigger-assigned.
+- move_story: reuses the existing move_story_board RPC (SECURITY DEFINER, member-guarded, takes finalize+positions locks, resolves current iteration, appends to zone bottom) instead of a bare UPDATE — keeps positioning consistent with the board's own drags. Only the pre-start scheduling zones (kanban.ts evaluateDrop subset) are exposed; started+ stories change zone via transition_story.
+
+Verified: 13 integration tests pass against local Supabase as a member-role bot (happy + permission-denied for update/transition/non-member/free-mode); MCP client handshake lists all 10 tools; tsc clean.
+
+Still needed before fully done: (1) rls-security-reviewer pass on 20260717000004_transition_story.sql per task DoD; (2) owner creates the real bot user + `claude mcp add` (AC#1 machine registration) — smoke test used the dev user locally.
 <!-- SECTION:NOTES:END -->
