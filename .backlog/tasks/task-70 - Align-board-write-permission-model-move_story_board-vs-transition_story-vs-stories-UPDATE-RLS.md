@@ -7,6 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-17 13:14'
+updated_date: '2026-07-17 13:31'
 labels:
   - web
   - db
@@ -29,3 +30,13 @@ Codex review 2026-07-17 (verified in-session): the stories UPDATE RLS policy (20
 - [ ] #2 move_story_board, transition_story, and the stories UPDATE policy enforce the same rule; integration test proves a non-author non-assignee member is treated identically on all three paths
 - [ ] #3 rls-security-reviewer pass on the resulting migration
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @l4l4dev
+created: 2026-07-17 13:31
+---
+Owner decision 2026-07-17: option (a) — Pivotal-style. Any member may operate any story on the board (move, reorder, transition); viewer stays read-only. Implementation direction: relax the stories UPDATE policy and transition_story's ownership check to project_role in (owner, member), keep move_story_board as-is, and document the rule in spec/rls.md. The strict author/assignee rule is dropped everywhere so all three surfaces agree.
+---
+<!-- COMMENTS:END -->
