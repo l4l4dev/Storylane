@@ -8,7 +8,7 @@ import {
 } from "@/lib/utils/kanban";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
 import { filterStories, pointScaleValues } from "@/lib/utils/stories";
-import { calculateVelocity } from "@/lib/utils/velocity";
+import { calculateVelocity } from "@storylane/core";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
 import { FreeBoard, type CustomStatus, type Swimlane } from "@/components/features/board/free-board";

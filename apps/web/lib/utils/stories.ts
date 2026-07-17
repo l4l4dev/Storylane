@@ -1,8 +1,21 @@
 // Pure, framework-free helpers for stories. Kept side-effect free so they can
 // be unit-tested without a Supabase client or React.
-
-export const STORY_TYPES = ["feature", "bug", "chore", "release"] as const;
-export type StoryType = (typeof STORY_TYPES)[number];
+//
+// STORY_TYPES/StoryType/storyTypeUsesPoints/pointScaleValues live in
+// @storylane/core (TASK-68), shared with the MCP server; re-exported here so
+// this module's other importers are unaffected.
+//
+// STORY_STATES/StoryState below are this module's OWN, narrower definition
+// (no 'unscheduled') — used only to key STORY_STATE_META, since an Icebox
+// card renders no state badge via this map. This is intentionally NOT merged
+// with story-state.ts's 7-value StoryState (which includes 'unscheduled' and
+// backs the transition state machine): the two never collide in the same
+// import (nothing imports StoryState from both modules), and unifying them
+// would force STORY_STATE_META to answer what an Icebox row's badge looks
+// like — a product decision out of scope for TASK-68's behavior-preserving
+// restructuring.
+import { STORY_TYPES, storyTypeUsesPoints, pointScaleValues, type StoryType } from "@storylane/core";
+export { STORY_TYPES, storyTypeUsesPoints, pointScaleValues, type StoryType };
 
 export const STORY_STATES = [
   "unstarted",
@@ -29,36 +42,6 @@ export const STORY_STATE_META: Record<StoryState, { label: string; className: st
   accepted: { label: "Accepted", className: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300" },
   rejected: { label: "Rejected", className: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" },
 };
-
-/**
- * Points only apply to `feature` and `bug` stories. `chore` and `release` are
- * excluded from point counts (see SPEC velocity logic), so their points stay null.
- */
-export function storyTypeUsesPoints(type: string): boolean {
-  return type === "feature" || type === "bug";
-}
-
-// Point scales (see spec/features.md "Story Management"): points are chosen
-// from the project's scale, never free numeric input.
-const POINT_SCALES: Record<string, readonly number[]> = {
-  fibonacci: [0, 1, 2, 3, 5, 8, 13],
-  linear: [0, 1, 2, 3],
-};
-
-/**
- * Resolves a project's selectable point values from its `point_scale` /
- * `custom_points` columns. Unknown scale names fall back to fibonacci (the
- * DB default) so a bad row can't leave the UI with no options.
- */
-export function pointScaleValues(
-  pointScale: string,
-  customPoints: ReadonlyArray<number> | null | undefined,
-): number[] {
-  if (pointScale === "custom") {
-    return [...(customPoints ?? [])];
-  }
-  return [...(POINT_SCALES[pointScale] ?? POINT_SCALES.fibonacci)];
-}
 
 /**
  * An unestimated `feature` cannot be started (see spec/features.md).

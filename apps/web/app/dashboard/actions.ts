@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import { FREE_TEMPLATES, type FreeTemplate, type InviteSearchResult } from "@/lib/types";
-import { clampVelocityWindow } from "@/lib/utils/velocity";
+import { clampVelocityWindow } from "@storylane/core";
 
 export type NewProjectInviteResult = InviteSearchResult;
 

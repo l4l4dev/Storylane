@@ -39,11 +39,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Type check
+      - name: Type check (core)
+        run: pnpm --filter @storylane/core exec tsc --noEmit
+
+      - name: Test (core)
+        run: pnpm --filter @storylane/core run test
+
+      - name: Type check (web)
         run: pnpm --filter web exec tsc --noEmit
 
-      - name: Lint
+      - name: Lint (web)
         run: pnpm --filter web run lint
 
-      - name: Run tests
+      - name: Run tests (web)
         run: pnpm --filter web run test
+
+      # Type checking a Server Component doesn't catch a browser-only
+      # dependency leaking into the server bundle (TASK-67 regression: an
+      # @dnd-kit import in a Server-Component-imported module broke build
+      # but not tsc/eslint/vitest) — build is the only gate that catches it.
+      - name: Build (web)
+        run: pnpm --filter web run build

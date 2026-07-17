@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCurrentIteration } from "@/app/projects/[id]/board/actions";
-import { calculateVelocity } from "@/lib/utils/velocity";
+import { calculateVelocity } from "@storylane/core";
 import { InlineCreatePanel } from "@/components/features/projects/inline-create-panel";
 import { InviteFailedBanner, parseInviteFailedCount } from "@/components/features/projects/invite-failed-banner";
 import type { ProjectCardData } from "@/components/features/projects/project-card";

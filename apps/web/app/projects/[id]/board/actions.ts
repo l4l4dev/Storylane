@@ -23,7 +23,7 @@ import {
   shouldAssignCurrentIteration,
   type StoryState,
   type StoryTransitionAction,
-} from "@/lib/utils/story-state";
+} from "@storylane/core";
 
 // Single UTC date convention shared with the DB — see utcTodayKey.
 

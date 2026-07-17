@@ -5,7 +5,7 @@ import {
   availableTransitions,
   transitionLabel,
   type StoryState as StoryLifecycleState,
-} from "@/lib/utils/story-state";
+} from "@storylane/core";
 import { formatPoints, isUnestimatedFeature } from "@/lib/utils/stories";
 import { Button } from "@/components/ui/button";
 

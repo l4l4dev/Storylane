@@ -9,7 +9,7 @@ import {
   applyTransition,
   canTransition,
   type StoryState,
-} from "./story-state";
+} from "@storylane/core";
 
 export const BACKLOG_COLUMN_ID = "backlog";
 export const ICEBOX_COLUMN_ID = "icebox";
