@@ -14,7 +14,7 @@ dependencies:
   - TASK-48
   - TASK-3
 priority: medium
-ordinal: 1660
+ordinal: 1600
 ---
 
 ## Description

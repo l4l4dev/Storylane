@@ -1,0 +1,28 @@
+---
+id: TASK-77
+title: >-
+  UI polish batch (UX review 2026-07-17): List skeleton, filter clear-all, badge
+  radius, StoryPeek focus, activity paging, view persistence
+status: To Do
+assignee:
+  - '@claude-sonnet-5'
+created_date: '2026-07-17 13:16'
+labels:
+  - web
+  - ux
+milestone: m-0
+dependencies: []
+priority: low
+ordinal: 1800
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Polish items from the fable-advisor UX review 2026-07-17, fine to land after deploy. (1) board/loading.tsx shows a 4-column kanban skeleton but the default view is List — swap to a list-shaped skeleton. (2) BoardFilters has no 'Clear all', and filtered views show unfiltered pts totals with no cue — add clear-all and consider a 'filtered' hint near the totals. (3) Badge radius language is 3-way inconsistent: hand-rolled rounded-full pills (story-card.tsx:149, story-list-row.tsx:75,80, kanban-board.tsx:148, iterations/page.tsx:100-106) vs shared Badge — unify on the shared Badge. (4) StoryPeek receives no focus on open and sits at DOM end — move focus to the panel on open (non-modal stays). (5) Activity page hard-caps at 20 with no 'load more' — add paging. (6) View selection (List/Kanban/Focus) resets to List every mount while collapse state persists — OWNER DECISION first: persist per project in localStorage, or keep resetting; implement the chosen behavior.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 Each of the six items implemented or explicitly rejected with the owner's decision noted
+<!-- AC:END -->

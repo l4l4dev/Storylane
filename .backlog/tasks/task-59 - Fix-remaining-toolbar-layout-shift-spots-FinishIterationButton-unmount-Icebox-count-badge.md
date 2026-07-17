@@ -14,7 +14,7 @@ labels:
 milestone: m-0
 dependencies: []
 priority: low
-ordinal: 1100
+ordinal: 600
 ---
 
 ## Description

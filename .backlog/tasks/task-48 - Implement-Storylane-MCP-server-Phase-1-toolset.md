@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 07:09'
-updated_date: '2026-07-17 04:04'
+updated_date: '2026-07-17 13:14'
 labels:
   - mcp
   - feature
@@ -28,6 +28,8 @@ Implement the MCP server per spec/mcp.md (TASK-47). TypeScript, monorepo package
 - [x] #2 All Phase 1 tools work against local Supabase as a member-role agent (RLS enforced, no service-role key)
 - [x] #3 Irreversible operations are absent or confirmation-gated per spec
 - [x] #4 Tests cover each tool incl. permission-denied; docs cover setup end to end
+- [ ] #5 transition_story takes SELECT ... FOR UPDATE on the story row (rls-security-reviewer 2026-07-17 reproduced a lost-update race: concurrent accept/reject both succeed, last write wins silently, corrupting velocity/completed_at); regression covered
+- [ ] #6 transition_story grant line revokes from public, authenticated per the TASK-55 lockdown convention (style alignment)
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -42,4 +44,6 @@ Two refinements vs the 2026-07-11 spec write-path rules, both from TASK-51/58 la
 Verified: 13 integration tests pass against local Supabase as a member-role bot (happy + permission-denied for update/transition/non-member/free-mode); MCP client handshake lists all 10 tools; tsc clean.
 
 Still needed before fully done: (1) rls-security-reviewer pass on 20260717000004_transition_story.sql per task DoD; (2) owner creates the real bot user + `claude mcp add` (AC#1 machine registration) — smoke test used the dev user locally.
+
+2026-07-17 rls-security-reviewer verdict on 20260717000004_transition_story.sql: PASS except (1) High — missing FOR UPDATE on the story read + no state re-check on write; live-reproduced lost update between concurrent accept/reject. Fix: add 'for update' to the SELECT at lines 42-45 (state-machine CASE then re-validates against committed state). (2) Low — revoke omits 'authenticated' (no privilege gap, style only). Everything else verified clean incl. viewer exclusion, completed_at trigger, finalize advisory-lock ordering. Codex review independently found the same race. Remaining for closure: these two fixes + owner's bot-user creation and claude mcp add (AC#1).
 <!-- SECTION:NOTES:END -->

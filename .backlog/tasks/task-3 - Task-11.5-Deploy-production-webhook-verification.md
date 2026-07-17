@@ -13,7 +13,7 @@ dependencies:
   - TASK-10
   - TASK-23
 priority: high
-ordinal: 1650
+ordinal: 1500
 ---
 
 ## Description
