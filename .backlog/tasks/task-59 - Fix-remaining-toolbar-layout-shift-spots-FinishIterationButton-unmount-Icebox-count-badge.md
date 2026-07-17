@@ -3,11 +3,11 @@ id: TASK-59
 title: >-
   Fix remaining toolbar layout-shift spots: FinishIterationButton unmount,
   Icebox count badge
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-12 09:27'
-updated_date: '2026-07-16 04:20'
+updated_date: '2026-07-17 14:29'
 labels:
   - web
   - ux
@@ -29,3 +29,9 @@ TASK-35 fixed the Icebox toggle's own view-switch layout shift (fable-advisor re
 - [ ] #2 The Icebox toggle's count badge crossing 0/1 stories never shifts the view switcher's position
 - [ ] #3 Tests cover both, following kanban-board-toolbar.test.tsx's pattern
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+FinishIterationButton now always-mounts with invisible wrapper instead of returning null when not visible, preventing IterationGoalBar from shifting left/right on canFinishIteration flip. Icebox toggle's count badge always renders with invisible wrapper instead of conditional JSX, preventing view-switcher nudge on 0/1 cross. Both apply TASK-35's pattern (invisible+aria-hidden+tabIndex=-1). Updated kanban-board.test.tsx to verify invisibility attributes instead of empty DOM. Verified via unit test + tsc + eslint + full test suite (413/413). Owner deferred manual browser verification to bulk pre-deploy pass (2026-07-17) — not blocking completion.
+<!-- SECTION:FINAL_SUMMARY:END -->
