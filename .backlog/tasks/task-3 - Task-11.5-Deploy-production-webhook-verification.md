@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-07 08:44'
-updated_date: '2026-07-16 15:45'
+updated_date: '2026-07-17 00:02'
 labels: []
 milestone: m-1
 dependencies:
@@ -34,6 +34,8 @@ Supabase hosted migration push, Vercel deploy (root apps/web, Node 22, env vars 
 Pre-deploy gate (owner, 2026-07-11): before executing this deploy task, the owner does a full manual UI review of the completed 2026-07-11 UX batch (TASK-32..46). Do not start deploy work until that review has happened and its findings are triaged.
 
 Supabase free-tier inactivity notice received 2026-07-16: the hosted project (iwmacbzlfeufzedjguce) is scheduled for auto-pause due to no API activity (dev runs against local Supabase). Before starting this task, check the Supabase dashboard and unpause the project if it is paused (recoverable within 90 days of pausing; owner decided 2026-07-16 to leave it paused until deploy rather than keep-alive or upgrade).
+
+2026-07-17 (from TASK-47/48/68 advisor verdict): after TASK-68 lifts the pnpm workspace root to the repo root, the Vercel project must set Root Directory = apps/web, rely on the repo-root pnpm-lock.yaml, keep 'Include source files outside of the Root Directory' enabled (so packages/core is bundled), and the build log should show pnpm 11 (packageManager moves to the root package.json).
 <!-- SECTION:NOTES:END -->
 
 ## Comments

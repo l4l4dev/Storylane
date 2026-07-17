@@ -5,13 +5,13 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-11 07:09'
-updated_date: '2026-07-16 04:20'
+updated_date: '2026-07-17 00:02'
 labels:
   - mcp
   - feature
 milestone: m-3
 dependencies:
-  - TASK-47
+  - TASK-68
 priority: medium
 ordinal: 800
 ---
@@ -34,4 +34,6 @@ Implement the MCP server per spec/mcp.md (TASK-47). TypeScript, monorepo package
 
 <!-- SECTION:NOTES:BEGIN -->
 Implementer instructions from the TASK-47 advisor verdict (spec/mcp.md 'Write-path rules' section is binding): new migration for the transition_story RPC (unestimated guard + TASK-19 current-iteration assignment inside; done-iteration trigger untouched) — run rls-security-reviewer on it; every write tool verifies affected-row count and returns explicit permission errors; one shared ensure-current-iteration helper calling finalize_iteration(p_manual:false) used by all current-iteration tools; workflow_mode='tracker' and archived_at guards in common write preprocessing; no backlog_top/position params; no notifySlack duplication; extract shared pure logic (state machine, velocity) to packages/core imported by web+mcp; tests must include a write-to-unassigned-story explicit-error case. TASK-50 (Web swap onto the RPC) depends on this task.
+
+2026-07-17: monorepo prerequisite split out to TASK-68 (advisor-approved) — this repo is not yet a JS monorepo (workspace root is inside apps/web). TASK-68 lifts the workspace root + extracts packages/core; TASK-48 is blocked on it. Also: apps/mcp must start via tsx (core ships as a TS-source workspace package, so Node type-stripping on symlinked .ts is unreliable).
 <!-- SECTION:NOTES:END -->
