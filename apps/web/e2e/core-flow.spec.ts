@@ -15,9 +15,7 @@ test("create project, add a story, accept it, and roll over the iteration", asyn
   await page.getByRole("textbox", { name: "Name", exact: true }).fill(projectName);
   await page.getByRole("button", { name: "Create" }).click();
 
-  // createProject redirects back to /dashboard; open the new project from there.
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await page.getByRole("link", { name: projectName }).click();
+  // createProject redirects straight to the new project's board (TASK-32).
   await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/board$/);
 
   const projectId = page.url().match(/\/projects\/([0-9a-f-]+)\/board/)?.[1];
