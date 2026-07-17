@@ -218,9 +218,17 @@ export function KanbanBoard({
           >
             <Snowflake className="text-sky-600 dark:text-sky-400" />
             Icebox
-            {iceboxStories.length > 0 && (
-              <span className="text-xs text-muted-foreground">{iceboxStories.length}</span>
-            )}
+            {/* Always rendered (TASK-59) to reserve layout space; hidden when
+                the Icebox is empty. Unlike the List/Kanban/Focus toggle's
+                unmounting, the badge appearing/disappearing on the 0/1 boundary
+                nudges the view-switcher and filters (spec/ux-principles.md
+                principle 3). */}
+            <span
+              className={iceboxStories.length > 0 ? "text-xs text-muted-foreground" : "invisible"}
+              aria-hidden={iceboxStories.length === 0 || undefined}
+            >
+              {iceboxStories.length}
+            </span>
           </Button>
           {toolbar}
           {currentIteration && (
@@ -454,10 +462,6 @@ export function FinishIterationButton({
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  if (!visible) {
-    return null;
-  }
-
   // UTC boundary, matching finalize_iteration's `v_today` — a local-time
   // comparison could label a finish "Skip" (or vice-versa) the RPC then
   // does the opposite of (fable-advisor F1, 2026-07-15).
@@ -493,51 +497,60 @@ export function FinishIterationButton({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) {
-          setError(null);
-          setInfo(null);
-        }
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
-          Finish iteration
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {notStarted ? `Skip iteration #${iterationNumber}?` : `Finish iteration #${iterationNumber}?`}
-          </DialogTitle>
-          <DialogDescription>
-            {notStarted
-              ? `Iteration #${iterationNumber} starts ${formatDate(iterationStartDate)} and hasn't begun. Finishing it now skips it — its stories move to iteration #${iterationNumber + 1}, and it won't count toward velocity. This can't be undone.`
-              : "This closes the iteration today instead of on its scheduled end date. Unaccepted stories move to the next iteration. This can't be undone."}
-          </DialogDescription>
-        </DialogHeader>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        {info && <p className="text-sm text-muted-foreground">{info}</p>}
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={isPending}>
-            {info ? "Done" : "Cancel"}
+    /* Always mounted (TASK-59) to reserve the layout space for the Finish
+       iteration button, but only visible when the user can actually finish.
+       Unmounting would shift IterationGoalBar left/right whenever
+       canFinishIteration flips (rare but possible on role re-grant/revoke,
+       spec/ux-principles.md principle 3). Same pattern as Icebox toggle
+       (TASK-35): invisible reserves the box, aria-hidden/tabIndex exclude it
+       from the document's semantics. */
+    <div className={visible ? undefined : "invisible"} aria-hidden={!visible || undefined} tabIndex={visible ? undefined : -1}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (next) {
+            setError(null);
+            setInfo(null);
+          }
+        }}
+      >
+        <DialogTrigger asChild>
+          <Button type="button" variant="outline" size="sm">
+            Finish iteration
           </Button>
-          {!info && (
-            <Button type="button" onClick={handleConfirm} disabled={isPending}>
-              {isPending
-                ? notStarted
-                  ? "Skipping…"
-                  : "Finishing…"
-                : notStarted
-                  ? "Skip iteration"
-                  : "Finish iteration"}
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {notStarted ? `Skip iteration #${iterationNumber}?` : `Finish iteration #${iterationNumber}?`}
+            </DialogTitle>
+            <DialogDescription>
+              {notStarted
+                ? `Iteration #${iterationNumber} starts ${formatDate(iterationStartDate)} and hasn't begun. Finishing it now skips it — its stories move to iteration #${iterationNumber + 1}, and it won't count toward velocity. This can't be undone.`
+                : "This closes the iteration today instead of on its scheduled end date. Unaccepted stories move to the next iteration. This can't be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          {info && <p className="text-sm text-muted-foreground">{info}</p>}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={isPending}>
+              {info ? "Done" : "Cancel"}
             </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            {!info && (
+              <Button type="button" onClick={handleConfirm} disabled={isPending}>
+                {isPending
+                  ? notStarted
+                    ? "Skipping…"
+                    : "Finishing…"
+                  : notStarted
+                    ? "Skip iteration"
+                    : "Finish iteration"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

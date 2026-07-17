@@ -1,11 +1,11 @@
 ---
 id: TASK-75
 title: Unify remaining raw date renders onto formatDate (YYYY/M/D)
-status: In Progress
+status: Done
 assignee:
   - '@claude-haiku-4-5'
 created_date: '2026-07-17 13:15'
-updated_date: '2026-07-17 13:54'
+updated_date: '2026-07-17 14:12'
 labels:
   - web
   - ux
@@ -37,3 +37,9 @@ lib/utils/focus.ts:117 (Focus Done-group date label) deliberately does NOT call 
 
 Tests: updated focus.test.ts's raw-date label assertion from "2026-07-07" to "2026/7/7". All other date-adjacent suites (kanban-board, board-list-view) pass unmodified since they only asserted on iteration numbers/points, not date text. tsc --noEmit and eslint clean.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Routed kanban-board/board-list-view/iterations-page raw date renders through the shared formatDate(); focus.ts got its own string-math formatter to preserve its no-Date/timezone-drift-free policy. Verified via updated focus.test.ts assertion + tsc + eslint + fable-advisor review (no findings against this task). Owner deferred manual browser verification to a bulk pre-deploy review pass (2026-07-17) — not blocking completion.
+<!-- SECTION:FINAL_SUMMARY:END -->

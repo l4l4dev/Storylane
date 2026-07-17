@@ -3,11 +3,11 @@ id: TASK-74
 title: >-
   Story transition/checklist/comment form actions: pending state + inline errors
   instead of route error boundary
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-17 13:15'
-updated_date: '2026-07-17 14:06'
+updated_date: '2026-07-17 14:12'
 labels:
   - web
   - ux
@@ -55,3 +55,9 @@ created: 2026-07-17 14:06
 fable-advisor follow-up recommendation (not applied in this batch, needs owner decision): in production, Next.js Server Actions mask thrown Error messages behind a generic message + digest -- so the try/catch pattern this task introduced only surfaces the real failure reason in dev, not prod. deleteEpic (TASK-72) already avoids this by returning a {ok:true}/{ok:false,message} result object instead of throwing; transitionStory/estimateStory/addTask/toggleTask/deleteTask/addComment (and the pre-existing free-board/quick-add mutations) still throw. Advisor suggests a follow-up task to convert the remaining throw-based server actions to the result-object pattern, assignee @claude-sonnet-5, placed before TASK-3 (deploy). Not created yet -- asking the owner first per the "no follow-up tasks without approval" rule.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+transition-buttons/task-checklist/comment-thread converted from bare form actions to useTransition + try/catch with inline error rendering; transition-buttons disables the whole action group while pending per fable-advisor's post-implementation fix (transition_story lacks FOR UPDATE, TASK-48 AC#5). Verified via 42 automated tests (double-click + rejection paths) + tsc + eslint + fable-advisor review (fix applied and re-verified stable across 3 full-suite runs). Owner deferred manual browser verification to a bulk pre-deploy review pass (2026-07-17) — not blocking completion.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,11 +1,11 @@
 ---
 id: TASK-73
 title: IME composition guard for Escape/Enter across inline editors
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-17 13:15'
-updated_date: '2026-07-17 13:45'
+updated_date: '2026-07-17 14:12'
 labels:
   - web
   - ux
@@ -34,3 +34,9 @@ Extracted the story-detail-panel.tsx isComposing guard into a shared helper, lib
 
 Tests: lib/utils/keyboard.test.ts (unit), plus one composition-simulating test added to quick-add-composer.test.tsx and kanban-board.test.tsx (IterationGoalBar) per AC #2's "at least the composer and one goal editor". All via fireEvent.keyDown(el, { key, isComposing: true }), the convention already used by story-detail-panel.test.tsx. 74/74 relevant tests pass; tsc --noEmit and eslint clean.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Shared isImeComposing helper applied to every Escape/Enter inline-editor handler missing it (quick-add-composer, IterationGoalBar, IterationGoalInput, note input, free-board column editors). Verified via unit test + composition-simulating tests in quick-add-composer.test.tsx and kanban-board.test.tsx + tsc + eslint + fable-advisor review (no findings against this task). Owner deferred manual browser/IME verification to a bulk pre-deploy review pass (2026-07-17) — not blocking completion.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -200,7 +200,7 @@ describe("FinishIterationButton", () => {
     } satisfies FinishResult);
   });
 
-  it("renders nothing when not visible (viewer role)", () => {
+  it("hides the button with invisible class while reserving layout space when not visible (viewer role, TASK-59)", () => {
     const { container } = render(
       <FinishIterationButton
         projectId="p1"
@@ -210,7 +210,13 @@ describe("FinishIterationButton", () => {
         visible={false}
       />,
     );
-    expect(container).toBeEmptyDOMElement();
+    // The wrapper div is always present (to reserve layout space and prevent
+    // IterationGoalBar from shifting when canFinishIteration flips), but it's
+    // hidden when not visible using the same pattern as Icebox toggle (TASK-35).
+    const wrapper = container.querySelector("div");
+    expect(wrapper).toHaveClass("invisible");
+    expect(wrapper).toHaveAttribute("aria-hidden", "true");
+    expect(wrapper).toHaveAttribute("tabindex", "-1");
   });
 
   it("requires confirmation before calling finishIteration, and sends the iteration id", async () => {

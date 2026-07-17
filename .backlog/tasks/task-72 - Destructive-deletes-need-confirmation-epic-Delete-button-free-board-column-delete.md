@@ -3,11 +3,11 @@ id: TASK-72
 title: >-
   Destructive deletes need confirmation: epic Delete button, free-board column
   delete
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-17 13:15'
-updated_date: '2026-07-17 14:06'
+updated_date: '2026-07-17 14:12'
 labels:
   - web
   - ux
@@ -45,3 +45,9 @@ fable-advisor design review (2026-07-17, post-implementation): approve-with-fixe
 
 Optional refinement applied: free-board.tsx ColumnMenu's Confirm delete button was disabled (never clickable) whenever the column had cards, which the advisor noted reads closer to principle 1's disabled-dead-control anti-pattern than the "explain in place" allowance, even though the explanation text is right above it. Changed to hide the Confirm delete button entirely when storyCount > 0, leaving only the explanation and Cancel -- matches principle 1's actual guidance ("replace the blocked action", not "show it disabled"). Test updated: "disables the confirm button for a non-empty column" -> "offers only Cancel for a non-empty column".
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Epic delete moved behind overflow menu + confirm dialog (in-dialog error, no route-boundary crash); free-board column delete requires a second confirm click naming the card-count consequence, Confirm button hidden (not disabled) when non-empty. Verified via 25 automated tests + tsc + eslint + fable-advisor design review (approve-with-fixes, fix applied). Owner deferred manual browser verification to a bulk pre-deploy review pass (2026-07-17) — not blocking completion.
+<!-- SECTION:FINAL_SUMMARY:END -->
