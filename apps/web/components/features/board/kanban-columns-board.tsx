@@ -29,7 +29,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { dropStory } from "@/app/projects/[id]/board/actions";
-import { beforeAnchorId, findContainer, moveBetweenContainers, reorderContainer, storyById, sumPoints } from "@/lib/utils/board";
+import { beforeAnchorId, findContainer, moveBetweenContainers, storyById, sumPoints } from "@/lib/utils/board";
+import { reorderContainer } from "@/lib/utils/board-dnd";
 import { STATE_COLUMNS, columnForStory, evaluateDrop, type KanbanColumnId, type StateColumnId } from "@/lib/utils/kanban";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import { MutationErrorBanner } from "./mutation-error-banner";

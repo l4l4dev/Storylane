@@ -1,6 +1,8 @@
-// Shared helpers for the unified backlog + iterations board.
+// Pure, framework-free helpers for the unified backlog + iterations board —
+// imported by Server Components (board/page.tsx, iterations/page.tsx) as well
+// as client board views, so nothing here may pull in a browser-only
+// dependency (see board-dnd.ts for the one helper that needs @dnd-kit).
 
-import { arrayMove } from "@dnd-kit/sortable";
 import { storyTypeUsesPoints } from "./stories";
 
 export type GroupableStory = { iteration_id: string | null };
@@ -145,26 +147,3 @@ export function beforeAnchorId<T extends { id: string; kind?: string }>(
   return `${next.kind ?? "story"}:${next.id}`;
 }
 
-/**
- * Moves the item `activeId` to sit where `overId` currently sits — the same
- * single-element relocation dnd-kit's own `arrayMove` performs, exposed as
- * a helper so
- * callers always run it against a container's *full*, unfiltered item
- * list. `activeId`/`overId` only ever come from currently-rendered
- * (visible) rows, but indexing into the full list still finds them
- * correctly, and relocating just the dragged item leaves every other item —
- * hidden by an active filter or not — in the same relative order, so no two
- * rows can ever collide on the dense position written afterwards.
- */
-export function reorderContainer<T extends { id: string }>(
-  items: ReadonlyArray<T>,
-  activeId: string,
-  overId: string,
-): T[] {
-  const oldIndex = items.findIndex((item) => item.id === activeId);
-  const newIndex = items.findIndex((item) => item.id === overId);
-  if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
-    return [...items];
-  }
-  return arrayMove([...items], oldIndex, newIndex);
-}

@@ -21,7 +21,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CircleCheckBig, CircleDot, ListTodo, PlayCircle, type LucideIcon } from "lucide-react";
 import { setStoryFocus } from "@/app/projects/[id]/board/actions";
-import { beforeAnchorId, findContainer, moveBetweenContainers, reorderContainer, storyById } from "@/lib/utils/board";
+import { beforeAnchorId, findContainer, moveBetweenContainers, storyById } from "@/lib/utils/board";
+import { reorderContainer } from "@/lib/utils/board-dnd";
 import {
   FOCUS_DRAG_TARGETS,
   evaluateFocusDrop,
