@@ -83,16 +83,87 @@ describe("buildBacklogRows", () => {
     ]);
   });
 
-  it("passes a note through inside whichever group it falls in, without affecting point accounting", () => {
+  it("passes a note through without affecting point accounting, when it doesn't sit on a capacity boundary", () => {
+    const a = { id: "a", points: 2, story_type: "feature" };
+    const b = { id: "b", points: 5, story_type: "feature" };
+    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], 8, 3);
+    expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 7, manualBreakDividerId: undefined },
+      { kind: "story", story: a },
+      { kind: "note", divider: { id: "d1", label: "Phase 2", kind: "note" } },
+      { kind: "story", story: b },
+    ]);
+  });
+
+  // TASK-60: a note inserted directly above the first story of an automatic
+  // (capacity) split used to attach to the end of the *previous* group
+  // instead — because it was pushed into the current group's row buffer the
+  // moment it was seen, before the following story's cost was known to
+  // trigger the split. A manual break never had this asymmetry (it closes
+  // its group unconditionally, before anything after it is seen), so the
+  // fix holds notes in a pending buffer until the next story/break resolves
+  // which group actually owns that position.
+  it("attaches a note to the group it opens, not the one it closes, when it sits right on an automatic split", () => {
     const a = { id: "a", points: 5, story_type: "feature" };
     const b = { id: "b", points: 5, story_type: "feature" };
     const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], 8, 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 5, manualBreakDividerId: undefined },
       { kind: "story", story: a },
-      { kind: "note", divider: { id: "d1", label: "Phase 2", kind: "note" } },
       { kind: "iteration-header", number: 4, points: 5, manualBreakDividerId: undefined },
+      { kind: "note", divider: { id: "d1", label: "Phase 2", kind: "note" } },
       { kind: "story", story: b },
+    ]);
+  });
+
+  it("still attaches a note to the group it closes when the following item stays in that group", () => {
+    const a = { id: "a", points: 5, story_type: "feature" };
+    const b = { id: "b", points: 5, story_type: "feature" };
+    // a+note+b all fit in one group (capacity 20) — the note has nothing to
+    // resolve toward, so it stays right where it was inserted.
+    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], 20, 3);
+    expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 10, manualBreakDividerId: undefined },
+      { kind: "story", story: a },
+      { kind: "note", divider: { id: "d1", label: "Phase 2", kind: "note" } },
+      { kind: "story", story: b },
+    ]);
+  });
+
+  // fable-advisor review 2026-07-17 (post-TASK-60 fix): a manual break
+  // resolves the pending-notes question the opposite way an automatic split
+  // does — the break always closes its group unconditionally the instant
+  // it's seen, so a note right before it never has anywhere else to go but
+  // the group it closes (the group *before* the break), not the one after.
+  it("attaches a note to the group it closes (not opens) when it sits right before a manual break", () => {
+    const a = { id: "a", points: 1, story_type: "feature" };
+    const b = { id: "b", points: 1, story_type: "feature" };
+    const rows = buildBacklogRows(
+      [storyItem(a), noteItem("d1", "Phase 2"), iterationBreakItem("brk"), storyItem(b)],
+      8,
+      3,
+    );
+    expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 1, manualBreakDividerId: undefined },
+      { kind: "story", story: a },
+      { kind: "note", divider: { id: "d1", label: "Phase 2", kind: "note" } },
+      { kind: "iteration-break", divider: { id: "brk", label: "", kind: "iteration_break" } },
+      { kind: "iteration-header", number: 4, points: 1, manualBreakDividerId: "brk" },
+      { kind: "story", story: b },
+    ]);
+  });
+
+  // fable-advisor review 2026-07-17 (post-TASK-60 fix): a trailing note with
+  // nothing after it must still flush from `pendingNotes` into the final
+  // group — the loop only flushes when a subsequent story/break is seen, so
+  // this exercises the post-loop flush that catches the no-next-item case.
+  it("flushes a trailing note into the final group when nothing follows it", () => {
+    const a = { id: "a", points: 1, story_type: "feature" };
+    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2")], 8, 3);
+    expect(rows).toEqual([
+      { kind: "iteration-header", number: 3, points: 1, manualBreakDividerId: undefined },
+      { kind: "story", story: a },
+      { kind: "note", divider: { id: "d1", label: "Phase 2", kind: "note" } },
     ]);
   });
 

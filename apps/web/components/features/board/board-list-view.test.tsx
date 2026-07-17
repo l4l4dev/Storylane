@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { IterationHeaderRow, RowInsertMenu } from "./board-list-view";
+import { DividerRow, InsertBetweenRows, IterationHeaderRow, RowInsertMenu } from "./board-list-view";
 
 const { deleteBacklogDividerMock, createBacklogDividerMock } = vi.hoisted(() => ({
   deleteBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
@@ -177,6 +177,123 @@ describe("RowInsertMenu", () => {
 
     await user.click(screen.getByRole("button", { name: "Insert note or iteration break" }));
     await user.click(screen.getByRole("menuitem", { name: "Insert iteration break below" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onError).toHaveBeenCalledWith("Not a member of this project");
+  });
+});
+
+// TASK-60: DividerRow's delete used to be a fire-and-forget `void` call —
+// a rejected delete left the row on screen with no explanation.
+describe("DividerRow", () => {
+  const onError = vi.fn();
+
+  beforeEach(() => {
+    deleteBacklogDividerMock.mockClear();
+    deleteBacklogDividerMock.mockResolvedValue(undefined);
+    onError.mockClear();
+  });
+
+  function divider() {
+    return { id: "d1", label: "Phase 2", kind: "note" as const };
+  }
+
+  it("deletes the divider and reports nothing on success", async () => {
+    render(<DividerRow projectId="p1" divider={divider()} onError={onError} />);
+
+    fireEvent.click(screen.getByRole("button", { name: 'Remove "Phase 2"' }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(deleteBacklogDividerMock).toHaveBeenCalledTimes(1);
+    const formData = deleteBacklogDividerMock.mock.calls[0]?.[0];
+    expect(formData?.get("project_id")).toBe("p1");
+    expect(formData?.get("divider_id")).toBe("d1");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed delete via onError instead of failing silently", async () => {
+    deleteBacklogDividerMock.mockRejectedValueOnce(new Error("Not a member of this project"));
+    render(<DividerRow projectId="p1" divider={divider()} onError={onError} />);
+
+    fireEvent.click(screen.getByRole("button", { name: 'Remove "Phase 2"' }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onError).toHaveBeenCalledWith("Not a member of this project");
+  });
+});
+
+// TASK-60: the hover insert-between affordance's note/break actions used to
+// be fire-and-forget `void` calls — a rejected insert silently did nothing,
+// and a failed note submission had already cleared the typed text.
+describe("InsertBetweenRows", () => {
+  const onError = vi.fn();
+
+  beforeEach(() => {
+    createBacklogDividerMock.mockClear();
+    createBacklogDividerMock.mockResolvedValue(undefined);
+    onError.mockClear();
+  });
+
+  it("clears the input and closes on a successful note insert", async () => {
+    render(<InsertBetweenRows projectId="p1" beforeItemId="story:next" onError={onError} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Note" }));
+    const input = screen.getByRole("textbox", { name: "New divider label" });
+    fireEvent.change(input, { target: { value: "Phase 2" } });
+    fireEvent.submit(input.closest("form")!);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const formData = createBacklogDividerMock.mock.calls[0]?.[0];
+    expect(formData?.get("kind")).toBe("note");
+    expect(formData?.get("label")).toBe("Phase 2");
+    expect(formData?.get("before_item_id")).toBe("story:next");
+    expect(screen.queryByRole("textbox", { name: "New divider label" })).not.toBeInTheDocument();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("keeps the typed label and reports via onError when the note insert fails", async () => {
+    createBacklogDividerMock.mockRejectedValueOnce(new Error("Not a member of this project"));
+    render(<InsertBetweenRows projectId="p1" beforeItemId="story:next" onError={onError} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Note" }));
+    const input = screen.getByRole("textbox", { name: "New divider label" });
+    fireEvent.change(input, { target: { value: "Phase 2" } });
+    fireEvent.submit(input.closest("form")!);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onError).toHaveBeenCalledWith("Not a member of this project");
+    expect(screen.getByRole("textbox", { name: "New divider label" })).toHaveValue("Phase 2");
+  });
+
+  it("inserts an iteration break at the given position", async () => {
+    render(<InsertBetweenRows projectId="p1" beforeItemId="story:next" onError={onError} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Iteration break" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const formData = createBacklogDividerMock.mock.calls[0]?.[0];
+    expect(formData?.get("kind")).toBe("iteration_break");
+    expect(formData?.get("before_item_id")).toBe("story:next");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed iteration break insert via onError instead of failing silently", async () => {
+    createBacklogDividerMock.mockRejectedValueOnce(new Error("Not a member of this project"));
+    render(<InsertBetweenRows projectId="p1" beforeItemId="story:next" onError={onError} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Iteration break" }));
 
     await act(async () => {
       await Promise.resolve();

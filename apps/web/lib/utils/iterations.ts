@@ -88,13 +88,24 @@ export type BacklogRow<T> =
  * at all.
  *
  * Two passes: first walk the items exactly like
- * `splitBacklogIntoVirtualIterations` — a `note` joins whichever group it
- * currently falls in without affecting the point count, an
- * `iteration_break` unconditionally closes the current group — but buffer
- * each group's rows instead of emitting them immediately, since the
- * header needs the group's total *before* its first row. Then flatten,
- * assigning sequential numbers only to groups (a break's own row carries
- * none).
+ * `splitBacklogIntoVirtualIterations` — an `iteration_break` unconditionally
+ * closes the current group — but buffer each group's rows instead of
+ * emitting them immediately, since the header needs the group's total
+ * *before* its first row. Then flatten, assigning sequential numbers only
+ * to groups (a break's own row carries none).
+ *
+ * A `note` doesn't affect the point count, but which group it lands in
+ * isn't decided the moment it's seen — a note sitting right where an
+ * automatic (capacity) split falls doesn't yet know whether it precedes
+ * that split or opens the group after it. It's held in `pendingNotes` until
+ * the next story or break resolves the question. A capacity split flushes
+ * pending notes into the group that *opens* (the split is only discovered
+ * once the following story's cost is known, by which point the note must
+ * already belong to that story's new group). A manual break instead flushes
+ * them into the group it *closes* — the break itself always closes
+ * unconditionally the moment it's seen, so a note right before it never has
+ * anywhere else to go; this matches how a manual break already attached
+ * notes correctly before this fix.
  */
 export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string }>(
   items: ReadonlyArray<BacklogRowItem<T>>,
@@ -111,6 +122,14 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
   let groupRows: BacklogRow<T>[] = [];
   let sum = 0;
   let groupHasItem = false;
+  let pendingNotes: BacklogDivider[] = [];
+
+  function flushPendingNotes() {
+    for (const divider of pendingNotes) {
+      groupRows.push({ kind: "note", divider });
+    }
+    pendingNotes = [];
+  }
 
   function closeGroup() {
     segments.push({ kind: "group", rows: groupRows, points: sum });
@@ -122,8 +141,9 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
   for (const item of items) {
     if (item.kind === "divider") {
       if (item.divider.kind === "note") {
-        groupRows.push({ kind: "note", divider: item.divider });
+        pendingNotes.push(item.divider);
       } else {
+        flushPendingNotes();
         closeGroup();
         segments.push({ kind: "break", divider: item.divider });
       }
@@ -134,10 +154,12 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
     if (groupHasItem && sum + cost > capacity) {
       closeGroup();
     }
+    flushPendingNotes();
     groupRows.push({ kind: "story", story: item.story });
     sum += cost;
     groupHasItem = true;
   }
+  flushPendingNotes();
   // Flush the trailing group whenever it has content, or when a manual
   // break is the very last item — otherwise the group it opens (empty or
   // not) would render with no header, asymmetric with a *leading* break

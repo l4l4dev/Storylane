@@ -162,7 +162,11 @@ function SortableListRow({
   return (
     <SortableItem id={item.id}>
       {item.kind === "divider" ? (
-        <DividerRow projectId={projectId} divider={item.divider} />
+        // Unreachable in practice — Current/Icebox ListItems are always
+        // stories (see the doc comment above) — kept type-correct with a
+        // no-op rather than threading onError through two more prop layers
+        // for a branch that never renders.
+        <DividerRow projectId={projectId} divider={item.divider} onError={() => {}} />
       ) : (
         <StoryListRow story={item.story} projectId={projectId} pointScale={pointScale} />
       )}
@@ -175,14 +179,19 @@ function SortableListRow({
 // own row was folded into the `IterationHeaderRow` it creates instead
 // (TASK-43); `divider.kind` is still checked generically since
 // `BacklogDivider` itself covers both kinds.
-function DividerRow({
+export function DividerRow({
   projectId,
   divider,
   insertMenu,
+  onError,
 }: {
   projectId: string;
   divider: BacklogDivider;
   insertMenu?: ReactNode;
+  // Surfaces a failed delete in the shared banner (TASK-60) — this used to
+  // be a fire-and-forget `void` call, so a rejected delete left the row on
+  // screen with no explanation for why it didn't disappear.
+  onError: (message: string) => void;
 }) {
   const [, startTransition] = useTransition();
   const label = divider.kind === "note" ? divider.label : "Iteration break";
@@ -191,8 +200,12 @@ function DividerRow({
     const formData = new FormData();
     formData.set("project_id", projectId);
     formData.set("divider_id", divider.id);
-    startTransition(() => {
-      void deleteBacklogDivider(formData);
+    startTransition(async () => {
+      try {
+        await deleteBacklogDivider(formData);
+      } catch (err) {
+        onError(err instanceof Error ? err.message : "Failed to remove");
+      }
     });
   }
 
@@ -544,7 +557,7 @@ function SortableBacklogRow({
       {row.kind === "story" ? (
         <StoryListRow story={row.story} projectId={projectId} pointScale={pointScale} insertMenu={insertMenu} />
       ) : (
-        <DividerRow projectId={projectId} divider={row.divider} insertMenu={insertMenu} />
+        <DividerRow projectId={projectId} divider={row.divider} insertMenu={insertMenu} onError={onError} />
       )}
     </SortableItem>
   );
@@ -555,7 +568,18 @@ function SortableBacklogRow({
 // enough. `beforeItemId` is a `"story:<id>"` / `"divider:<id>"`
 // pair identifying the exact spot server-side (see board/actions.ts
 // "createBacklogDivider"); `null` means "at the end".
-function InsertBetweenRows({ projectId, beforeItemId }: { projectId: string; beforeItemId: string | null }) {
+export function InsertBetweenRows({
+  projectId,
+  beforeItemId,
+  onError,
+}: {
+  projectId: string;
+  beforeItemId: string | null;
+  // Surfaces a failed insert in the shared banner (TASK-60) — both actions
+  // below used to be fire-and-forget `void` calls, so a rejected insert
+  // silently did nothing.
+  onError: (message: string) => void;
+}) {
   const [addingNote, setAddingNote] = useState(false);
   const [label, setLabel] = useState("");
   const [, startTransition] = useTransition();
@@ -574,10 +598,16 @@ function InsertBetweenRows({ projectId, beforeItemId }: { projectId: string; bef
     if (beforeItemId) {
       formData.set("before_item_id", beforeItemId);
     }
-    setLabel("");
-    setAddingNote(false);
-    startTransition(() => {
-      void createBacklogDivider(formData);
+    startTransition(async () => {
+      try {
+        await createBacklogDivider(formData);
+        // Only clear/close on success — a failure keeps the typed label so
+        // the user doesn't have to retype it after seeing the error.
+        setLabel("");
+        setAddingNote(false);
+      } catch (err) {
+        onError(err instanceof Error ? err.message : "Failed to add note");
+      }
     });
   }
 
@@ -588,8 +618,12 @@ function InsertBetweenRows({ projectId, beforeItemId }: { projectId: string; bef
     if (beforeItemId) {
       formData.set("before_item_id", beforeItemId);
     }
-    startTransition(() => {
-      void createBacklogDivider(formData);
+    startTransition(async () => {
+      try {
+        await createBacklogDivider(formData);
+      } catch (err) {
+        onError(err instanceof Error ? err.message : "Failed to insert iteration break");
+      }
     });
   }
 
@@ -820,7 +854,7 @@ function BacklogSection({
       </header>
       <SortableContext items={[...visibleRowIds]} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-10 flex-col gap-1.5">
-          <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowIds[0]} />
+          <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowIds[0]} onError={onError} />
           {rows.map((row, index) => {
             // A manual break renders nothing of its own — buildBacklogRows
             // guarantees the very next row is always the iteration-header
@@ -862,7 +896,11 @@ function BacklogSection({
                     manualBreakDividerId={row.manualBreakDividerId}
                   />
                   {groupComposer}
-                  <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowIds[index + 1]} />
+                  <InsertBetweenRows
+                    projectId={projectId}
+                    beforeItemId={nextRealRowIds[index + 1]}
+                    onError={onError}
+                  />
                 </Fragment>
               );
             }
@@ -883,7 +921,7 @@ function BacklogSection({
                   />
                 )}
                 {groupComposer}
-                <InsertBetweenRows projectId={projectId} beforeItemId={belowId} />
+                <InsertBetweenRows projectId={projectId} beforeItemId={belowId} onError={onError} />
               </Fragment>
             );
           })}
@@ -1177,7 +1215,7 @@ export function BoardListView({
         {activeItem && (
           <div className="max-w-3xl rotate-1 cursor-grabbing">
             {activeItem.kind === "divider" ? (
-              <DividerRow projectId={projectId} divider={activeItem.divider} />
+              <DividerRow projectId={projectId} divider={activeItem.divider} onError={setMutationError} />
             ) : (
               <StoryListRow story={activeItem.story} projectId={projectId} pointScale={pointScale} />
             )}
