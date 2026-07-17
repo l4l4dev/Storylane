@@ -5,10 +5,12 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-17 14:08'
+updated_date: '2026-07-17 15:25'
 labels:
   - web
   - ux
-dependencies: []
+dependencies:
+  - TASK-79
 priority: medium
 type: enhancement
 ordinal: 1250

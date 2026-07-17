@@ -7,13 +7,14 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-17 13:16'
+updated_date: '2026-07-17 15:17'
 labels:
   - web
   - ux
 milestone: m-0
 dependencies: []
 priority: low
-ordinal: 1800
+ordinal: 750
 ---
 
 ## Description
@@ -26,3 +27,12 @@ Polish items from the fable-advisor UX review 2026-07-17, fine to land after dep
 <!-- AC:BEGIN -->
 - [ ] #1 Each of the six items implemented or explicitly rejected with the owner's decision noted
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-17 15:17
+---
+Owner decision recorded (2026-07-18, via /ux-review High-fix approval): item 6 view persistence — persist the List/Kanban/Focus selection per project (localStorage, mirroring useCollapsedGroups). Also: the 2026-07-18 10-expert panel independently re-flagged item 2 (clear-all, 5 experts) and confirmed the filtered-empty-state hint ('No stories match the current filters.' when activeCount > 0 hides everything). Sibling task for the rest of that panel's High findings: TASK-79.
+---
+<!-- COMMENTS:END -->
