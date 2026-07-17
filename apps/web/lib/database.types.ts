@@ -825,6 +825,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      assert_not_last_owner: {
+        Args: { p_project_id: string; p_user_id: string }
+        Returns: undefined
+      }
       change_member_role: {
         Args: { p_project_id: string; p_role: string; p_user_id: string }
         Returns: undefined
@@ -897,6 +901,10 @@ export type Database = {
         Args: { p_project_id: string; p_user_id: string }
         Returns: undefined
       }
+      require_project_role: {
+        Args: { p_project_id: string; p_roles: string[] }
+        Returns: undefined
+      }
       search_users_for_invite: {
         Args: { p_project_id: string; p_query: string }
         Returns: {
@@ -931,6 +939,10 @@ export type Database = {
       toggle_project_favorite: {
         Args: { p_favorite: boolean; p_project_id: string }
         Returns: undefined
+      }
+      transition_story: {
+        Args: { p_action: string; p_story_id: string }
+        Returns: Json
       }
       update_story: {
         Args: {

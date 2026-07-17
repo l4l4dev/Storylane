@@ -204,6 +204,72 @@ describe("estimateStory", () => {
   });
 });
 
+// TASK-50: transitionStory is a thin caller of the transition_story RPC
+// (TASK-48) — the state machine, unestimated-feature guard, and
+// start-from-backlog current-iteration assignment all now live server-side in
+// the RPC, proven directly against the real DB in
+// apps/mcp/src/handlers.integration.test.ts. These assert the action forwards
+// the right args, reads the RPC's result for the Slack message, and surfaces
+// the RPC's errors verbatim.
+describe("transitionStory", () => {
+  beforeEach(() => {
+    rpcMock.mockReset();
+    for (const key of Object.keys(rpcResults)) {
+      delete rpcResults[key];
+    }
+    fixtures.stories = { single: { data: { number: 7, title: "A story" }, error: null } };
+  });
+
+  function formData(action = "start") {
+    const data = new FormData();
+    data.set("project_id", "project-1");
+    data.set("story_id", "story-1");
+    data.set("action", action);
+    return data;
+  }
+
+  it("calls transition_story with the story id and action", async () => {
+    rpcResults.transition_story = { data: { story_id: "story-1", state: "started" }, error: null };
+    const { transitionStory } = await import("./actions");
+
+    await transitionStory(formData("start"));
+
+    expect(rpcMock).toHaveBeenCalledWith("transition_story", { p_story_id: "story-1", p_action: "start" });
+  });
+
+  it("surfaces the RPC's unestimated-feature guard verbatim", async () => {
+    rpcResults.transition_story = { data: null, error: { message: "An unestimated feature cannot be started" } };
+    const { transitionStory } = await import("./actions");
+
+    await expect(transitionStory(formData("start"))).rejects.toThrow("An unestimated feature cannot be started");
+  });
+
+  it("surfaces the RPC's no-active-iteration error verbatim", async () => {
+    rpcResults.transition_story = { data: null, error: { message: "No active iteration" } };
+    const { transitionStory } = await import("./actions");
+
+    await expect(transitionStory(formData("start"))).rejects.toThrow("No active iteration");
+  });
+
+  it("surfaces the RPC's not-author-or-assignee denial verbatim", async () => {
+    rpcResults.transition_story = {
+      data: null,
+      error: { code: "42501", message: "Not allowed to transition this story (you are not its owner, author, or assignee)" },
+    };
+    const { transitionStory } = await import("./actions");
+
+    await expect(transitionStory(formData("start"))).rejects.toThrow(/not allowed to transition/i);
+  });
+
+  it("throws the fetch error when the story can't be read (not found / not a member)", async () => {
+    fixtures.stories = { single: { data: null, error: { message: "Story not found" } } };
+    const { transitionStory } = await import("./actions");
+
+    await expect(transitionStory(formData("start"))).rejects.toThrow("Story not found");
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+});
+
 // TASK-51: the backlog insert paths are thin callers of insert_board_item —
 // the insert + reposition is one transaction in the RPC. These assert the
 // action forwards the right kind/payload/anchor; the actual splice + dense
