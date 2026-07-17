@@ -1,3 +1,10 @@
+---
+id: doc-4
+title: Completed task archive — Tasks 1-15 (pre-Backlog.md era)
+type: other
+created_date: '2026-07-17 12:41'
+updated_date: '2026-07-17 12:41'
+---
 # Storylane — Completed Task Archive
 
 Completed sections moved out of `TASK.md` (2026-07-02) to keep the active task

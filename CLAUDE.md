@@ -32,7 +32,7 @@ Most work here is done by AI agents — keep context small:
 - Never read generated files in full (`apps/web/lib/database.types.ts`, lockfiles) — Grep for the type/entry you need
 - Read only the spec section relevant to the task (via the SPEC.md index). Work items live in
   Backlog.md — read only the current task (`backlog task view <id> --plain`); TASK.md is just a
-  short remaining-work index, and completed history lives in `TASK_ARCHIVE.md` (read on demand only)
+  short remaining-work index, and completed history lives in Backlog doc-4 (read on demand only)
 - Prefer Grep/Glob or partial reads (offset/limit) over full reads for files longer than ~300 lines
 - Run long-lived commands (`pnpm dev`, `supabase start`) in the background and read only the log tail
 - While iterating, run targeted tests (`pnpm exec vitest run <path>`); run the full `pnpm test` only before commit

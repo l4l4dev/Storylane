@@ -4,7 +4,8 @@ Reference `SPEC.md` for data models, RLS policies, and feature details.
 
 > **2026-07-07 より、新規の作業タスクは Backlog.md（`backlog` CLI）で管理する。**
 > このファイルは「残作業の索引」と「iOS 展開の控え」のみ。
-> 完了済みタスク（Tasks 1〜15 の Web 実装）の経緯は `TASK_ARCHIVE.md` — 履歴が必要な時だけ読むこと。
+> 完了済みタスク（Tasks 1〜15 の Web 実装）の経緯は Backlog doc **doc-4**
+> （`backlog doc view doc-4`）— 履歴が必要な時だけ読むこと。
 
 ## 開発順序方針（2026-07-01 変更）
 
