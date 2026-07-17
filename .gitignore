@@ -43,7 +43,9 @@ apps/ios/*.playground/playground.xcworkspace
 # ============================================================
 # Web / Node.js
 # ============================================================
-apps/web/node_modules/
+# pnpm workspace root is the repo root (TASK-68) — node_modules can appear
+# at the root and inside any workspace member.
+node_modules/
 apps/web/.next/
 apps/web/out/
 apps/web/.vercel/

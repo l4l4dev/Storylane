@@ -1,0 +1,8 @@
+packages:
+  - apps/web
+  - apps/mcp
+  - packages/*
+
+allowBuilds:
+  sharp: true
+  unrs-resolver: true

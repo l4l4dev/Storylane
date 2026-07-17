@@ -5,16 +5,18 @@ on:
     branches: [main]
     paths:
       - "apps/web/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/web-ci.yml"
   pull_request:
     branches: [main]
     paths:
       - "apps/web/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/web-ci.yml"
-
-defaults:
-  run:
-    working-directory: apps/web
 
 jobs:
   ci:
@@ -26,24 +28,22 @@ jobs:
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
-        with:
-          package_json_file: apps/web/package.json
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: "pnpm"
-          cache-dependency-path: apps/web/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Type check
-        run: pnpm exec tsc --noEmit
+        run: pnpm --filter web exec tsc --noEmit
 
       - name: Lint
-        run: pnpm run lint
+        run: pnpm --filter web run lint
 
       - name: Run tests
-        run: pnpm run test
+        run: pnpm --filter web run test
