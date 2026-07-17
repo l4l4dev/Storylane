@@ -1,6 +1,6 @@
 // Pure, framework-free helpers for velocity. See spec/velocity.md.
 
-import { storyTypeUsesPoints } from "./stories";
+import { storyTypeUsesPoints } from "./story-types";
 
 export type CompletedIteration = { velocity: number | null };
 
