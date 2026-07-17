@@ -12,7 +12,7 @@ test("create project, add a story, accept it, and roll over the iteration", asyn
 
   // 2. Create a project (Tracker is the default mode — leave it unchanged).
   await page.getByRole("button", { name: "New project" }).click();
-  await page.getByLabel("Name").fill(projectName);
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill(projectName);
   await page.getByRole("button", { name: "Create" }).click();
 
   // createProject redirects back to /dashboard; open the new project from there.
