@@ -28,6 +28,8 @@ import {
 } from "@/app/projects/[id]/board/actions";
 import { beforeAnchorId, findContainer, moveBetweenContainers, storyById, sumPoints } from "@/lib/utils/board";
 import { reorderContainer } from "@/lib/utils/board-dnd";
+import { formatDate } from "@/lib/utils/format";
+import { isImeComposing } from "@/lib/utils/keyboard";
 import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
@@ -260,6 +262,9 @@ function IterationGoalInput({
           setError(null);
         }}
         onKeyDown={(event) => {
+          if (isImeComposing(event)) {
+            return;
+          }
           if (event.key === "Enter") {
             event.preventDefault();
             void commit();
@@ -371,7 +376,7 @@ export function IterationHeaderRow({
         )}
         {projectedDates && (
           <span className="shrink-0">
-            {projectedDates.start_date} – {projectedDates.end_date}
+            {formatDate(projectedDates.start_date)} – {formatDate(projectedDates.end_date)}
           </span>
         )}
         <IterationGoalInput projectId={projectId} number={number} initialGoal={goal} />
@@ -598,7 +603,7 @@ function InsertBetweenRows({ projectId, beforeItemId }: { projectId: string; bef
             value={label}
             onChange={(event) => setLabel(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Escape") {
+              if (event.key === "Escape" && !isImeComposing(event)) {
                 setLabel("");
                 setAddingNote(false);
               }

@@ -89,6 +89,16 @@ function dateKeyMinusOneDay(dateKey: string): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+// Same "YYYY/M/D" shape as lib/utils/format.ts's formatDate, but reusing
+// that function here would parse the date-only dateKey as UTC midnight and
+// re-read it through local getters — a double conversion that can shift the
+// label by a day. Plain string math instead, consistent with this module's
+// no-Date policy above.
+function formatDateKey(dateKey: string): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return `${year}/${month}/${day}`;
+}
+
 /**
  * Groups Done-column stories under "Today" / "Yesterday" / a raw date
  * header, most-recent-first (spec/screens.md "Focus view": Done "grouped
@@ -114,7 +124,7 @@ export function groupDoneStories<T extends { completedDateKey: string }>(
     .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0))
     .map(([dateKey, groupStories]) => ({
       dateKey,
-      label: dateKey === todayKey ? "Today" : dateKey === yesterdayKey ? "Yesterday" : dateKey,
+      label: dateKey === todayKey ? "Today" : dateKey === yesterdayKey ? "Yesterday" : formatDateKey(dateKey),
       stories: groupStories,
     }));
 }

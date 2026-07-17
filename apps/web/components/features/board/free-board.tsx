@@ -40,6 +40,7 @@ import {
   sumPoints,
 } from "@/lib/utils/board";
 import { groupDoneStories, localDateKey, todayLocalDateKey } from "@/lib/utils/focus";
+import { isImeComposing } from "@/lib/utils/keyboard";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
 import { Button } from "@/components/ui/button";
 import {
@@ -298,7 +299,7 @@ function ColumnHeaderContent({
         {status.wip_limit != null ? `${stories.length} / ${status.wip_limit}` : stories.length}
       </span>
       {points > 0 && <span className="text-xs text-muted-foreground">· {points} pts</span>}
-      <ColumnMenu projectId={projectId} status={status} />
+      <ColumnMenu projectId={projectId} status={status} storyCount={stories.length} />
     </>
   );
 }
@@ -372,6 +373,9 @@ function ColumnNameEditor({ projectId, status }: { projectId: string; status: Cu
         }}
         onBlur={submit}
         onKeyDown={(event) => {
+          if (isImeComposing(event)) {
+            return;
+          }
           if (event.key === "Enter") {
             event.preventDefault();
             submit();
@@ -462,7 +466,7 @@ function AddColumnButton({ projectId }: { projectId: string }) {
         }}
         onBlur={submit}
         onKeyDown={(event) => {
-          if (event.key === "Escape") {
+          if (event.key === "Escape" && !isImeComposing(event)) {
             setName("");
             setError(null);
             setAdding(false);
@@ -694,12 +698,15 @@ function SortableFreeCard({ story, projectId }: { story: FreeStoryCardData; proj
 export function ColumnMenu({
   projectId,
   status,
+  storyCount,
 }: {
   projectId: string;
   status: CustomStatus;
+  storyCount: number;
 }) {
   const { canEdit, canDelete } = useContext(BoardPermissionsContext);
   const [open, setOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const [limitValue, setLimitValue] = useState(status.wip_limit != null ? String(status.wip_limit) : "");
   const [limitError, setLimitError] = useState<string | null>(null);
@@ -782,6 +789,7 @@ export function ColumnMenu({
           setLimitError(null);
           setSettingsError(null);
           setDeleteError(null);
+          setConfirmingDelete(false);
         }
       }}
     >
@@ -890,9 +898,47 @@ export function ColumnMenu({
                   {deleteError}
                 </p>
               )}
-              <Button type="button" size="xs" variant="destructive" disabled={isDeletePending} onClick={submitDelete}>
-                Delete column
-              </Button>
+              {confirmingDelete ? (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    {storyCount > 0
+                      ? `Move its ${storyCount} card${storyCount === 1 ? "" : "s"} out first — a column with cards on it can't be deleted.`
+                      : "Delete this empty column? This can't be undone."}
+                  </p>
+                  <div className="flex gap-1.5">
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      disabled={isDeletePending}
+                      onClick={() => setConfirmingDelete(false)}
+                    >
+                      Cancel
+                    </Button>
+                    {storyCount === 0 && (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="destructive"
+                        disabled={isDeletePending}
+                        onClick={submitDelete}
+                      >
+                        {isDeletePending ? "Deleting…" : "Confirm delete"}
+                      </Button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="destructive"
+                  disabled={isDeletePending}
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  Delete column
+                </Button>
+              )}
             </div>
           )}
         </div>

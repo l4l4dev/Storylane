@@ -159,6 +159,18 @@ describe("QuickAddComposer", () => {
     expect(screen.getByRole("button", { name: /Add story/ })).toBeInTheDocument();
   });
 
+  // TASK-73: Escape during IME composition (e.g. cancelling a Japanese
+  // conversion candidate) must not close the composer or drop the draft.
+  it("does not close on Escape while an IME composition is active", () => {
+    render(<QuickAddComposer projectId="p1" target="icebox" />);
+    fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
+    const input = screen.getByRole("textbox", { name: "New story title" });
+    fireEvent.change(input, { target: { value: "変換中" } });
+    fireEvent.keyDown(input, { key: "Escape", isComposing: true });
+
+    expect(screen.getByRole("textbox", { name: "New story title" })).toHaveValue("変換中");
+  });
+
   it("closes and discards the draft on an outside click", () => {
     render(
       <div>

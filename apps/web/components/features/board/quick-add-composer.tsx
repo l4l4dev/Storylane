@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type FormEvent, type KeyboardEvent } from "react";
 import { Plus } from "lucide-react";
 import { quickCreateStory, quickCreateStoryFree } from "@/app/projects/[id]/board/actions";
+import { isImeComposing } from "@/lib/utils/keyboard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -101,7 +102,7 @@ export function QuickAddComposer({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Escape") {
+    if (event.key === "Escape" && !isImeComposing(event)) {
       close();
     }
   }

@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { epicProgress } from "@/lib/utils/epics";
+import { EpicDeleteMenu } from "@/components/features/epics/epic-delete-menu";
 import { EpicFormDialog } from "@/components/features/epics/epic-form-dialog";
 import { EpicProgressBar } from "@/components/features/epics/epic-progress-bar";
 import { Button } from "@/components/ui/button";
-import { deleteEpic } from "./actions";
 
 export default async function EpicsPage({
   params,
@@ -79,13 +79,7 @@ export default async function EpicsPage({
                         </Button>
                       }
                     />
-                    <form action={deleteEpic}>
-                      <input type="hidden" name="epic_id" value={epic.id} />
-                      <input type="hidden" name="project_id" value={project.id} />
-                      <Button type="submit" variant="destructive" size="xs">
-                        Delete
-                      </Button>
-                    </form>
+                    <EpicDeleteMenu epicId={epic.id} epicName={epic.name} projectId={project.id} />
                   </div>
                 </div>
                 {epic.description && (

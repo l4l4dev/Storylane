@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useTransition, type FormEvent } from "react";
 import { Square, SquareCheck, X } from "lucide-react";
 import { addTask, deleteTask, toggleTask } from "@/app/stories/[id]/actions";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,11 @@ import { Input } from "@/components/ui/input";
 
 export type TaskData = { id: string; title: string; is_done: boolean };
 
+// A plain `<form action={...}>` used to back each row — no pending state and
+// a thrown failure crashed into the route error boundary instead of staying
+// inline (fable-advisor review 2026-07-17, TASK-74, same class of bug as
+// transition-buttons.tsx). Each control disables itself while its own
+// request is in flight; one shared inline error covers the section.
 export function TaskChecklist({
   storyId,
   tasks,
@@ -21,20 +27,54 @@ export function TaskChecklist({
   onMutated?: () => Promise<void> | void;
 }) {
   const doneCount = tasks.filter((task) => task.is_done).length;
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [newTitle, setNewTitle] = useState("");
 
-  async function handleAdd(formData: FormData) {
-    await addTask(formData);
-    await onMutated?.();
+  function run(key: string, action: () => Promise<void>) {
+    setError(null);
+    setPendingKey(key);
+    startTransition(async () => {
+      try {
+        await action();
+        await onMutated?.();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update tasks");
+      } finally {
+        setPendingKey(null);
+      }
+    });
   }
 
-  async function handleToggle(formData: FormData) {
-    await toggleTask(formData);
-    await onMutated?.();
+  function handleToggle(task: TaskData) {
+    const formData = new FormData();
+    formData.set("task_id", task.id);
+    formData.set("story_id", storyId);
+    formData.set("is_done", String(task.is_done));
+    run(`toggle:${task.id}`, () => toggleTask(formData));
   }
 
-  async function handleDelete(formData: FormData) {
-    await deleteTask(formData);
-    await onMutated?.();
+  function handleDelete(task: TaskData) {
+    const formData = new FormData();
+    formData.set("task_id", task.id);
+    formData.set("story_id", storyId);
+    run(`delete:${task.id}`, () => deleteTask(formData));
+  }
+
+  function handleAdd(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = newTitle.trim();
+    if (!trimmed) {
+      return;
+    }
+    const formData = new FormData();
+    formData.set("story_id", storyId);
+    formData.set("title", trimmed);
+    run("add", async () => {
+      await addTask(formData);
+      setNewTitle("");
+    });
   }
 
   return (
@@ -48,46 +88,47 @@ export function TaskChecklist({
         )}
       </h2>
 
+      {error && (
+        <p role="alert" className="mb-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
       {tasks.length > 0 ? (
         <ul className="mb-4 flex flex-col gap-2">
           {tasks.map((task) => (
             <li key={task.id} className="flex items-center gap-2">
-              <form action={handleToggle} className="flex">
-                <input type="hidden" name="task_id" value={task.id} />
-                <input type="hidden" name="story_id" value={storyId} />
-                <input type="hidden" name="is_done" value={String(task.is_done)} />
-                <Button
-                  type="submit"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={
-                    task.is_done
-                      ? `Mark "${task.title}" as not done`
-                      : `Mark "${task.title}" as done`
-                  }
-                  className={task.is_done ? "text-primary" : "text-muted-foreground"}
-                >
-                  {task.is_done ? <SquareCheck /> : <Square />}
-                </Button>
-              </form>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={
+                  task.is_done
+                    ? `Mark "${task.title}" as not done`
+                    : `Mark "${task.title}" as done`
+                }
+                className={task.is_done ? "text-primary" : "text-muted-foreground"}
+                disabled={isPending && pendingKey === `toggle:${task.id}`}
+                onClick={() => handleToggle(task)}
+              >
+                {task.is_done ? <SquareCheck /> : <Square />}
+              </Button>
               <span
                 className={`flex-1 text-sm ${task.is_done ? "text-muted-foreground line-through" : ""}`}
               >
                 {task.title}
               </span>
-              <form action={handleDelete} className="flex">
-                <input type="hidden" name="task_id" value={task.id} />
-                <input type="hidden" name="story_id" value={storyId} />
-                <Button
-                  type="submit"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`Delete task "${task.title}"`}
-                  className="text-muted-foreground hover:text-destructive"
-                >
-                  <X />
-                </Button>
-              </form>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Delete task "${task.title}"`}
+                className="text-muted-foreground hover:text-destructive"
+                disabled={isPending && pendingKey === `delete:${task.id}`}
+                onClick={() => handleDelete(task)}
+              >
+                <X />
+              </Button>
             </li>
           ))}
         </ul>
@@ -95,10 +136,18 @@ export function TaskChecklist({
         <p className="mb-4 text-sm text-muted-foreground">No tasks yet.</p>
       )}
 
-      <form action={handleAdd} className="flex gap-2">
-        <input type="hidden" name="story_id" value={storyId} />
-        <Input name="title" required placeholder="Add a task…" className="flex-1" />
-        <Button type="submit">Add</Button>
+      <form onSubmit={handleAdd} className="flex gap-2">
+        <Input
+          value={newTitle}
+          onChange={(event) => setNewTitle(event.target.value)}
+          required
+          placeholder="Add a task…"
+          className="flex-1"
+          disabled={isPending && pendingKey === "add"}
+        />
+        <Button type="submit" disabled={isPending && pendingKey === "add"}>
+          Add
+        </Button>
       </form>
     </section>
   );

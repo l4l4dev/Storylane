@@ -1,10 +1,11 @@
 ---
 id: TASK-73
 title: IME composition guard for Escape/Enter across inline editors
-status: To Do
+status: In Progress
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-17 13:15'
+updated_date: '2026-07-17 13:45'
 labels:
   - web
   - ux
@@ -22,6 +23,14 @@ fable-advisor UX review 2026-07-17 (should-fix before deploy — the owner types
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 During IME composition, Esc cancels the conversion only (editor stays open, text intact) and Enter commits the conversion only (no submit) in: quick-add composer, IterationGoalBar, IterationGoalInput, note input, free-board column editors
-- [ ] #2 Single shared guard helper; tests simulate composition events for at least the composer and one goal editor
+- [x] #1 During IME composition, Esc cancels the conversion only (editor stays open, text intact) and Enter commits the conversion only (no submit) in: quick-add composer, IterationGoalBar, IterationGoalInput, note input, free-board column editors
+- [x] #2 Single shared guard helper; tests simulate composition events for at least the composer and one goal editor
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Extracted the story-detail-panel.tsx isComposing guard into a shared helper, lib/utils/keyboard.ts isImeComposing(event), and applied it to every Escape/Enter inline-editor handler named in the review: quick-add-composer.tsx (Escape), kanban-board.tsx IterationGoalBar (Escape+Enter), board-list-view.tsx IterationGoalInput (Escape+Enter) and the divider note-label input (Escape; its Enter path is native <form onSubmit>, which browsers already suppress during IME composition, so no handler change needed there), free-board.tsx ColumnNameEditor (Escape+Enter) and the new-column name input (Escape). story-detail-panel.tsx's original guard now calls the shared helper too instead of inlining the same check.
+
+Tests: lib/utils/keyboard.test.ts (unit), plus one composition-simulating test added to quick-add-composer.test.tsx and kanban-board.test.tsx (IterationGoalBar) per AC #2's "at least the composer and one goal editor". All via fireEvent.keyDown(el, { key, isComposing: true }), the convention already used by story-detail-panel.test.tsx. 74/74 relevant tests pass; tsc --noEmit and eslint clean.
+<!-- SECTION:NOTES:END -->

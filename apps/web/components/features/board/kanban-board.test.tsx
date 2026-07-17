@@ -89,6 +89,21 @@ describe("IterationGoalBar", () => {
     expect(screen.getByText("Original goal")).toBeInTheDocument();
   });
 
+  // TASK-73: Escape/Enter during IME composition target the candidate
+  // window, not the editor — they must not revert or commit the goal.
+  it("ignores Escape and Enter while an IME composition is active", () => {
+    render(<IterationGoalBar projectId="p1" iterationId="i1" initialGoal="Original goal" />);
+    fireEvent.click(screen.getByText("Original goal"));
+    const input: HTMLInputElement = screen.getByRole("textbox", { name: "Iteration goal" });
+
+    fireEvent.change(input, { target: { value: "変換中" } });
+    fireEvent.keyDown(input, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+
+    expect(updateIterationGoalMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox", { name: "Iteration goal" })).toHaveValue("変換中");
+  });
+
   it("keeps the editor open with the typed value and shows an error when the save fails", async () => {
     updateIterationGoalMock.mockRejectedValueOnce(new Error("Not a member of this project"));
     render(<IterationGoalBar projectId="p1" iterationId="i1" initialGoal="" />);

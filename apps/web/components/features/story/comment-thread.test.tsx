@@ -1,8 +1,21 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CommentThread } from "./comment-thread";
 
+const { addCommentMock } = vi.hoisted(() => ({
+  addCommentMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+}));
+
+vi.mock("@/app/stories/[id]/actions", () => ({
+  addComment: addCommentMock,
+}));
+
 describe("CommentThread", () => {
+  beforeEach(() => {
+    addCommentMock.mockReset();
+    addCommentMock.mockResolvedValue(undefined);
+  });
+
   it("shows an empty state when there are no comments", () => {
     render(<CommentThread storyId="s1" projectId="p1" comments={[]} />);
     expect(screen.getByText("No comments yet.")).toBeInTheDocument();
@@ -26,5 +39,53 @@ describe("CommentThread", () => {
     render(<CommentThread storyId="s1" projectId="p1" comments={[]} />);
     expect(screen.getByPlaceholderText(/Add a comment/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Comment" })).toBeInTheDocument();
+  });
+
+  // TASK-74: a bare <form action> had no pending state, so a double-click
+  // fired the submit twice — the button must disable itself immediately.
+  it("disables the submit while pending so a double-click only submits once", async () => {
+    let resolveAdd!: () => void;
+    addCommentMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveAdd = resolve;
+      }),
+    );
+    render(<CommentThread storyId="s1" projectId="p1" comments={[]} />);
+    fireEvent.change(screen.getByPlaceholderText(/Add a comment/), { target: { value: "Looks good" } });
+    const button = screen.getByRole("button", { name: "Comment" });
+    fireEvent.click(button);
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+
+    expect(addCommentMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveAdd();
+      await Promise.resolve();
+    });
+  });
+
+  it("shows a rejected submit inline and keeps the typed draft", async () => {
+    addCommentMock.mockRejectedValueOnce(new Error("Story not found"));
+    render(<CommentThread storyId="s1" projectId="p1" comments={[]} />);
+    const textarea = screen.getByPlaceholderText(/Add a comment/);
+    fireEvent.change(textarea, { target: { value: "Looks good" } });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Story not found");
+    expect(textarea).toHaveValue("Looks good");
+    expect(screen.getByRole("button", { name: "Comment" })).toBeEnabled();
+  });
+
+  it("clears the draft once the comment is added", async () => {
+    render(<CommentThread storyId="s1" projectId="p1" comments={[]} />);
+    const textarea = screen.getByPlaceholderText(/Add a comment/);
+    fireEvent.change(textarea, { target: { value: "Looks good" } });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(textarea).toHaveValue("");
   });
 });

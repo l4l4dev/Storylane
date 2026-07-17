@@ -7,6 +7,7 @@ import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { sumPoints } from "@/lib/utils/board";
 import { ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
+import { isImeComposing } from "@/lib/utils/keyboard";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
 import type { StoryFilter } from "@/lib/utils/stories";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
@@ -149,13 +150,13 @@ export function KanbanBoard({
               Current
             </span>
             <span className="text-xs text-muted-foreground">
-              {currentIteration.start_date} – {currentIteration.end_date}
+              {formatDate(currentIteration.start_date)} – {formatDate(currentIteration.end_date)}
             </span>
             <span className="text-xs text-muted-foreground">
               {sumPoints(iterationStories)} pts committed
             </span>
             <span className="text-xs text-muted-foreground">
-              auto-finishes on {currentIteration.end_date}
+              auto-finishes on {formatDate(currentIteration.end_date)}
             </span>
             <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />
             <IterationGoalBar
@@ -399,6 +400,9 @@ export function IterationGoalBar({
           setError(null);
         }}
         onKeyDown={(event) => {
+          if (isImeComposing(event)) {
+            return;
+          }
           if (event.key === "Enter") {
             event.preventDefault();
             void commitAndClose();

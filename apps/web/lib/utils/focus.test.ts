@@ -82,7 +82,7 @@ describe("groupDoneStories", () => {
     expect(groupDoneStories(stories, "2026-07-09")).toEqual([
       { dateKey: "2026-07-09", label: "Today", stories: [stories[1], stories[3]] },
       { dateKey: "2026-07-08", label: "Yesterday", stories: [stories[2]] },
-      { dateKey: "2026-07-07", label: "2026-07-07", stories: [stories[0]] },
+      { dateKey: "2026-07-07", label: "2026/7/7", stories: [stories[0]] },
     ]);
   });
 

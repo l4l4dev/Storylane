@@ -5,6 +5,7 @@ import { updateStory, type StoryDetail } from "@/app/stories/[id]/actions";
 import { useStoryRealtime, type StoryRealtimeRow } from "@/lib/supabase/realtime";
 import { describeActivity } from "@/lib/utils/activity";
 import { formatDateTime } from "@/lib/utils/format";
+import { isImeComposing } from "@/lib/utils/keyboard";
 import { STORY_TYPES } from "@/lib/utils/stories";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -218,10 +219,9 @@ export function StoryDetailPanel({
   }
 
   function handleTextKeyDown(field: "title" | "description", event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    // IME composition (e.g. converting Japanese input) also fires Escape to
-    // cancel the candidate window — that must not revert the field or close
-    // the peek (the peek's own window listener also guards on isComposing).
-    if (event.key !== "Escape" || event.nativeEvent.isComposing) {
+    // isImeComposing guards the IME candidate-window Escape (the peek's own
+    // window listener also guards on isComposing).
+    if (event.key !== "Escape" || isImeComposing(event)) {
       return;
     }
     event.preventDefault();

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { groupStoriesByIteration } from "@/lib/utils/board";
+import { formatDate } from "@/lib/utils/format";
 import { StoryCard, type StoryCardData } from "@/components/features/board/story-card";
 import { ensureCurrentIteration } from "../board/actions";
 
@@ -107,7 +108,7 @@ export default async function IterationsPage({
                 )}
               </div>
               <p className="mb-2 text-xs text-muted-foreground">
-                {iteration.start_date} – {iteration.end_date}
+                {formatDate(iteration.start_date)} – {formatDate(iteration.end_date)}
               </p>
               {iteration.goal && (
                 <p className="mb-3 text-sm text-muted-foreground">{iteration.goal}</p>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { estimateStory, transitionStory } from "@/app/projects/[id]/board/actions";
 import {
   availableTransitions,
@@ -13,6 +14,16 @@ import { Button } from "@/components/ui/button";
 // Reject / Restart — see spec/screens.md "Story card UX"). Shared by the
 // story card (always visible) and the story detail panel (standalone page +
 // board inline expansion), so the transition rules live in one place.
+//
+// A plain `<form action={...}>` used to back these — no pending state (a
+// double-click could double-submit) and a thrown error (e.g. the everyday
+// race where another user already transitioned the story) crashed into the
+// route error boundary, replacing the whole board (fable-advisor review
+// 2026-07-17, TASK-74). The whole group now disables while any one request
+// is in flight — not just the clicked button — since transition_story has no
+// FOR UPDATE lock yet (TASK-48 AC#5): a concurrent Accept/Reject click here
+// could otherwise race the same lost-update bug at the UI layer. A failure
+// shows inline instead of throwing.
 export function TransitionButtons({
   storyId,
   projectId,
@@ -29,6 +40,23 @@ export function TransitionButtons({
   pointScale: number[];
 }) {
   const actions = availableTransitions(state as StoryLifecycleState);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function run(key: string, action: () => Promise<void>) {
+    setError(null);
+    setPendingKey(key);
+    startTransition(async () => {
+      try {
+        await action();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update the story");
+      } finally {
+        setPendingKey(null);
+      }
+    });
+  }
 
   if (actions.length === 0) {
     return null;
@@ -44,39 +72,65 @@ export function TransitionButtons({
   // `points` is set.
   if (isUnestimatedFeature(storyType, points)) {
     return (
-      <form action={estimateStory} className="flex flex-wrap items-center gap-1">
-        <input type="hidden" name="project_id" value={projectId} />
-        <input type="hidden" name="story_id" value={storyId} />
-        {pointScale.map((value) => (
-          <Button
-            key={value}
-            type="submit"
-            name="points"
-            value={value}
-            variant="outline"
-            size="xs"
-            aria-label={`Estimate: ${value} point${value === 1 ? "" : "s"}`}
-            title={`Estimate: ${value} point${value === 1 ? "" : "s"}`}
-          >
-            {formatPoints(value)}
-          </Button>
-        ))}
-      </form>
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-1">
+          {pointScale.map((value) => (
+            <Button
+              key={value}
+              type="button"
+              variant="outline"
+              size="xs"
+              aria-label={`Estimate: ${value} point${value === 1 ? "" : "s"}`}
+              title={`Estimate: ${value} point${value === 1 ? "" : "s"}`}
+              disabled={isPending}
+              onClick={() => {
+                const formData = new FormData();
+                formData.set("project_id", projectId);
+                formData.set("story_id", storyId);
+                formData.set("points", String(value));
+                run(`estimate:${value}`, () => estimateStory(formData));
+              }}
+            >
+              {pendingKey === `estimate:${value}` ? "…" : formatPoints(value)}
+            </Button>
+          ))}
+        </div>
+        {error && (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        )}
+      </div>
     );
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      {actions.map((action) => (
-        <form key={action} action={transitionStory}>
-          <input type="hidden" name="project_id" value={projectId} />
-          <input type="hidden" name="story_id" value={storyId} />
-          <input type="hidden" name="action" value={action} />
-          <Button type="submit" variant="outline" size="xs">
-            {transitionLabel(action)}
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1">
+        {actions.map((action) => (
+          <Button
+            key={action}
+            type="button"
+            variant="outline"
+            size="xs"
+            disabled={isPending}
+            onClick={() => {
+              const formData = new FormData();
+              formData.set("project_id", projectId);
+              formData.set("story_id", storyId);
+              formData.set("action", action);
+              run(action, () => transitionStory(formData));
+            }}
+          >
+            {pendingKey === action ? `${transitionLabel(action)}…` : transitionLabel(action)}
           </Button>
-        </form>
-      ))}
+        ))}
+      </div>
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

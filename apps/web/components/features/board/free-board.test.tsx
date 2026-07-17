@@ -40,10 +40,10 @@ vi.mock("@/app/projects/[id]/board/actions", () => ({
 describe("ColumnMenu", () => {
   const status: CustomStatus = { id: "s1", name: "To do", color: "#111111", position: 0, is_done: false, wip_limit: null };
 
-  function columnMenu(canEdit: boolean, canDelete: boolean, value = status) {
+  function columnMenu(canEdit: boolean, canDelete: boolean, value = status, storyCount = 0) {
     return (
       <BoardPermissionsProvider permissions={{ canEdit, canDelete }}>
-        <ColumnMenu projectId="p1" status={value} />
+        <ColumnMenu projectId="p1" status={value} storyCount={storyCount} />
       </BoardPermissionsProvider>
     );
   }
@@ -147,14 +147,62 @@ describe("ColumnMenu", () => {
     expect(screen.queryByRole("button", { name: "Delete column" })).not.toBeInTheDocument();
 
     rerender(columnMenu(true, true));
+    expect(screen.getByRole("button", { name: "Delete column" })).toBeInTheDocument();
+  });
+
+  // TASK-72: no immediate delete on click — a confirm step sits between,
+  // naming the empty-column consequence (spec/ux-principles.md principle 6).
+  it("requires a second click to delete an empty column", async () => {
+    render(columnMenu(true, true));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete column" }));
 
+    expect(deleteCustomStatusMock).not.toHaveBeenCalled();
+    expect(screen.getByText(/delete this empty column/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
     await act(async () => {
       await Promise.resolve();
     });
     expect(deleteCustomStatusMock).toHaveBeenCalledTimes(1);
     const formData = deleteCustomStatusMock.mock.calls[0]?.[0];
     expect(formData?.get("status_id")).toBe("s1");
+  });
+
+  it("cancels the confirm step without deleting", () => {
+    render(columnMenu(true, true));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete column" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(deleteCustomStatusMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Delete column" })).toBeInTheDocument();
+  });
+
+  // fable-advisor review 2026-07-17 (post-TASK-72 fix): a disabled Confirm
+  // delete the user can never unblock from this panel reads as a dead
+  // control (spec/ux-principles.md principle 1) — hide it instead, leaving
+  // only the explanation and Cancel.
+  it("names the card count and offers only Cancel for a non-empty column", () => {
+    render(columnMenu(true, true, status, 3));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete column" }));
+
+    expect(screen.getByText(/move its 3 cards out first/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirm delete" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+  });
+
+  it("shows the server error inline when deletion fails", async () => {
+    deleteCustomStatusMock.mockRejectedValueOnce(new Error("Move the stories off this status before deleting it"));
+    render(columnMenu(true, true));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Column options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete column" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Move the stories off this status before deleting it",
+    );
   });
 });
 

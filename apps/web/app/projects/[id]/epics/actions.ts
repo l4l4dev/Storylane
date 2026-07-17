@@ -49,12 +49,17 @@ export async function updateEpic(formData: FormData) {
   revalidatePath(`/projects/${projectId}/epics`);
 }
 
-export async function deleteEpic(formData: FormData) {
-  const id = String(formData.get("epic_id"));
-  const projectId = String(formData.get("project_id"));
-
+export async function deleteEpic(
+  epicId: string,
+  projectId: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
   const supabase = await createClient();
-  await assertRowAffected(await supabase.from("epics").delete().eq("id", id).select("id"));
+  try {
+    await assertRowAffected(await supabase.from("epics").delete().eq("id", epicId).select("id"));
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Failed to delete epic" };
+  }
 
   revalidatePath(`/projects/${projectId}/epics`);
+  return { ok: true };
 }
