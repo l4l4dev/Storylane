@@ -1,11 +1,11 @@
 ---
 id: TASK-68
 title: Restructure repo into a pnpm monorepo (root workspace + packages/core)
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-17 00:02'
-updated_date: '2026-07-17 01:11'
+updated_date: '2026-07-17 01:21'
 labels:
   - chore
   - refactor
@@ -18,7 +18,7 @@ ordinal: 750
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Repo root holds pnpm-workspace.yaml + minimal package.json; apps/web builds and all its tests pass under the lifted workspace
-- [ ] #2 packages/core (@storylane/core) holds story-state + velocity + the shared stories.ts exports (STORY_TYPES/STORY_STATES/types/storyTypeUsesPoints/pointScaleValues), STORY_STATES duplication resolved, web imports rewired
+- [x] #2 packages/core (@storylane/core) holds story-state + velocity + the shared stories.ts exports (STORY_TYPES/STORY_STATES/types/storyTypeUsesPoints/pointScaleValues), STORY_STATES duplication resolved, web imports rewired
 - [x] #3 CI (.github/workflows/web-ci.yml) updated for the lifted workspace: install at root, tsc/lint/test via --filter, paths filter includes packages/**; core tsc+vitest gated
 - [x] #4 TASK-3 deploy notes updated for Vercel (Root Directory apps/web, root lockfile, include-outside-root, pnpm 11)
 <!-- AC:END -->
@@ -48,4 +48,22 @@ REGRESSION FOUND DURING THIS TASK'S build-gate check (commit 96d731e, unrelated 
 Verified all four gates from the repo root: pnpm --filter web exec tsc --noEmit (0), pnpm --filter web run lint (0), SUPABASE_INTEGRATION=1 pnpm --filter web run test (521 pass), pnpm --filter web run build (succeeds).
 
 REMAINING: AC#2 (packages/core extraction, commit 2).
+
+COMMIT 2 (packages/core extraction) done (Sonnet 5, 2026-07-17):
+- @storylane/core: story-state.ts + velocity.ts moved wholesale (git mv, no logic changes), plus a new story-types.ts split out of stories.ts (STORY_TYPES/StoryType/storyTypeUsesPoints/pointScaleValues) since velocity.ts depends on storyTypeUsesPoints.
+- stories.ts re-exports those four symbols (import + export, not `export ... from` alone, since parsePoints uses storyTypeUsesPoints locally) so its 12 existing importers are unchanged. The 3 story-state.ts importers (board/actions.ts, kanban.ts, transition-buttons.tsx) and 4 velocity.ts importers now import @storylane/core directly.
+- next.config.ts: transpilePackages: ["@storylane/core"] (TS-source package, no build step).
+- apps/web/package.json: "@storylane/core": "workspace:*".
+
+DEVIATION FROM ADVISOR'S LITERAL INSTRUCTION (flagged for the record): the verdict said stories.ts's STORY_STATES/StoryState duplicates story-state.ts's and should be unified via re-export. On inspection they are NOT identical: stories.ts's version has 6 values (no 'unscheduled'), story-state.ts's has 7 (includes 'unscheduled', backs the transition FSM). They never collide in the same import site (checked: no file imports StoryState from both modules). stories.ts's version exists only to key STORY_STATE_META (a badge label/className map). Unifying them would force STORY_STATE_META to gain an 'unscheduled' entry -- a real product decision (what does an Icebox row's state badge look like?) that's out of scope for a behavior-preserving infra task. Left both as-is; documented the reasoning in a comment in stories.ts. Recommend the owner or advisor make that product call explicitly if/when it matters, rather than have it decided as a side effect of a refactor.
+
+FINAL VERIFICATION (from repo root, all four gates + both packages):
+- pnpm --filter @storylane/core exec tsc --noEmit: 0 errors
+- pnpm --filter @storylane/core run test: 36 pass
+- pnpm --filter web exec tsc --noEmit: 0 errors
+- pnpm --filter web run lint: 0 errors
+- SUPABASE_INTEGRATION=1 pnpm --filter web run test: 485 pass (485 + 36 core = 521, matches pre-split total -- no tests lost)
+- pnpm --filter web run build: succeeds (also verified without .env.local present, since CI has no secrets -- build succeeds because Supabase clients are only constructed at request time, not at build/import time)
+
+TASK-68 COMPLETE. TASK-48 (MCP server) is now unblocked.
 <!-- SECTION:NOTES:END -->
