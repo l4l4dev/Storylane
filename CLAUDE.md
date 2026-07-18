@@ -49,7 +49,9 @@ Most work here is done by AI agents — keep context small:
   short remaining-work index, and completed history lives in Backlog doc-4 (read on demand only)
 - Prefer Grep/Glob or partial reads (offset/limit) over full reads for files longer than ~300 lines
 - Run long-lived commands (`pnpm dev`, `supabase start`) in the background and read only the log tail
-- While iterating, run targeted tests (`pnpm exec vitest run <path>`); run the full `pnpm test` only before commit
+- While iterating, run targeted tests (`pnpm exec vitest run <path>`); before commit run the full
+  suite **from `apps/web/`** (`pnpm test` + `pnpm run lint`) — there is no root package.json, so
+  `pnpm test` at the repo root silently runs nothing and exits 0
 
 ---
 
