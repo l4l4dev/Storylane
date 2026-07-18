@@ -25,6 +25,20 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
   git-tracked (source, tests, spec, task files, commit messages) — refer to them as `@l4l4dev` or
   "the owner" (オーナー), and use fictional names/emails in test fixtures
 
+## Review Workflow
+
+- End every implementation task with `/code-review` before proposing a commit. Default
+  effort `medium`; use `high` for migrations, RLS, concurrency, or board-algorithm work.
+  Repo-specific review rules live in `REVIEW.md`.
+- Migrations additionally require an `rls-security-reviewer` agent pass (deeper than the
+  generic review), and user-facing UI still ends with the fable-advisor design review
+  (see Critical Rules). `/security-review` runs once before each deploy.
+- `/simplify` is available for cleanup-only passes on request.
+- When any review pass reports findings, hold the merge and surface them to the owner
+  before merging.
+- `@codex-gpt-5` second-opinion reviews (Codex CLI) remain a separate, optional lane —
+  they run on the ChatGPT quota, not Claude tokens.
+
 ## Token Economy
 
 Most work here is done by AI agents — keep context small:
