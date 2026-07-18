@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -873,6 +873,7 @@ function BacklogSection({
   // it creates, see the `rows.map` below) — unlike before, it's never a
   // member of the sortable/visible set.
   let currentGroupCollapsed = false;
+  let currentGroupNumber = startingIterationNumber;
   const visibleRowIds = new Set<string>();
   // Parallel to `rows` — whether the row at that index's group is collapsed,
   // computed in this same pass so the per-group "+ Add story" composer
@@ -880,11 +881,14 @@ function BacklogSection({
   // mutable state across the JSX-building `.map()` (React disallows
   // reassigning a plain variable from inside a render-time callback).
   const rowGroupCollapsed: boolean[] = [];
+  const rowGroupNumbers: number[] = [];
   for (const row of rows) {
     if (row.kind === "iteration-header") {
+      currentGroupNumber = row.number;
       currentGroupCollapsed = collapsedGroups.has(String(row.number));
     }
     rowGroupCollapsed.push(currentGroupCollapsed);
+    rowGroupNumbers.push(currentGroupNumber);
     if (row.kind === "iteration-header" || row.kind === "iteration-break") {
       continue;
     }
@@ -906,13 +910,13 @@ function BacklogSection({
       <SortableContext items={[...visibleRowIds]} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-10 flex-col gap-1.5">
           <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowIds[0]} onError={onError} />
-          {rows.map((row, index) => {
+          {rows.flatMap((row, index) => {
             // A manual break renders nothing of its own — buildBacklogRows
             // guarantees the very next row is always the iteration-header
             // it forced (TASK-43), which picks it up via
             // `manualBreakDividerId` below instead of a separate row.
             if (row.kind === "iteration-break") {
-              return null;
+              return [];
             }
 
             // This row is the last one in its virtual-iteration group (or,
@@ -921,60 +925,66 @@ function BacklogSection({
             // the group's bottom edge the per-group composer belongs at.
             const next = rows[index + 1];
             const isGroupEnd = !next || next.kind === "iteration-header" || next.kind === "iteration-break";
-            const groupComposer =
-              isGroupEnd && !rowGroupCollapsed[index] ? (
-                <li className="pl-3">
+            const renderedRows: ReactNode[] = [];
+
+            if (row.kind === "iteration-header") {
+              const key = String(row.number);
+              renderedRows.push(
+                <IterationHeaderRow
+                  key={rowKey(row, index)}
+                  number={row.number}
+                  points={row.points}
+                  projectId={projectId}
+                  goal={iterationGoals[row.number] ?? ""}
+                  projectedDates={projectedDatesFor(row.number)}
+                  collapsed={collapsedGroups.has(key)}
+                  onToggle={() => onToggleGroup(key)}
+                  manualBreakDividerId={row.manualBreakDividerId}
+                />,
+              );
+            } else {
+              const id = row.kind === "story" ? row.story.id : row.divider.id;
+              const aboveId = row.kind === "story" ? `story:${row.story.id}` : `divider:${row.divider.id}`;
+              if (visibleRowIds.has(id)) {
+                renderedRows.push(
+                  <SortableBacklogRow
+                    key={rowKey(row, index)}
+                    row={row}
+                    projectId={projectId}
+                    pointScale={pointScale}
+                    insertAboveId={aboveId}
+                    insertBelowId={nextRealRowIds[index + 1]}
+                    onError={onError}
+                  />,
+                );
+              }
+            }
+
+            // Stable by virtual iteration rather than by whichever story is
+            // currently last in it. Realtime can move this sibling without
+            // remounting it, preserving QuickAddComposer's open/title state.
+            if (isGroupEnd && !rowGroupCollapsed[index]) {
+              renderedRows.push(
+                <li key={`group-composer-${rowGroupNumbers[index]}`} className="pl-3">
                   <QuickAddComposer
                     projectId={projectId}
                     target="backlog"
                     beforeItemId={nextRealRowIds[index + 1] ?? undefined}
                   />
-                </li>
-              ) : null;
-
-            if (row.kind === "iteration-header") {
-              const key = String(row.number);
-              return (
-                <Fragment key={rowKey(row, index)}>
-                  <IterationHeaderRow
-                    number={row.number}
-                    points={row.points}
-                    projectId={projectId}
-                    goal={iterationGoals[row.number] ?? ""}
-                    projectedDates={projectedDatesFor(row.number)}
-                    collapsed={collapsedGroups.has(key)}
-                    onToggle={() => onToggleGroup(key)}
-                    manualBreakDividerId={row.manualBreakDividerId}
-                  />
-                  {groupComposer}
-                  <InsertBetweenRows
-                    projectId={projectId}
-                    beforeItemId={nextRealRowIds[index + 1]}
-                    onError={onError}
-                  />
-                </Fragment>
+                </li>,
               );
             }
 
-            const id = row.kind === "story" ? row.story.id : row.divider.id;
-            const aboveId = row.kind === "story" ? `story:${row.story.id}` : `divider:${row.divider.id}`;
-            const belowId = nextRealRowIds[index + 1];
-            return (
-              <Fragment key={rowKey(row, index)}>
-                {visibleRowIds.has(id) && (
-                  <SortableBacklogRow
-                    row={row}
-                    projectId={projectId}
-                    pointScale={pointScale}
-                    insertAboveId={aboveId}
-                    insertBelowId={belowId}
-                    onError={onError}
-                  />
-                )}
-                {groupComposer}
-                <InsertBetweenRows projectId={projectId} beforeItemId={belowId} onError={onError} />
-              </Fragment>
+            renderedRows.push(
+              <InsertBetweenRows
+                key={`insert-after-${rowKey(row, index)}`}
+                projectId={projectId}
+                beforeItemId={nextRealRowIds[index + 1]}
+                onError={onError}
+              />,
             );
+
+            return renderedRows;
           })}
         </ul>
       </SortableContext>

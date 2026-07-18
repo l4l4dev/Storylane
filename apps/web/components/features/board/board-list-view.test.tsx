@@ -1,19 +1,118 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DividerRow, InsertBetweenRows, IterationHeaderRow, RowInsertMenu } from "./board-list-view";
+import { BoardListView, DividerRow, InsertBetweenRows, IterationHeaderRow, RowInsertMenu } from "./board-list-view";
+import type { BoardStory } from "./kanban-board";
 
-const { deleteBacklogDividerMock, createBacklogDividerMock } = vi.hoisted(() => ({
+const { deleteBacklogDividerMock, createBacklogDividerMock, quickCreateStoryMock } = vi.hoisted(() => ({
   deleteBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
   createBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  quickCreateStoryMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/projects/p1/board",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("@/app/projects/[id]/board/actions", () => ({
   createBacklogDivider: createBacklogDividerMock,
   deleteBacklogDivider: deleteBacklogDividerMock,
   dropStoryInList: vi.fn(),
+  estimateStory: vi.fn(),
+  quickCreateStory: quickCreateStoryMock,
+  transitionStory: vi.fn(),
   upsertIterationGoal: vi.fn(),
 }));
+
+function backlogStory(id: string, points: number): BoardStory {
+  return {
+    id,
+    number: Number(id.slice(1)),
+    title: `Story ${id}`,
+    description: null,
+    story_type: "feature",
+    state: "unscheduled",
+    points,
+    assigneeName: null,
+    labels: [],
+    epic: null,
+    iteration_id: null,
+    position: Number(id.slice(1)),
+    assignee_id: null,
+    labelIds: [],
+    epic_id: null,
+    focus: null,
+    completed_at: null,
+  };
+}
+
+function boardProps(stories: BoardStory[]) {
+  return {
+    projectId: "p1",
+    currentIteration: null,
+    initialContainers: {
+      backlog: [],
+      icebox: [],
+      unstarted: [],
+      started: [],
+      finished: [],
+      delivered: [],
+      accepted: [],
+      rejected: [],
+    },
+    initialBacklogItems: stories.map((story) => ({ kind: "story" as const, story })),
+    velocity: 5,
+    nextVirtualIterationNumber: 4,
+    iterationLength: 14,
+    iterationGoals: {},
+    showIcebox: false,
+    filter: {},
+    pointScale: [0, 1, 2, 3, 5, 8, 13],
+  };
+}
+
+describe("Backlog per-group quick add", () => {
+  const s1 = backlogStory("s1", 3);
+  const s2 = backlogStory("s2", 2);
+  const s3 = backlogStory("s3", 3);
+
+  beforeEach(() => {
+    quickCreateStoryMock.mockClear();
+    quickCreateStoryMock.mockResolvedValue(undefined);
+  });
+
+  it("preserves an open composer's typed title when Realtime changes which row ends its group", () => {
+    const { rerender } = render(<BoardListView {...boardProps([s1, s2, s3])} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Add story" })[1]!);
+    fireEvent.change(screen.getByRole("textbox", { name: "New story title" }), {
+      target: { value: "Still drafting" },
+    });
+
+    // Group #4 remains, but its bottom changes from s2 to s3.
+    rerender(<BoardListView {...boardProps([s2, s3, s1])} />);
+
+    expect(screen.getByRole("textbox", { name: "New story title" })).toHaveValue("Still drafting");
+  });
+
+  it("still inserts immediately before the first row of the following group", async () => {
+    render(<BoardListView {...boardProps([s1, s2, s3])} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Add story" })[1]!);
+    const input = screen.getByRole("textbox", { name: "New story title" });
+    fireEvent.change(input, { target: { value: "At group bottom" } });
+    fireEvent.submit(input.closest("form")!);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const formData = quickCreateStoryMock.mock.calls[0]?.[0];
+    expect(formData?.get("target")).toBe("backlog");
+    expect(formData?.get("before_item_id")).toBe("story:s3");
+  });
+});
 
 describe("IterationHeaderRow", () => {
   beforeEach(() => {
