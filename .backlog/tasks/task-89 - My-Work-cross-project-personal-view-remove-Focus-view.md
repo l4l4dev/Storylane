@@ -5,12 +5,14 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 03:05'
+updated_date: '2026-07-18 03:20'
 labels:
   - web
   - ux
 dependencies:
   - TASK-84
   - TASK-88
+  - TASK-91
 priority: high
 ordinal: 60000
 ---
@@ -29,3 +31,12 @@ doc-8 §9 UI. New cross-project view for the signed-in user: stories assigned to
 - [ ] #4 fable-advisor design review against spec/ux-principles.md passes with findings triaged
 - [ ] #5 pnpm test passes
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-18 03:20
+---
+Dep added (advisor 2nd pass): My Work renders story states cross-project; build against project_states (TASK-91), not the enum.
+---
+<!-- COMMENTS:END -->

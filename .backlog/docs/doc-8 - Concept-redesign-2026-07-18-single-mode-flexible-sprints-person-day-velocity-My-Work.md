@@ -5,7 +5,7 @@ title: >-
   velocity, My Work
 type: specification
 created_date: '2026-07-18 02:52'
-updated_date: '2026-07-18 03:03'
+updated_date: '2026-07-18 03:19'
 ---
 # Concept Redesign 2026-07-18 — single mode, flexible sprints, person-day velocity, My Work
 
@@ -23,17 +23,57 @@ implementation tasks. Nothing here is implemented yet.
 - Git tag `pre-concept-redesign` marks the last commit before the change (done,
   2026-07-18, at main).
 
-## 2. Flexible states within tracker mode
+## 2. Fully custom states on fixed categories
 
-- Teams must be able to adapt the state machine — e.g. a non-development project may not
-  use deliver. Full column freedom (old free mode) is gone.
-- **(advisor) Scope decision: the state set itself stays the fixed enum.** Flexibility is
-  per-project **display names** for states plus the ability to **hide the `delivered`
-  step** (and optionally `rejected`) so accept follows finish directly. The `accepted`
-  literal stays intact everywhere it is hardcoded (finalization RPC, `completed_at`
-  trigger, `transition_story`, backlog zone predicate), so velocity and zone semantics
-  survive untouched and this work is independent of §7. Owner confirmation pending on
-  this narrowing.
+**Owner decision 2026-07-18 (supersedes the earlier narrowed scope): usability first,
+rework cost explicitly accepted.** Board columns become per-project custom states —
+freely named, added, removed, reordered — the old free mode's column freedom rebuilt on
+top of tracker machinery (iterations/velocity intact). System semantics attach to a
+fixed **category** per state, which users rarely think about. Reviewed by fable-advisor
+2026-07-18 (second pass, approve-with-corrections; all corrections below).
+
+- **Categories**: `unstarted` (backlog-planning zone), `in_progress`, `done` (entry
+  counts for velocity, sets `completed_at`), `rejected` (optional bounce category, 0..n
+  states — red styling, Accept/Reject pair on the state before done, Restart back to the
+  first in_progress state; zone/velocity semantics identical to in_progress; non-dev
+  projects simply don't create one).
+- **(advisor) Icebox = `stories.state_id IS NULL`.** No `unscheduled` category or state
+  row exists; new stories default to NULL. The backlog zone predicate becomes
+  `iteration_id IS NULL AND state_id IS NOT NULL` (NULL-safe, and deleting states can
+  never break the Icebox).
+- **Shape**: `project_states(id, project_id, name, action_label nullable, category,
+  position)` with `UNIQUE(id, project_id)`; `stories.state_id` is a composite FK so
+  cross-project references are impossible; RLS follows the custom_statuses precedent
+  (members read/write, owner-only delete); positions per the existing position-ordering
+  invariant.
+- **(advisor) Integrity rules**: category is **immutable** after creation (recategorize =
+  create a new state and move stories); deletion is plain-FK blocked while stories point
+  at it; a trigger under a per-project advisory lock enforces ≥1 unstarted and ≥1 done
+  state at all times.
+- **(advisor) Transitions**: the DB allows any→any within the project — `transition_story`'s
+  fixed one-step CASE is replaced by `set_story_state(p_story_id, p_state_id)` (SECURITY
+  INVOKER, `FOR UPDATE`, unestimated-feature gate, done-iteration guard, auto-assign to
+  current iteration on entering in_progress). Ordering discipline moves to the UI: one
+  advance-to-next-state button per story using `action_label` verbs. spec/features.md
+  "arbitrary state jumps are not allowed" becomes a deliberate divergence.
+- **Estimation gate**: an unestimated feature can only sit in NULL (Icebox) or an
+  unstarted-category state; RPC and board-move deltas reject the rest.
+- **Story types stay orthogonal to states** — no type-specific state sets (matches
+  current code); chore/release velocity exclusion survives via the existing type filter;
+  releases render as milestone rows in any state.
+- **`finish_story_from_git`**: the merge target becomes a configurable state on the
+  integration settings (classic template default: Finished; unset = disabled), guarded
+  to only move stories forward and never into done/rejected.
+- **Default templates** at project creation: **classic** — Unstarted(unstarted) /
+  Started, Finished, Delivered(in_progress) / Accepted(done) / Rejected(rejected) with
+  Start/Finish/Deliver/Accept/Reject action labels, rendering identically to the current
+  Kanban (the Pivotal-parity anchor); **minimal** — Todo(unstarted) / Doing(in_progress)
+  / Done(done).
+- The advance-button/pair/gate computation stays a per-client pure function
+  (packages/core), now driven by project_states data — golden fixtures shared with iOS.
+- **External blocker**: the TASK-70 owner decision (any-member vs author/assignee board
+  write model) must land before implementation — `set_story_state`'s permission design
+  depends on it.
 
 ## 3. Iterations are fixed-cadence sprints
 
@@ -99,7 +139,8 @@ implementation tasks. Nothing here is implemented yet.
   RPC** — capacity is frozen at finalize time, never recomputed, so later member removal
   or calendar edits cannot silently rewrite history. (If lazy finalization runs weeks
   late, capacity reflects membership/time-off at that moment — accepted, documented.)
-- **(advisor) Rate formula**: rate = Σ accepted points ÷ Σ capacity over the last
+- **(advisor) Rate formula**: rate = Σ points of stories entering the done category (§2)
+  ÷ Σ capacity over the last
   `velocity_window` non-skipped, capacity>0 `done` iterations (a ratio of sums, not an
   average of ratios — avoids zero-division and over-weighting tiny sprints). Forecast
   for a future sprint = rate × that sprint's planned capacity.
@@ -154,20 +195,29 @@ implementation tasks. Nothing here is implemented yet.
 
 - My Work screen spec (buckets, ordering, pin interactions) — at spec-writing time.
 - Per-user weekday patterns; exclude-AI capacity toggle (§8).
-- Full state-set customization beyond display names + hidden delivered (§2).
+- Free-mode extras not carried over: swimlanes, WIP limits (add back only on demand).
 
 ## Review record
 
-- 2026-07-18 fable-advisor: **approve-with-corrections** — corrections to §2, §3, §4,
-  §6, §7, §8, §9 incorporated above, each marked "(advisor)". Key call: redefining 1-day
-  iterations as working-day-start spans (§4) removed a direct conflict with the
+- 2026-07-18 fable-advisor (1st pass): **approve-with-corrections** — corrections to §3,
+  §4, §6, §7, §8, §9 incorporated above, each marked "(advisor)". Key call: redefining
+  1-day iterations as working-day-start spans (§4) removed a direct conflict with the
   done-iteration write guard and finalize-once design in `spec/velocity.md`.
+- 2026-07-18 fable-advisor (2nd pass, §2 only): the owner overrode the 1st-pass
+  narrowing (display names + hidden delivered) in favor of fully custom states;
+  **approve-with-corrections** on the category design. Key calls: Icebox becomes
+  `state_id IS NULL` instead of a category; category immutable after creation;
+  any→any transitions in the DB with ordering discipline in the UI;
+  `finish_story_from_git` needs a configurable target state; TASK-70's owner decision
+  is a hard prerequisite for the implementation task.
 
 ## Next steps
 
 1. Update `spec/` (glossary, data-model, velocity, screens, features, rls) to match
    §1–§9 including all advisor corrections.
-2. Implementation order: free-mode removal (§1) → calendar (§6) → velocity/capacity
-   (§7) → cadence flexibility (§3–§5) → story_pins + My Work (§9) → quick-add
-   (TASK-82). §2 spec text can proceed independently; §2 implementation after spec.
-3. Backlog tasks: see TASK-83…TASK-90 (created 2026-07-18).
+2. Implementation order: spec (TASK-83) → free-mode removal (TASK-84) → **state model
+   (TASK-91)** → velocity/capacity (TASK-86) → cadence flexibility (TASK-87); calendar
+   (TASK-85) in parallel after spec; story_pins (TASK-88) after spec; My Work (TASK-89)
+   and quick-add (TASK-82) after the state model lands.
+3. Backlog tasks: see TASK-83…TASK-91 (created/reworked 2026-07-18). TASK-91 is blocked
+   on the TASK-70 owner decision.

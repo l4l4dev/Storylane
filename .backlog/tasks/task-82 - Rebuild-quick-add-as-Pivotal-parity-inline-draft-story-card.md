@@ -5,12 +5,13 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 02:53'
-updated_date: '2026-07-18 03:05'
+updated_date: '2026-07-18 03:20'
 labels:
   - web
   - ux
 dependencies:
   - TASK-84
+  - TASK-91
 priority: high
 ordinal: 53000
 ---
@@ -37,5 +38,10 @@ The current quick-add is Trello-style: an always-visible "+ Add story" trigger p
 created: 2026-07-18 03:05
 ---
 Ordering constraint from advisor review (doc-8 §10): start only after free-mode removal (TASK-84) so the composer is not rebuilt against boards that are about to disappear.
+---
+
+created: 2026-07-18 03:20
+---
+Dep added (advisor 2nd pass): the draft story card renders state/transition controls, which become project_states-driven in TASK-91 — build the composer once, against the new model.
 ---
 <!-- COMMENTS:END -->

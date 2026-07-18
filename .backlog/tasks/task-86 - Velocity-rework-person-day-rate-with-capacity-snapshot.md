@@ -5,11 +5,13 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:04'
+updated_date: '2026-07-18 03:19'
 labels:
   - web
   - db
 dependencies:
   - TASK-85
+  - TASK-91
 priority: high
 ordinal: 57000
 ---
@@ -27,3 +29,12 @@ doc-8 §7 with advisor corrections. Add iterations.capacity (person-days), writt
 - [ ] #3 Virtual groups and auto-planning use rate x planned capacity; golden fixtures shared and passing
 - [ ] #4 pnpm test passes
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-18 03:19
+---
+Dep added (advisor 2nd pass): the finalize RPC and rate formula must be built on category=done from the start (TASK-91), not accepted-literals, to avoid rebuilding it twice.
+---
+<!-- COMMENTS:END -->

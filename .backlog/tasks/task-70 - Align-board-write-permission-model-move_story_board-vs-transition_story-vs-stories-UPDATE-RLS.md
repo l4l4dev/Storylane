@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-17 13:14'
-updated_date: '2026-07-18 02:59'
+updated_date: '2026-07-18 03:20'
 labels:
   - web
   - db
@@ -43,5 +43,10 @@ Owner decision 2026-07-17: option (a) — Pivotal-style. Any member may operate 
 created: 2026-07-18 02:59
 ---
 Concept redesign impact (doc-8, 2026-07-18): free mode and the Focus view are being removed (§1, §9), so the lane/focus-bucket surface of move_story_board shrinks to List/Kanban state moves — re-check p_deltas scope against the post-removal board before aligning the three write paths. The new per-user today pin (§9) is a separate user-scoped table, NOT a story mutation, so it must not go through move_story_board. The owner decision in AC #1 (Pivotal-style vs strict) is unchanged and still required first.
+---
+
+created: 2026-07-18 03:20
+---
+Advisor 2nd pass (doc-8 §2): this tasks AC#1 owner decision (any-member vs author/assignee) is now a hard prerequisite for TASK-91 — set_story_state (which replaces transition_story) cannot be designed until the permission model is decided. Decision needed from the owner: (a) Pivotal-style, any member may operate any story; or (b) strict author/assignee rule on all three write paths.
 ---
 <!-- COMMENTS:END -->

@@ -1,28 +1,34 @@
 ---
 id: TASK-91
-title: 'Flexible states: per-project display names + hideable delivered step'
+title: 'State model rework: per-project custom states on fixed categories'
 status: To Do
 assignee:
-  - '@claude-sonnet-5'
+  - '@claude-opus-4-8'
 created_date: '2026-07-18 03:05'
+updated_date: '2026-07-18 03:19'
 labels:
   - web
   - db
 dependencies:
   - TASK-83
-priority: medium
+  - TASK-84
+  - TASK-70
+priority: high
 ordinal: 62000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-doc-8 §2 (advisor-narrowed scope, owner confirmation pending — do not start before the owner confirms). The state SET stays the fixed enum; flexibility is per-project display names for states plus hiding the delivered step (and optionally rejected) so accept follows finish directly for non-development projects. The accepted literal stays intact everywhere (finalization RPC, completed_at trigger, transition_story, backlog zone predicate) — this task must not touch velocity or zone semantics. Scope: settings storage for names/hidden steps, transition UI honoring both, MCP tool descriptions surfacing display names.
+doc-8 §2 (owner decision 2026-07-18: fully custom states, usability first; advisor 2nd-pass corrections incorporated in doc-8 — read §2 in full before planning). New project_states table (name, action_label nullable, category CHECK in unstarted/in_progress/done/rejected, position, UNIQUE(id, project_id)); stories.state enum replaced by stories.state_id composite FK, NULL = Icebox; backlog zone predicate becomes iteration_id IS NULL AND state_id IS NOT NULL. Category immutable after creation; deletion plain-FK blocked plus min-one (unstarted+done) trigger under a per-project advisory lock. transition_story replaced by set_story_state (any-to-any within project, SECURITY INVOKER, FOR UPDATE, unestimated-feature gate, done-iteration guard, auto-assign to current iteration on entering in_progress with the existing advisory-lock pattern). Re-anchor ALL consumers: completed_at trigger (done-to-done keeps old value), finalize/skip RPCs (category=done), _splice_backlog / move_story_board / zoneForStory / buildBacklogRows, finish_story_from_git (configurable target state on integration settings, forward-only guard), MCP transition tools, board UI advance buttons via action_label with Accept/Reject pair before done and Restart on rejected, settings screen for state editing, and template seeding in create_project (classic = Pivotal 7-state parity anchor; minimal = Todo/Doing/Done). Keep next-button/pair/gate computation as a data-driven pure function in packages/core with golden fixtures shared with iOS. Do NOT reuse/rename custom_statuses (free-mode leftovers; TASK-84 drops it).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A project can rename states and hide delivered (and rejected); transitions skip hidden steps correctly
-- [ ] #2 Velocity, completed_at, and backlog zone behavior are unchanged (regression tests)
-- [ ] #3 pnpm test passes
+- [ ] #1 project_states + stories.state_id land with composite FK, immutable category, min-one trigger (concurrent-delete race covered by test), RLS per custom_statuses precedent; rls-security-reviewer pass
+- [ ] #2 set_story_state enforces estimation gate, done-iteration guard, and auto-assignment; any-to-any allowed; one-step ordering exists only in UI
+- [ ] #3 All state consumers re-anchored to categories; no code references state name literals; classic-template board renders identically to the pre-change Kanban (parity check recorded per ux-principles Wayback procedure)
+- [ ] #4 completed_at: set on entering done, cleared on leaving, preserved on done-to-done moves (tests)
+- [ ] #5 Core pure functions data-driven with golden fixtures shared for iOS
+- [ ] #6 pnpm test passes
 <!-- AC:END -->

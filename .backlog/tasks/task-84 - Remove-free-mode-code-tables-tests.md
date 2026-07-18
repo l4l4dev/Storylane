@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:03'
+updated_date: '2026-07-18 03:20'
 labels:
   - web
   - db
@@ -26,3 +27,12 @@ doc-8 §1: free mode is removed entirely, pre-launch, no data migration. Delete 
 - [ ] #2 Drop migration reviewed by rls-security-reviewer (policy removal is a security-relevant change)
 - [ ] #3 pnpm test passes; app boots and tracker boards work with workflow_mode gone
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-18 03:20
+---
+Advisor 2nd pass: stay a pure drop migration. Do NOT rename or reuse custom_statuses as project_states (free-mode leftovers like is_done/wip_limit would pollute it and muddy the RLS review) — TASK-91 creates the new table fresh.
+---
+<!-- COMMENTS:END -->
