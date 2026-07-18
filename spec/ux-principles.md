@@ -22,8 +22,9 @@ Pivotal Tracker and Material Design 1–2 — not today's soft, rounded consumer
   (state, points, epic, assignee) is visible without hovering or expanding.
 - **Dates:** always `YYYY/M/D` (datetimes `YYYY/M/D HH:mm`), via the shared formatter —
   never bare `toLocaleDateString()`/`toLocaleString()`.
-- **Copy:** never use third-party product names in UI text (defect: free-mode template
-  displayed as "KanbanFlow").
+- **Copy:** never use third-party product names in UI text — e.g. the
+  iteration/velocity workflow is Storylane's own; "Pivotal Tracker" must
+  never appear in the product UI (spec/features.md).
 
 ## Interaction principles
 

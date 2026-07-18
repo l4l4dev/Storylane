@@ -6,9 +6,37 @@
 - `viewer` role: SELECT only
 - `member` role: SELECT / INSERT / UPDATE (own stories or assigned stories)
 - `owner` role: all operations including DELETE
+- **Board write model — TASK-70 owner decision (a), doc-8 §2:** the target is
+  **Pivotal-style — any project member may operate any story**, not just their
+  own/assigned. `set_story_state` is designed against this. TASK-70 delivers the
+  RLS relaxation (widening the `member` story-UPDATE policy above) that TASK-91's
+  state model runs on; until it lands the old own/assigned restriction stands.
+  This is a hard prerequisite for the custom-state implementation
 - Every new table with a `project_id` column gets its own policy set following
-  the pattern above (2026-07-07 additions: `iteration_goals`, `swimlanes`,
-  `recurring_stories`) — policies are never inherited
+  the pattern above — policies are never inherited
+- **project_states (doc-8 §2):** same shape as the removed `custom_statuses`
+  — members SELECT/INSERT/UPDATE, **owner-only DELETE**. A composite
+  `UNIQUE(id, project_id)` backs `stories.state_id`'s composite FK, so a
+  cross-project state reference is impossible. Category immutability and the
+  "≥1 unstarted & ≥1 done" minimum are enforced by triggers under a
+  per-project advisory lock, not by RLS
+- **story_pins (doc-8 §9):** not project-scoped by column — gated per user.
+  SELECT/DELETE `user_id = auth.uid()`; INSERT `WITH CHECK user_id =
+  auth.uid() AND is_project_member(<story's project>)`. **No cross-user
+  reads.** Pin lifecycle writes that touch other users' rows go through
+  SECURITY DEFINER RPCs: `move_story_to_project` recreates pins on the new
+  story id for destination-project members; **`remove_member` deletes the
+  removed user's pins in that project** (prevents ghost pins reviving on
+  re-invite)
+- **project_calendar_exceptions:** project-scoped, standard pattern
+  (members read, owner/member write per role)
+- **user_time_off (doc-8 §6):** stores **dates + kind only, no reason/notes**
+  — because co-members must read it for capacity math. READ policy is
+  `user_id = auth.uid() OR shares_project_with(user_id)` (existing helper);
+  WRITE is self-only. **Trade-off (accepted, must stay documented here): a
+  shared project exposes all of your time-off dates to its members, viewers
+  included.** The table deliberately carries nothing private so this exposure
+  is limited to dates
 - Exception (2026-07-08): `iteration_goals` allows `member` DELETE, not just
   `owner`. A row here is a *field value* (the draft goal for a not-yet-real
   iteration), not a record — deleting it is equivalent to clearing the goal,
@@ -52,7 +80,7 @@
   which reject a source or target project that's archived, and (b) the web
   UI's display/archive-control gating on `/dashboard`. There is **no**
   DB-level lock across every write-capable table (`stories`, `comments`,
-  `iterations`, `custom_statuses`, `labels`, ...) — a member can still write
+  `iterations`, `project_states`, `labels`, ...) — a member can still write
   directly to an archived project's data via PostgREST/the REST API,
   bypassing the UI. Full DB-level read-only enforcement is tracked as
   follow-up work (see Backlog), not implemented here.

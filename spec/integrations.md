@@ -13,18 +13,19 @@
      `20260715000003_finish_story_from_git.sql`）。state 更新と iteration アサインを
      このRPCが1トランザクションで行う（下記3）。
 3. Finish + assign は単一のトランザクショナル RPC（`finish_story_from_git`）
-   - **`workflow_mode = 'tracker'` のプロジェクトにのみ適用**（2026-07-11 オーナー決定）:
-     この判定は **RPC 内が唯一の実施箇所**（single enforcement point, TASK-53 で
-     Edge Function 側の重複チェックを排除）。tracker でなければ `ignored` イベントを返し
-     何も書き込まない。
-   - **PR マージ時は `finished` へ強制遷移**（2026-07-07 オーナー決定）: `unscheduled` / `unstarted` /
-     `started` の story はステートマシンの1段遷移を例外的に飛び越えて `finished` にする
-     （本家 Pivotal の GitHub 連携と同じ挙動）。すでに `finished` 以降なら
-     `not_transitionable` イベントを返し何もしない（0行更新を明示的に返すので、
-     リトライしても冪等）。
+   - **単一ワークフロー**（doc-8 §1 で free モード撤去）: モード判定は不要になった。
+     全プロジェクトが対象。
+   - **マージ先 state は設定可能**（doc-8 §2）: `integrations.config` の
+     `merge_target_state_id` が指す `project_states` 行へ遷移する（classic テンプレの
+     既定は Finished、未設定 = 連携無効で `ignored` を返す）。ガードは **前進のみ**で、
+     `done` / `rejected` カテゴリには決して入れない。`set_story_state` の
+     any→any を GitHub 連携でも濫用しないためのサーバ側制約。
+   - すでにターゲット以降にある story は `not_transitionable` イベントを返し何もしない
+     （0行更新を明示的に返すので、リトライしても冪等）。
    - このとき iteration 未所属（Backlog/Icebox）だった story は **current iteration にも
-     アサインする** — board 上は `unstarted` しかゾーンを跨げないため、finished のまま
-     Backlog に取り残されると救出できない。マージ＝作業は今の iteration で行われた、とみなす。
+     アサインする** — board 上は `unstarted` カテゴリの state しかゾーンを跨げないため、
+     ターゲット state のまま Backlog に取り残されると救出できない。
+     マージ＝作業は今の iteration で行われた、とみなす。
    - **`finalize_iteration` と同じ advisory lock**（`iteration_finalize:<project_id>`）を取るので、
      state 遷移と iteration アサインの間に rollover / manual finish が割り込めない
      （Codex 指摘: 2段書き込みの interleave / 割り当て失敗で stranded）。
@@ -51,6 +52,6 @@
 ### integrations.config の中身（provider 別）
 | provider | config keys |
 |---|---|
-| `github` | `repo_url`, `webhook_secret` |
-| `forgejo` | `repo_url`, `webhook_secret` |
+| `github` | `repo_url`, `webhook_secret`, `merge_target_state_id` (nullable — unset disables the merge transition) |
+| `forgejo` | `repo_url`, `webhook_secret`, `merge_target_state_id` |
 | `slack` | `webhook_url` |

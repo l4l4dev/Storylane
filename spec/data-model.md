@@ -11,6 +11,9 @@ profiles (
   display_name text NOT NULL,
   username     text UNIQUE NOT NULL,  -- @mention 用の一意ハンドル。初回サインイン時に自動生成、設定で変更可（Task 9 で追加）
   avatar_url   text,
+  is_agent     boolean NOT NULL DEFAULT false, -- true = coding agent (spec/mcp.md agent-as-member).
+                                          -- UIs use it only to badge agents apart from humans;
+                                          -- capacity math treats them identically to humans (doc-8 §8)
   created_at   timestamptz DEFAULT now()
 )
 ```
@@ -22,17 +25,21 @@ projects (
   name              text NOT NULL,
   description       text,
   velocity_window   int  DEFAULT 3,       -- number of recent iterations used for velocity calculation
-  iteration_length  int  DEFAULT 14,      -- sprint length in days: 7 / 14 / 21 / 28
+  iteration_length  int  DEFAULT 14,      -- cadence: sprint length in days (1 / 7 / 14 / 21 / 28).
+                                          -- 1 = a 1-day-cadence project (no special "personal mode";
+                                          -- doc-8 §4). Changeable at any time; the change applies only
+                                          -- to the NEXT iteration row that gets created — no
+                                          -- effective-date scheduling (doc-8 §3, see spec/velocity.md
+                                          -- "Cadence change"). Each change logs an activity_logs row
+  iteration_term    text NOT NULL DEFAULT 'Iteration', -- doc-8 §5: user-facing display term
+                                          -- ("Sprint", "Iteration", free text). Data layer stays
+                                          -- `iterations`. 1-day projects display the date as the title
+  working_weekdays  int[] NOT NULL DEFAULT '{1,2,3,4,5}', -- doc-8 §6: default working weekdays,
+                                          -- ISO weekday numbers (1=Mon … 7=Sun). Layered with
+                                          -- project/user date exceptions for capacity + 1-day
+                                          -- boundary selection (see calendar tables below)
   point_scale       text DEFAULT 'fibonacci', -- 'fibonacci' | 'linear' | 'custom'
   custom_points     int[],                -- array used when point_scale='custom'
-  workflow_mode     text NOT NULL DEFAULT 'tracker'
-                      CHECK (workflow_mode IN ('tracker', 'free')),
-                                          -- Task 14, fixed at creation, never changed after:
-                                          -- 'tracker' = state machine + iterations/velocity
-                                          --   (renamed from 'pivotal' 2026-07-07 — one migration
-                                          --   updates the CHECK and existing rows);
-                                          -- 'free' = pure Trello board via custom_statuses, no
-                                          -- iterations/velocity (see spec/screens.md "Free mode board")
   archived_at       timestamptz,          -- 2026-07-07: set = archived (owner only), NULL = active.
                                           -- Archived projects are hidden behind an "Archived"
                                           -- filter on the Projects page; unarchive sets NULL
@@ -80,88 +87,120 @@ labels (
 )
 ```
 
-### custom_statuses
-Board columns for `workflow_mode = 'free'` projects (Task 14, 2026-07-07) —
-freely added/renamed/reordered/deleted in Settings, unlike tracker's fixed
-state machine. Same RLS pattern as labels/epics (members read/write,
-owner-only delete). Delete is blocked at the DB level (plain FK, no cascade)
-while any story still references the status — the app converts the FK
-error (`23503`) into a "move the stories off this status first" message.
+### project_states
+Per-project board columns (doc-8 §2, supersedes the removed free-mode
+`custom_statuses`) — freely named, added, removed, and reordered in
+Settings, rebuilding the old free-mode column freedom on top of the tracker
+machinery (iterations/velocity intact). System semantics attach to a fixed
+**category** per state, not to its name. Same RLS pattern as the former
+custom_statuses (members read/write, owner-only delete).
+
 ```sql
-custom_statuses (
+project_states (
+  id           uuid NOT NULL DEFAULT gen_random_uuid(),
+  project_id   uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name         text NOT NULL,
+  action_label text,                    -- advance-button verb ("Start", "Finish", …); NULL = no
+                                         -- advance button rendered for this state (e.g. a done state)
+  category     text NOT NULL CHECK (category IN ('unstarted', 'in_progress', 'done', 'rejected')),
+                                         -- 'unstarted'  = backlog-planning zone;
+                                         -- 'in_progress'= active work (auto-assign to current iteration);
+                                         -- 'done'       = entry counts for velocity, sets completed_at;
+                                         -- 'rejected'   = optional bounce (0..n states), red styling,
+                                         --                zone/velocity semantics identical to in_progress.
+                                         -- IMMUTABLE after creation — recategorize = create a new state
+                                         -- and move stories (doc-8 §2 advisor)
+  position     int  NOT NULL DEFAULT 0,  -- per the position-ordering invariant below
+  created_at   timestamptz DEFAULT now(),
+  PRIMARY KEY (id),
+  UNIQUE (id, project_id) -- composite target for stories.state_id, so a story can never point
+                          -- at another project's state
+)
+```
+
+**Integrity rules (doc-8 §2 advisor):**
+- `category` is immutable after creation.
+- Deletion is plain-FK blocked while any story points at the state (the app
+  converts the `23503` into a "move the stories off this state first"
+  message — the custom_statuses precedent). Icebox (`state_id IS NULL`)
+  cannot break: deleting states never touches it.
+- A trigger under a per-project advisory lock enforces **≥1 `unstarted` and
+  ≥1 `done` state at all times** (so a project can always receive and
+  complete work).
+
+**Transitions — `set_story_state(p_story_id, p_state_id)` (doc-8 §2 advisor):**
+replaces the removed fixed-verb `transition_story`. SECURITY INVOKER, `FOR
+UPDATE` on the story row, and it owns the shared guards: the estimation gate
+(unestimated `feature` only into NULL/`unstarted`), the **done-iteration
+guard** (reject writes onto a story in a `done`-state iteration, shared with
+the finalization path — see spec/velocity.md "Finalization concurrency"), and
+**auto-assign to the current iteration on entering an `in_progress` state**.
+The DB permits **any → any** within the project; ordering discipline is
+UI-only (the advance button / Accept-Reject pair, a `packages/core` pure
+function). Runs on the TASK-70 board write model (a) — any member may operate
+any story (see spec/rls.md).
+
+**Default templates** at project creation (doc-8 §2):
+- **classic** — Unstarted(`unstarted`) / Started, Finished, Delivered(all
+  `in_progress`) / Accepted(`done`) / Rejected(`rejected`), with
+  Start/Finish/Deliver/Accept/Reject action labels — renders identically to
+  the old fixed Kanban (the Pivotal-parity anchor).
+- **minimal** — Todo(`unstarted`) / Doing(`in_progress`) / Done(`done`).
+
+### story_pins
+Per-user "surface this in today's My Work" mark (doc-8 §9). A longer-cadence
+project's story appears in My Work's "today" bucket only when the user pins
+it; 1-day-project current-iteration stories are today's plan without a pin.
+```sql
+story_pins (
+  user_id  uuid REFERENCES profiles(id) ON DELETE CASCADE,
+  story_id uuid REFERENCES stories(id)  ON DELETE CASCADE,
+  PRIMARY KEY (user_id, story_id)
+)
+```
+RLS: SELECT/DELETE `user_id = auth.uid()`; INSERT WITH CHECK `user_id =
+auth.uid() AND` caller is a member of the story's project. No cross-user
+reads. Lifecycle (cross-user writes, so they live in the existing SECURITY
+DEFINER RPCs): `move_story_to_project` recreates pins on the new story id
+for pinners who are members of the destination project (discards the rest);
+`remove_member` deletes the removed user's pins in that project (prevents
+ghost pins reviving on re-invite). See spec/rls.md.
+
+### Working-day calendar (doc-8 §6)
+Two date-exception layers on top of `projects.working_weekdays`. They affect
+**velocity/planning math only**, never sprint boundaries — the single
+exception is 1-day cadence start-date selection (spec/velocity.md), which
+consults the **project-level calendar only**, never user time off (so an
+iteration's existence never differs per user). Calendar edits never
+retroactively move or delete existing iteration rows.
+
+```sql
+project_calendar_exceptions (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
-  name       text NOT NULL,
-  color      text NOT NULL DEFAULT '#6b7280',
-  position   int  NOT NULL DEFAULT 0,
-  is_done    boolean NOT NULL DEFAULT false, -- counts as "done" for activity log / future reports;
-                                             -- also drives stories.completed_at in free mode
-  wip_limit  int CHECK (wip_limit > 0),      -- 2026-07-07: soft WIP limit — column header shows
-                                             -- count/limit and turns warning-colored when exceeded;
-                                             -- drops are never blocked. NULL = no limit
-  created_at timestamptz DEFAULT now(),
-  UNIQUE (id, project_id) -- composite target for stories.custom_status_id, see below
+  date       date NOT NULL,
+  kind       text NOT NULL CHECK (kind IN ('holiday', 'extra_workday')),
+                                          -- holiday = normally-working day off (company closure);
+                                          -- extra_workday = non-working weekday made working
+  UNIQUE (project_id, date)
+)
+
+user_time_off (
+  user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
+  date    date NOT NULL,
+  kind    text NOT NULL CHECK (kind IN ('off')),  -- dates + kind ONLY — no reason/notes column:
+                                          -- co-members must read these for capacity math, so the
+                                          -- table carries nothing private (doc-8 §6 advisor).
+                                          -- Applies across all of the user's projects
+  PRIMARY KEY (user_id, date)
 )
 ```
-
-### swimlanes
-Optional horizontal lanes for free-mode boards (KanbanFlow parity,
-2026-07-07). When a project has swimlane rows, the board renders lanes ×
-columns, plus a "no lane" band for unassigned stories. Same RLS pattern as
-custom_statuses. Delete follows the custom_statuses pattern: plain FK from
-stories, `23503` converted into a "move the stories off this lane first"
-message.
-```sql
-swimlanes (
-  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
-  name       text NOT NULL,
-  position   int  NOT NULL DEFAULT 0,
-  created_at timestamptz DEFAULT now(),
-  UNIQUE (id, project_id) -- composite target for stories.swimlane_id
-)
-```
-
-### recurring_stories
-Recurrence rules for free-mode boards (KanbanFlow parity, 2026-07-07),
-managed in project Settings. Generation is **lazy on board access** (no
-cron, same principle as iteration rollover): for each active rule whose
-next due date ≤ today, create one story instance (title/description copied,
-placed in `custom_status_id` / `swimlane_id`) and advance
-`last_generated_on`. Only the most recent missed occurrence is generated —
-a board untouched for a month must not flood with 30 daily cards.
-
-Double-generation guard (2026-07-08): generation runs in a single RPC that
-**claims** each due rule first —
-`UPDATE recurring_stories SET last_generated_on = <due> WHERE id = <id>
-AND (last_generated_on IS NULL OR last_generated_on < <due>) RETURNING id`
-— and inserts the story instance only when the claim returned a row, so
-two clients loading the board simultaneously cannot double-insert. The RPC
-is SECURITY DEFINER with a membership check inside (any role, including
-viewer — same reasoning as lazy rollover, see spec/velocity.md
-"Finalization concurrency"). Deleting a generated instance does not
-regenerate it (the claim already advanced `last_generated_on`). Due dates
-are computed in UTC in Phase 1, the same convention as iteration rollover;
-a per-project timezone is a possible Phase 2 addition. The UI does not
-offer `is_done` columns as generation targets (a card must not be born
-completed).
-```sql
-recurring_stories (
-  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id       uuid REFERENCES projects(id) ON DELETE CASCADE,
-  title            text NOT NULL,
-  description      text,
-  custom_status_id uuid,               -- target column; composite FK like stories.custom_status_id.
-                                       -- NULL = leftmost column at generation time
-  swimlane_id      uuid,               -- composite FK; NULL = no lane
-  cadence          text NOT NULL CHECK (cadence IN ('daily', 'weekly', 'monthly')),
-  weekday          int CHECK (weekday BETWEEN 0 AND 6),        -- weekly: 0=Sun … 6=Sat
-  day_of_month     int CHECK (day_of_month BETWEEN 1 AND 31),  -- monthly (>28 clamps to month end)
-  is_active        bool NOT NULL DEFAULT true,
-  last_generated_on date,
-  created_at       timestamptz DEFAULT now()
-)
-```
+`user_time_off` READ policy is `user_id = auth.uid() OR
+shares_project_with(user_id)`, WRITE self-only. The trade-off (a shared
+project exposes all your time-off dates to its members, viewers included) is
+accepted and documented in spec/rls.md. v1 has no per-user weekday patterns —
+"agent works weekends" is expressed via `extra_workday` / time-off dates or
+not at all (deferred, doc-8 §8).
 
 ### backlog_dividers
 Freeform planning rows for the List view's Backlog section (Task 15
@@ -195,7 +234,12 @@ iterations (
   goal        text,                       -- sprint goal (optional)
   start_date  date NOT NULL,
   end_date    date NOT NULL,
-  velocity    int,                        -- finalized velocity (total accepted points) when done
+  velocity    int,                        -- finalized done-category point sum, snapshotted when done
+  capacity    numeric,                    -- doc-8 §7: Σ member working-days for this sprint,
+                                          -- SNAPSHOTTED by the finalization RPC and never recomputed —
+                                          -- later member removal or calendar edits cannot rewrite
+                                          -- history. NULL until finalized. rate = Σvelocity ÷ Σcapacity
+                                          -- over the window (see spec/velocity.md)
   state       text DEFAULT 'planned' CHECK (state IN ('planned', 'active', 'done')),
   skipped     boolean NOT NULL DEFAULT false, -- true when manually finished before it started
                                           -- (spec/velocity.md "Skipping"); excluded from the
@@ -237,36 +281,22 @@ stories (
   epic_id      uuid,                      -- Composite FK (epic_id, project_id) REFERENCES epics(id,
                                           -- project_id) ON DELETE SET NULL (epic_id) (TASK-18) — same
                                           -- cross-project protection, epic_id only
-  custom_status_id uuid,                  -- free-mode column (Task 14); ignored in tracker mode.
-                                          -- Composite FK (custom_status_id, project_id) REFERENCES
-                                          -- custom_statuses(id, project_id) — prevents a story from
-                                          -- pointing at another project's status
+  state_id     uuid,                      -- doc-8 §2: the story's project_state (board column).
+                                          -- Composite FK (state_id, project_id) REFERENCES
+                                          -- project_states(id, project_id) ON DELETE RESTRICT —
+                                          -- cross-project references impossible; a state can't be
+                                          -- deleted while stories point at it.
+                                          -- NULL = Icebox (unscheduled) — new stories default to NULL.
+                                          -- The category behind the state (project_states.category)
+                                          -- drives velocity, completed_at, and zone semantics; the
+                                          -- old fixed state enum is gone
   title        text NOT NULL,
   description  text,
   story_type   text NOT NULL DEFAULT 'feature'
                  CHECK (story_type IN ('feature', 'bug', 'chore', 'release')),
-  state        text NOT NULL DEFAULT 'unscheduled'
-                 CHECK (state IN ('unscheduled', 'unstarted', 'started', 'finished', 'delivered', 'accepted', 'rejected')),
-                                            -- 'unscheduled' = Icebox（Task 12.5 で追加。新規ストーリーのデフォルト。
-                                            -- 既存行のマイグレーションでは unstarted のまま = Backlog に残す）
-                                            -- free-mode projects leave this at its default and
-                                            -- ignore it entirely — custom_status_id drives the
-                                            -- board column instead (Task 14)
-  focus        text CHECK (focus IN ('today')),
-                                            -- 2026-07-07: Focus-view bucket (tracker mode only,
-                                            -- see spec/screens.md "Focus view"). NULL = plain Todo.
-                                            -- Shared per story (not per user) in Phase 1.
-                                            -- 'this_week' dropped 2026-07-17 (TASK-34,
-                                            -- 20260717000002_focus_drop_this_week.sql)
-  completed_at timestamptz,                 -- 2026-07-07: when the story was completed.
-                                            -- Tracker: set on the transition to 'accepted' and
-                                            -- cleared whenever the state leaves 'accepted'.
-                                            -- Free: set when moved into an is_done column, cleared
-                                            -- when moved out. Drives date grouping in the Focus
-                                            -- view Done column and free-mode done columns
-  swimlane_id  uuid,                        -- 2026-07-07, free mode only; composite FK
-                                            -- (swimlane_id, project_id) REFERENCES
-                                            -- swimlanes(id, project_id). NULL = no lane
+  completed_at timestamptz,                 -- when the story entered a done-category state; cleared
+                                            -- whenever it leaves the done category. Drives date
+                                            -- grouping (My Work, done-state columns)
   points       int  CHECK (points >= 0),  -- nullable for chore / release。
                                           -- 値はプロジェクトの point_scale からの選択のみ（アプリ層で検証、Task 12.5）
   position     int  NOT NULL DEFAULT 0,   -- order within the backlog
@@ -317,7 +347,7 @@ activity_logs (
   project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
   story_id    uuid REFERENCES stories(id) ON DELETE SET NULL,
   actor_id    uuid REFERENCES profiles(id),
-  action      text NOT NULL,  -- e.g. 'story.created' | 'story.state_changed' | 'story.column_changed' | 'comment.added'
+  action      text NOT NULL,  -- e.g. 'story.created' | 'story.state_changed' | 'comment.added'
   payload     jsonb,          -- before/after values etc.
   created_at  timestamptz DEFAULT now(),
   -- TASK-55: cross-project reference guard. Requires stories UNIQUE(id, project_id).
@@ -343,8 +373,8 @@ integrations (
 
 ## Position ordering invariant
 
-`position` columns (stories, backlog_dividers, tasks, epics, custom_statuses,
-swimlanes) are an **ordering** key, not a dense index. Readers sort by it; no
+`position` columns (stories, backlog_dividers, tasks, epics, project_states)
+are an **ordering** key, not a dense index. Readers sort by it; no
 one reads it as an array index, and gaps are legal.
 
 Two rules keep it consistent (TASK-58, migrations `20260716000004`–`000005`):
@@ -364,7 +394,7 @@ Two rules keep it consistent (TASK-58, migrations `20260716000004`–`000005`):
    (the bug that motivated rule 1).
 
 DB-enforced where the scope is flat: `UNIQUE(project_id, position)` on
-custom_statuses / swimlanes / epics and `UNIQUE(story_id, position)` on tasks,
+project_states / epics and `UNIQUE(story_id, position)` on tasks,
 both `DEFERRABLE INITIALLY DEFERRED` (a rewrite collides mid-statement and
 reconciles at commit). `stories` and `backlog_dividers` are **not** constrained:
 their position is scoped by zone, not by a single column, and the two tables
@@ -372,8 +402,10 @@ share one backlog order space, so no single-column UNIQUE expresses it.
 
 ### Backlog zone predicate (canonical)
 
-A story belongs to the **backlog zone** when `iteration_id is null and state <>
-'unscheduled'`. The canonical definition lives in the DB, in `_splice_backlog`
+A story belongs to the **backlog zone** when `iteration_id is null and
+state_id is not null` (doc-8 §2 advisor: NULL-safe, and deleting states can
+never strand a story out of the Icebox). The canonical definition lives in
+the DB, in `_splice_backlog`
 (`20260716000001`); `move_story_board`, the board's `buildBacklogRows`, and
 `lib/utils/kanban.ts` `zoneForStory` all mirror it and must be changed together
 with it. (decision-1: invariants are authoritative server-side.)

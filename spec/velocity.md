@@ -1,16 +1,36 @@
 ← [SPEC.md](../SPEC.md)
 
-## Velocity Calculation Logic
+## Velocity Calculation Logic (person-day rate — doc-8 §7)
+
+Velocity is normalized **per person-day**, so sprints of different capacity
+(team size, holidays, personal time off) are comparable.
 
 ```
-velocity = AVG( sum of accepted points across the last velocity_window completed iterations )
+rate = ( Σ done-category points over the window )
+       ─────────────────────────────────────────────
+       ( Σ capacity over the window )
+
+window = the last `velocity_window` non-skipped, capacity>0 `done` iterations
+
+forecast(sprint) = rate × sprint.capacity      (planned capacity for a future sprint)
 ```
 
-- Stories with `story_type = 'chore'` or `'release'` are excluded from point counts
-- `iterations.velocity` is finalized when an iteration transitions to `state = 'done'`
-- **Skipped iterations (`iterations.skipped = true`) are excluded from the velocity window** —
-  see "Skipping a not-yet-started iteration" below
-- Auto-assignment: stories are pulled from the top of the backlog to fill the next iteration up to the current velocity
+- A **ratio of sums**, not an average of ratios — this avoids zero-division
+  and over-weighting tiny sprints (doc-8 §7 advisor).
+- **Points counted** = stories that entered a **`done`-category** state
+  (`project_states.category = 'done'`, spec/data-model.md), still excluding
+  `story_type = 'chore'` / `'release'` via the existing type filter.
+- **Capacity** = Σ over members of their working days in the sprint
+  (calendar-aware, minus personal time off). It is **snapshotted onto
+  `iterations.capacity` by the finalization RPC** and never recomputed, so
+  later member removal or calendar edits cannot rewrite history. If lazy
+  finalization runs weeks late, capacity reflects membership/time-off at
+  that moment (accepted, documented).
+- **Window filter**: skipped iterations (`iterations.skipped = true`) and
+  capacity-0 iterations (e.g. an empty `done` row auto-created on a
+  neglected 1-day project) are excluded, so neither drags the rate.
+- Auto-assignment: stories are pulled from the top of the backlog to fill
+  the next iteration up to `rate × planned capacity`.
 
 ## Automatic scheduling & rollover (updated 2026-07-02 for Pivotal Tracker parity)
 
@@ -34,7 +54,15 @@ Replaces the manual "Generate next iteration" / "Mark as done" operations from T
 
 ### Virtual-group computation (pure function, shared per client)
 
-- Capacity per virtual iteration = `max(current velocity, 1)` points.
+- Point budget per virtual iteration = **`rate × that sprint's planned
+  capacity`** (doc-8 §7 advisor), where planned capacity is computed from the
+  working-day calendar for the sprint's projected dates. Falls back to a
+  minimum of 1 point per group so backlog splitting still progresses before
+  any history exists.
+- The calendar/capacity math is a per-client pure function (web + iOS), so it
+  ships with **shared golden fixtures** as part of the velocity rework —
+  same TS↔Swift parity requirement as the state advance-button computation
+  (doc-8 §2).
 - Walk the backlog top-down accumulating points (`chore` / `release` /
   unestimated stories consume 0); when adding the next story would exceed the
   remaining capacity, close the group and start the next one.
@@ -53,12 +81,15 @@ Replaces the manual "Generate next iteration" / "Mark as done" operations from T
 
 ### Rollover (lazy, on first access after end_date)
 
-1. Finalize the ended iteration: store its velocity, set `state = 'done'`.
-2. Create the next iteration row (dates continue from `end_date`). If
+1. Finalize the ended iteration: snapshot its `velocity` (done-category
+   point sum) **and `capacity`** (Σ member working-days), set `state = 'done'`.
+2. Create the next iteration row (dates continue from `end_date`, using the
+   cadence length at access time — see "Cadence change" below). If
    `iteration_goals` has a goal for the new number, adopt it into
    `iterations.goal` and delete the `iteration_goals` row (2026-07-07).
-3. Move unaccepted stories from the ended iteration into the new current
-   iteration (accepted stories stay on the done iteration).
+3. Move stories not in a `done`-category state from the ended iteration into
+   the new current iteration (`done`-category stories stay on the done
+   iteration).
 4. Repeat if more than one `iteration_length` has passed since last access.
 
 Phase 1 trigger is **lazy on first access** (no cron dependency). It may later
@@ -74,7 +105,7 @@ is irreversible):
 1. Truncate the iteration's `end_date` to today, so history reflects the
    actual duration.
 2. Run the same finalization steps as rollover (velocity, `done`, next row
-   starting tomorrow, goal adoption, unaccepted-story carry-over).
+   starting tomorrow, goal adoption, not-yet-done-story carry-over).
 
 Automatic rollover stays in place — manual finish is an early-exit on top
 of it, not a replacement. The iteration bar always shows
@@ -90,8 +121,8 @@ a valid action — it **skips** #N+1:
 1. The skipped iteration keeps its `start_date` and collapses `end_date` onto
    `start_date` (a zero-length row — `end_date` must never precede
    `start_date`).
-2. It finalizes like any other iteration (velocity = accepted-point sum,
-   normally 0 since a future iteration has no accepted stories; unaccepted
+2. It finalizes like any other iteration (velocity = done-category point sum,
+   normally 0 since a future iteration has no done stories; not-yet-done
    stories carry to the successor), and is flagged `skipped = true`.
 3. The successor starts the day after the skipped iteration's `start_date`
    with a full `iteration_length`.
@@ -144,3 +175,52 @@ clicked twice, Finish racing a page-load rollover). Rules:
   other done iteration — no proration (Pivotal behavior). A *skipped*
   iteration (finished before it started, see "Skipping" above) is the one
   exception: it is excluded from the window.
+
+## Fixed-cadence sprints (doc-8 §3–§4)
+
+Boundaries are pure date arithmetic (`start_date + iteration_length`).
+**Start dates never move automatically** — no calendar/holiday influence —
+so Scrum events stay on the same weekday. The working-day calendar affects
+velocity/planning math only, never boundaries (single exception: 1-day
+start-date selection below).
+
+A project runs at **one cadence** (`projects.iteration_length` in days: 1,
+7, 14, 21, …), never mixed within a project. A "personal project" is just an
+ordinary project whose cadence is 1 day — there is no special personal mode.
+
+### 1-day cadence (doc-8 §4 advisor)
+
+For a 1-day project an iteration's `start_date` is a **working day** and its
+`end_date` is the **day before the next working day** — so Friday's
+iteration spans Fri–Sun and rollover fires on Monday. Consequences:
+
+- Work accepted on a non-working day lands in the still-current iteration
+  naturally — no writes into finalized (`done`) iterations, no
+  re-finalization, and the old "counts into the preceding iteration" special
+  rule is unnecessary.
+- Working-day determination uses the **project-level calendar only**
+  (`projects.working_weekdays` + `project_calendar_exceptions`) — never
+  user-level time off, which would make iteration existence differ per user.
+- Lazy catch-up on a neglected 1-day project creates one empty `done` row
+  per missed working day. Allowed — the velocity window excludes capacity-0
+  iterations so they don't distort the rate.
+- 1-day iterations display the date as their title (spec/data-model.md
+  `iteration_term`).
+
+### Cadence change (doc-8 §3 advisor)
+
+Cadence is changeable at any time. The change applies **immediately, to the
+next iteration row that gets created** — there is no effective-date
+scheduling mechanism. Lazy catch-up (Rollover step 4) uses the cadence
+length **at access time**, so it may retroactively fill gap periods at the
+new length (accepted trade-off). The settings change writes an
+`activity_logs` row recording old/new length.
+
+### Per-sprint manual override (doc-8 §3 advisor)
+
+A single sprint can be lengthened in whole weeks (e.g. this sprint only
+2w → 3w for a long holiday); whole-week overrides preserve the start
+weekday, and subsequent sprints continue from the new `end_date`. The
+override runs inside the **existing finalization RPC pattern with the
+per-project advisory lock** ("Finalization concurrency" above) and is
+**rejected if the iteration is already `state = 'done'`**.

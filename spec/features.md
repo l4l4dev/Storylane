@@ -2,31 +2,41 @@
 
 ## Feature List
 
-> **Mode naming (2026-07-07):** the iteration/velocity workflow is called
-> **Tracker** in every user-facing surface (mode picker, badges, marketing
-> copy). The name "Pivotal Tracker" must never appear in the product UI —
-> it may appear in this spec only as a design reference. The DB value is
-> `workflow_mode = 'tracker'` (renamed from `'pivotal'`, see
-> spec/data-model.md).
+> **Naming:** the product's own iteration/velocity workflow is Storylane's;
+> the name "Pivotal Tracker" must never appear in the product UI — it may
+> appear in this spec only as a design reference. Free mode and the
+> `workflow_mode` concept were removed (doc-8 §1); every project runs the
+> single workflow.
 
 ### Phase 1 (Initial Release)
 
 #### Story Management
-- Icebox: new stories start as `unscheduled` in the Icebox; promoting a story
-  to the backlog makes it `unstarted` (Pivotal Tracker's triage flow)
+- Icebox: new stories start in the Icebox (`state_id IS NULL`, doc-8 §2);
+  triaging into the backlog assigns an `unstarted`-category state
 - Backlog list with drag-and-drop reordering
 - Create, edit, and delete stories
 - Story types: feature / bug / chore / release
   (`release` stories act as milestone markers in the backlog — see spec/screens.md)
-- Story states: unscheduled → unstarted → started → finished → delivered → accepted / rejected
-- State transitions (Start / Finish / Deliver / Accept / Reject / Restart) —
-  only the next valid transition is allowed; arbitrary state jumps are not
-  allowed. On the Web board a transition is performed by dragging the card to
-  the target state column (or via buttons in the story side peek); on iOS via
-  one-click buttons (see spec/screens.md)
+- **States are per-project, fully custom** (`project_states`,
+  spec/data-model.md): freely named/added/removed/reordered board columns,
+  each carrying a fixed system **category** (`unstarted` / `in_progress` /
+  `done` / `rejected`). The **classic** template reproduces the Pivotal
+  columns (Unstarted → Started → Finished → Delivered → Accepted / Rejected).
+- **Transitions — deliberate divergence from Pivotal (doc-8 §2):** the DB
+  allows **any → any** state within the project (`set_story_state`); there is
+  no fixed one-step machine. Ordering discipline lives in the UI: one
+  **advance-to-next-state** button per story labelled with the next state's
+  `action_label`, the **Accept / Reject** pair on the state before a `done`
+  state, and **Restart** on a `rejected` story. On the Web board dragging a
+  card to a column also sets the state; on iOS via the advance button (see
+  spec/screens.md). The advance/pair computation is a shared `packages/core`
+  pure function with golden fixtures.
 - Point estimation — points are chosen from the project's point scale, no free numeric input
   - `fibonacci`: 0, 1, 2, 3, 5, 8, 13 / `linear`: 0, 1, 2, 3 / `custom`: values from `projects.custom_points`
-  - An unestimated `feature` cannot be started
+  - **Estimation gate (category terms):** an unestimated `feature` can only
+    sit in Icebox (`state_id IS NULL`) or an `unstarted`-category state; the
+    RPC and board-move deltas reject entry into any `in_progress` / `done` /
+    `rejected` state
 - Task (checklist) management within stories
 - Assignee, label, and epic associations
 - **Autosave (2026-07-07):** story detail fields save automatically as the
@@ -40,10 +50,11 @@
     backlog position inherited from the original story's spot, preserving
     task order) linked to the new epic. The original story's labels are
     copied to each new story.
-  - **State (2026-07-10, advisor-reviewed):** new stories never inherit a
-    `started`-or-later state — an unestimated feature can't be started. If
-    the original was `unscheduled` (Icebox) the new stories stay
-    `unscheduled`; otherwise they land as `unstarted`. `iteration_id` is
+  - **State (2026-07-10, advisor-reviewed; category terms since doc-8 §2):**
+    new stories never inherit an `in_progress`-or-later state — an
+    unestimated feature can't be started. If the original was in the Icebox
+    (`state_id IS NULL`) the new stories stay in the Icebox; otherwise they
+    land in the project's first `unstarted`-category state. `iteration_id` is
     copied from the original except when that iteration is already `done`
     (an accepted story keeps `iteration_id` after finalization), in which
     case the new stories drop back to the backlog instead of raising the
@@ -60,11 +71,13 @@
   - **Move** carries title, description, type, tasks, labels (recreated by
     name+color in the target if missing) and comments; the story receives a
     new per-project number in the target. Epic link is dropped; iteration
-    link is dropped (story lands in the target's Icebox as `unscheduled`,
-    or the leftmost column in a free project); points are kept only if the
-    value exists in the target's point scale, otherwise cleared; assignee
-    is kept only if they are a member of the target project. The original
-    is deleted; both projects get an activity-log entry.
+    link is dropped (story lands in the target's Icebox, `state_id IS NULL`);
+    points are kept only if the value exists in the target's point scale,
+    otherwise cleared; assignee is kept only if they are a member of the
+    target project. **Pins carry over** (doc-8 §9): `move_story_to_project`
+    recreates `story_pins` on the new story id for pinners who are members of
+    the target project, discarding the rest (cross-user write, inside the
+    RPC). The original is deleted; both projects get an activity-log entry.
   - **Copy** duplicates content only (title, description, type, tasks,
     labels) — no comments, no history. Same landing rules as Move.
   - Implemented as a single Postgres RPC per operation for atomicity.
@@ -76,25 +89,25 @@
     re-parent tasks/comments/labels + delete-source in one
     transaction** — never `UPDATE stories SET project_id`: the
     per-project numbering trigger pins `number` on UPDATE, so only a
-    fresh INSERT gets a correct target-project number. `focus` and
-    `completed_at` are cleared on landing (the story arrives
-    unscheduled / leftmost). Labels are recreated by lookup-then-insert
+    fresh INSERT gets a correct target-project number. `state_id` is set
+    to NULL and `completed_at` cleared on landing (the story arrives in
+    the target Icebox). Labels are recreated by lookup-then-insert
     inside the transaction (`labels` has no `UNIQUE(project_id, name)`;
     a concurrent duplicate is benign). Move/Copy land at the **bottom**
-    of the target Icebox / leftmost column. The RPC inserts the
+    of the target Icebox. The RPC inserts the
     `story.moved_out` / `story.moved_in` / `story.copied_in` activity
     rows itself — in-database, single path, consistent with the trigger
     rule in ARCHITECTURE.md. A concurrent editor of the moved story sees
     their save fail as "story deleted" (handled by the autosave rules in
     spec/screens.md).
 
-#### Iteration Management (Tracker mode)
+#### Iteration Management
 - Automatic iteration scheduling: the backlog is divided into upcoming
   iterations by velocity, rendered as collapsible numbered groups (see
   spec/screens.md "Backlog groups") — future iterations are not created
   manually
 - Automatic rollover: when an iteration's `end_date` passes, it is finalized
-  automatically and unaccepted stories roll over into the next iteration
+  automatically and stories not in a done-category state roll over into the next iteration
   (see spec/velocity.md)
 - **Manual finish (2026-07-07):** in addition to automatic rollover, a
   "Finish iteration" action lets owners/members close the current iteration
@@ -124,10 +137,10 @@
 
 #### Projects Page & Account Settings (2026-07-07)
 - Projects page (`/dashboard`): inline project creation (no overlay dialog)
-  with all initial settings in one form — name, description, mode
-  (comparison cards), iteration length, point scale, velocity window
-  (Tracker), column template (Free), and initial member invites
-- Project cards show a mode badge, mode-specific summary and member avatars
+  with all initial settings in one form — name, description, state template
+  (classic / minimal), cadence, iteration display term, working weekdays,
+  point scale, velocity window, and initial member invites
+- Project cards show the iteration/velocity summary and member avatars
   (see spec/screens.md "Projects page")
 - Project archive (owner only): archived projects are hidden from the
   default list behind an "Archived" filter; unarchive restores them
@@ -138,32 +151,15 @@
   here — not on the Projects page, not per project. Avatar comes from OAuth
   (`avatar_url`); avatar upload is Phase 2.
 
-#### Focus View (Tracker mode, 2026-07-07; Today-first since 2026-07-17)
-- A third board view (List / Kanban / **Focus**) for personal focus:
-  columns **Todo / Today / In progress / Done** over the current
-  iteration's stories (see spec/screens.md "Focus view"). Dragging between
-  Todo / Today sets `stories.focus`; state changes use the on-card
-  transition buttons; Done groups accepted stories by acceptance date
-  (`stories.completed_at`). A **This week** column existed until TASK-34
-  (2026-07-17), dropped to keep the view centered on today rather than the
-  week.
-
-#### Free Mode (Trello-style board; KanbanFlow parity 2026-07-07)
-- Custom columns (`custom_statuses`), any-to-any drag, no
-  iterations/velocity — see spec/screens.md "Free mode board"
-- Column templates at creation: **Daily** (Todo / Today / In progress /
-  Done) or **Basic** (To do / Doing / Done); Done columns are seeded with
-  `is_done = true`. Daily dropped its **This week** column in TASK-34
-  (2026-07-17), same Today-first reasoning as the Focus view above.
-- Done-date display: cards in `is_done` columns show and group by
-  completion date (`stories.completed_at`)
-- WIP limits per column (`custom_statuses.wip_limit`) — soft limit: the
-  column header turns warning-colored when exceeded, drops are not blocked
-- Swimlanes: optional horizontal lanes (`swimlanes` table +
-  `stories.swimlane_id`)
-- Recurring stories: schedule rules (`recurring_stories`) generate story
-  instances lazily on board access — daily / weekly / monthly cadence,
-  managed in project settings
+#### My Work (cross-project personal view, doc-8 §9 — replaces Focus view)
+- All stories assigned to the signed-in user across every project they
+  belong to (`/my-work`, see spec/screens.md "My Work").
+- 1-day-project current-iteration stories are today's plan by definition;
+  longer-cadence stories appear in "today" when the user **pins** them
+  (`story_pins`). Personal/1-day stories are visually distinguished.
+- The per-project Focus view and `stories.focus` are removed; board views
+  reduce to List / Kanban. Screen details (buckets, ordering) are not yet
+  fully specced.
 
 #### Notifications
 - When assigned to a story
@@ -173,7 +169,9 @@
 - Web 通知のトリガーは Supabase Realtime のイベント購読（Task 11 が Task 10 の前提）
 
 #### Integrations
-- **GitHub**: Link PRs to stories. Auto-update story to `finished` on PR merge
+- **GitHub**: Link PRs to stories. On PR merge, advance the story to the
+  integration's **configurable target state** (classic default: Finished;
+  unset = disabled), guarded forward-only, never into done/rejected (doc-8 §2)
 - **Slack**: Notify channels on story updates, iteration start/completion
 - **Forgejo**: Same webhook integration as GitHub (for self-hosted environments)
 
