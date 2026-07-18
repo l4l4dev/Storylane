@@ -302,7 +302,7 @@ export function IterationGoalBar({
   iterationId: string;
   initialGoal: string;
 }) {
-  const editor = useInlineEdit({
+  const { buttonRef, editor } = useInlineEdit({
     initialValue: initialGoal,
     fallbackError: "Failed to save goal",
     async onCommit(trimmed) {
@@ -317,7 +317,7 @@ export function IterationGoalBar({
   if (!editor.editing) {
     return (
       <button
-        ref={editor.buttonRef}
+        ref={buttonRef}
         type="button"
         onClick={editor.startEditing}
         aria-label={editor.synced ? `Edit iteration goal: ${editor.synced}` : "Add iteration goal"}

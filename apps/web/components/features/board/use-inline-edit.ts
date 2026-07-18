@@ -30,7 +30,7 @@ export function useInlineEdit({
   if (lastInitialValue !== initialValue) {
     setLastInitialValue(initialValue);
     setSynced(initialValue);
-    if (!editing && !savingRef.current) {
+    if (!editing && !isSaving) {
       setValueState(initialValue);
       setError(null);
     }
@@ -109,16 +109,21 @@ export function useInlineEdit({
     });
   }
 
+  // buttonRef is returned beside the state object, not inside it: bundling a
+  // ref into `editor` makes react-hooks/refs treat every `editor.*` read in
+  // render as a ref access.
   return {
     buttonRef,
-    cancel,
-    commitAndClose,
-    editing,
-    error,
-    isSaving,
-    setValue,
-    startEditing,
-    synced,
-    value,
+    editor: {
+      cancel,
+      commitAndClose,
+      editing,
+      error,
+      isSaving,
+      setValue,
+      startEditing,
+      synced,
+      value,
+    },
   };
 }

@@ -310,7 +310,7 @@ function ColumnHeaderContent({
 // writes name/color/is_done together — color and is_done are resubmitted
 // unchanged so a rename never clobbers them.
 function ColumnNameEditor({ projectId, status }: { projectId: string; status: CustomStatus }) {
-  const editor = useInlineEdit({
+  const { buttonRef, editor } = useInlineEdit({
     initialValue: status.name,
     fallbackError: "Failed to rename column",
     shouldCommit: (value) => Boolean(value),
@@ -330,7 +330,7 @@ function ColumnNameEditor({ projectId, status }: { projectId: string; status: Cu
   if (!editor.editing) {
     return (
       <button
-        ref={editor.buttonRef}
+        ref={buttonRef}
         type="button"
         onClick={editor.startEditing}
         className="h-6 min-w-0 flex-1 truncate text-left text-sm font-semibold hover:underline"
@@ -378,7 +378,7 @@ function ColumnNameEditor({ projectId, status }: { projectId: string; status: Cu
 // createCustomStatus; default color matches Settings' status-manager.tsx.
 function AddColumnButton({ projectId }: { projectId: string }) {
   const { canEdit } = useContext(BoardPermissionsContext);
-  const editor = useInlineEdit({
+  const { buttonRef, editor } = useInlineEdit({
     initialValue: "",
     fallbackError: "Failed to add column",
     shouldCommit: (value) => Boolean(value),
@@ -399,7 +399,7 @@ function AddColumnButton({ projectId }: { projectId: string }) {
   if (!editor.editing) {
     return (
       <button
-        ref={editor.buttonRef}
+        ref={buttonRef}
         type="button"
         onClick={editor.startEditing}
         className="flex h-9 w-40 shrink-0 items-center justify-center gap-1.5 self-start rounded-lg border border-dashed border-border text-sm text-muted-foreground hover:border-foreground/40 hover:text-foreground"
