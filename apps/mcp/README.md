@@ -20,7 +20,8 @@ can tell it apart. Against a local stack you can do this with the service role
 (e.g. in `supabase studio`, or the admin API):
 
 - email: `agent@<your-domain>` · a strong password
-- `profiles`: `username: claude-agent`, display name `Claude (agent)`
+- `profiles`: `username: claude_agent`, display name `Claude (agent)`,
+  `is_agent: true`
 
 ### 2. Invite the bot to a project
 

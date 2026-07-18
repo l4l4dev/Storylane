@@ -46,7 +46,7 @@ export default async function IterationsPage({
           supabase
             .from("stories")
             .select(
-              "id, number, title, description, story_type, state, points, position, iteration_id, epic_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+              "id, number, title, description, story_type, state, points, position, iteration_id, epic_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
             )
             .in("iteration_id", doneIds)
             .order("position", { ascending: true }),
@@ -70,6 +70,7 @@ export default async function IterationsPage({
       points: story.points,
       iteration_id: story.iteration_id,
       assigneeName: assigneeProfile?.display_name ?? null,
+      assigneeIsAgent: assigneeProfile?.is_agent ?? false,
       labels: story.story_labels
         .map((sl) => labelById.get(sl.label_id))
         .filter((l): l is NonNullable<typeof l> => l != null)

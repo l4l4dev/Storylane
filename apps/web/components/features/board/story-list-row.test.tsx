@@ -43,7 +43,19 @@ describe("StoryListRow", () => {
     expect(screen.queryByText("Checkout revamp")).not.toBeInTheDocument();
   });
 
-  it("reserves readable title width and hides secondary chips below the small breakpoint", () => {
+  it("marks an agent assignee in the compact row", () => {
+    render(
+      <StoryListRow
+        story={{ ...baseStory, assigneeName: "Claude", assigneeIsAgent: true }}
+        projectId="p1"
+        pointScale={fibonacci}
+      />,
+    );
+    expect(screen.getByTitle("Claude (agent)")).toHaveTextContent("CL");
+    expect(screen.getByLabelText("Agent")).toBeInTheDocument();
+  });
+
+  it("lets the title shrink and hides secondary chips below the small breakpoint", () => {
     render(
       <StoryListRow
         story={{
@@ -56,11 +68,48 @@ describe("StoryListRow", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /Add login/ })).toHaveClass("min-w-28");
-    expect(screen.getByText("Add login")).toHaveClass("min-w-20");
+    expect(screen.getByRole("button", { name: /Add login/ })).toHaveClass("min-w-0");
+    expect(screen.getByText("Add login")).toHaveClass("min-w-0", "flex-1");
     expect(screen.getByText("Checkout revamp").parentElement?.parentElement).toHaveClass("hidden", "sm:inline-flex");
     expect(screen.getByText("•••")).toHaveClass("hidden", "sm:inline");
     expect(screen.getByText("Urgent")).toHaveClass("text-foreground");
     expect(screen.getByText("Urgent").style.color).toBe("");
+  });
+
+  it("does not horizontally overflow a worst-case unestimated row at 360px", () => {
+    const { container } = render(
+      <div style={{ width: 360 }}>
+        <StoryListRow
+          story={{
+            ...baseStory,
+            title: "A very long feature title that must truncate instead of widening the story row on a phone",
+            points: null,
+            state: "rejected",
+            assigneeName: "Mary Evans",
+            epic: { id: "e1", name: "Checkout revamp", color: "#6366f1" },
+            labels: [
+              { id: "l1", name: "Urgent", color: "#ef4444" },
+              { id: "l2", name: "Customer request", color: "#3b82f6" },
+            ],
+          }}
+          projectId="p1"
+          pointScale={fibonacci}
+          insertMenu={<button type="button">Insert</button>}
+        />
+      </div>,
+    );
+
+    const viewport = container.firstElementChild as HTMLElement;
+    const row = screen.getByTestId("story-list-row");
+    expect(viewport.style.width).toBe("360px");
+    // jsdom does no layout, so scrollWidth/clientWidth are always 0 — assert
+    // the overflow contract via classes instead (real-browser 360px check:
+    // TASK-94). The row must not exceed its container, the title must be the
+    // only flexible segment, and the point scale must be collapsed behind a
+    // single Estimate trigger.
+    expect(row).toHaveClass("w-full", "min-w-0", "max-w-full");
+    expect(screen.getByText(/A very long feature title/)).toHaveClass("min-w-0", "flex-1", "truncate");
+    expect(screen.getByRole("button", { name: "Estimate" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Estimate: 1 point/ })).not.toBeInTheDocument();
   });
 });

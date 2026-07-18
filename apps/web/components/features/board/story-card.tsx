@@ -9,6 +9,7 @@ import {
   type StoryType,
 } from "@/lib/utils/stories";
 import { initials } from "@/lib/utils/format";
+import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 
 export type StoryCardData = {
   id: string;
@@ -20,6 +21,7 @@ export type StoryCardData = {
   state: string;
   points: number | null;
   assigneeName: string | null;
+  assigneeIsAgent?: boolean;
   labels: { id: string; name: string; color: string }[];
   // TASK-41: which epic (if any) this story belongs to — kept visible on
   // List/Kanban/Focus cards so promoting a story out of the backlog doesn't
@@ -162,10 +164,13 @@ export function StoryCard({
         ))}
         {story.assigneeName && (
           <span
-            className="ml-auto flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-medium text-secondary-foreground"
-            title={story.assigneeName}
+            className={`ml-auto flex h-5 shrink-0 items-center bg-secondary text-[10px] font-medium text-secondary-foreground ${
+              story.assigneeIsAgent ? "gap-1 rounded px-1.5" : "w-5 justify-center rounded-full"
+            }`}
+            title={`${story.assigneeName}${story.assigneeIsAgent ? " (agent)" : ""}`}
           >
             {initials(story.assigneeName)}
+            {story.assigneeIsAgent && <AgentIndicator compact />}
           </span>
         )}
       </div>

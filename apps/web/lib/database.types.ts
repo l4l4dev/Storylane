@@ -363,6 +363,7 @@ export type Database = {
           created_at: string
           display_name: string
           id: string
+          is_agent: boolean
           username: string
         }
         Insert: {
@@ -370,6 +371,7 @@ export type Database = {
           created_at?: string
           display_name: string
           id: string
+          is_agent?: boolean
           username: string
         }
         Update: {
@@ -377,6 +379,7 @@ export type Database = {
           created_at?: string
           display_name?: string
           id?: string
+          is_agent?: boolean
           username?: string
         }
         Relationships: []

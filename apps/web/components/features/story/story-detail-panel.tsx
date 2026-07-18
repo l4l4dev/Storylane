@@ -12,6 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { CommentThread } from "./comment-thread";
 import { TaskChecklist } from "./task-checklist";
+import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 import { TransitionButtons } from "./transition-buttons";
 
 // The story fields this panel edits inline — everything else on
@@ -423,7 +424,7 @@ export function StoryDetailPanel({
               <option value="">Unassigned</option>
               {detail.members.map((member) => (
                 <option key={member.id} value={member.id}>
-                  {member.name}
+                  {member.name}{member.isAgent ? " (agent)" : ""}
                 </option>
               ))}
             </NativeSelect>
@@ -469,13 +470,16 @@ export function StoryDetailPanel({
           <ul className="flex flex-col gap-1.5">
             {detail.history.map((entry) => (
               <li key={entry.id} className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
-                <span>
-                  {describeActivity({
-                    action: entry.action,
-                    payload: entry.payload,
-                    actorName: entry.actorName,
-                    storyTitle: detail.title,
-                  })}
+                <span className="flex items-center gap-1.5">
+                  <span>
+                    {describeActivity({
+                      action: entry.action,
+                      payload: entry.payload,
+                      actorName: entry.actorName,
+                      storyTitle: detail.title,
+                    })}
+                  </span>
+                  {entry.actorIsAgent && <AgentIndicator />}
                 </span>
                 <time className="shrink-0" dateTime={entry.createdAt}>
                   {formatDateTime(entry.createdAt)}

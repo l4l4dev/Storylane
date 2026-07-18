@@ -18,7 +18,7 @@ projects, so development work can eventually be managed in Storylane itself
 Agents get no special powers. An agent is an ordinary Supabase user:
 
 - A dedicated bot login (e.g. `agent@<owner-domain>`), its `profiles` row named so
-  humans can tell it apart (`username: claude-agent`, display name "Claude (agent)")
+  humans can tell it apart (`username: claude_agent`, display name "Claude (agent)")
   and flagged **`is_agent = true`** (doc-8 §8) so UIs can badge it apart from
   humans. Capacity math still treats it exactly like a human via the working-day
   calendar.

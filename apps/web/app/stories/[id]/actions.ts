@@ -23,12 +23,12 @@ export type StoryDetail = {
   pointScale: number[];
   epics: { id: string; name: string }[];
   labels: { id: string; name: string }[];
-  members: { id: string; name: string }[];
+  members: { id: string; name: string; isAgent?: boolean }[];
   comments: { id: string; body: string; createdAt: string; authorName: string }[];
   tasks: { id: string; title: string; is_done: boolean }[];
   // Chronological status/column history from activity_logs (newest first).
   // `payload` is the raw activity_logs payload, shaped for describeActivity.
-  history: { id: string; action: string; payload: unknown; actorName: string; createdAt: string }[];
+  history: { id: string; action: string; payload: unknown; actorName: string; actorIsAgent?: boolean; createdAt: string }[];
 };
 
 /**
@@ -61,7 +61,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
       supabase.from("labels").select("id, name").eq("project_id", story.project_id).order("name"),
       supabase
         .from("project_members")
-        .select("user_id, profiles(display_name)")
+        .select("user_id, profiles(display_name, is_agent)")
         .eq("project_id", story.project_id),
       supabase
         .from("comments")
@@ -74,7 +74,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
       // let comments crowd real status changes out of the 50-row window.
       supabase
         .from("activity_logs")
-        .select("id, action, payload, created_at, actor:profiles(display_name)")
+        .select("id, action, payload, created_at, actor:profiles(display_name, is_agent)")
         .eq("story_id", storyId)
         .in("action", ["story.created", "story.state_changed", "story.column_changed"])
         .order("created_at", { ascending: false })
@@ -98,7 +98,11 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     labels: labels ?? [],
     members: (members ?? []).map((m) => {
       const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-      return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
+      return {
+        id: m.user_id,
+        name: profile?.display_name ?? m.user_id.slice(0, 8),
+        isAgent: profile?.is_agent ?? false,
+      };
     }),
     comments: (comments ?? []).map((comment) => {
       const author = Array.isArray(comment.author) ? comment.author[0] : comment.author;
@@ -117,6 +121,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         action: entry.action,
         payload: entry.payload,
         actorName: actor?.display_name ?? "Someone",
+        actorIsAgent: actor?.is_agent ?? false,
         createdAt: entry.created_at,
       };
     }),

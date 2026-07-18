@@ -82,7 +82,7 @@ export default async function BoardPage({
       supabase
         .from("stories")
         .select(
-          "id, number, title, description, story_type, state, points, position, iteration_id, epic_id, assignee_id, focus, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
+          "id, number, title, description, story_type, state, points, position, iteration_id, epic_id, assignee_id, focus, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
         )
         .eq("project_id", id)
         .order("position", { ascending: true }),
@@ -90,7 +90,7 @@ export default async function BoardPage({
       supabase.from("epics").select("id, name, color").eq("project_id", id).order("position", { ascending: true }),
       supabase
         .from("project_members")
-        .select("user_id, role, profiles(display_name)")
+        .select("user_id, role, profiles(display_name, is_agent)")
         .eq("project_id", id),
       // List view only (see components/features/board/board-list-view.tsx) —
       // freeform planning dividers for the Backlog section.
@@ -143,6 +143,7 @@ export default async function BoardPage({
         focus: story.focus,
         completed_at: story.completed_at,
         assigneeName: assigneeProfile?.display_name ?? null,
+        assigneeIsAgent: assigneeProfile?.is_agent ?? false,
         labels: labelIds
           .map((labelId) => labelById.get(labelId))
           .filter((l): l is NonNullable<typeof l> => l != null)
@@ -219,7 +220,8 @@ export default async function BoardPage({
 
   const assigneeOptions = (members ?? []).map((m) => {
     const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-    return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
+    const name = profile?.display_name ?? m.user_id.slice(0, 8);
+    return { id: m.user_id, name: profile?.is_agent ? `${name} (agent)` : name };
   });
 
   // "Finish iteration" is owner/member only (spec/velocity.md "Manual

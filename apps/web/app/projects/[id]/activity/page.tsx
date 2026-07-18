@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { describeActivity } from "@/lib/utils/activity";
 import { formatDateTime } from "@/lib/utils/format";
+import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 
 export default async function ProjectActivityPage({
   params,
@@ -19,7 +20,7 @@ export default async function ProjectActivityPage({
 
   const { data: activity } = await supabase
     .from("activity_logs")
-    .select("id, action, payload, created_at, actor:profiles(display_name), story:stories(title)")
+    .select("id, action, payload, created_at, actor:profiles(display_name, is_agent), story:stories(title)")
     .eq("project_id", project.id)
     .order("created_at", { ascending: false })
     .limit(20);
@@ -35,13 +36,16 @@ export default async function ProjectActivityPage({
             const storyRow = Array.isArray(log.story) ? log.story[0] : log.story;
             return (
               <li key={log.id} className="flex items-center justify-between gap-3 text-sm">
-                <span>
-                  {describeActivity({
-                    action: log.action,
-                    payload: log.payload,
-                    actorName: actor?.display_name ?? "Someone",
-                    storyTitle: storyRow?.title ?? null,
-                  })}
+                <span className="flex items-center gap-1.5">
+                  <span>
+                    {describeActivity({
+                      action: log.action,
+                      payload: log.payload,
+                      actorName: actor?.display_name ?? "Someone",
+                      storyTitle: storyRow?.title ?? null,
+                    })}
+                  </span>
+                  {actor?.is_agent && <AgentIndicator />}
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {formatDateTime(log.created_at)}

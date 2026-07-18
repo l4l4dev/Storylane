@@ -52,6 +52,18 @@ describe("StoryDetailPanel", () => {
     expect(screen.getByLabelText("Description")).toHaveValue("Let users sign in");
   });
 
+  it("marks agent members in the assignee picker", () => {
+    render(
+      <StoryDetailPanel
+        detail={{
+          ...baseDetail,
+          members: [{ id: "agent", name: "Claude", isAgent: true }],
+        }}
+      />,
+    );
+    expect(screen.getByRole("option", { name: "Claude (agent)" })).toBeInTheDocument();
+  });
+
   it("renders the next valid transition button instead of a free state select", () => {
     render(<StoryDetailPanel detail={baseDetail} />);
     expect(screen.getByRole("button", { name: "Start" })).toBeInTheDocument();
@@ -69,6 +81,7 @@ describe("StoryDetailPanel", () => {
               action: "story.state_changed",
               payload: { from: "unstarted", to: "started" },
               actorName: "Dev User",
+              actorIsAgent: true,
               createdAt: "2026-07-17T09:00:00Z",
             },
             {
@@ -85,6 +98,7 @@ describe("StoryDetailPanel", () => {
     expect(screen.getByText("History")).toBeInTheDocument();
     expect(screen.getByText(/moved "Add login" from unstarted to started/)).toBeInTheDocument();
     expect(screen.getByText(/moved "Add login" from "To do" to "Doing"/)).toBeInTheDocument();
+    expect(screen.getByText("Agent")).toBeInTheDocument();
   });
 
   it("omits the History section when there is no history", () => {

@@ -36,7 +36,7 @@ export default async function ProjectSettingsPage({
 
   const { data: members } = await supabase
     .from("project_members")
-    .select("user_id, role, profiles(display_name, avatar_url)")
+    .select("user_id, role, profiles(display_name, avatar_url, is_agent)")
     .eq("project_id", id);
 
   const myRole = members?.find((m) => m.user_id === user?.id)?.role;
@@ -150,6 +150,7 @@ export default async function ProjectSettingsPage({
               userId: member.user_id,
               role: member.role,
               displayName: profile?.display_name ?? member.user_id.slice(0, 8),
+              isAgent: profile?.is_agent ?? false,
             };
           })}
         />

@@ -7,6 +7,7 @@ import { formatPoints, STORY_STATE_META, STORY_TYPE_META, type StoryState, type 
 import { initials } from "@/lib/utils/format";
 import { EpicBadge, ReleaseMarkerRow, type StoryCardData } from "./story-card";
 import { TransitionButtons } from "@/components/features/story/transition-buttons";
+import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 
 const STORY_TYPE_ICON: Record<Exclude<StoryType, "release">, LucideIcon> = {
   feature: Star,
@@ -52,14 +53,15 @@ export function StoryListRow({
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 shadow-xs ${
+      data-testid="story-list-row"
+      className={`flex w-full min-w-0 max-w-full items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 shadow-xs ${
         isAccepted ? "bg-green-50 dark:bg-green-950/40" : "bg-card"
       }`}
     >
       <button
         type="button"
         onClick={openPeek}
-        className="flex min-w-28 flex-1 items-center gap-2 text-left hover:opacity-80"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-80"
       >
         {typeMeta && TypeIcon && (
           <span className={`inline-flex shrink-0 items-center rounded p-1 ${typeMeta.className}`} title={typeMeta.label}>
@@ -67,7 +69,7 @@ export function StoryListRow({
           </span>
         )}
         <span className="shrink-0 text-xs text-muted-foreground">#{story.number}</span>
-        <span className="min-w-20 truncate text-sm font-medium">{story.title}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{story.title}</span>
       </button>
 
       {story.epic && (
@@ -96,10 +98,13 @@ export function StoryListRow({
       ))}
       {story.assigneeName && (
         <span
-          className="flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-medium text-secondary-foreground"
-          title={story.assigneeName}
+          className={`flex h-5 shrink-0 items-center bg-secondary text-[10px] font-medium text-secondary-foreground ${
+            story.assigneeIsAgent ? "gap-1 rounded px-1.5" : "w-5 justify-center rounded-full"
+          }`}
+          title={`${story.assigneeName}${story.assigneeIsAgent ? " (agent)" : ""}`}
         >
           {initials(story.assigneeName)}
+          {story.assigneeIsAgent && <AgentIndicator compact />}
         </span>
       )}
       <div className="shrink-0">

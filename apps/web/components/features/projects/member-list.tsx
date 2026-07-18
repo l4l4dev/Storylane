@@ -8,6 +8,7 @@ import {
 } from "@/app/projects/[id]/settings/actions";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
+import { AgentIndicator } from "./agent-indicator";
 
 const ROLES = ["owner", "member", "viewer"] as const;
 
@@ -15,6 +16,7 @@ export type MemberListItem = {
   userId: string;
   role: string;
   displayName: string;
+  isAgent: boolean;
 };
 
 // Membership admin list (spec/features.md "Team Collaboration"). Role change
@@ -71,8 +73,9 @@ function MemberRow({
   return (
     <li className="flex flex-col gap-1 py-3">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm">
-          {member.displayName}
+        <span className="flex items-center gap-1.5 text-sm">
+          <span>{member.displayName}</span>
+          {member.isAgent && <AgentIndicator />}
           {isSelf && <span className="ml-1 text-muted-foreground">(you)</span>}
         </span>
 

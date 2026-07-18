@@ -66,7 +66,7 @@ describe("TransitionButtons", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("shows the point-scale estimation buttons instead of a disabled Start for an unestimated feature", () => {
+  it("shows one Estimate trigger and opens the point scale in a popover for an unestimated feature", () => {
     render(
       <TransitionButtons
         storyId="s1"
@@ -78,6 +78,8 @@ describe("TransitionButtons", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Estimate" }));
     // formatPoints renders 1-3 as dots ("•"), so the accessible name comes
     // from an explicit aria-label instead — a screen reader must never hear
     // just "bullet bullet".
@@ -100,7 +102,7 @@ describe("TransitionButtons", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "Restart" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button")).toHaveLength(fibonacci.length);
+    expect(screen.getAllByRole("button")).toHaveLength(1);
   });
 
   it("does not block Start for an unestimated chore (points don't apply)", () => {
@@ -215,6 +217,7 @@ describe("TransitionButtons", () => {
         pointScale={fibonacci}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Estimate" }));
     fireEvent.click(screen.getByRole("button", { name: "Estimate: 3 points" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Invalid point value");
@@ -241,6 +244,7 @@ describe("TransitionButtons", () => {
         pointScale={fibonacci}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Estimate" }));
     fireEvent.click(screen.getByRole("button", { name: "Estimate: 3 points" }));
 
     expect(screen.getByRole("button", { name: "Estimate: 3 points" })).toBeDisabled();

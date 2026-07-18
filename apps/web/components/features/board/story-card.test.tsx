@@ -73,6 +73,17 @@ describe("StoryCard", () => {
     expect(screen.getByTitle("Mary Evans")).toHaveTextContent("ME");
   });
 
+  it("marks an agent assignee without changing the displayed identity", () => {
+    render(
+      <StoryCard
+        story={{ ...baseStory, assigneeName: "Claude", assigneeIsAgent: true }}
+        projectId="p1"
+      />,
+    );
+    expect(screen.getByTitle("Claude (agent)")).toHaveTextContent("CL");
+    expect(screen.getByLabelText("Agent")).toBeInTheDocument();
+  });
+
   // TASK-41: epic membership must stay visible on the card, not just in the
   // detail panel's editor (spec/ux-principles.md principle 8).
   it("shows the epic badge when the story belongs to an epic", () => {
