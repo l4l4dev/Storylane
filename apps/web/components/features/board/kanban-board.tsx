@@ -348,13 +348,13 @@ export function IterationGoalBar({
           }
           if (event.key === "Enter") {
             event.preventDefault();
-            void editor.commitAndClose();
+            void editor.commitAndClose("keyboard");
           } else if (event.key === "Escape") {
             event.preventDefault();
-            editor.cancel();
+            editor.cancel("keyboard");
           }
         }}
-        onBlur={() => void editor.commitAndClose()}
+        onBlur={() => void editor.commitAndClose("blur")}
         placeholder="Sprint goal"
         aria-label="Iteration goal"
         readOnly={editor.isSaving}

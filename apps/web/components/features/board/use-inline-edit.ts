@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+type CloseReason = "keyboard" | "blur";
+
 export function useInlineEdit({
   initialValue,
   onCommit,
@@ -28,8 +30,10 @@ export function useInlineEdit({
   if (lastInitialValue !== initialValue) {
     setLastInitialValue(initialValue);
     setSynced(initialValue);
-    setValueState(initialValue);
-    setError(null);
+    if (!editing && !savingRef.current) {
+      setValueState(initialValue);
+      setError(null);
+    }
   }
 
   useEffect(() => {
@@ -50,15 +54,15 @@ export function useInlineEdit({
     setEditing(true);
   }
 
-  function closeAndRestoreFocus() {
-    restoreFocusRef.current = true;
+  function close(reason: CloseReason) {
+    restoreFocusRef.current = reason === "keyboard";
     setEditing(false);
   }
 
-  function cancel() {
+  function cancel(reason: CloseReason) {
     setValueState(synced);
     setError(null);
-    closeAndRestoreFocus();
+    close(reason);
   }
 
   async function commit(): Promise<boolean> {
@@ -92,15 +96,15 @@ export function useInlineEdit({
     }
   }
 
-  function commitAndClose(): Promise<void> {
+  function commitAndClose(reason: CloseReason): Promise<void> {
     const trimmed = value.trim();
     if (!shouldCommit(trimmed) || trimmed === synced) {
-      closeAndRestoreFocus();
+      close(reason);
       return Promise.resolve();
     }
     return commit().then((committed) => {
       if (committed) {
-        closeAndRestoreFocus();
+        close(reason);
       }
     });
   }

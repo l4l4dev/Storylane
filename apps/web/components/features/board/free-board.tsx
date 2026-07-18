@@ -350,16 +350,16 @@ function ColumnNameEditor({ projectId, status }: { projectId: string; status: Cu
         // and re-fire the commit (same defect class noted on IterationGoalBar).
         readOnly={editor.isSaving}
         onChange={(event) => editor.setValue(event.target.value)}
-        onBlur={() => void editor.commitAndClose()}
+        onBlur={() => void editor.commitAndClose("blur")}
         onKeyDown={(event) => {
           if (isImeComposing(event)) {
             return;
           }
           if (event.key === "Enter") {
             event.preventDefault();
-            void editor.commitAndClose();
+            void editor.commitAndClose("keyboard");
           } else if (event.key === "Escape") {
-            editor.cancel();
+            editor.cancel("keyboard");
           }
         }}
         className="h-6 w-full min-w-0 rounded border border-input bg-background px-1 text-sm font-semibold"
@@ -413,7 +413,7 @@ function AddColumnButton({ projectId }: { projectId: string }) {
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        void editor.commitAndClose();
+        void editor.commitAndClose("keyboard");
       }}
       className="flex w-40 shrink-0 flex-col gap-1.5 self-start"
     >
@@ -423,10 +423,10 @@ function AddColumnButton({ projectId }: { projectId: string }) {
         placeholder="Column name"
         readOnly={editor.isSaving}
         onChange={(event) => editor.setValue(event.target.value)}
-        onBlur={() => void editor.commitAndClose()}
+        onBlur={() => void editor.commitAndClose("blur")}
         onKeyDown={(event) => {
           if (event.key === "Escape" && !isImeComposing(event)) {
-            editor.cancel();
+            editor.cancel("keyboard");
           }
         }}
         className="h-9 text-sm"

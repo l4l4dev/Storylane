@@ -153,6 +153,71 @@ describe("IterationGoalInput", () => {
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Iteration #4 goal" }), { key: "Escape" });
     expect(screen.getByRole("button", { name: /Edit iteration #4 goal/ })).toHaveFocus();
   });
+
+  it("preserves a draft across a prop change and uses the new server value on Escape", () => {
+    const { rerender } = render(<IterationGoalInput projectId="p1" number={4} initialGoal="Original" />);
+    fireEvent.click(screen.getByText("Original"));
+    const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
+    fireEvent.change(input, { target: { value: "Local draft" } });
+
+    rerender(<IterationGoalInput projectId="p1" number={4} initialGoal="External update" />);
+
+    expect(screen.getByRole("textbox", { name: "Iteration #4 goal" })).toHaveValue("Local draft");
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Iteration #4 goal" }), { key: "Escape" });
+    expect(screen.getByText("External update")).toBeInTheDocument();
+  });
+
+  it("does not let a prop change during an in-flight save clobber the save outcome", async () => {
+    let resolveSave: (() => void) | undefined;
+    upsertIterationGoalMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    const { rerender } = render(<IterationGoalInput projectId="p1" number={4} initialGoal="Original" />);
+    fireEvent.click(screen.getByText("Original"));
+    const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
+    fireEvent.change(input, { target: { value: "Local save" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    rerender(<IterationGoalInput projectId="p1" number={4} initialGoal="External update" />);
+    expect(screen.getByRole("textbox", { name: "Iteration #4 goal" })).toHaveValue("Local save");
+
+    await act(async () => {
+      resolveSave?.();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Local save")).toBeInTheDocument();
+    expect(screen.queryByText("External update")).not.toBeInTheDocument();
+  });
+
+  it("does not restore focus after a deferred blur save", async () => {
+    let resolveSave: (() => void) | undefined;
+    upsertIterationGoalMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    render(
+      <>
+        <IterationGoalInput projectId="p1" number={4} initialGoal="Original" />
+        <button type="button">Other control</button>
+      </>,
+    );
+    fireEvent.click(screen.getByText("Original"));
+    const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
+    fireEvent.change(input, { target: { value: "Blur save" } });
+    fireEvent.blur(input);
+    screen.getByRole("button", { name: "Other control" }).focus();
+
+    await act(async () => {
+      resolveSave?.();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Other control" })).toHaveFocus();
+  });
 });
 
 function backlogStory(id: string, points: number): BoardStory {
@@ -328,6 +393,27 @@ describe("IterationHeaderRow", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove break" })).toHaveAttribute("data-variant", "destructive");
   });
+
+  it("keeps the manual-break dialog open when dismissal is attempted during a deferred failure", async () => {
+    let rejectDelete: ((reason: Error) => void) | undefined;
+    deleteBacklogDividerMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectDelete = reject;
+        }),
+    );
+    render(<IterationHeaderRow {...baseProps()} manualBreakDividerId="div-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove manual iteration break" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove break" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await act(async () => {
+      rejectDelete?.(new Error("Deferred break failure"));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("dialog", { name: "Remove manual iteration break?" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Deferred break failure");
+  });
 });
 
 // TASK-42: the row "…" menu is the primary way to insert a note or
@@ -483,6 +569,27 @@ describe("DividerRow", () => {
       await Promise.resolve();
     });
     expect(onError).toHaveBeenCalledWith("Not a member of this project");
+  });
+
+  it("keeps the note dialog open when dismissal is attempted during a deferred failure", async () => {
+    let rejectDelete: ((reason: Error) => void) | undefined;
+    deleteBacklogDividerMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectDelete = reject;
+        }),
+    );
+    render(<DividerRow projectId="p1" divider={divider()} onError={onError} />);
+    fireEvent.click(screen.getByRole("button", { name: 'Remove "Phase 2"' }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove note" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await act(async () => {
+      rejectDelete?.(new Error("Deferred note failure"));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("dialog", { name: 'Remove note "Phase 2"?' })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Deferred note failure");
   });
 });
 

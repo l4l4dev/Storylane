@@ -198,6 +198,7 @@ export function DividerRow({
 }) {
   const [isRemoving, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const label = divider.kind === "note" ? divider.label : "Iteration break";
 
   function handleDelete() {
@@ -209,8 +210,9 @@ export function DividerRow({
         await deleteBacklogDivider(formData);
         setConfirmOpen(false);
       } catch (err) {
-        setConfirmOpen(false);
-        onError(err instanceof Error ? err.message : "Failed to remove");
+        const message = err instanceof Error ? err.message : "Failed to remove";
+        setRemoveError(message);
+        onError(message);
       }
     });
   }
@@ -223,14 +225,25 @@ export function DividerRow({
           type="button"
           variant="ghost"
           size="icon-xs"
-          onClick={() => setConfirmOpen(true)}
+          onClick={() => {
+            setRemoveError(null);
+            setConfirmOpen(true);
+          }}
           aria-label={`Remove "${label}"`}
         >
           <X />
         </Button>
         {insertMenu}
       </div>
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (!open && isRemoving) {
+            return;
+          }
+          setConfirmOpen(open);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Remove note &quot;{label}&quot;?</DialogTitle>
@@ -238,6 +251,11 @@ export function DividerRow({
               This removes the planning note from the backlog. This can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>
+          {removeError && (
+            <p className="text-sm text-destructive" role="alert">
+              {removeError}
+            </p>
+          )}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setConfirmOpen(false)} disabled={isRemoving}>
               Cancel
@@ -310,13 +328,13 @@ export function IterationGoalInput({
           }
           if (event.key === "Enter") {
             event.preventDefault();
-            void editor.commitAndClose();
+            void editor.commitAndClose("keyboard");
           } else if (event.key === "Escape") {
             event.preventDefault();
-            editor.cancel();
+            editor.cancel("keyboard");
           }
         }}
-        onBlur={() => void editor.commitAndClose()}
+        onBlur={() => void editor.commitAndClose("blur")}
         placeholder="Goal"
         aria-label={`Iteration #${number} goal`}
         readOnly={editor.isSaving}
@@ -426,7 +444,15 @@ export function IterationHeaderRow({
         <IterationGoalInput projectId={projectId} number={number} initialGoal={goal} />
         <span className="shrink-0">{points} pts</span>
       </div>
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (!open && isRemoving) {
+            return;
+          }
+          setConfirmOpen(open);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Remove manual iteration break?</DialogTitle>
