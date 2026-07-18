@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-17 13:16'
-updated_date: '2026-07-17 15:17'
+updated_date: '2026-07-18 02:59'
 labels:
   - web
   - ux
@@ -34,5 +34,10 @@ Polish items from the fable-advisor UX review 2026-07-17, fine to land after dep
 created: 2026-07-17 15:17
 ---
 Owner decision recorded (2026-07-18, via /ux-review High-fix approval): item 6 view persistence — persist the List/Kanban/Focus selection per project (localStorage, mirroring useCollapsedGroups). Also: the 2026-07-18 10-expert panel independently re-flagged item 2 (clear-all, 5 experts) and confirmed the filtered-empty-state hint ('No stories match the current filters.' when activeCount > 0 hides everything). Sibling task for the rest of that panel's High findings: TASK-79.
+---
+
+created: 2026-07-18 02:59
+---
+Concept redesign impact (doc-8 §9, 2026-07-18): the Focus view is removed and the board toggle becomes List/Kanban only. Item 6 (view persistence) applies to the two remaining views; the owner decision to persist per project in localStorage stands. Item 1 (list-shaped skeleton) unaffected.
 ---
 <!-- COMMENTS:END -->

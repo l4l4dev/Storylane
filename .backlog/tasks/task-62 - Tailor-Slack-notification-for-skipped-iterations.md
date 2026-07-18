@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-haiku-4-5'
 created_date: '2026-07-14 16:06'
-updated_date: '2026-07-16 04:20'
+updated_date: '2026-07-18 02:59'
 labels:
   - web
   - slack
@@ -27,3 +27,12 @@ fable-advisor follow-up from TASK-38: notifyFinalizeEvents (apps/web/app/project
 - [ ] #1 A finalized event with skipped=true produces a skip-specific Slack message, not the velocity-0 done message
 - [ ] #2 Non-skipped finalize still sends the existing done message
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-18 02:59
+---
+Concept redesign impact (doc-8, 2026-07-18): iteration semantics change — cadence becomes per-project and changeable (§3-4), velocity moves to points-per-person-day (§7), and 1-day projects only create iterations on working days (§4), which makes "skipped" a normal occurrence rather than an anomaly. Re-check the message copy (and whether the skipped flag survives the velocity rework) against the updated spec before implementing; this task may be absorbed into the velocity/rollover rework task.
+---
+<!-- COMMENTS:END -->

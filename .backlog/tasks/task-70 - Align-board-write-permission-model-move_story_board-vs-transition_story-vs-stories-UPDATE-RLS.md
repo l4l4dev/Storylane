@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-17 13:14'
-updated_date: '2026-07-17 13:31'
+updated_date: '2026-07-18 02:59'
 labels:
   - web
   - db
@@ -38,5 +38,10 @@ author: @l4l4dev
 created: 2026-07-17 13:31
 ---
 Owner decision 2026-07-17: option (a) — Pivotal-style. Any member may operate any story on the board (move, reorder, transition); viewer stays read-only. Implementation direction: relax the stories UPDATE policy and transition_story's ownership check to project_role in (owner, member), keep move_story_board as-is, and document the rule in spec/rls.md. The strict author/assignee rule is dropped everywhere so all three surfaces agree.
+---
+
+created: 2026-07-18 02:59
+---
+Concept redesign impact (doc-8, 2026-07-18): free mode and the Focus view are being removed (§1, §9), so the lane/focus-bucket surface of move_story_board shrinks to List/Kanban state moves — re-check p_deltas scope against the post-removal board before aligning the three write paths. The new per-user today pin (§9) is a separate user-scoped table, NOT a story mutation, so it must not go through move_story_board. The owner decision in AC #1 (Pivotal-style vs strict) is unchanged and still required first.
 ---
 <!-- COMMENTS:END -->

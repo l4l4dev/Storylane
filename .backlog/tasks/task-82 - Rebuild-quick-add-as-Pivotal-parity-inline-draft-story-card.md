@@ -5,10 +5,12 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 02:53'
+updated_date: '2026-07-18 03:05'
 labels:
   - web
   - ux
-dependencies: []
+dependencies:
+  - TASK-84
 priority: high
 ordinal: 53000
 ---
@@ -28,3 +30,12 @@ The current quick-add is Trello-style: an always-visible "+ Add story" trigger p
 - [ ] #5 fable-advisor design review against spec/ux-principles.md passes with findings triaged
 - [ ] #6 pnpm test passes
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-18 03:05
+---
+Ordering constraint from advisor review (doc-8 §10): start only after free-mode removal (TASK-84) so the composer is not rebuilt against boards that are about to disappear.
+---
+<!-- COMMENTS:END -->
