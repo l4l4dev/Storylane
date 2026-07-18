@@ -18,12 +18,10 @@ run themselves.
 
 ## Features (Phase 1)
 
-- **Tracker mode**: story types (feature / bug / chore / release), point
-  estimation, state flow (unstarted → started → finished → delivered →
-  accepted/rejected), Icebox triage, and velocity-based automatic assignment of
-  backlog stories to upcoming iterations
-- **Free mode**: a lightweight kanban board for projects that don't need
-  iterations
+- Story types (feature / bug / chore / release), point estimation, state flow
+  (unstarted → started → finished → delivered → accepted/rejected), Icebox
+  triage, and velocity-based automatic assignment of backlog stories to
+  upcoming iterations
 - Epics, labels, tasks, comments, and per-story activity history
 - Project members with owner / member / viewer roles, enforced by Postgres
   row-level security

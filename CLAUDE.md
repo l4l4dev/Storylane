@@ -50,8 +50,8 @@ Most work here is done by AI agents — keep context small:
 - Prefer Grep/Glob or partial reads (offset/limit) over full reads for files longer than ~300 lines
 - Run long-lived commands (`pnpm dev`, `supabase start`) in the background and read only the log tail
 - While iterating, run targeted tests (`pnpm exec vitest run <path>`); before commit run the full
-  suite **from `apps/web/`** (`pnpm test` + `pnpm run lint`) — there is no root package.json, so
-  `pnpm test` at the repo root silently runs nothing and exits 0
+  suite **from `apps/web/`** (`pnpm test` + `pnpm run lint`) — the root package.json is
+  workspace-config only (no scripts), so `pnpm test` at the repo root fails with exit code 1
 
 ---
 
