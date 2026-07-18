@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-17 13:14'
-updated_date: '2026-07-18 03:20'
+updated_date: '2026-07-18 03:22'
 labels:
   - web
   - db
@@ -48,5 +48,10 @@ Concept redesign impact (doc-8, 2026-07-18): free mode and the Focus view are be
 created: 2026-07-18 03:20
 ---
 Advisor 2nd pass (doc-8 §2): this tasks AC#1 owner decision (any-member vs author/assignee) is now a hard prerequisite for TASK-91 — set_story_state (which replaces transition_story) cannot be designed until the permission model is decided. Decision needed from the owner: (a) Pivotal-style, any member may operate any story; or (b) strict author/assignee rule on all three write paths.
+---
+
+created: 2026-07-18 03:22
+---
+OWNER DECISION 2026-07-18: (a) Pivotal-style — any project member may operate any story on the board. Implementation direction: relax the stories UPDATE RLS policy (and drop the author/assignee check from the transition path) to match move_story_board; document the model in spec/rls.md; test that a non-author non-assignee member is treated identically on all write paths. Note: transition_story itself is replaced by set_story_state in TASK-91 — this task delivers the RLS relaxation + spec documentation that TASK-91 builds on (SECURITY INVOKER set_story_state needs the relaxed policy to work for non-authors), so implement TASK-70 before or as the first step of TASK-91.
 ---
 <!-- COMMENTS:END -->

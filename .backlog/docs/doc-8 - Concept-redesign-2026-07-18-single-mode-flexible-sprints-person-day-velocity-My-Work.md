@@ -5,7 +5,7 @@ title: >-
   velocity, My Work
 type: specification
 created_date: '2026-07-18 02:52'
-updated_date: '2026-07-18 03:19'
+updated_date: '2026-07-18 03:22'
 ---
 # Concept Redesign 2026-07-18 — single mode, flexible sprints, person-day velocity, My Work
 
@@ -71,9 +71,9 @@ fixed **category** per state, which users rarely think about. Reviewed by fable-
   / Done(done).
 - The advance-button/pair/gate computation stays a per-client pure function
   (packages/core), now driven by project_states data — golden fixtures shared with iOS.
-- **External blocker**: the TASK-70 owner decision (any-member vs author/assignee board
-  write model) must land before implementation — `set_story_state`'s permission design
-  depends on it.
+- **Board write model (TASK-70 owner decision, 2026-07-18): (a) Pivotal-style** — any
+  project member may operate any story. `set_story_state` is designed against this;
+  TASK-70 delivers the RLS relaxation it runs on.
 
 ## 3. Iterations are fixed-cadence sprints
 
@@ -219,5 +219,5 @@ fixed **category** per state, which users rarely think about. Reviewed by fable-
    (TASK-91)** → velocity/capacity (TASK-86) → cadence flexibility (TASK-87); calendar
    (TASK-85) in parallel after spec; story_pins (TASK-88) after spec; My Work (TASK-89)
    and quick-add (TASK-82) after the state model lands.
-3. Backlog tasks: see TASK-83…TASK-91 (created/reworked 2026-07-18). TASK-91 is blocked
-   on the TASK-70 owner decision.
+3. Backlog tasks: see TASK-83…TASK-91 (created/reworked 2026-07-18). The TASK-70 owner
+   decision landed 2026-07-18 (model (a)); TASK-70's RLS relaxation precedes TASK-91.
