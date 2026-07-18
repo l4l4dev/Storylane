@@ -309,6 +309,25 @@ describe("IterationHeaderRow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Remove manual iteration break" })).toBeInTheDocument();
   });
+
+  it("reopens the manual-break confirmation without a stale error and marks confirm destructive", async () => {
+    deleteBacklogDividerMock.mockRejectedValueOnce(new Error("Not a member of this project"));
+    render(<IterationHeaderRow {...baseProps()} manualBreakDividerId="div-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove manual iteration break" }));
+    const firstConfirm = screen.getByRole("button", { name: "Remove break" });
+    expect(firstConfirm).toHaveAttribute("data-variant", "destructive");
+    fireEvent.click(firstConfirm);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Not a member of this project");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove manual iteration break" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove break" })).toHaveAttribute("data-variant", "destructive");
+  });
 });
 
 // TASK-42: the row "…" menu is the primary way to insert a note or
@@ -439,7 +458,9 @@ describe("DividerRow", () => {
     fireEvent.click(screen.getByRole("button", { name: 'Remove "Phase 2"' }));
     expect(deleteBacklogDividerMock).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: 'Remove note "Phase 2"?' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Remove note" }));
+    const confirmButton = screen.getByRole("button", { name: "Remove note" });
+    expect(confirmButton).toHaveAttribute("data-variant", "destructive");
+    fireEvent.click(confirmButton);
 
     await act(async () => {
       await Promise.resolve();

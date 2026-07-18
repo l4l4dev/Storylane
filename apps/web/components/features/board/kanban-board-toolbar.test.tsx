@@ -68,7 +68,7 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
     );
 
     expect(screen.getByText("0 / 8 pts committed")).toBeInTheDocument();
-    expect(screen.queryByText(/auto-finishes on/)).not.toBeInTheDocument();
+    expect(screen.getByText("2026/7/14 – 2026/7/27 (auto-finishes)")).toBeInTheDocument();
     expect(screen.getAllByText(/2026\/7\/27/)).toHaveLength(1);
   });
 

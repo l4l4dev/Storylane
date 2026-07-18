@@ -257,8 +257,9 @@ export default async function BoardPage({
   return (
     <main className="p-6">
       <div className="mb-4">
-        <h1 className="text-2xl font-bold">{project.name}</h1>
-        <p className="text-sm text-muted-foreground">Board</p>
+        <h1 className="text-2xl font-bold">
+          {project.name} <span className="text-sm font-normal text-muted-foreground">Board</span>
+        </h1>
       </div>
 
       {inviteFailedCount !== null && (
@@ -433,8 +434,9 @@ async function FreeBoardPage({
   return (
     <main className="p-6">
       <div className="mb-4">
-        <h1 className="text-2xl font-bold">{projectName}</h1>
-        <p className="text-sm text-muted-foreground">Board</p>
+        <h1 className="text-2xl font-bold">
+          {projectName} <span className="text-sm font-normal text-muted-foreground">Board</span>
+        </h1>
       </div>
 
       {inviteFailedCount !== null && (

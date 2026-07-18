@@ -242,7 +242,7 @@ export function DividerRow({
             <Button type="button" variant="ghost" onClick={() => setConfirmOpen(false)} disabled={isRemoving}>
               Cancel
             </Button>
-            <Button type="button" onClick={handleDelete} disabled={isRemoving}>
+            <Button type="button" variant="destructive" onClick={handleDelete} disabled={isRemoving}>
               {isRemoving ? "Removing…" : "Remove note"}
             </Button>
           </DialogFooter>
@@ -407,7 +407,10 @@ export function IterationHeaderRow({
               type="button"
               variant="ghost"
               size="icon-xs"
-              onClick={() => setConfirmOpen(true)}
+              onClick={() => {
+                setRemoveError(null);
+                setConfirmOpen(true);
+              }}
               disabled={isRemoving}
               aria-label="Remove manual iteration break"
             >
@@ -440,7 +443,7 @@ export function IterationHeaderRow({
             <Button type="button" variant="ghost" onClick={() => setConfirmOpen(false)} disabled={isRemoving}>
               Cancel
             </Button>
-            <Button type="button" onClick={handleRemoveManualBreak} disabled={isRemoving}>
+            <Button type="button" variant="destructive" onClick={handleRemoveManualBreak} disabled={isRemoving}>
               {isRemoving ? "Removing…" : "Remove break"}
             </Button>
           </DialogFooter>

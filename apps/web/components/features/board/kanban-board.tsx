@@ -151,7 +151,7 @@ export function KanbanBoard({
               Current
             </span>
             <span className="text-xs text-muted-foreground">
-              {formatDate(currentIteration.start_date)} – {formatDate(currentIteration.end_date)}
+              {formatDate(currentIteration.start_date)} – {formatDate(currentIteration.end_date)} (auto-finishes)
             </span>
             <span className="text-xs text-muted-foreground">
               {sumPoints(iterationStories)} / {velocity} pts committed
