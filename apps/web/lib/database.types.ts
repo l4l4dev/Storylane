@@ -170,47 +170,6 @@ export type Database = {
           },
         ]
       }
-      custom_statuses: {
-        Row: {
-          color: string
-          created_at: string
-          id: string
-          is_done: boolean
-          name: string
-          position: number
-          project_id: string
-          wip_limit: number | null
-        }
-        Insert: {
-          color?: string
-          created_at?: string
-          id?: string
-          is_done?: boolean
-          name: string
-          position?: number
-          project_id: string
-          wip_limit?: number | null
-        }
-        Update: {
-          color?: string
-          created_at?: string
-          id?: string
-          is_done?: boolean
-          name?: string
-          position?: number
-          project_id?: string
-          wip_limit?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "custom_statuses_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       epics: {
         Row: {
           color: string
@@ -474,7 +433,6 @@ export type Database = {
           point_scale: string
           updated_at: string
           velocity_window: number
-          workflow_mode: string
         }
         Insert: {
           archived_at?: string | null
@@ -488,7 +446,6 @@ export type Database = {
           point_scale?: string
           updated_at?: string
           velocity_window?: number
-          workflow_mode?: string
         }
         Update: {
           archived_at?: string | null
@@ -502,7 +459,6 @@ export type Database = {
           point_scale?: string
           updated_at?: string
           velocity_window?: number
-          workflow_mode?: string
         }
         Relationships: [
           {
@@ -511,73 +467,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
-          },
-        ]
-      }
-      recurring_stories: {
-        Row: {
-          cadence: string
-          created_at: string
-          custom_status_id: string | null
-          day_of_month: number | null
-          description: string | null
-          id: string
-          is_active: boolean
-          last_generated_on: string | null
-          project_id: string
-          swimlane_id: string | null
-          title: string
-          weekday: number | null
-        }
-        Insert: {
-          cadence: string
-          created_at?: string
-          custom_status_id?: string | null
-          day_of_month?: number | null
-          description?: string | null
-          id?: string
-          is_active?: boolean
-          last_generated_on?: string | null
-          project_id: string
-          swimlane_id?: string | null
-          title: string
-          weekday?: number | null
-        }
-        Update: {
-          cadence?: string
-          created_at?: string
-          custom_status_id?: string | null
-          day_of_month?: number | null
-          description?: string | null
-          id?: string
-          is_active?: boolean
-          last_generated_on?: string | null
-          project_id?: string
-          swimlane_id?: string | null
-          title?: string
-          weekday?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "recurring_stories_lane_project_fkey"
-            columns: ["swimlane_id", "project_id"]
-            isOneToOne: false
-            referencedRelation: "swimlanes"
-            referencedColumns: ["id", "project_id"]
-          },
-          {
-            foreignKeyName: "recurring_stories_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "recurring_stories_status_project_fkey"
-            columns: ["custom_status_id", "project_id"]
-            isOneToOne: false
-            referencedRelation: "custom_statuses"
-            referencedColumns: ["id", "project_id"]
           },
         ]
       }
@@ -661,13 +550,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "stories_custom_status_project_fkey"
-            columns: ["custom_status_id", "project_id"]
-            isOneToOne: false
-            referencedRelation: "custom_statuses"
-            referencedColumns: ["id", "project_id"]
-          },
-          {
             foreignKeyName: "stories_epic_project_fkey"
             columns: ["epic_id", "project_id"]
             isOneToOne: false
@@ -687,13 +569,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "stories_swimlane_project_fkey"
-            columns: ["swimlane_id", "project_id"]
-            isOneToOne: false
-            referencedRelation: "swimlanes"
-            referencedColumns: ["id", "project_id"]
           },
         ]
       }
@@ -723,38 +598,6 @@ export type Database = {
             columns: ["story_id"]
             isOneToOne: false
             referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      swimlanes: {
-        Row: {
-          created_at: string
-          id: string
-          name: string
-          position: number
-          project_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          name: string
-          position?: number
-          project_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          name?: string
-          position?: number
-          project_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "swimlanes_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -837,18 +680,6 @@ export type Database = {
         Args: { p_story_id: string; p_target_project_id: string }
         Returns: Json
       }
-      create_project: {
-        Args: {
-          p_description?: string
-          p_iteration_length: number
-          p_name: string
-          p_point_scale: string
-          p_statuses: Json
-          p_velocity_window: number
-          p_workflow_mode: string
-        }
-        Returns: string
-      }
       finalize_iteration: {
         Args: {
           p_iteration_id?: string
@@ -860,10 +691,6 @@ export type Database = {
       finish_story_from_git: {
         Args: { p_project_id: string; p_story_number: number }
         Returns: Json
-      }
-      generate_recurring_stories: {
-        Args: { p_project_id: string }
-        Returns: undefined
       }
       generate_username: { Args: { base: string }; Returns: string }
       insert_board_item: {
@@ -926,15 +753,6 @@ export type Database = {
       shares_project_with: {
         Args: { p_target_user_id: string }
         Returns: boolean
-      }
-      swap_adjacent: {
-        Args: {
-          p_direction: string
-          p_id: string
-          p_project_id: string
-          p_table: string
-        }
-        Returns: undefined
       }
       toggle_project_favorite: {
         Args: { p_favorite: boolean; p_project_id: string }

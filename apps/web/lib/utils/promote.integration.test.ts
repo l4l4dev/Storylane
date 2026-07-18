@@ -50,7 +50,7 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
 
     const { data: project, error: projectError } = await supabase
       .from("projects")
-      .insert({ name: "promote-to-epic RPC integration test", workflow_mode: "tracker" })
+      .insert({ name: "promote-to-epic RPC integration test" })
       .select("id")
       .single();
     if (projectError || !project) {

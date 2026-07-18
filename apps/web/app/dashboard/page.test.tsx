@@ -26,8 +26,8 @@ describe("projectsNeedingRollover", () => {
   it("excludes archived tracker projects", async () => {
     const { projectsNeedingRollover } = await import("./page");
     const projects = [
-      { id: "active", workflow_mode: "tracker", archived_at: null },
-      { id: "archived", workflow_mode: "tracker", archived_at: "2026-07-10T00:00:00.000Z" },
+      { id: "active", archived_at: null },
+      { id: "archived", archived_at: "2026-07-10T00:00:00.000Z" },
     ];
 
     expect(projectsNeedingRollover(projects).map((p) => p.id)).toEqual(["active"]);

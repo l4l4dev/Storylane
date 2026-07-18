@@ -8,7 +8,6 @@ function project(overrides: Partial<ProjectCardData> = {}): ProjectCardData {
     id: "p1",
     name: "Storylane",
     description: null,
-    workflowMode: "tracker",
     createdAt: "2026-07-10T00:00:00.000Z",
     updatedAt: "2026-07-10T00:00:00.000Z",
     members: [],

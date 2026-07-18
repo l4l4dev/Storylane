@@ -68,7 +68,7 @@ describe.skipIf(!RUN)("search_users_for_invite / invite_member RPCs (integration
 
     const { data: project, error: projectError } = await supabase
       .from("projects")
-      .insert({ name: "invite-search RPC integration test", workflow_mode: "tracker" })
+      .insert({ name: "invite-search RPC integration test" })
       .select("id")
       .single();
     if (projectError || !project) throw new Error(`Failed to create test project: ${projectError?.message}`);

@@ -54,26 +54,19 @@ async function currentIterationId(supabase: Db, projectId: string): Promise<stri
 }
 
 /**
- * Common write preprocessing (spec/mcp.md "Mode and archive guards"): the
- * project must be readable by the bot (membership, via RLS — an unreadable row
- * means "not a member"), in tracker mode, and not archived. Reading `projects`
+ * Common write preprocessing the project must be readable by the bot (membership, via RLS — an unreadable row means "not a member") and not archived. Reading `projects`
  * is itself the membership check, so this doubles as one.
  */
-async function assertWritableTracker(supabase: Db, projectId: string): Promise<void> {
+async function assertWritableProject(supabase: Db, projectId: string): Promise<void> {
   const { data, error } = await supabase
     .from("projects")
-    .select("workflow_mode, archived_at")
+    .select("archived_at")
     .eq("id", projectId)
     .maybeSingle();
   if (error) throw new Error(`Could not read project: ${error.message}`);
   if (!data) throw new Error(NOT_MEMBER);
   if (data.archived_at) {
     throw new Error("This project is archived — unarchive it before making changes.");
-  }
-  if (data.workflow_mode !== "tracker") {
-    throw new Error(
-      `This project is in '${data.workflow_mode}' mode; the MCP server manages tracker-mode projects only (spec/mcp.md).`,
-    );
   }
 }
 
@@ -356,7 +349,7 @@ export type CreateStoryArgs = {
 };
 
 export async function createStory(supabase: Db, args: CreateStoryArgs) {
-  await assertWritableTracker(supabase, args.project_id);
+  await assertWritableProject(supabase, args.project_id);
 
   const destination = args.destination ?? "backlog_bottom";
   let state = "unstarted";
@@ -410,7 +403,7 @@ export type UpdateStoryArgs = {
 
 export async function updateStory(supabase: Db, args: UpdateStoryArgs) {
   const projectId = await storyProjectId(supabase, args.story_id);
-  await assertWritableTracker(supabase, projectId);
+  await assertWritableProject(supabase, projectId);
 
   const patch: Record<string, unknown> = {};
   if (args.title !== undefined) patch.title = args.title;
@@ -446,7 +439,7 @@ export async function updateStory(supabase: Db, args: UpdateStoryArgs) {
 
 export async function transitionStory(supabase: Db, args: { story_id: string; action: StoryTransitionAction }) {
   const projectId = await storyProjectId(supabase, args.story_id);
-  await assertWritableTracker(supabase, projectId);
+  await assertWritableProject(supabase, projectId);
 
   // Start/Restart may pull a backlog story into the current iteration (the RPC
   // resolves it under a lock); roll a due iteration over first so it lands in
@@ -474,13 +467,13 @@ const MOVE_ZONES = {
 export async function moveStory(supabase: Db, args: { story_id: string; destination: keyof typeof MOVE_ZONES }) {
   const { data: story, error: readErr } = await supabase
     .from("stories")
-    .select("project_id, state, iteration_id, custom_status_id, swimlane_id, focus")
+    .select("project_id, state, iteration_id, focus")
     .eq("id", args.story_id)
     .maybeSingle();
   if (readErr) throw new Error(`Could not read story: ${readErr.message}`);
   if (!story) throw new Error(NOT_MEMBER);
 
-  await assertWritableTracker(supabase, story.project_id);
+  await assertWritableProject(supabase, story.project_id);
   await ensureCurrentIteration(supabase, story.project_id);
 
   const zone = MOVE_ZONES[args.destination];
@@ -505,8 +498,6 @@ export async function moveStory(supabase: Db, args: { story_id: string; destinat
     p_expected: {
       state: story.state,
       iteration_id: story.iteration_id,
-      custom_status_id: story.custom_status_id,
-      swimlane_id: story.swimlane_id,
       focus: story.focus,
     },
     p_deltas: { state: zone.state, iteration: zone.iteration },
@@ -521,7 +512,7 @@ export async function moveStory(supabase: Db, args: { story_id: string; destinat
 
 export async function addComment(supabase: Db, args: { story_id: string; body: string }) {
   const projectId = await storyProjectId(supabase, args.story_id);
-  await assertWritableTracker(supabase, projectId);
+  await assertWritableProject(supabase, projectId);
 
   const { data, error } = await supabase
     .from("comments")
@@ -537,7 +528,7 @@ export async function addComment(supabase: Db, args: { story_id: string; body: s
 
 export async function setStoryTasks(supabase: Db, args: { story_id: string; tasks: { title: string; done?: boolean }[] }) {
   const projectId = await storyProjectId(supabase, args.story_id);
-  await assertWritableTracker(supabase, projectId);
+  await assertWritableProject(supabase, projectId);
 
   const { error: delErr } = await supabase.from("tasks").delete().eq("story_id", args.story_id);
   if (delErr) throw new Error(`Could not clear tasks: ${delErr.message}`);
@@ -564,7 +555,7 @@ export async function toggleStoryTask(supabase: Db, args: { task_id: string; don
   if (readErr) throw new Error(`Could not read task: ${readErr.message}`);
   if (!task) throw new Error("Task not found, or the agent is not a member of its project.");
   const projectId = (task.stories as unknown as { project_id: string } | null)?.project_id;
-  if (projectId) await assertWritableTracker(supabase, projectId);
+  if (projectId) await assertWritableProject(supabase, projectId);
 
   const { data, error } = await supabase
     .from("tasks")

@@ -48,7 +48,7 @@ describe.skipIf(!RUN)("finalize_iteration skip behaviour (integration)", () => {
       throw new Error(`Dev-user sign-in failed (is 'supabase start' running locally?): ${authError.message}`);
     }
 
-    // Tracker project (workflow_mode defaults to 'tracker', iteration_length
+    // Tracker project (iteration_length
     // to 14 — 20260627000002_projects.sql). Creating it makes the dev user
     // its owner, so manual finish (owner/member only) is permitted.
     const { data: project, error: projectError } = await supabase

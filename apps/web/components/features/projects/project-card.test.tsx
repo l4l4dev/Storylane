@@ -13,7 +13,6 @@ function baseProject(overrides: Partial<ProjectCardData> = {}): ProjectCardData 
     id: "p1",
     name: "Storylane",
     description: null,
-    workflowMode: "tracker",
     createdAt: "2026-07-10T00:00:00.000Z",
     updatedAt: "2026-07-10T00:00:00.000Z",
     members: [],
@@ -28,21 +27,11 @@ describe("ProjectCard", () => {
   it("shows the Tracker badge and iteration/velocity summary", () => {
     render(
       <ProjectCard
-        project={baseProject({ workflowMode: "tracker", currentIterationNumber: 4, velocity: 12 })}
+        project={baseProject({ currentIterationNumber: 4, velocity: 12 })}
       />,
     );
     expect(screen.getByText("Tracker")).toBeInTheDocument();
     expect(screen.getByText("Iteration #4 · velocity 12 pts")).toBeInTheDocument();
-  });
-
-  it("shows the Free badge and column/open-card summary", () => {
-    render(
-      <ProjectCard
-        project={baseProject({ workflowMode: "free", columnCount: 5, openCardCount: 8 })}
-      />,
-    );
-    expect(screen.getByText("Free")).toBeInTheDocument();
-    expect(screen.getByText("5 columns · 8 open cards")).toBeInTheDocument();
   });
 
   it("caps overlapping member avatars with a +N badge", () => {

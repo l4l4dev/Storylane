@@ -22,8 +22,8 @@ import { type StoryState, type StoryTransitionAction } from "@storylane/core";
 
 // Single UTC date convention shared with the DB — see utcTodayKey.
 
-// TASK-56: the four board drop paths (dropStory / dropStoryFree /
-// setStoryFocus / dropStoryInList) are thin callers of move_story_board, the
+// TASK-56: the three board drop paths (dropStory / setStoryFocus /
+// dropStoryInList) are thin callers of move_story_board, the
 // single transactional move+reorder RPC (20260715000008). Each still reads the
 // story and runs the same pure evaluate* validation server-side (never trust
 // the client), then hands the RPC an intent — deltas + an expected snapshot +
@@ -38,15 +38,11 @@ const STALE_MOVE_MESSAGE = "This story changed on the board. Refresh and try aga
 function moveExpected(row: {
   state: string;
   iteration_id: string | null;
-  custom_status_id: string | null;
-  swimlane_id: string | null;
   focus: string | null;
 }) {
   return {
     state: row.state,
     iteration_id: row.iteration_id,
-    custom_status_id: row.custom_status_id,
-    swimlane_id: row.swimlane_id,
     focus: row.focus,
   };
 }
@@ -145,161 +141,6 @@ export async function quickCreateStory(formData: FormData) {
 }
 
 /**
- * Lazily generates any due recurring-story instances before a free-mode
- * board loads (spec/data-model.md "recurring_stories"), the
- * free-mode counterpart of `ensureCurrentIteration` above. The actual due-
- * date math and the claim that prevents double-generation both live in the
- * `generate_recurring_stories` SECURITY DEFINER RPC — this wrapper only
- * does a cheap pre-check (any active rule at all?) so a project with none
- * skips the RPC call on every page load, mirroring
- * `ensureCurrentIteration`'s own pre-check.
- */
-export async function generateRecurringStories(projectId: string) {
-  const supabase = await createClient();
-
-  const { count } = await supabase
-    .from("recurring_stories")
-    .select("id", { count: "exact", head: true })
-    .eq("project_id", projectId)
-    .eq("is_active", true);
-
-  if (!count) {
-    return;
-  }
-
-  const { error } = await supabase.rpc("generate_recurring_stories", { p_project_id: projectId });
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
-/**
- * Free-mode quick-add: creates a story directly in a custom status column.
- * `stories.state` stays at its default and is ignored in free mode — the
- * column is `custom_status_id`.
- */
-export async function quickCreateStoryFree(formData: FormData) {
-  const projectId = String(formData.get("project_id"));
-  const title = String(formData.get("title") ?? "").trim();
-  const statusId = String(formData.get("status_id"));
-
-  if (!title) {
-    return;
-  }
-
-  const supabase = await createClient();
-
-  // The composite FK also rejects a status of another project — this check
-  // just turns that into a readable error.
-  const { data: status } = await supabase
-    .from("custom_statuses")
-    .select("id")
-    .eq("id", statusId)
-    .eq("project_id", projectId)
-    .maybeSingle();
-  if (!status) {
-    throw new Error("Unknown status for this project");
-  }
-
-  const { error } = await supabase.from("stories").insert({
-    project_id: projectId,
-    title,
-    story_type: "feature",
-    custom_status_id: statusId,
-  });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  revalidatePath(`/projects/${projectId}/board`);
-}
-
-/**
- * Free-mode drop: any story may move to any of the project's custom
- * statuses — there is no state machine to validate against. Also persists
- * the order within the target column, and notifies Slack with the status
- * name (the free-mode equivalent of a state change).
- *
- * When the board has swimlanes, the client also sends `swimlane_id` ("" =
- * the No lane band). Its *absence* means this board has no lanes at all,
- * so the lane column is left untouched — that's how a lanes-unaware drop
- * is told apart from an explicit move into No lane.
- */
-export async function dropStoryFree(formData: FormData) {
-  const projectId = String(formData.get("project_id"));
-  const storyId = String(formData.get("story_id"));
-  const statusId = String(formData.get("status_id"));
-  const hasLaneField = formData.has("swimlane_id");
-  const swimlaneRaw = String(formData.get("swimlane_id") ?? "");
-  const swimlaneId = swimlaneRaw === "" ? null : swimlaneRaw;
-  const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
-
-  const supabase = await createClient();
-
-  const [{ data: story, error: fetchError }, { data: status }] = await Promise.all([
-    supabase
-      .from("stories")
-      .select("number, title, state, iteration_id, custom_status_id, swimlane_id, focus")
-      .eq("id", storyId)
-      .eq("project_id", projectId)
-      .single(),
-    supabase.from("custom_statuses").select("id, name").eq("id", statusId).eq("project_id", projectId).maybeSingle(),
-  ]);
-
-  if (fetchError || !story) {
-    throw new Error(fetchError?.message ?? "Story not found");
-  }
-  if (!status) {
-    throw new Error("Unknown status for this project");
-  }
-
-  if (hasLaneField && swimlaneId) {
-    const { data: lane } = await supabase
-      .from("swimlanes")
-      .select("id")
-      .eq("id", swimlaneId)
-      .eq("project_id", projectId)
-      .maybeSingle();
-    if (!lane) {
-      throw new Error("Unknown lane for this project");
-    }
-  }
-
-  const statusChanged = story.custom_status_id !== statusId;
-
-  // Free mode has no state machine — any story may move to any status. The
-  // status is always in the deltas (idempotent when unchanged, so a pure
-  // in-column reorder still routes through the same RPC); the lane column is
-  // only touched when the board actually has lanes (its absence = "don't
-  // touch", told apart from an explicit move into No lane).
-  const deltas: { custom_status_id: string; swimlane_id?: string | null } = { custom_status_id: statusId };
-  if (hasLaneField) {
-    deltas.swimlane_id = swimlaneId;
-  }
-
-  const { error } = await supabase.rpc("move_story_board", {
-    p_project_id: projectId,
-    p_item: { kind: "story", id: storyId },
-    p_view: "free",
-    p_expected: moveExpected(story),
-    p_deltas: deltas,
-    p_anchor: moveAnchor(beforeItemId),
-  });
-  if (error) {
-    throw new Error(moveErrorMessage(error));
-  }
-
-  // Lane-only moves aren't a state change worth notifying about.
-  if (statusChanged) {
-    after(() => notifySlack(projectId, storyStateChangeMessage(story, status.name)));
-  }
-
-  revalidatePath(`/projects/${projectId}/board`);
-  revalidatePath(`/stories/${storyId}`);
-}
-
-/**
  * Handles a kanban drop (see spec/screens.md "Board layout": drag = state
  * transition). Re-derives the story's source column and re-validates the
  * move server-side with the same pure `evaluateDrop` the client uses, so a
@@ -317,7 +158,7 @@ export async function dropStory(formData: FormData) {
   const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, state, story_type, points, iteration_id, custom_status_id, swimlane_id, focus")
+      .select("number, title, state, story_type, points, iteration_id, focus")
       .eq("id", storyId)
       .eq("project_id", projectId)
       .single(),
@@ -403,7 +244,7 @@ export async function setStoryFocus(formData: FormData) {
   const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
     supabase
       .from("stories")
-      .select("state, iteration_id, custom_status_id, swimlane_id, focus")
+      .select("state, iteration_id, focus")
       .eq("id", storyId)
       .eq("project_id", projectId)
       .single(),
@@ -497,7 +338,7 @@ export async function dropStoryInList(formData: FormData) {
   const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, state, story_type, points, iteration_id, custom_status_id, swimlane_id, focus")
+      .select("number, title, state, story_type, points, iteration_id, focus")
       .eq("id", itemId)
       .eq("project_id", projectId)
       .single(),

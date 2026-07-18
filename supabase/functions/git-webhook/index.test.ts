@@ -89,25 +89,6 @@ Deno.test("tracker-mode merged PR: finishes the story via the RPC", async () => 
   assertEquals(rpcCalls, [{ fn: "finish_story_from_git", args: { p_project_id: "proj-1", p_story_number: 42 } }]);
 });
 
-Deno.test("free-mode project: the RPC returns an ignored event, nothing is finished", async () => {
-  const { client, accessedTables } = fakeSupabase({
-    tables: { integrations: ACTIVE_INTEGRATION },
-    rpc: (_fn, args) => ({
-      data: [{ kind: "ignored", number: args.p_story_number, reason: "not_tracker" }],
-      error: null,
-    }),
-  });
-
-  const res = await handleGitWebhookRequest(await signedRequest(MERGED_PR), client);
-  const body = await res.json();
-
-  assertEquals(res.status, 200);
-  assertEquals(body, { matched: [42], events: [{ kind: "ignored", number: 42, reason: "not_tracker" }] });
-  // The handler never touches the stories/iterations tables — the RPC does,
-  // server-side — so a free-mode project writes nothing here.
-  assertEquals(accessedTables.includes("stories"), false);
-  assertEquals(accessedTables.includes("iterations"), false);
-});
 
 Deno.test("a not-transitionable story returns 200 with the RPC's event, not a silent success", async () => {
   const { client } = fakeSupabase({

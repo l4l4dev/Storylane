@@ -29,7 +29,6 @@ const AUTHENTICATED_ALLOWLIST = new Set([
   "remove_member",
   "invite_member",
   "finalize_iteration",
-  "generate_recurring_stories",
   "promote_story_to_epic",
   "move_story_to_project",
   "copy_story_to_project",
@@ -39,8 +38,6 @@ const AUTHENTICATED_ALLOWLIST = new Set([
   "update_story",
   "move_story_board",
   "insert_board_item",
-  "swap_adjacent",
-  "create_project",
   "transition_story",
 ]);
 

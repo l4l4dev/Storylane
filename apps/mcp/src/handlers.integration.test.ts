@@ -64,7 +64,7 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
 
     const { data: proj, error: projErr } = await owner
       .from("projects")
-      .insert({ name: "mcp integration project", workflow_mode: "tracker" })
+      .insert({ name: "mcp integration project" })
       .select("id")
       .single();
     if (projErr || !proj) throw new Error(`Project create failed: ${projErr?.message}`);
@@ -79,7 +79,7 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
 
     const { data: outside, error: outErr } = await owner
       .from("projects")
-      .insert({ name: "mcp outside project", workflow_mode: "tracker" })
+      .insert({ name: "mcp outside project" })
       .select("id")
       .single();
     if (outErr || !outside) throw new Error(`Outside project create failed: ${outErr?.message}`);
@@ -251,14 +251,4 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     ).rejects.toThrow(/not a member/i);
   });
 
-  it("write tools reject a free-mode project", async () => {
-    const { data: free } = await owner
-      .from("projects")
-      .insert({ name: "mcp free project", workflow_mode: "free" })
-      .select("id")
-      .single();
-    await owner.rpc("invite_member", { p_project_id: free!.id, p_user_id: botUserId, p_role: "member" });
-    await expect(tools.createStory(bot, { project_id: free!.id, title: "nope" })).rejects.toThrow(/tracker-mode/i);
-    await admin.from("projects").delete().eq("id", free!.id);
-  });
 });

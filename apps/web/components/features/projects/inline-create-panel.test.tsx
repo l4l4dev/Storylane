@@ -26,12 +26,4 @@ describe("InlineCreatePanel", () => {
     expect(screen.queryByText("Column template")).not.toBeInTheDocument();
   });
 
-  it("switches to Free fields when the Free mode card is selected", () => {
-    render(<InlineCreatePanel />);
-    fireEvent.click(screen.getByRole("button", { name: "New project" }));
-    fireEvent.click(screen.getByRole("button", { name: /Free/ }));
-    expect(screen.getByText("Column template")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Iteration length (days)")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Velocity window")).not.toBeInTheDocument();
-  });
 });

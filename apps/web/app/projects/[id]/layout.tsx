@@ -20,10 +20,10 @@ export default async function ProjectLayout({
   } = await supabase.auth.getUser();
 
   const [{ data: project }, { data: projectRows }, { data: myMemberships }, { data: profile }] = await Promise.all([
-    supabase.from("projects").select("id, name, workflow_mode").eq("id", id).single(),
+    supabase.from("projects").select("id, name").eq("id", id).single(),
     supabase
       .from("projects")
-      .select("id, name, workflow_mode")
+      .select("id, name")
       .is("archived_at", null)
       .order("updated_at", { ascending: false }),
     user
@@ -40,7 +40,6 @@ export default async function ProjectLayout({
   const projects = (projectRows ?? []).map((p) => ({
     id: p.id,
     name: p.name,
-    workflowMode: p.workflow_mode === "tracker" ? ("tracker" as const) : ("free" as const),
     isFavorite: favoriteProjectIds.has(p.id),
     // The query above already excludes archived_at rows, but the switcher
     // filters this flag itself too (see app-sidebar.tsx) so that behavior
@@ -58,14 +57,11 @@ export default async function ProjectLayout({
         project={{
           id: project.id,
           name: project.name,
-          workflowMode: project.workflow_mode === "tracker" ? ("tracker" as const) : ("free" as const),
           isFavorite: favoriteProjectIds.has(project.id),
           isArchived: false,
         }}
         projects={projects}
         username={profile?.username ?? null}
-        // Free-mode projects have no iterations — hide that nav item.
-        showIterations={project.workflow_mode !== "free"}
       />
       <div className="min-w-0 flex-1">{children}</div>
     </div>

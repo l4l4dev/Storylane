@@ -45,7 +45,7 @@ describe.skipIf(!RUN)("insert_board_item RPC (integration)", () => {
 
     const { data: project, error: projectError } = await asOwner
       .from("projects")
-      .insert({ name: "insert_board_item integration test", workflow_mode: "tracker" })
+      .insert({ name: "insert_board_item integration test" })
       .select("id")
       .single();
     if (projectError || !project) {
@@ -155,7 +155,7 @@ describe.skipIf(!RUN)("insert_board_item RPC (integration)", () => {
     const { s0, d, s1 } = await seedBacklog();
     const { data: other } = await asOwner
       .from("projects")
-      .insert({ name: "other project", workflow_mode: "tracker" })
+      .insert({ name: "other project" })
       .select("id")
       .single();
     const { data: foreign } = await asOwner

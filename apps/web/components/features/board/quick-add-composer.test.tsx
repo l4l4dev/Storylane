@@ -2,20 +2,17 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QuickAddComposer } from "./quick-add-composer";
 
-const { quickCreateStoryMock, quickCreateStoryFreeMock } = vi.hoisted(() => ({
+const { quickCreateStoryMock } = vi.hoisted(() => ({
   quickCreateStoryMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
-  quickCreateStoryFreeMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
 }));
 
 vi.mock("@/app/projects/[id]/board/actions", () => ({
   quickCreateStory: quickCreateStoryMock,
-  quickCreateStoryFree: quickCreateStoryFreeMock,
 }));
 
 describe("QuickAddComposer", () => {
   beforeEach(() => {
     quickCreateStoryMock.mockClear();
-    quickCreateStoryFreeMock.mockClear();
   });
 
   // TASK-11: the old composer morphed the trigger button itself into the
@@ -130,24 +127,6 @@ describe("QuickAddComposer", () => {
     expect(quickCreateStoryMock).not.toHaveBeenCalled();
   });
 
-  it("creates via the free-mode action for a custom status column target", () => {
-    render(<QuickAddComposer projectId="p1" target={{ customStatusId: "cs1" }} />);
-    fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
-
-    const input = screen.getByRole("textbox", { name: "New story title" });
-    fireEvent.change(input, { target: { value: "Free mode story" } });
-    fireEvent.submit(input.closest("form") as HTMLFormElement);
-
-    expect(quickCreateStoryFreeMock).toHaveBeenCalledTimes(1);
-    expect(quickCreateStoryMock).not.toHaveBeenCalled();
-    const formData = quickCreateStoryFreeMock.mock.calls[0]?.[0];
-    if (!formData) {
-      throw new Error("quickCreateStory was not called with FormData");
-    }
-    expect(formData.get("project_id")).toBe("p1");
-    expect(formData.get("title")).toBe("Free mode story");
-    expect(formData.get("status_id")).toBe("cs1");
-  });
 
   it("closes on Escape and discards the draft, leaving the trigger in place", () => {
     render(<QuickAddComposer projectId="p1" target="icebox" />);

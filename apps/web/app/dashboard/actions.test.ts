@@ -5,7 +5,6 @@ const inviteMemberMock = vi.fn();
 const getUserMock = vi.fn();
 
 const rpcMock = vi.fn((fn: string, args: unknown) => {
-  if (fn === "create_project") return createProjectMock(args);
   if (fn === "invite_member") return inviteMemberMock(args);
   throw new Error(`unexpected rpc: ${fn}`);
 });
@@ -14,6 +13,16 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     auth: { getUser: getUserMock },
     rpc: rpcMock,
+    from: () => ({
+      insert: (values: unknown) => {
+        createProjectMock(values);
+        return {
+          select: () => ({
+            single: () => Promise.resolve({ data: { id: "project-1" }, error: null }),
+          }),
+        };
+      },
+    }),
   }),
 }));
 
@@ -31,7 +40,6 @@ describe("createProject", () => {
     inviteMemberMock.mockReset();
     getUserMock.mockReset();
     getUserMock.mockResolvedValue({ data: { user: { id: "creator-1" } } });
-    createProjectMock.mockResolvedValue({ data: "project-1", error: null });
     inviteMemberMock.mockResolvedValue({ error: null });
   });
 
@@ -92,26 +100,7 @@ describe("createProject", () => {
     formData.set("velocity_window", "0");
 
     await expect(createProject(formData)).rejects.toThrow("REDIRECT:/projects/project-1/board");
-    expect(createProjectMock).toHaveBeenCalledWith(expect.objectContaining({ p_velocity_window: 1 }));
+    expect(createProjectMock).toHaveBeenCalledWith(expect.objectContaining({ velocity_window: 1 }));
   });
 
-  it("sends the free-mode template columns for a free project and none for tracker", async () => {
-    const { createProject } = await import("./actions");
-
-    const freeForm = new FormData();
-    freeForm.set("name", "Free Project");
-    freeForm.set("workflow_mode", "free");
-    freeForm.set("free_template", "basic");
-    await expect(createProject(freeForm)).rejects.toThrow(/REDIRECT:/);
-    const freeArgs = createProjectMock.mock.calls[0][0] as { p_workflow_mode: string; p_statuses: unknown[] };
-    expect(freeArgs.p_workflow_mode).toBe("free");
-    expect(freeArgs.p_statuses.length).toBeGreaterThan(0);
-
-    createProjectMock.mockClear();
-    const trackerForm = new FormData();
-    trackerForm.set("name", "Tracker Project");
-    await expect(createProject(trackerForm)).rejects.toThrow(/REDIRECT:/);
-    const trackerArgs = createProjectMock.mock.calls[0][0] as { p_statuses: unknown[] };
-    expect(trackerArgs.p_statuses).toEqual([]);
-  });
 });

@@ -30,9 +30,9 @@ import { signOut } from "./actions";
  * (Move/Copy checks + this UI's own gating) is supposed to prevent.
  */
 export function projectsNeedingRollover<T extends { archived_at: string | null }>(
-  trackerProjects: readonly T[],
+  projects: readonly T[],
 ): T[] {
-  return trackerProjects.filter((p) => p.archived_at === null);
+  return projects.filter((p) => p.archived_at === null);
 }
 
 export async function rolloverIterationSafely(projectId: string): Promise<void> {
@@ -60,18 +60,15 @@ export default async function DashboardPage({
   } = await supabase.auth.getUser();
   const { data: projects } = await supabase
     .from("projects")
-    .select("id, name, description, workflow_mode, created_at, updated_at, archived_at, velocity_window")
+    .select("id, name, description, created_at, updated_at, archived_at, velocity_window")
     .order("updated_at", { ascending: false });
-
-  const trackerProjects = (projects ?? []).filter((p) => p.workflow_mode === "tracker");
-  const freeProjects = (projects ?? []).filter((p) => p.workflow_mode === "free");
 
   // Lazily rolls over each tracker project's current iteration before
   // reading it (spec/velocity.md "Automatic scheduling & rollover") — same
   // rule the board page applies, just batched across projects here. Uses
   // the failure-swallowing wrapper (not ensureCurrentIteration directly) so
   // one project's rollover failure can't 500 the whole page for everyone.
-  await Promise.all(projectsNeedingRollover(trackerProjects).map((p) => rolloverIterationSafely(p.id)));
+  await Promise.all(projectsNeedingRollover(projects ?? []).map((p) => rolloverIterationSafely(p.id)));
 
   type IterationRow = { number: number; velocity: number | null; state: string; skipped: boolean };
   type MemberRow = {
@@ -90,23 +87,6 @@ export default async function DashboardPage({
     return [projectId, data ?? []] as const;
   }
 
-  async function fetchColumnCount(projectId: string): Promise<readonly [string, number]> {
-    const { count } = await supabase
-      .from("custom_statuses")
-      .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId);
-    return [projectId, count ?? 0] as const;
-  }
-
-  async function fetchOpenCardCount(projectId: string): Promise<readonly [string, number]> {
-    const { count } = await supabase
-      .from("stories")
-      .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId)
-      .is("completed_at", null);
-    return [projectId, count ?? 0] as const;
-  }
-
   async function fetchMembers(projectId: string): Promise<readonly [string, MemberRow[]]> {
     const { data } = await supabase
       .from("project_members")
@@ -115,17 +95,12 @@ export default async function DashboardPage({
     return [projectId, data ?? []] as const;
   }
 
-  const [iterationsByProject, columnCountsByProject, openCardCountsByProject, membersByProject] =
-    await Promise.all([
-      Promise.all(trackerProjects.map((p) => fetchIterations(p.id))),
-      Promise.all(freeProjects.map((p) => fetchColumnCount(p.id))),
-      Promise.all(freeProjects.map((p) => fetchOpenCardCount(p.id))),
-      Promise.all((projects ?? []).map((p) => fetchMembers(p.id))),
-    ]);
+  const [iterationsByProject, membersByProject] = await Promise.all([
+    Promise.all((projects ?? []).map((p) => fetchIterations(p.id))),
+    Promise.all((projects ?? []).map((p) => fetchMembers(p.id))),
+  ]);
 
   const iterationsById = new Map(iterationsByProject);
-  const columnCountById = new Map(columnCountsByProject);
-  const openCardCountById = new Map(openCardCountsByProject);
   const membersById = new Map(membersByProject);
 
   const cards: ProjectCardData[] = (projects ?? []).map((project) => {
@@ -139,40 +114,21 @@ export default async function DashboardPage({
     const isOwner = myMembership?.role === "owner";
     const isFavorite = myMembership?.is_favorite ?? false;
 
-    if (project.workflow_mode === "tracker") {
-      const iterations = iterationsById.get(project.id) ?? [];
-      const current = iterations.find((it) => it.state !== "done") ?? null;
-      // Skipped iterations are excluded from the velocity window (spec/velocity.md).
-      const done = iterations.filter((it) => it.state === "done" && !it.skipped);
-      return {
-        id: project.id,
-        name: project.name,
-        description: project.description,
-        workflowMode: "tracker",
-        createdAt: project.created_at,
-        updatedAt: project.updated_at,
-        archivedAt: project.archived_at,
-        members,
-        isOwner,
-        isFavorite,
-        currentIterationNumber: current?.number ?? null,
-        velocity: calculateVelocity(done, project.velocity_window),
-      };
-    }
-
+    const iterations = iterationsById.get(project.id) ?? [];
+    const current = iterations.find((it) => it.state !== "done") ?? null;
+    const done = iterations.filter((it) => it.state === "done" && !it.skipped);
     return {
       id: project.id,
       name: project.name,
       description: project.description,
-      workflowMode: "free",
       createdAt: project.created_at,
       updatedAt: project.updated_at,
       archivedAt: project.archived_at,
       members,
       isOwner,
       isFavorite,
-      columnCount: columnCountById.get(project.id) ?? 0,
-      openCardCount: openCardCountById.get(project.id) ?? 0,
+      currentIterationNumber: current?.number ?? null,
+      velocity: calculateVelocity(done, project.velocity_window),
     };
   });
 

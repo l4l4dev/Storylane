@@ -10,7 +10,6 @@ export type ProjectCardData = {
   id: string;
   name: string;
   description: string | null;
-  workflowMode: "tracker" | "free";
   createdAt: string;
   updatedAt: string;
   members: ProjectCardMember[];
@@ -19,20 +18,15 @@ export type ProjectCardData = {
   archivedAt: string | null;
   currentIterationNumber?: number | null;
   velocity?: number | null;
-  columnCount?: number;
-  openCardCount?: number;
 };
 
 const MAX_VISIBLE_AVATARS = 4;
 
 function summaryLine(project: ProjectCardData): string | null {
-  if (project.workflowMode === "tracker") {
-    if (project.currentIterationNumber == null) {
-      return null;
-    }
-    return `Iteration #${project.currentIterationNumber} · velocity ${project.velocity ?? 0} pts`;
+  if (project.currentIterationNumber == null) {
+    return null;
   }
-  return `${project.columnCount ?? 0} columns · ${project.openCardCount ?? 0} open cards`;
+  return `Iteration #${project.currentIterationNumber} · velocity ${project.velocity ?? 0} pts`;
 }
 
 // spec/screens.md "Projects page". Archive/favorite/search/sort controls
@@ -53,9 +47,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
           </CardTitle>
           <div className="flex shrink-0 items-center gap-2">
             {project.archivedAt && <Badge variant="outline">Archived</Badge>}
-            <Badge variant={project.workflowMode === "tracker" ? "default" : "secondary"}>
-              {project.workflowMode === "tracker" ? "Tracker" : "Free"}
-            </Badge>
+            <Badge>Tracker</Badge>
             <ProjectCardMenu
               projectId={project.id}
               projectName={project.name}

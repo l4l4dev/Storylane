@@ -135,11 +135,6 @@ export async function handleGitWebhookRequest(
   if (!received || !timingSafeEqual(expected, received.toLowerCase())) {
     return json(401, { error: "Invalid signature" });
   }
-
-  // The tracker-mode-only rule (2026-07-11 owner decision, spec/integrations.md
-  // — free mode ignores story state) is enforced inside finish_story_from_git,
-  // the single enforcement point; a free-mode project just gets 'ignored'
-  // events back.
   if (event !== "pull_request") {
     return json(200, { ignored: `event ${event}` });
   }

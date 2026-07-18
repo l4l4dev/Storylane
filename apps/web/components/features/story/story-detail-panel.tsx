@@ -15,7 +15,7 @@ import { TaskChecklist } from "./task-checklist";
 import { TransitionButtons } from "./transition-buttons";
 
 // The story fields this panel edits inline — everything else on
-// `StoryDetail` (comments, tasks, epics/labels/members lists, workflowMode,
+// `StoryDetail` (comments, tasks, epics/labels/members lists,
 // state, number, pointScale) is read-only display data the panel always
 // takes fresh from the latest `detail` prop, never locked.
 type EditableFields = {
@@ -25,7 +25,6 @@ type EditableFields = {
   points: number | null;
   epicId: string;
   assigneeId: string;
-  customStatusId: string;
   labelIds: string[];
 };
 
@@ -36,7 +35,6 @@ const LOCKABLE_FIELDS = [
   "points",
   "epicId",
   "assigneeId",
-  "customStatusId",
   "labelIds",
 ] as const;
 type LockableField = (typeof LOCKABLE_FIELDS)[number];
@@ -49,7 +47,6 @@ function toEditableFields(detail: StoryDetail): EditableFields {
     points: detail.points,
     epicId: detail.epicId ?? "",
     assigneeId: detail.assigneeId ?? "",
-    customStatusId: detail.customStatusId ?? "",
     labelIds: detail.labelIds,
   };
 }
@@ -62,7 +59,6 @@ function toEditableFieldsFromRealtime(row: StoryRealtimeRow): EditableFields {
     points: row.points,
     epicId: row.epic_id ?? "",
     assigneeId: row.assignee_id ?? "",
-    customStatusId: row.custom_status_id ?? "",
     // Realtime doesn't carry the joined story_labels rows — labels only
     // ever change through this panel's own save, so they're never merged
     // remotely (there's nothing to merge: no other surface edits them).
@@ -152,7 +148,6 @@ export function StoryDetailPanel({
       points: snapshot.points,
       epicId: snapshot.epicId || null,
       assigneeId: snapshot.assigneeId || null,
-      customStatusId: snapshot.customStatusId || null,
       labelIds: snapshot.labelIds,
     });
 
@@ -313,20 +308,14 @@ export function StoryDetailPanel({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
-        {/* Free-mode projects have no state machine — the status is
-            a plain select in the form below instead of transition buttons. */}
-        {detail.workflowMode === "tracker" ? (
-          <TransitionButtons
-            storyId={detail.id}
-            projectId={detail.projectId}
-            state={detail.state}
-            storyType={detail.storyType}
-            points={detail.points}
-            pointScale={detail.pointScale}
-          />
-        ) : (
-          <span />
-        )}
+        <TransitionButtons
+          storyId={detail.id}
+          projectId={detail.projectId}
+          state={detail.state}
+          storyType={detail.storyType}
+          points={detail.points}
+          pointScale={detail.pointScale}
+        />
         <span
           className={`text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}
           aria-live="polite"
@@ -345,23 +334,6 @@ export function StoryDetailPanel({
       </div>
 
       <div className="flex flex-col gap-4">
-        {detail.workflowMode === "free" && (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="detail-status">Status</Label>
-            <NativeSelect
-              id="detail-status"
-              value={local.customStatusId}
-              onChange={(e) => handleDiscreteChange("customStatusId", e.target.value)}
-            >
-              {detail.customStatuses.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-        )}
-
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="detail-title">Title</Label>
           <input

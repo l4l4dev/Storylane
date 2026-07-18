@@ -21,10 +21,6 @@ export type StoryDetail = {
   assigneeId: string | null;
   labelIds: string[];
   pointScale: number[];
-  // Free-mode projects swap the state machine for custom statuses.
-  workflowMode: "tracker" | "free";
-  customStatusId: string | null;
-  customStatuses: { id: string; name: string }[];
   epics: { id: string; name: string }[];
   labels: { id: string; name: string }[];
   members: { id: string; name: string }[];
@@ -54,11 +50,11 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     return null;
   }
 
-  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: customStatuses }, { data: history }] =
+  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: history }] =
     await Promise.all([
       supabase
         .from("projects")
-        .select("point_scale, custom_points, workflow_mode")
+        .select("point_scale, custom_points")
         .eq("id", story.project_id)
         .single(),
       supabase.from("epics").select("id, name").eq("project_id", story.project_id).order("position"),
@@ -73,11 +69,6 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .eq("story_id", storyId)
         .order("created_at", { ascending: true }),
       supabase.from("tasks").select("id, title, is_done").eq("story_id", storyId).order("position"),
-      supabase
-        .from("custom_statuses")
-        .select("id, name")
-        .eq("project_id", story.project_id)
-        .order("position", { ascending: true }),
       // Status/column history only — comment.added already renders in the
       // comment thread, and letting it in would both duplicate it here and
       // let comments crowd real status changes out of the 50-row window.
@@ -103,9 +94,6 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     assigneeId: story.assignee_id,
     labelIds: story.story_labels.map((sl) => sl.label_id),
     pointScale: pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points),
-    workflowMode: project?.workflow_mode === "free" ? "free" : "tracker",
-    customStatusId: story.custom_status_id,
-    customStatuses: customStatuses ?? [],
     epics: epics ?? [],
     labels: labels ?? [],
     members: (members ?? []).map((m) => {
@@ -143,9 +131,6 @@ export type UpdateStoryInput = {
   points: number | null;
   epicId: string | null;
   assigneeId: string | null;
-  // Free-mode-only; null leaves the column unchanged — see the update_story
-  // RPC's coalesce.
-  customStatusId: string | null;
   labelIds: string[];
 };
 
@@ -156,7 +141,6 @@ export type UpdateStoryFields = {
   points: number | null;
   epicId: string | null;
   assigneeId: string | null;
-  customStatusId: string | null;
   labelIds: string[];
 };
 
@@ -199,7 +183,7 @@ export async function updateStory(input: UpdateStoryInput): Promise<UpdateStoryR
     p_points: input.points as number,
     p_epic_id: input.epicId as string,
     p_assignee_id: input.assigneeId as string,
-    p_custom_status_id: input.customStatusId as string,
+    p_custom_status_id: null as unknown as string,
     p_label_ids: input.labelIds,
   });
 
@@ -221,7 +205,6 @@ export async function updateStory(input: UpdateStoryInput): Promise<UpdateStoryR
       points: row.points,
       epicId: row.epic_id,
       assigneeId: row.assignee_id,
-      customStatusId: row.custom_status_id,
       labelIds: row.label_ids ?? [],
     },
   };

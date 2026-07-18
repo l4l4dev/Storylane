@@ -32,7 +32,6 @@ export type ProjectRef = {
   id: string;
   name: string;
   isFavorite: boolean;
-  workflowMode: "tracker" | "free";
   isArchived: boolean;
 };
 
@@ -56,17 +55,14 @@ export function AppSidebar({
   project,
   projects,
   username,
-  showIterations = true,
 }: {
   project: ProjectRef;
   projects: ProjectRef[];
   username: string | null;
-  // Free-mode projects have no iterations.
-  showIterations?: boolean;
 }) {
   const pathname = usePathname();
   const base = `/projects/${project.id}`;
-  const navItems = NAV_ITEMS.filter((item) => showIterations || item.segment !== "iterations");
+  const navItems = NAV_ITEMS;
 
   // Favorites first, archived excluded (spec/screens.md "Project switcher"),
   // same rule as the dashboard's ProjectGrid (lib/utils/project-list.ts) —
@@ -109,13 +105,7 @@ export function AppSidebar({
                     <Pin data-testid="pin-icon" className="size-3.5 shrink-0 text-muted-foreground" />
                   )}
                   <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                  <Badge
-                    data-testid="mode-badge"
-                    variant={p.workflowMode === "tracker" ? "default" : "secondary"}
-                    className="shrink-0"
-                  >
-                    {p.workflowMode === "tracker" ? "Tracker" : "Free"}
-                  </Badge>
+                  <Badge data-testid="mode-badge" className="shrink-0">Tracker</Badge>
                 </Link>
               </DropdownMenuItem>
             ))}

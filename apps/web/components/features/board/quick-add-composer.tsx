@@ -2,17 +2,12 @@
 
 import { useEffect, useRef, useState, useTransition, type FormEvent, type KeyboardEvent } from "react";
 import { Plus } from "lucide-react";
-import { quickCreateStory, quickCreateStoryFree } from "@/app/projects/[id]/board/actions";
+import { quickCreateStory } from "@/app/projects/[id]/board/actions";
 import { isImeComposing } from "@/lib/utils/keyboard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-// Pivotal-mode targets, or a free-mode custom status column.
-export type QuickAddTarget =
-  | "backlog"
-  | "icebox"
-  | "unstarted"
-  | { customStatusId: string };
+export type QuickAddTarget = "backlog" | "icebox" | "unstarted";
 
 // Quick-add composer (spec/screens.md "Quick-add composer"): the
 // "+ Add story" trigger stays visible and unchanged — clicking it reveals a
@@ -83,16 +78,11 @@ export function QuickAddComposer({
     setError(null);
     startTransition(async () => {
       try {
-        if (typeof target === "string") {
-          formData.set("target", target);
-          if (target === "backlog" && beforeItemId) {
-            formData.set("before_item_id", beforeItemId);
-          }
-          await quickCreateStory(formData);
-        } else {
-          formData.set("status_id", target.customStatusId);
-          await quickCreateStoryFree(formData);
+        formData.set("target", target);
+        if (target === "backlog" && beforeItemId) {
+          formData.set("before_item_id", beforeItemId);
         }
+        await quickCreateStory(formData);
         setTitle("");
         inputRef.current?.focus();
       } catch (err) {

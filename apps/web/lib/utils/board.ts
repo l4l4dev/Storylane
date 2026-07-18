@@ -13,7 +13,6 @@ export function groupStoriesByIteration<T extends GroupableStory>(
 ): { byIteration: Map<string, T[]>; backlog: T[] } {
   const byIteration = new Map<string, T[]>();
   const backlog: T[] = [];
-
   for (const story of stories) {
     if (story.iteration_id) {
       const bucket = byIteration.get(story.iteration_id) ?? [];
@@ -23,44 +22,16 @@ export function groupStoriesByIteration<T extends GroupableStory>(
       backlog.push(story);
     }
   }
-
   return { byIteration, backlog };
 }
 
 export type PointedStory = { points: number | null; story_type: string };
 
-/** Sum of points for point-bearing (feature/bug) stories, e.g. an iteration's total point count. */
+/** Sum of points for point-bearing stories. */
 export function sumPoints(stories: ReadonlyArray<PointedStory>): number {
   return stories
     .filter((story) => storyTypeUsesPoints(story.story_type))
     .reduce((total, story) => total + (story.points ?? 0), 0);
-}
-
-/**
- * Whether a free-mode column's card count has passed its WIP limit
- * (spec/screens.md "Free mode board") — a soft limit, purely a display
- * warning; `null` means no limit is set.
- */
-export function isOverWipLimit(count: number, wipLimit: number | null): boolean {
-  return wipLimit != null && count > wipLimit;
-}
-
-// When a free-mode board has swimlanes, each board cell is a
-// column x lane pair. `::` never appears in a UUID, so this composite key
-// can't collide with a bare status id (the no-lanes container key) or a
-// story id, letting findContainer/storyById below work unchanged.
-const LANE_CONTAINER_SEPARATOR = "::";
-const NO_LANE = "none";
-
-/** Builds a composite board-cell container id for a (status, lane) pair — `laneId` null means the "No lane" band. */
-export function laneContainerKey(statusId: string, laneId: string | null): string {
-  return `${statusId}${LANE_CONTAINER_SEPARATOR}${laneId ?? NO_LANE}`;
-}
-
-/** Splits a composite board-cell container id back into its status and lane ids. */
-export function parseLaneContainerKey(key: string): { statusId: string; laneId: string | null } {
-  const [statusId, laneId] = key.split(LANE_CONTAINER_SEPARATOR);
-  return { statusId, laneId: laneId === NO_LANE ? null : laneId };
 }
 
 // Shared cross-container drag helpers — used by both the Kanban and List
@@ -146,4 +117,3 @@ export function beforeAnchorId<T extends { id: string; kind?: string }>(
   const next = reordered[index + 1];
   return `${next.kind ?? "story"}:${next.id}`;
 }
-

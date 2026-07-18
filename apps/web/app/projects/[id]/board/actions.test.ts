@@ -422,8 +422,6 @@ describe("board drop actions -> move_story_board", () => {
             story_type: "feature",
             points: 3,
             iteration_id: CURRENT_ITERATION,
-            custom_status_id: null,
-            swimlane_id: null,
             focus: null,
           },
           error: null,
@@ -454,8 +452,6 @@ describe("board drop actions -> move_story_board", () => {
         p_expected: {
           state: "unstarted",
           iteration_id: CURRENT_ITERATION,
-          custom_status_id: null,
-          swimlane_id: null,
           focus: null,
         },
         p_deltas: { state: "started" },
@@ -491,64 +487,6 @@ describe("board drop actions -> move_story_board", () => {
     });
   });
 
-  describe("dropStoryFree", () => {
-    beforeEach(() => {
-      fixtures.stories = {
-        single: {
-          data: {
-            number: 2,
-            title: "Free story",
-            state: "unstarted",
-            iteration_id: null,
-            custom_status_id: "status-old",
-            swimlane_id: null,
-            focus: null,
-          },
-          error: null,
-        },
-      };
-      fixtures.custom_statuses = { single: { data: { id: "status-new", name: "Doing" }, error: null } };
-      fixtures.swimlanes = { single: { data: { id: "lane-1" }, error: null } };
-    });
-
-    it("sends the custom_status delta and free view (no lane field on a laneless board)", async () => {
-      const { dropStoryFree } = await import("./actions");
-
-      const data = new FormData();
-      data.set("project_id", "project-1");
-      data.set("story_id", "story-2");
-      data.set("status_id", "status-new");
-      data.set("before_item_id", "story:neighbour");
-
-      await dropStoryFree(data);
-
-      const call = moveCall();
-      expect(call.p_view).toBe("free");
-      expect(call.p_deltas).toEqual({ custom_status_id: "status-new" });
-      expect(call.p_expected).toEqual({
-        state: "unstarted",
-        iteration_id: null,
-        custom_status_id: "status-old",
-        swimlane_id: null,
-        focus: null,
-      });
-    });
-
-    it("includes swimlane_id in the delta when the board has lanes (null = No lane)", async () => {
-      const { dropStoryFree } = await import("./actions");
-
-      const data = new FormData();
-      data.set("project_id", "project-1");
-      data.set("story_id", "story-2");
-      data.set("status_id", "status-new");
-      data.set("swimlane_id", ""); // present but empty = explicit move into No lane
-
-      await dropStoryFree(data);
-
-      expect(moveCall().p_deltas).toEqual({ custom_status_id: "status-new", swimlane_id: null });
-    });
-  });
-
   describe("setStoryFocus", () => {
     beforeEach(() => {
       fixtures.stories = {
@@ -556,8 +494,6 @@ describe("board drop actions -> move_story_board", () => {
           data: {
             state: "unstarted",
             iteration_id: CURRENT_ITERATION,
-            custom_status_id: null,
-            swimlane_id: null,
             focus: null,
           },
           error: null,
@@ -642,8 +578,6 @@ describe("board drop actions -> move_story_board", () => {
             story_type: "feature",
             points: 1,
             iteration_id: null,
-            custom_status_id: null,
-            swimlane_id: null,
             focus: null,
           },
           error: null,

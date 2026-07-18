@@ -2,9 +2,10 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // TASK-14 AC #6/#9: exercises the real move_story_to_project /
-// copy_story_to_project RPCs (supabase/migrations/20260711000001_move_copy_story.sql)
-// against a running local Supabase instance, following the precedent set by
-// promote.integration.test.ts / recurring.integration.test.ts.
+// copy_story_to_project RPCs (current definitions in
+// supabase/migrations/20260718000001_remove_free_mode.sql) against a running
+// local Supabase instance, following the precedent set by
+// promote.integration.test.ts.
 //
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/move-copy.integration.test.ts
 //
@@ -15,11 +16,9 @@ const RUN = process.env.SUPABASE_INTEGRATION === "1";
 describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integration)", () => {
   let supabase: SupabaseClient;
   let admin: SupabaseClient;
-  let trackerProjectId: string;
-  let freeProjectId: string;
-  let freeDoneLeftmostProjectId: string;
+  let projectAId: string;
+  let projectBId: string;
   let customScaleProjectId: string;
-  let freeTodoStatusId: string;
 
   beforeAll(async () => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -50,47 +49,25 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
       throw new Error(`Dev-user sign-in failed (is 'supabase start' running locally?): ${authError.message}`);
     }
 
-    const { data: tracker, error: trackerError } = await supabase
+    const { data: a, error: aError } = await supabase
       .from("projects")
-      .insert({ name: "move-copy tracker project", workflow_mode: "tracker" })
+      .insert({ name: "move-copy project A" })
       .select("id")
       .single();
-    if (trackerError || !tracker) throw new Error(`Failed to create tracker project: ${trackerError?.message}`);
-    trackerProjectId = tracker.id;
+    if (aError || !a) throw new Error(`Failed to create project A: ${aError?.message}`);
+    projectAId = a.id;
 
-    const { data: free, error: freeError } = await supabase
+    const { data: b, error: bError } = await supabase
       .from("projects")
-      .insert({ name: "move-copy free project", workflow_mode: "free" })
+      .insert({ name: "move-copy project B" })
       .select("id")
       .single();
-    if (freeError || !free) throw new Error(`Failed to create free project: ${freeError?.message}`);
-    freeProjectId = free.id;
-
-    const { data: statuses, error: statusesError } = await supabase
-      .from("custom_statuses")
-      .insert([
-        { project_id: freeProjectId, name: "To do", position: 0, is_done: false },
-        { project_id: freeProjectId, name: "Done", position: 1, is_done: true },
-      ])
-      .select("id, name");
-    if (statusesError || !statuses) throw new Error(`Failed to create statuses: ${statusesError?.message}`);
-    freeTodoStatusId = statuses.find((s) => s.name === "To do")!.id;
-
-    const { data: freeDone, error: freeDoneError } = await supabase
-      .from("projects")
-      .insert({ name: "move-copy free done-leftmost project", workflow_mode: "free" })
-      .select("id")
-      .single();
-    if (freeDoneError || !freeDone) throw new Error(`Failed to create free-done project: ${freeDoneError?.message}`);
-    freeDoneLeftmostProjectId = freeDone.id;
-    const { error: doneStatusError } = await supabase
-      .from("custom_statuses")
-      .insert({ project_id: freeDoneLeftmostProjectId, name: "Done", position: 0, is_done: true });
-    if (doneStatusError) throw new Error(`Failed to create done-leftmost status: ${doneStatusError.message}`);
+    if (bError || !b) throw new Error(`Failed to create project B: ${bError?.message}`);
+    projectBId = b.id;
 
     const { data: customScale, error: customScaleError } = await supabase
       .from("projects")
-      .insert({ name: "move-copy custom scale project", workflow_mode: "tracker", point_scale: "custom", custom_points: [1, 2, 4] })
+      .insert({ name: "move-copy custom scale project", point_scale: "custom", custom_points: [1, 2, 4] })
       .select("id")
       .single();
     if (customScaleError || !customScale) {
@@ -100,7 +77,7 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
   });
 
   afterAll(async () => {
-    for (const id of [trackerProjectId, freeProjectId, freeDoneLeftmostProjectId, customScaleProjectId]) {
+    for (const id of [projectAId, projectBId, customScaleProjectId]) {
       if (id) await supabase.from("projects").delete().eq("id", id);
     }
   });
@@ -115,33 +92,32 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
     return story;
   }
 
-  it("moves a tracker story to a free project: lands unscheduled in the leftmost column, carries tasks/comments/labels, deletes the source", async () => {
-    const story = await createStory(trackerProjectId, { title: "Move me tracker->free" });
+  it("moves a story to another project: lands unscheduled (Icebox), carries tasks/comments/labels, deletes the source", async () => {
+    const story = await createStory(projectAId, { title: "Move me A->B" });
     await supabase.from("tasks").insert({ story_id: story.id, title: "a task", position: 0 });
     await supabase.from("comments").insert({ story_id: story.id, body: "a comment" });
     const { data: label } = await supabase
       .from("labels")
-      .insert({ project_id: trackerProjectId, name: "urgent", color: "#ff0000" })
+      .insert({ project_id: projectAId, name: "urgent", color: "#ff0000" })
       .select("id")
       .single();
     await supabase.from("story_labels").insert({ story_id: story.id, label_id: label!.id });
 
     const { data, error } = await supabase.rpc("move_story_to_project", {
       p_story_id: story.id,
-      p_target_project_id: freeProjectId,
+      p_target_project_id: projectBId,
     });
     expect(error).toBeNull();
     const result = data as { story_id: string; project_id: string };
-    expect(result.project_id).toBe(freeProjectId);
+    expect(result.project_id).toBe(projectBId);
 
     const { data: newStory } = await supabase
       .from("stories")
-      .select("state, custom_status_id, project_id")
+      .select("state, project_id")
       .eq("id", result.story_id)
       .single();
-    expect(newStory?.project_id).toBe(freeProjectId);
+    expect(newStory?.project_id).toBe(projectBId);
     expect(newStory?.state).toBe("unscheduled");
-    expect(newStory?.custom_status_id).toBe(freeTodoStatusId);
 
     const { data: tasks } = await supabase.from("tasks").select("title").eq("story_id", result.story_id);
     expect(tasks?.map((t) => t.title)).toEqual(["a task"]);
@@ -161,7 +137,7 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
     const { data: outLog } = await supabase
       .from("activity_logs")
       .select("action")
-      .eq("project_id", trackerProjectId)
+      .eq("project_id", projectAId)
       .eq("action", "story.moved_out")
       .order("created_at", { ascending: false })
       .limit(1);
@@ -170,51 +146,32 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
     const { data: inLog } = await supabase
       .from("activity_logs")
       .select("action")
-      .eq("project_id", freeProjectId)
+      .eq("project_id", projectBId)
       .eq("story_id", result.story_id)
       .eq("action", "story.moved_in");
     expect(inLog).toHaveLength(1);
   });
 
   it("lands the moved story after every story already in the target project", async () => {
-    const occupant = await createStory(freeProjectId, { title: "Already in the target" });
-    const story = await createStory(trackerProjectId, { title: "Move me to the end" });
+    const occupant = await createStory(projectBId, { title: "Already in the target" });
+    const story = await createStory(projectAId, { title: "Move me to the end" });
 
     const { data, error } = await supabase.rpc("move_story_to_project", {
       p_story_id: story.id,
-      p_target_project_id: freeProjectId,
+      p_target_project_id: projectBId,
     });
     expect(error).toBeNull();
     const result = data as { story_id: string };
 
-    const { data: rows } = await supabase.from("stories").select("id, position").eq("project_id", freeProjectId);
+    const { data: rows } = await supabase.from("stories").select("id, position").eq("project_id", projectBId);
     const moved = rows?.find((r) => r.id === result.story_id);
     const others = rows?.filter((r) => r.id !== result.story_id) ?? [];
     expect(others.some((o) => o.id === occupant.id)).toBe(true);
     expect(Math.max(...others.map((o) => o.position))).toBeLessThan(moved!.position);
   });
 
-  it("moves a free story to a tracker project: state unscheduled, custom_status_id cleared", async () => {
-    const story = await createStory(freeProjectId, { title: "Move me free->tracker", custom_status_id: freeTodoStatusId });
-
-    const { data, error } = await supabase.rpc("move_story_to_project", {
-      p_story_id: story.id,
-      p_target_project_id: trackerProjectId,
-    });
-    expect(error).toBeNull();
-    const result = data as { story_id: string };
-
-    const { data: newStory } = await supabase
-      .from("stories")
-      .select("state, custom_status_id")
-      .eq("id", result.story_id)
-      .single();
-    expect(newStory?.state).toBe("unscheduled");
-    expect(newStory?.custom_status_id).toBeNull();
-  });
-
   it("clears points that don't exist in the target's point scale, keeps points that do", async () => {
-    const outOfScale = await createStory(trackerProjectId, { title: "Points out of scale", points: 3 });
+    const outOfScale = await createStory(projectAId, { title: "Points out of scale", points: 3 });
     const { data: r1, error: e1 } = await supabase.rpc("move_story_to_project", {
       p_story_id: outOfScale.id,
       p_target_project_id: customScaleProjectId,
@@ -223,7 +180,7 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
     const { data: s1 } = await supabase.from("stories").select("points").eq("id", (r1 as { story_id: string }).story_id).single();
     expect(s1?.points).toBeNull();
 
-    const inScale = await createStory(trackerProjectId, { title: "Points in scale", points: 2 });
+    const inScale = await createStory(projectAId, { title: "Points in scale", points: 2 });
     const { data: r2, error: e2 } = await supabase.rpc("move_story_to_project", {
       p_story_id: inScale.id,
       p_target_project_id: customScaleProjectId,
@@ -239,22 +196,22 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
     const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (createError || !created.user) throw new Error(`Failed to create test user: ${createError?.message}`);
 
-    await admin.from("project_members").insert({ project_id: trackerProjectId, user_id: created.user.id, role: "member" });
+    await admin.from("project_members").insert({ project_id: projectAId, user_id: created.user.id, role: "member" });
 
-    const notMember = await createStory(trackerProjectId, { title: "Assignee not in target", assignee_id: created.user.id });
+    const notMember = await createStory(projectAId, { title: "Assignee not in target", assignee_id: created.user.id });
     const { data: r1, error: e1 } = await supabase.rpc("move_story_to_project", {
       p_story_id: notMember.id,
-      p_target_project_id: freeProjectId,
+      p_target_project_id: projectBId,
     });
     expect(e1).toBeNull();
     const { data: s1 } = await supabase.from("stories").select("assignee_id").eq("id", (r1 as { story_id: string }).story_id).single();
     expect(s1?.assignee_id).toBeNull();
 
-    await admin.from("project_members").insert({ project_id: freeProjectId, user_id: created.user.id, role: "member" });
-    const isMember = await createStory(trackerProjectId, { title: "Assignee in target", assignee_id: created.user.id });
+    await admin.from("project_members").insert({ project_id: projectBId, user_id: created.user.id, role: "member" });
+    const isMember = await createStory(projectAId, { title: "Assignee in target", assignee_id: created.user.id });
     const { data: r2, error: e2 } = await supabase.rpc("move_story_to_project", {
       p_story_id: isMember.id,
-      p_target_project_id: freeProjectId,
+      p_target_project_id: projectBId,
     });
     expect(e2).toBeNull();
     const { data: s2 } = await supabase.from("stories").select("assignee_id").eq("id", (r2 as { story_id: string }).story_id).single();
@@ -264,15 +221,15 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
   });
 
   it("recreates labels by name in the target, deduping when two source labels share a name", async () => {
-    const story = await createStory(trackerProjectId, { title: "Dup label story" });
+    const story = await createStory(projectAId, { title: "Dup label story" });
     const { data: labelA } = await supabase
       .from("labels")
-      .insert({ project_id: trackerProjectId, name: "dup-name", color: "#111111" })
+      .insert({ project_id: projectAId, name: "dup-name", color: "#111111" })
       .select("id")
       .single();
     const { data: labelB } = await supabase
       .from("labels")
-      .insert({ project_id: trackerProjectId, name: "dup-name", color: "#222222" })
+      .insert({ project_id: projectAId, name: "dup-name", color: "#222222" })
       .select("id")
       .single();
     await supabase.from("story_labels").insert([
@@ -282,7 +239,7 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
 
     const { data, error } = await supabase.rpc("move_story_to_project", {
       p_story_id: story.id,
-      p_target_project_id: freeProjectId,
+      p_target_project_id: projectBId,
     });
     expect(error).toBeNull();
 
@@ -293,30 +250,14 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
     expect(targetLabels).toHaveLength(1);
   });
 
-  it("sets completed_at when landing in an is_done free-mode column", async () => {
-    const story = await createStory(trackerProjectId, { title: "Lands done" });
-    const { data, error } = await supabase.rpc("move_story_to_project", {
-      p_story_id: story.id,
-      p_target_project_id: freeDoneLeftmostProjectId,
-    });
-    expect(error).toBeNull();
-
-    const { data: newStory } = await supabase
-      .from("stories")
-      .select("completed_at")
-      .eq("id", (data as { story_id: string }).story_id)
-      .single();
-    expect(newStory?.completed_at).not.toBeNull();
-  });
-
   it("rejects a viewer-role caller (as a generic 'not found' — the source-membership filter folds viewer-of-source into the same case as a non-member, so it can't be used to probe story existence)", async () => {
     const email = `move-test-viewer-${Date.now()}@storylane.local`;
     const password = "integration-test-only-password";
     const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (createError || !created.user) throw new Error(`Failed to create test user: ${createError?.message}`);
-    await admin.from("project_members").insert({ project_id: trackerProjectId, user_id: created.user.id, role: "viewer" });
+    await admin.from("project_members").insert({ project_id: projectAId, user_id: created.user.id, role: "viewer" });
 
-    const story = await createStory(trackerProjectId, { title: "Viewer cannot move" });
+    const story = await createStory(projectAId, { title: "Viewer cannot move" });
 
     const viewerClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     const { error: signInError } = await viewerClient.auth.signInWithPassword({ email, password });
@@ -324,7 +265,7 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
 
     const { error } = await viewerClient.rpc("move_story_to_project", {
       p_story_id: story.id,
-      p_target_project_id: freeProjectId,
+      p_target_project_id: projectBId,
     });
     expect(error).not.toBeNull();
     expect(error?.message).toMatch(/story not found/i);
@@ -337,9 +278,9 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
     const password = "integration-test-only-password";
     const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (createError || !created.user) throw new Error(`Failed to create test user: ${createError?.message}`);
-    await admin.from("project_members").insert({ project_id: trackerProjectId, user_id: created.user.id, role: "member" });
+    await admin.from("project_members").insert({ project_id: projectAId, user_id: created.user.id, role: "member" });
 
-    const story = await createStory(trackerProjectId, { title: "No access to target" });
+    const story = await createStory(projectAId, { title: "No access to target" });
 
     const memberClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     const { error: signInError } = await memberClient.auth.signInWithPassword({ email, password });
@@ -347,7 +288,7 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
 
     const { error } = await memberClient.rpc("move_story_to_project", {
       p_story_id: story.id,
-      p_target_project_id: freeProjectId,
+      p_target_project_id: projectBId,
     });
     expect(error).not.toBeNull();
     expect(error?.message).toMatch(/not a member of the target project/i);
@@ -356,10 +297,10 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
   });
 
   it("fails a task insert against an already-moved story (story-deleted path)", async () => {
-    const story = await createStory(trackerProjectId, { title: "Gone after move" });
+    const story = await createStory(projectAId, { title: "Gone after move" });
     const { error: moveError } = await supabase.rpc("move_story_to_project", {
       p_story_id: story.id,
-      p_target_project_id: freeProjectId,
+      p_target_project_id: projectBId,
     });
     expect(moveError).toBeNull();
 
@@ -368,31 +309,31 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
   });
 
   it("serializes two simultaneous moves in opposite directions between the same two projects", async () => {
-    const storyA = await createStory(trackerProjectId, { title: "Concurrent A" });
-    const storyB = await createStory(freeProjectId, { title: "Concurrent B" });
+    const storyA = await createStory(projectAId, { title: "Concurrent A" });
+    const storyB = await createStory(projectBId, { title: "Concurrent B" });
 
     const [first, second] = await Promise.all([
-      supabase.rpc("move_story_to_project", { p_story_id: storyA.id, p_target_project_id: freeProjectId }),
-      supabase.rpc("move_story_to_project", { p_story_id: storyB.id, p_target_project_id: trackerProjectId }),
+      supabase.rpc("move_story_to_project", { p_story_id: storyA.id, p_target_project_id: projectBId }),
+      supabase.rpc("move_story_to_project", { p_story_id: storyB.id, p_target_project_id: projectAId }),
     ]);
     expect(first.error).toBeNull();
     expect(second.error).toBeNull();
   });
 
   it("copy duplicates title/type/tasks/labels but not comments, and leaves the source untouched", async () => {
-    const story = await createStory(trackerProjectId, { title: "Copy me", points: 5 });
+    const story = await createStory(projectAId, { title: "Copy me", points: 5 });
     await supabase.from("tasks").insert({ story_id: story.id, title: "done task", is_done: true, position: 0 });
     await supabase.from("comments").insert({ story_id: story.id, body: "should not copy" });
     const { data: label } = await supabase
       .from("labels")
-      .insert({ project_id: trackerProjectId, name: "copy-label", color: "#333333" })
+      .insert({ project_id: projectAId, name: "copy-label", color: "#333333" })
       .select("id")
       .single();
     await supabase.from("story_labels").insert({ story_id: story.id, label_id: label!.id });
 
     const { data, error } = await supabase.rpc("copy_story_to_project", {
       p_story_id: story.id,
-      p_target_project_id: freeProjectId,
+      p_target_project_id: projectBId,
     });
     expect(error).toBeNull();
     const result = data as { story_id: string };
@@ -423,21 +364,21 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
   it("rejects moving a story out of an archived source project", async () => {
     const { data: story, error: storyError } = await supabase
       .from("stories")
-      .insert({ project_id: trackerProjectId, title: "archived source move test", story_type: "feature" })
+      .insert({ project_id: projectAId, title: "archived source move test", story_type: "feature" })
       .select("id")
       .single();
     if (storyError || !story) throw new Error(`Failed to create test story: ${storyError?.message}`);
 
-    await admin.from("projects").update({ archived_at: new Date().toISOString() }).eq("id", trackerProjectId);
+    await admin.from("projects").update({ archived_at: new Date().toISOString() }).eq("id", projectAId);
     try {
       const { error } = await supabase.rpc("move_story_to_project", {
         p_story_id: story.id,
-        p_target_project_id: freeProjectId,
+        p_target_project_id: projectBId,
       });
       expect(error).not.toBeNull();
       expect(error?.message).toMatch(/source project is archived/i);
     } finally {
-      await admin.from("projects").update({ archived_at: null }).eq("id", trackerProjectId);
+      await admin.from("projects").update({ archived_at: null }).eq("id", projectAId);
       await admin.from("stories").delete().eq("id", story.id);
     }
   });
@@ -445,21 +386,21 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
   it("rejects copying a story into an archived target project", async () => {
     const { data: story, error: storyError } = await supabase
       .from("stories")
-      .insert({ project_id: trackerProjectId, title: "archived target copy test", story_type: "feature" })
+      .insert({ project_id: projectAId, title: "archived target copy test", story_type: "feature" })
       .select("id")
       .single();
     if (storyError || !story) throw new Error(`Failed to create test story: ${storyError?.message}`);
 
-    await admin.from("projects").update({ archived_at: new Date().toISOString() }).eq("id", freeProjectId);
+    await admin.from("projects").update({ archived_at: new Date().toISOString() }).eq("id", projectBId);
     try {
       const { error } = await supabase.rpc("copy_story_to_project", {
         p_story_id: story.id,
-        p_target_project_id: freeProjectId,
+        p_target_project_id: projectBId,
       });
       expect(error).not.toBeNull();
       expect(error?.message).toMatch(/target project is archived/i);
     } finally {
-      await admin.from("projects").update({ archived_at: null }).eq("id", freeProjectId);
+      await admin.from("projects").update({ archived_at: null }).eq("id", projectBId);
       await admin.from("stories").delete().eq("id", story.id);
     }
   });

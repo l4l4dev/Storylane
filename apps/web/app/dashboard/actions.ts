@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
-import { FREE_TEMPLATES, type FreeTemplate, type InviteSearchResult } from "@/lib/types";
+import type { InviteSearchResult } from "@/lib/types";
 import { clampVelocityWindow } from "@storylane/core";
 
 export type NewProjectInviteResult = InviteSearchResult;
@@ -45,48 +45,12 @@ export async function searchUserForNewProject(query: string): Promise<NewProject
   };
 }
 
-// Column templates seeded for a new free-mode project (see
-// spec/screens.md "Projects page" / "Free mode board") — the owner
-// customizes them afterwards in Settings. Daily's Done column is the
-// project's only is_done seed; Basic's Done is is_done too, since it's the
-// same "cards land here when work is complete" column, just under a
-// simpler three-column board.
-//
-// Not exported: a "use server" file may only export async functions — a
-// plain object export here breaks the whole module ("A 'use server' file
-// can only export async functions, found object").
-// Order comes from the array order: custom_statuses.position is assigned by its
-// sequence default, evaluated per row in VALUES order. Passing explicit
-// positions here would leave the sequence behind the rows it never issued, and
-// the next created column would land mid-board.
-const FREE_TEMPLATE_STATUSES: Record<FreeTemplate, { name: string; color: string; is_done: boolean }[]> = {
-  // No 'This week' seeded — users add it themselves as a normal custom
-  // column if they want a weekly staging lane.
-  daily: [
-    { name: "Todo", color: "#6b7280", is_done: false },
-    { name: "Today", color: "#f59e0b", is_done: false },
-    { name: "In progress", color: "#3b82f6", is_done: false },
-    { name: "Done", color: "#22c55e", is_done: true },
-  ],
-  basic: [
-    { name: "To do", color: "#6b7280", is_done: false },
-    { name: "Doing", color: "#3b82f6", is_done: false },
-    { name: "Done", color: "#22c55e", is_done: true },
-  ],
-};
-
 export async function createProject(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
   const iterationLength = Number(formData.get("iteration_length") ?? 14);
   const pointScale = String(formData.get("point_scale") ?? "fibonacci");
   const velocityWindow = clampVelocityWindow(Number(formData.get("velocity_window") ?? 3));
-  // Fixed at creation — there is no mode-change path.
-  const workflowMode = formData.get("workflow_mode") === "free" ? "free" : "tracker";
-  const freeTemplateInput = String(formData.get("free_template") ?? "daily");
-  const freeTemplate: FreeTemplate = FREE_TEMPLATES.includes(freeTemplateInput as FreeTemplate)
-    ? (freeTemplateInput as FreeTemplate)
-    : "daily";
 
   if (!name) {
     return;
@@ -108,17 +72,17 @@ export async function createProject(formData: FormData) {
     .filter((id) => id && id !== user?.id)
     .slice(0, 20);
 
-  // Project + free-mode template columns commit together (TASK-58 AC#4): a
-  // free project must never exist without board columns to drop onto.
-  const { data: projectId, error } = await supabase.rpc("create_project", {
-    p_name: name,
-    p_description: description ?? undefined,
-    p_iteration_length: iterationLength,
-    p_point_scale: pointScale,
-    p_velocity_window: velocityWindow,
-    p_workflow_mode: workflowMode,
-    p_statuses: workflowMode === "free" ? FREE_TEMPLATE_STATUSES[freeTemplate] : [],
-  });
+  const { data: project, error } = await supabase
+    .from("projects")
+    .insert({
+      name,
+      description,
+      iteration_length: iterationLength,
+      point_scale: pointScale,
+      velocity_window: velocityWindow,
+    })
+    .select("id")
+    .single();
 
   if (error) {
     throw new Error(error.message);
@@ -127,26 +91,22 @@ export async function createProject(formData: FormData) {
   // Invitations stay outside the transaction: a failed lookup must not undo the
   // project, so failures are counted and surfaced, not fatal.
   let failedInviteCount = 0;
-  if (projectId) {
-    for (const userId of invitedUserIds) {
-      const { error: inviteError } = await supabase.rpc("invite_member", {
-        p_project_id: projectId,
-        p_user_id: userId,
-        p_role: "member",
-      });
-      if (inviteError) {
-        failedInviteCount += 1;
-      }
+  for (const userId of invitedUserIds) {
+    const { error: inviteError } = await supabase.rpc("invite_member", {
+      p_project_id: project.id,
+      p_user_id: userId,
+      p_role: "member",
+    });
+    if (inviteError) {
+      failedInviteCount += 1;
     }
   }
 
   revalidatePath("/dashboard");
   // TASK-32: land on the new project's board instead of back on /dashboard
   // — creating a project and then having to find and click into it again
-  // was an extra, pointless step. `projectId` is only ever null here if the
-  // RPC somehow returned no id despite no error; falling back to /dashboard
-  // keeps that (unreachable in practice) case from crashing.
-  const target = projectId ? `/projects/${projectId}/board` : "/dashboard";
+  // was an extra, pointless step.
+  const target = `/projects/${project.id}/board`;
   redirect(failedInviteCount > 0 ? `${target}?invite_failed=${failedInviteCount}` : target);
 }
 

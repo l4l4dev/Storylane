@@ -17,7 +17,7 @@ describe("storyStateChangeMessage", () => {
     );
   });
 
-  it("escapes &, <, and > in the new state (also used for free-mode custom status names)", () => {
+  it("escapes &, <, and > in the new state", () => {
     expect(storyStateChangeMessage({ number: 5, title: "Add login" }, "<Blocked> & Waiting")).toBe(
       '#5 "Add login" is now *&lt;Blocked&gt; &amp; Waiting*',
     );

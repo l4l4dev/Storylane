@@ -52,7 +52,7 @@ describe.skipIf(!RUN)("toggle_project_favorite / archive permissions (integratio
 
     const { data: project, error: projectError } = await owner
       .from("projects")
-      .insert({ name: "archive-favorites integration test", workflow_mode: "tracker" })
+      .insert({ name: "archive-favorites integration test" })
       .select("id")
       .single();
     if (projectError || !project) throw new Error(`Failed to create test project: ${projectError?.message}`);

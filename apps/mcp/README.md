@@ -64,7 +64,7 @@ than Node type-stripping — see TASK-68.)
 | `set_story_tasks` | write | replace a story's checklist |
 | `toggle_story_task` | write | mark one checklist item done / not-done |
 
-**Tracker mode only.** Write tools reject free-mode and archived projects.
+Write tools reject archived projects.
 Irreversible operations (deletes, iteration finalization, member management,
 cross-project move/copy) are excluded from Phase 1.
 

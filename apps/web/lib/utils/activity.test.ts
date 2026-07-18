@@ -22,15 +22,6 @@ describe("describeActivity", () => {
     expect(text).toBe('Dev User moved "Add welcome tour" from unstarted to started');
   });
 
-  it("describes a free-mode column change with quoted column names", () => {
-    const text = describeActivity({
-      action: "story.column_changed",
-      payload: { from: "To do", to: "Doing" },
-      actorName: "Dev User",
-      storyTitle: "Add welcome tour",
-    });
-    expect(text).toBe('Dev User moved "Add welcome tour" from "To do" to "Doing"');
-  });
 
   it("renders a null column as 'no column' in a column change", () => {
     const text = describeActivity({

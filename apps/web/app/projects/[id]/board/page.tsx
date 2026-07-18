@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import {
   BACKLOG_COLUMN_ID,
@@ -7,17 +6,15 @@ import {
   columnForStory,
 } from "@/lib/utils/kanban";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
-import { filterStories, pointScaleValues } from "@/lib/utils/stories";
+import { pointScaleValues } from "@/lib/utils/stories";
 import { calculateVelocity } from "@storylane/core";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
-import { FreeBoard, type CustomStatus, type Swimlane } from "@/components/features/board/free-board";
-import { laneContainerKey } from "@/lib/utils/board";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { StoryPeekHost } from "@/components/features/board/story-peek-host";
 import { InviteFailedBanner, parseInviteFailedCount } from "@/components/features/projects/invite-failed-banner";
-import { parsePromotedEpic, PromotedEpicBanner, type PromotedEpic } from "@/components/features/board/promoted-epic-banner";
-import { ensureCurrentIteration, generateRecurringStories } from "./actions";
+import { parsePromotedEpic, PromotedEpicBanner } from "@/components/features/board/promoted-epic-banner";
+import { ensureCurrentIteration } from "./actions";
 
 export default async function BoardPage({
   params,
@@ -61,7 +58,7 @@ export default async function BoardPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, velocity_window, workflow_mode, iteration_length, point_scale, custom_points")
+    .select("id, name, velocity_window, iteration_length, point_scale, custom_points")
     .eq("id", id)
     .single();
 
@@ -69,24 +66,6 @@ export default async function BoardPage({
     notFound();
   }
 
-  // Free-mode projects get the Trello-style board — no iterations, so the
-  // lazy rollover below must never run for them.
-  if (project.workflow_mode === "free") {
-    return (
-      <FreeBoardPage
-        projectId={project.id}
-        projectName={project.name}
-        type={type}
-        assignee={assignee}
-        label={label}
-        epic={epic}
-        peekStoryId={peekStoryId}
-        inviteFailedCount={inviteFailedCount}
-        promotedEpic={promotedEpic}
-        user={user}
-      />
-    );
-  }
 
   // Lazily creates/rolls over the current iteration before reading it (see
   // spec/velocity.md "Automatic scheduling & rollover") — must run before the
@@ -281,178 +260,6 @@ export default async function BoardPage({
         canFinishIteration={canFinishIteration}
         filter={filter}
         pointScale={pointScaleValues(project.point_scale, project.custom_points)}
-        toolbar={
-          <BoardFilters
-            assignees={assigneeOptions}
-            labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
-            epics={(epics ?? []).map((e) => ({ id: e.id, name: e.name }))}
-          />
-        }
-      />
-
-      <StoryPeekHost peekStoryId={peekStoryId} detail={peekDetail} />
-    </main>
-  );
-}
-
-// Free-mode board page: columns are the project's custom statuses;
-// stories are grouped by `custom_status_id`. No iterations, velocity,
-// backlog, or Icebox. Filters and the side peek work the same.
-async function FreeBoardPage({
-  projectId,
-  projectName,
-  type,
-  assignee,
-  label,
-  epic,
-  peekStoryId,
-  inviteFailedCount,
-  promotedEpic,
-  user,
-}: {
-  projectId: string;
-  projectName: string;
-  type?: string;
-  assignee?: string;
-  label?: string;
-  epic?: string;
-  peekStoryId?: string;
-  inviteFailedCount: number | null;
-  promotedEpic: PromotedEpic | null;
-  user: User | null;
-}) {
-  const supabase = await createClient();
-
-  // Lazily generate any due recurring-story instances before reading
-  // stories below — must run first, same ordering constraint as
-  // ensureCurrentIteration above for tracker mode.
-  await generateRecurringStories(projectId);
-
-  const [{ data: statuses }, { data: lanes }, { data: stories }, { data: labels }, { data: epics }, { data: members }] =
-    await Promise.all([
-      supabase
-        .from("custom_statuses")
-        .select("id, name, color, position, is_done, wip_limit")
-        .eq("project_id", projectId)
-        .order("position", { ascending: true }),
-      supabase
-        .from("swimlanes")
-        .select("id, name, position")
-        .eq("project_id", projectId)
-        .order("position", { ascending: true }),
-      supabase
-        .from("stories")
-        .select(
-          "id, number, title, description, story_type, state, points, position, custom_status_id, swimlane_id, epic_id, completed_at, assignee_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name)",
-        )
-        .eq("project_id", projectId)
-        // Secondary key: once lanes split a column into multiple cells,
-        // removing all lanes and returning to a single band can leave two
-        // stories tied on `position` — a deterministic tiebreaker keeps
-        // their order stable instead of flapping between reloads.
-        .order("position", { ascending: true })
-        .order("id", { ascending: true }),
-      supabase.from("labels").select("id, name, color").eq("project_id", projectId).order("name"),
-      supabase.from("epics").select("id, name, color").eq("project_id", projectId).order("position", { ascending: true }),
-      supabase.from("project_members").select("user_id, role, profiles(display_name)").eq("project_id", projectId),
-    ]);
-
-  const statusList: CustomStatus[] = statuses ?? [];
-  const laneList: Swimlane[] = lanes ?? [];
-  const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
-  const epicById = new Map((epics ?? []).map((e) => [e.id, e]));
-
-  const cards = (stories ?? []).map((story) => {
-    const assigneeProfile = Array.isArray(story.assignee) ? story.assignee[0] : story.assignee;
-    const labelIds = story.story_labels.map((sl) => sl.label_id);
-    const epic = story.epic_id ? epicById.get(story.epic_id) : undefined;
-    return {
-      id: story.id,
-      number: story.number,
-      title: story.title,
-      description: story.description,
-      story_type: story.story_type,
-      state: story.state,
-      points: story.points,
-      custom_status_id: story.custom_status_id,
-      swimlane_id: story.swimlane_id,
-      completed_at: story.completed_at,
-      assignee_id: story.assignee_id,
-      assigneeName: assigneeProfile?.display_name ?? null,
-      labels: labelIds
-        .map((labelId) => labelById.get(labelId))
-        .filter((l): l is NonNullable<typeof l> => l != null)
-        .map((l) => ({ id: l.id, name: l.name, color: l.color })),
-      labelIds,
-      epic_id: story.epic_id,
-      epic: epic ? { id: epic.id, name: epic.name, color: epic.color } : null,
-    };
-  });
-
-  const visible = filterStories(cards, { type, assigneeId: assignee, labelId: label, epicId: epic });
-  const hasLanes = laneList.length > 0;
-  const statusIds = new Set(statusList.map((s) => s.id));
-  const laneIds = new Set(laneList.map((l) => l.id));
-
-  const initialContainers: Record<string, typeof cards> = {};
-  for (const status of statusList) {
-    if (hasLanes) {
-      initialContainers[laneContainerKey(status.id, null)] = [];
-      for (const lane of laneList) {
-        initialContainers[laneContainerKey(status.id, lane.id)] = [];
-      }
-    } else {
-      initialContainers[status.id] = [];
-    }
-  }
-  const firstStatusId = statusList[0]?.id;
-  for (const card of visible) {
-    // A story with no (or an unknown) status lands in the first column so
-    // it can't silently disappear from the board.
-    const columnId = card.custom_status_id && statusIds.has(card.custom_status_id) ? card.custom_status_id : firstStatusId;
-    if (!columnId) {
-      continue;
-    }
-    const laneId = card.swimlane_id && laneIds.has(card.swimlane_id) ? card.swimlane_id : null;
-    const containerKey = hasLanes ? laneContainerKey(columnId, laneId) : columnId;
-    initialContainers[containerKey].push(card);
-  }
-
-  const assigneeOptions = (members ?? []).map((m) => {
-    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-    return { id: m.user_id, name: profile?.display_name ?? m.user_id.slice(0, 8) };
-  });
-
-  // Same gating as settings/page.tsx's StatusManager (project_role RLS on
-  // custom_statuses) — member+ can add/rename/recolor, owner-only can delete.
-  const myRole = (members ?? []).find((m) => m.user_id === user?.id)?.role;
-  const canEdit = myRole === "owner" || myRole === "member";
-  const canDelete = myRole === "owner";
-
-  const peekDetail = peekStoryId ? await getStoryDetail(peekStoryId) : null;
-
-  return (
-    <main className="p-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">
-          {projectName} <span className="text-sm font-normal text-muted-foreground">Board</span>
-        </h1>
-      </div>
-
-      {inviteFailedCount !== null && (
-        <InviteFailedBanner count={inviteFailedCount} settingsHref={`/projects/${projectId}/settings`} />
-      )}
-      {promotedEpic && (
-        <PromotedEpicBanner projectId={projectId} epicId={promotedEpic.id} epicName={promotedEpic.name} />
-      )}
-
-      <FreeBoard
-        projectId={projectId}
-        statuses={statusList}
-        lanes={laneList}
-        initialContainers={initialContainers}
-        canEdit={canEdit}
-        canDelete={canDelete}
         toolbar={
           <BoardFilters
             assignees={assigneeOptions}

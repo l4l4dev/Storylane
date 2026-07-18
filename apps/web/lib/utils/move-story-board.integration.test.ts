@@ -46,7 +46,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
 
     const { data: project, error: projectError } = await asOwner
       .from("projects")
-      .insert({ name: "move_story_board integration test", workflow_mode: "tracker" })
+      .insert({ name: "move_story_board integration test" })
       .select("id")
       .single();
     if (projectError || !project) {
@@ -106,7 +106,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: c },
       p_view: "tracker",
-      p_expected: { state: "started", iteration_id: iterationId, custom_status_id: null, swimlane_id: null, focus: null },
+      p_expected: { state: "started", iteration_id: iterationId, focus: null },
       p_deltas: {},
       p_anchor: { before: { kind: "story", id: a } },
     });
@@ -123,7 +123,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state: "started", iteration_id: iterationId, custom_status_id: null, swimlane_id: null, focus: null },
+      p_expected: { state: "started", iteration_id: iterationId, focus: null },
       p_deltas: { state: "finished" },
       p_anchor: {}, // append to the finished column
     });
@@ -138,7 +138,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state: "unstarted", iteration_id: iterationId, custom_status_id: null, swimlane_id: null, focus: null },
+      p_expected: { state: "unstarted", iteration_id: iterationId, focus: null },
       p_deltas: { state: "finished" },
       p_anchor: {},
     });
@@ -150,7 +150,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
 
   it("rejects the loser of two competing transitions (AC #4)", async () => {
     const [a] = await seedCurrentIteration([{ state: "started", position: 0 }]);
-    const expected = { state: "started", iteration_id: iterationId, custom_status_id: null, swimlane_id: null, focus: null };
+    const expected = { state: "started", iteration_id: iterationId, focus: null };
     const first = await asOwner.rpc("move_story_board", {
       p_project_id: projectId, p_item: { kind: "story", id: a }, p_view: "tracker",
       p_expected: expected, p_deltas: { state: "finished" }, p_anchor: {},
@@ -172,7 +172,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state: "unstarted", iteration_id: null, custom_status_id: null, swimlane_id: null, focus: null },
+      p_expected: { state: "unstarted", iteration_id: null, focus: null },
       p_deltas: { state: "started", iteration: "current" },
       p_anchor: {},
     });
@@ -199,7 +199,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: s1!.id },
       p_view: "list",
-      p_expected: { state: "unstarted", iteration_id: null, custom_status_id: null, swimlane_id: null, focus: null },
+      p_expected: { state: "unstarted", iteration_id: null, focus: null },
       p_deltas: {},
       p_anchor: { before: { kind: "divider", id: d!.id } },
     });
@@ -242,7 +242,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: sb1!.id },
       p_view: "list",
-      p_expected: { state: "unstarted", iteration_id: null, custom_status_id: null, swimlane_id: null, focus: null },
+      p_expected: { state: "unstarted", iteration_id: null, focus: null },
       p_deltas: {},
       p_anchor: { before: { kind: "divider", id: d!.id } },
     });
@@ -264,7 +264,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
     // which is project-scoped (divider not in p_project_id), not membership-scoped.
     const { data: other } = await asOwner
       .from("projects")
-      .insert({ name: "other project", workflow_mode: "tracker" })
+      .insert({ name: "other project" })
       .select("id")
       .single();
     const { data: foreign } = await asOwner
