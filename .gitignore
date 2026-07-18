@@ -90,3 +90,5 @@ supabase/.temp/
 .backlog/.locks
 # Superpowers plugin planning artifacts (session working memos)
 docs/superpowers/
+# pnpm content-addressable store accidentally created in-repo (pnpm config)
+.pnpm-store/

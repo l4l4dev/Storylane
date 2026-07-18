@@ -3,9 +3,9 @@ id: TASK-78
 title: Convert throw-based server actions to a result-object pattern
 status: To Do
 assignee:
-  - '@claude-sonnet-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-17 14:08'
-updated_date: '2026-07-17 15:25'
+updated_date: '2026-07-18 05:57'
 labels:
   - web
   - ux
@@ -34,3 +34,12 @@ Not a deploy blocker for TASK-3, but should land before it since it's exactly th
 - [ ] #2 Callers check .ok and surface .message inline, matching the deleteEpic/epic-delete-menu.tsx pattern
 - [ ] #3 A production-mode check (or a test asserting the message survives Next.js's digest-masking behavior) confirms the real failure text still reaches the UI
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-18 05:57
+---
+Reassigned to @codex-gpt-5 (2026-07-18): precisely-scoped behavior-preserving refactor, ideal for the Codex lane (ChatGPT quota). Ordering note: board server actions (apps/web/app/projects/[id]/board/actions.ts) get rewritten by TASK-84/91 in the concept redesign — convert those last or leave them out; converting them now would be churned away.
+---
+<!-- COMMENTS:END -->

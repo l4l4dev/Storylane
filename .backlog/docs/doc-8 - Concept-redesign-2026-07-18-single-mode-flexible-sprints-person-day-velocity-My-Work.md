@@ -5,7 +5,7 @@ title: >-
   velocity, My Work
 type: specification
 created_date: '2026-07-18 02:52'
-updated_date: '2026-07-18 03:22'
+updated_date: '2026-07-18 05:49'
 ---
 # Concept Redesign 2026-07-18 — single mode, flexible sprints, person-day velocity, My Work
 
@@ -71,6 +71,12 @@ fixed **category** per state, which users rarely think about. Reviewed by fable-
   / Done(done).
 - The advance-button/pair/gate computation stays a per-client pure function
   (packages/core), now driven by project_states data — golden fixtures shared with iOS.
+- **State-editing UI (owner decision 2026-07-18, option C hybrid)**: everyday edits on
+  the board — inline column rename and a trailing "+ Add column" with a small category
+  picker (reusing the old free-mode ColumnNameEditor / AddColumnButton interaction);
+  structural management (reorder within category, action_label, delete with
+  stories-remain error, category display) in a project-settings "States" section
+  grouped by category; template picker (classic / minimal) at project creation.
 - **Board write model (TASK-70 owner decision, 2026-07-18): (a) Pivotal-style** — any
   project member may operate any story. `set_story_state` is designed against this;
   TASK-70 delivers the RLS relaxation it runs on.
@@ -176,8 +182,15 @@ fixed **category** per state, which users rarely think about. Reviewed by fable-
     reviving on re-invite).
   - The global `stories.focus` column is **dropped without data migration** (pre-launch,
     consistent with §1).
-  - Personal-project stories are visually distinguished (e.g. color accent). Screen
-    details are deliberately not specced yet.
+  - Personal-project stories are visually distinguished (e.g. color accent).
+  - **Screen design (owner decision 2026-07-18, option A "Today-first single column")**:
+    buckets Today (pins + 1-day-project current iteration) / Needs review (stories at
+    the accept gate — in_progress-category state whose next state is done — where the
+    user is the requester; Pivotal My Work parity) / In progress (owned, in_progress
+    category) / Todo (owned, unstarted category, unpinned) / Done (grouped by
+    `completed_at` date — deliberate divergence: Pivotal excluded accepted by default).
+    Project-name chip per card; no reordering inside My Work (parity — the board owns
+    priority). Full spec written in TASK-89, not TASK-83.
 - The per-project **Focus view is removed**; board views reduce to List / Kanban.
   `spec/screens.md` "Focus view" section is deleted with it.
 

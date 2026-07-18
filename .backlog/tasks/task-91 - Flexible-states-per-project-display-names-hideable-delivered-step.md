@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:05'
-updated_date: '2026-07-18 03:19'
+updated_date: '2026-07-18 05:49'
 labels:
   - web
   - db
@@ -32,3 +32,12 @@ doc-8 §2 (owner decision 2026-07-18: fully custom states, usability first; advi
 - [ ] #5 Core pure functions data-driven with golden fixtures shared for iOS
 - [ ] #6 pnpm test passes
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-18 05:49
+---
+State-editing UI decided by the owner 2026-07-18 (doc-8 §2, option C hybrid): board-level everyday edits (inline column rename; trailing "+ Add column" with a small category picker — reuse the old free-mode ColumnNameEditor / AddColumnButton interaction patterns) plus a project-settings "States" section for structural management (reorder within category, action_label editing, delete with a stories-remain error, category badges) and a classic/minimal template picker at project creation. Include both surfaces in this tasks UI scope.
+---
+<!-- COMMENTS:END -->

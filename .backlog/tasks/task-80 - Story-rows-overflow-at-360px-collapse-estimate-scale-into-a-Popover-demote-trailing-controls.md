@@ -5,8 +5,9 @@ title: >-
   trailing controls
 status: To Do
 assignee:
-  - '@claude-sonnet-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-18 01:57'
+updated_date: '2026-07-18 05:57'
 labels:
   - web
   - ux
@@ -28,3 +29,12 @@ Two merged findings. (a) UX panel Medium #26 (doc-7, Wroblewski): an unestimated
 - [ ] #2 Worst-case story row (long title, all chips, transition controls) fits 360px without clipping or page-level horizontal scroll, asserted by a regression test
 - [ ] #3 pnpm test passes
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-18 05:57
+---
+Reassigned to @codex-gpt-5 (2026-07-18): precisely-scoped layout fix + regression test; story-list-row.tsx survives the concept redesign, so this does not conflict with TASK-84/91.
+---
+<!-- COMMENTS:END -->

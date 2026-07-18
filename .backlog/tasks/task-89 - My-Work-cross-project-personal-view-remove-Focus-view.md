@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 03:05'
-updated_date: '2026-07-18 03:20'
+updated_date: '2026-07-18 05:48'
 labels:
   - web
   - ux
@@ -38,5 +38,10 @@ doc-8 §9 UI. New cross-project view for the signed-in user: stories assigned to
 created: 2026-07-18 03:20
 ---
 Dep added (advisor 2nd pass): My Work renders story states cross-project; build against project_states (TASK-91), not the enum.
+---
+
+created: 2026-07-18 05:48
+---
+Screen design decided by the owner 2026-07-18 (doc-8 §9, option A "Today-first single column") — implement this shape and write it into spec/screens.md as part of this task. Buckets top-to-bottom: Today (pinned stories + current-iteration stories of 1-day-cadence projects, personal accent color); Needs review (stories at the accept gate — in an in_progress-category state whose position-wise next state is done-category — where the signed-in user is the requester; Pivotal My Work parity, fetched from the archived mywork_panel help article); In progress (owned, in_progress category); Todo (owned, unstarted category, not pinned); Done (grouped under date headers by completed_at — deliberate divergence, Pivotal excluded accepted by default). Every card shows a small project-name chip. No reordering inside My Work (parity: it is a read view; priority lives on each project board). Accessed from the left sidebar.
 ---
 <!-- COMMENTS:END -->
