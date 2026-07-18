@@ -75,6 +75,7 @@ export default async function BoardPage({
     return (
       <FreeBoardPage
         projectId={project.id}
+        projectName={project.name}
         type={type}
         assignee={assignee}
         label={label}
@@ -255,9 +256,9 @@ export default async function BoardPage({
 
   return (
     <main className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Board</h1>
-        <span className="text-sm text-muted-foreground">Current velocity: {currentVelocity} pts</span>
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold">{project.name}</h1>
+        <p className="text-sm text-muted-foreground">Board</p>
       </div>
 
       {inviteFailedCount !== null && (
@@ -298,6 +299,7 @@ export default async function BoardPage({
 // backlog, or Icebox. Filters and the side peek work the same.
 async function FreeBoardPage({
   projectId,
+  projectName,
   type,
   assignee,
   label,
@@ -308,6 +310,7 @@ async function FreeBoardPage({
   user,
 }: {
   projectId: string;
+  projectName: string;
   type?: string;
   assignee?: string;
   label?: string;
@@ -429,8 +432,9 @@ async function FreeBoardPage({
 
   return (
     <main className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Board</h1>
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold">{projectName}</h1>
+        <p className="text-sm text-muted-foreground">Board</p>
       </div>
 
       {inviteFailedCount !== null && (

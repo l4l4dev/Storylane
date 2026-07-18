@@ -42,4 +42,25 @@ describe("StoryListRow", () => {
     render(<StoryListRow story={baseStory} projectId="p1" pointScale={fibonacci} />);
     expect(screen.queryByText("Checkout revamp")).not.toBeInTheDocument();
   });
+
+  it("reserves readable title width and hides secondary chips below the small breakpoint", () => {
+    render(
+      <StoryListRow
+        story={{
+          ...baseStory,
+          epic: { id: "e1", name: "Checkout revamp", color: "#6366f1" },
+          labels: [{ id: "l1", name: "Urgent", color: "#ef4444" }],
+        }}
+        projectId="p1"
+        pointScale={fibonacci}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Add login/ })).toHaveClass("min-w-28");
+    expect(screen.getByText("Add login")).toHaveClass("min-w-20");
+    expect(screen.getByText("Checkout revamp").parentElement?.parentElement).toHaveClass("hidden", "sm:inline-flex");
+    expect(screen.getByText("•••")).toHaveClass("hidden", "sm:inline");
+    expect(screen.getByText("Urgent")).toHaveClass("text-foreground");
+    expect(screen.getByText("Urgent").style.color).toBe("");
+  });
 });

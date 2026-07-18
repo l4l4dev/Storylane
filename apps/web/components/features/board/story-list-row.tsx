@@ -59,7 +59,7 @@ export function StoryListRow({
       <button
         type="button"
         onClick={openPeek}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-80"
+        className="flex min-w-28 flex-1 items-center gap-2 text-left hover:opacity-80"
       >
         {typeMeta && TypeIcon && (
           <span className={`inline-flex shrink-0 items-center rounded p-1 ${typeMeta.className}`} title={typeMeta.label}>
@@ -67,25 +67,29 @@ export function StoryListRow({
           </span>
         )}
         <span className="shrink-0 text-xs text-muted-foreground">#{story.number}</span>
-        <span className="truncate text-sm font-medium">{story.title}</span>
+        <span className="min-w-20 truncate text-sm font-medium">{story.title}</span>
       </button>
 
-      {story.epic && <EpicBadge epic={story.epic} />}
+      {story.epic && (
+        <span className="hidden min-w-0 sm:inline-flex">
+          <EpicBadge epic={story.epic} />
+        </span>
+      )}
       {stateMeta && (
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${stateMeta.className}`}>
           {stateMeta.label}
         </span>
       )}
       {story.points != null && (
-        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+        <span className="hidden shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground sm:inline">
           {formatPoints(story.points)}
         </span>
       )}
       {story.labels.map((label) => (
         <span
           key={label.id}
-          className="hidden shrink-0 rounded px-1.5 py-0.5 text-xs sm:inline"
-          style={{ backgroundColor: `${label.color}22`, color: label.color }}
+          className="hidden shrink-0 rounded px-1.5 py-0.5 text-xs text-foreground sm:inline"
+          style={{ backgroundColor: `${label.color}22` }}
         >
           {label.name}
         </span>

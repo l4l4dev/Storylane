@@ -50,6 +50,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -62,6 +63,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { MutationErrorBanner } from "./mutation-error-banner";
+import { BOARD_COLUMN_HEIGHT_CLASS } from "./kanban-columns-board";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryListRow } from "./story-list-row";
 import { SortableItem } from "./sortable-item";
@@ -193,7 +195,8 @@ export function DividerRow({
   // screen with no explanation for why it didn't disappear.
   onError: (message: string) => void;
 }) {
-  const [, startTransition] = useTransition();
+  const [isRemoving, startTransition] = useTransition();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const label = divider.kind === "note" ? divider.label : "Iteration break";
 
   function handleDelete() {
@@ -203,20 +206,48 @@ export function DividerRow({
     startTransition(async () => {
       try {
         await deleteBacklogDivider(formData);
+        setConfirmOpen(false);
       } catch (err) {
+        setConfirmOpen(false);
         onError(err instanceof Error ? err.message : "Failed to remove");
       }
     });
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-2.5 py-1.5">
-      <span className="flex-1 truncate text-sm font-medium text-muted-foreground">{label}</span>
-      <Button type="button" variant="ghost" size="icon-xs" onClick={handleDelete} aria-label={`Remove "${label}"`}>
-        <X />
-      </Button>
-      {insertMenu}
-    </div>
+    <>
+      <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-2.5 py-1.5">
+        <span className="flex-1 truncate text-sm font-medium text-muted-foreground">{label}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => setConfirmOpen(true)}
+          aria-label={`Remove "${label}"`}
+        >
+          <X />
+        </Button>
+        {insertMenu}
+      </div>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove note &quot;{label}&quot;?</DialogTitle>
+            <DialogDescription>
+              This removes the planning note from the backlog. This can&apos;t be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setConfirmOpen(false)} disabled={isRemoving}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleDelete} disabled={isRemoving}>
+              {isRemoving ? "Removing…" : "Remove note"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -334,6 +365,7 @@ export function IterationHeaderRow({
 }) {
   const [isRemoving, startTransition] = useTransition();
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   function handleRemoveManualBreak() {
     if (!manualBreakDividerId) {
@@ -346,6 +378,7 @@ export function IterationHeaderRow({
     startTransition(async () => {
       try {
         await deleteBacklogDivider(formData);
+        setConfirmOpen(false);
       } catch (err) {
         setRemoveError(err instanceof Error ? err.message : "Failed to remove");
       }
@@ -374,17 +407,12 @@ export function IterationHeaderRow({
               type="button"
               variant="ghost"
               size="icon-xs"
-              onClick={handleRemoveManualBreak}
+              onClick={() => setConfirmOpen(true)}
               disabled={isRemoving}
               aria-label="Remove manual iteration break"
             >
               <X className="size-3" />
             </Button>
-          </span>
-        )}
-        {removeError && (
-          <span className="shrink-0 text-destructive" role="alert">
-            {removeError}
           </span>
         )}
         {projectedDates && (
@@ -395,6 +423,29 @@ export function IterationHeaderRow({
         <IterationGoalInput projectId={projectId} number={number} initialGoal={goal} />
         <span className="shrink-0">{points} pts</span>
       </div>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove manual iteration break?</DialogTitle>
+            <DialogDescription>
+              This removes the forced boundary and lets iteration capacity determine the split again. This can&apos;t be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {removeError && (
+            <p className="text-sm text-destructive" role="alert">
+              {removeError}
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setConfirmOpen(false)} disabled={isRemoving}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleRemoveManualBreak} disabled={isRemoving}>
+              {isRemoving ? "Removing…" : "Remove break"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </li>
   );
 }
@@ -952,7 +1003,7 @@ function IceboxColumn({
   const { setNodeRef } = useDroppable({ id: ICEBOX_COLUMN_ID });
 
   return (
-    <section className="flex h-[calc(100dvh-13rem)] w-72 shrink-0 flex-col rounded-lg border border-border bg-sky-50/50 dark:bg-sky-950/20">
+    <section className={`flex w-72 shrink-0 flex-col rounded-lg border border-border bg-sky-50/50 dark:bg-sky-950/20 ${BOARD_COLUMN_HEIGHT_CLASS}`}>
       <header className="flex items-center gap-2 px-3 pt-3 pb-2">
         <Snowflake className="size-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
         <h2 className="text-sm font-semibold">Icebox</h2>
@@ -1173,14 +1224,15 @@ export function BoardListView({
       <div className="flex gap-4">
         <div className="flex max-w-3xl flex-1 flex-col gap-6">
           {mutationError && (
-            <MutationErrorBanner message={mutationError} onDismiss={() => setMutationError(null)} />
+            <div className="sticky top-0 z-20">
+              <MutationErrorBanner message={mutationError} onDismiss={() => setMutationError(null)} />
+            </div>
           )}
           <ListSection
             zoneId="current"
             title={
               <span className="font-semibold text-foreground">
-                {currentIteration ? `Iteration #${currentIteration.number} · current` : "Current iteration"} ·{" "}
-                {sumPoints(currentStoryItems.map((item) => item.story))} pts
+                Current · {sumPoints(currentStoryItems.map((item) => item.story))} pts
               </span>
             }
             items={visibleCurrentItems}

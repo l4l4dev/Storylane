@@ -79,8 +79,8 @@ export function ReleaseMarkerRow({ story, onOpen }: { story: StoryCardData; onOp
 export function EpicBadge({ epic }: { epic: { id: string; name: string; color: string } }) {
   return (
     <span
-      className="inline-flex max-w-40 min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs"
-      style={{ backgroundColor: `${epic.color}22`, color: epic.color }}
+      className="inline-flex max-w-40 min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground"
+      style={{ backgroundColor: `${epic.color}22` }}
     >
       <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: epic.color }} />
       <span className="truncate">{epic.name}</span>
@@ -154,8 +154,8 @@ export function StoryCard({
         {story.labels.map((label) => (
           <span
             key={label.id}
-            className="min-w-0 truncate rounded px-1.5 py-0.5 text-xs"
-            style={{ backgroundColor: `${label.color}22`, color: label.color }}
+            className="min-w-0 truncate rounded px-1.5 py-0.5 text-xs text-foreground"
+            style={{ backgroundColor: `${label.color}22` }}
           >
             {label.name}
           </span>

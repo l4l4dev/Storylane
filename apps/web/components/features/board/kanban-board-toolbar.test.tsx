@@ -49,6 +49,29 @@ function baseProps() {
 }
 
 describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
+  it("shows the iteration end date once and keeps committed points beside velocity", () => {
+    render(
+      <KanbanBoard
+        {...baseProps()}
+        velocity={8}
+        currentIteration={{
+          id: "i3",
+          number: 3,
+          goal: null,
+          start_date: "2026-07-14",
+          end_date: "2026-07-27",
+          velocity: null,
+          state: "current",
+          skipped: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("0 / 8 pts committed")).toBeInTheDocument();
+    expect(screen.queryByText(/auto-finishes on/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/2026\/7\/27/)).toHaveLength(1);
+  });
+
   it("keeps the Icebox button mounted (not removed) across all three views", () => {
     render(<KanbanBoard {...baseProps()} />);
     // Queried by test id, not role+name — once aria-hidden is set, the

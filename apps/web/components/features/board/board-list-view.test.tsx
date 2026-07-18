@@ -50,6 +50,9 @@ describe("IterationHeaderRow", () => {
     render(<IterationHeaderRow {...baseProps()} manualBreakDividerId="div-1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Remove manual iteration break" }));
+    expect(deleteBacklogDividerMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Remove manual iteration break?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove break" }));
 
     expect(deleteBacklogDividerMock).toHaveBeenCalledTimes(1);
     const formData = deleteBacklogDividerMock.mock.calls[0]?.[0];
@@ -69,11 +72,13 @@ describe("IterationHeaderRow", () => {
     render(<IterationHeaderRow {...baseProps()} manualBreakDividerId="div-1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Remove manual iteration break" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove break" }));
 
     await act(async () => {
       await Promise.resolve();
     });
     expect(screen.getByRole("alert")).toHaveTextContent("Not a member of this project");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Remove manual iteration break" })).toBeInTheDocument();
   });
 });
@@ -200,10 +205,13 @@ describe("DividerRow", () => {
     return { id: "d1", label: "Phase 2", kind: "note" as const };
   }
 
-  it("deletes the divider and reports nothing on success", async () => {
+  it("confirms before deleting the divider and reports nothing on success", async () => {
     render(<DividerRow projectId="p1" divider={divider()} onError={onError} />);
 
     fireEvent.click(screen.getByRole("button", { name: 'Remove "Phase 2"' }));
+    expect(deleteBacklogDividerMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: 'Remove note "Phase 2"?' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove note" }));
 
     await act(async () => {
       await Promise.resolve();
@@ -220,6 +228,7 @@ describe("DividerRow", () => {
     render(<DividerRow projectId="p1" divider={divider()} onError={onError} />);
 
     fireEvent.click(screen.getByRole("button", { name: 'Remove "Phase 2"' }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove note" }));
 
     await act(async () => {
       await Promise.resolve();

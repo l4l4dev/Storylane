@@ -153,10 +153,7 @@ export function KanbanBoard({
               {formatDate(currentIteration.start_date)} – {formatDate(currentIteration.end_date)}
             </span>
             <span className="text-xs text-muted-foreground">
-              {sumPoints(iterationStories)} pts committed
-            </span>
-            <span className="text-xs text-muted-foreground">
-              auto-finishes on {formatDate(currentIteration.end_date)}
+              {sumPoints(iterationStories)} / {velocity} pts committed
             </span>
             <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />
             <IterationGoalBar
@@ -391,7 +388,7 @@ export function IterationGoalBar({
           <span className="text-muted-foreground italic">Add goal…</span>
         )}
         <Pencil
-          className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+          className="size-3 shrink-0 text-muted-foreground opacity-60"
           aria-hidden
         />
       </button>

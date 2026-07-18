@@ -41,6 +41,11 @@ import type { BoardStory, IterationMeta } from "./kanban-board";
 
 type ColumnMeta = { label: string; icon: LucideIcon; iconClass: string; tintClass: string };
 
+// Board columns only use a viewport-derived fixed height once the shared
+// header has enough horizontal room not to wrap unpredictably. Exported for
+// the List view's Icebox column so this sizing rule has one source of truth.
+export const BOARD_COLUMN_HEIGHT_CLASS = "lg:h-[calc(100dvh-13rem)]";
+
 // Column headers and tints follow the state hues already used by
 // STORY_STATE_META (lib/utils/stories.ts) so badges and columns agree.
 const COLUMN_META: Record<StateColumnId, ColumnMeta> = {
@@ -137,7 +142,7 @@ function KanbanColumn({
 
   return (
     <section
-      className={`flex h-[calc(100dvh-13rem)] w-72 shrink-0 flex-col rounded-lg border border-border ${meta.tintClass}`}
+      className={`flex w-72 shrink-0 flex-col rounded-lg border border-border ${BOARD_COLUMN_HEIGHT_CLASS} ${meta.tintClass}`}
     >
       <header className="flex items-center gap-2 px-3 pt-3 pb-2">
         <Icon className={`size-4 shrink-0 ${meta.iconClass}`} aria-hidden />
@@ -298,7 +303,11 @@ export function KanbanColumnsBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveId(null)}
     >
-      {dragError && <MutationErrorBanner message={dragError} onDismiss={() => setDragError(null)} />}
+      {dragError && (
+        <div className="sticky top-0 z-20">
+          <MutationErrorBanner message={dragError} onDismiss={() => setDragError(null)} />
+        </div>
+      )}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {STATE_COLUMNS.filter((column) => column !== "rejected" || showRejected).map((column) => (
           <KanbanColumn

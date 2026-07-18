@@ -89,4 +89,28 @@ describe("StoryCard", () => {
     render(<StoryCard story={baseStory} projectId="p1" />);
     expect(screen.queryByText("Checkout revamp")).not.toBeInTheDocument();
   });
+
+  it("uses theme foreground text while keeping user colors in chip tints and dots", () => {
+    render(
+      <StoryCard
+        story={{
+          ...baseStory,
+          epic: { id: "e1", name: "Pale epic", color: "#ffffcc" },
+          labels: [{ id: "l1", name: "Dark label", color: "#111111" }],
+        }}
+        projectId="p1"
+      />,
+    );
+
+    const epicName = screen.getByText("Pale epic");
+    const epicChip = epicName.parentElement;
+    expect(epicChip).toHaveClass("text-foreground");
+    expect(epicChip).toHaveStyle({ backgroundColor: "#ffffcc22" });
+    expect((epicChip as HTMLElement).style.color).toBe("");
+
+    const labelChip = screen.getByText("Dark label");
+    expect(labelChip).toHaveClass("text-foreground");
+    expect(labelChip).toHaveStyle({ backgroundColor: "#11111122" });
+    expect(labelChip.style.color).toBe("");
+  });
 });
