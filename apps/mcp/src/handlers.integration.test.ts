@@ -185,6 +185,40 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     expect(accepted.state).toBe("accepted");
   });
 
+  it("transition_story serializes concurrent accept/reject (no lost update)", async () => {
+    // A bug needs no estimate, so it can walk straight to 'delivered'.
+    const story = (await tools.createStory(bot, {
+      project_id: projectId,
+      title: "contended story",
+      story_type: "bug",
+    })) as { id: string };
+    await tools.transitionStory(bot, { story_id: story.id, action: "start" });
+    await tools.transitionStory(bot, { story_id: story.id, action: "finish" });
+    await tools.transitionStory(bot, { story_id: story.id, action: "deliver" });
+
+    // Fire accept and reject at the same time. Both read 'delivered', both are
+    // individually valid — without FOR UPDATE both UPDATEs commit and the last
+    // writer silently wins. FOR UPDATE forces one to block, re-read the now-
+    // committed state, and fail the state-machine check.
+    const results = await Promise.allSettled([
+      tools.transitionStory(bot, { story_id: story.id, action: "accept" }),
+      tools.transitionStory(bot, { story_id: story.id, action: "reject" }),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+      message: expect.stringMatching(/cannot "(accept|reject)"/i),
+    });
+
+    // The persisted state is exactly the winner's target — not a mix.
+    const final = (await tools.getStory(bot, { story_id: story.id })) as { state: string };
+    const winner = (fulfilled[0] as PromiseFulfilledResult<{ state: string }>).value;
+    expect(final.state).toBe(winner.state);
+    expect(["accepted", "rejected"]).toContain(final.state);
+  });
+
   it("move_story reschedules an unstarted story to a zone bottom", async () => {
     const story = (await tools.createStory(bot, { project_id: projectId, title: "movable story" })) as {
       id: string;

@@ -13,8 +13,8 @@
 -- UPDATE policy (owner, or member who authored/is assigned to the story)
 -- gates who may transition — exactly what the Web action's plain UPDATE
 -- relied on. A member-role bot transitioning a story it neither authored nor
--- is assigned to is filtered to 0 rows by RLS; the row-count check below turns
--- that into an explicit error instead of a silent no-op (spec/mcp.md
+-- is assigned to is filtered to 0 rows by the FOR UPDATE read below, which
+-- raises an explicit permission error instead of a silent no-op (spec/mcp.md
 -- write-path rules). The RPC does NOT notify Slack or finalize the iteration —
 -- side effects and lazy rollover stay with the caller (spec/mcp.md).
 --
@@ -37,14 +37,33 @@ declare
   v_current_id uuid;
   v_rows int;
 begin
-  -- Read is gated by the stories SELECT policy (any project member); the
-  -- write below is gated more narrowly.
+  -- Existence check under the stories SELECT policy (any project member), so a
+  -- bad id gets a truthful "not found" rather than the permission error below.
+  perform 1 from public.stories where id = p_story_id;
+  if not found then
+    raise exception 'Story not found' using errcode = 'P0002';
+  end if;
+
+  -- Authoritative locked read. Because this function is SECURITY INVOKER, RLS
+  -- reaches the FOR UPDATE, which applies the stories UPDATE policy (owner, or
+  -- member author/assignee). That makes this line do double duty:
+  --   1. authorization — a member who may READ but not WRITE this story is
+  --      filtered to 0 rows here, so `not found` below is the permission gate;
+  --   2. lock — a second accept/reject blocks until the first commits, then
+  --      re-reads the committed state so the state machine rejects the now-
+  --      invalid action instead of both winning and the last write silently
+  --      clobbering the other (lost update corrupts velocity/completed_at —
+  --      rls-security-reviewer 2026-07-17).
+  -- (The SECURITY DEFINER RPCs elsewhere use FOR UPDATE without effect 1, since
+  -- RLS does not apply to them — this RPC is the exception.)
   select project_id, state, story_type, points, iteration_id
     into v_story
     from public.stories
-    where id = p_story_id;
+    where id = p_story_id
+    for update;
   if not found then
-    raise exception 'Story not found' using errcode = 'P0002';
+    raise exception 'Not allowed to transition this story (you are not its owner, author, or assignee)'
+      using errcode = '42501';
   end if;
 
   -- One-step lifecycle machine (mirrors @storylane/core story-state.ts, which
@@ -81,6 +100,10 @@ begin
     -- Serialize against rollover/manual finish (same key finalize_iteration
     -- uses) so the current iteration can't finalize between this lookup and
     -- the UPDATE — the done-iteration trigger would reject a done target.
+    -- This takes the story row lock BEFORE this advisory lock, inverting the
+    -- house convention. No deadlock: this branch only runs when iteration_id is
+    -- null, and finalize_iteration's bulk update targets iteration_id = <id>
+    -- (never null), so the two never contend for the same story row.
     perform pg_advisory_xact_lock(hashtext('iteration_finalize:' || v_story.project_id::text));
 
     select id into v_current_id
@@ -99,8 +122,11 @@ begin
     where id = p_story_id;
   get diagnostics v_rows = row_count;
 
-  -- RLS filtered the write to nothing: the caller is not the owner, author, or
-  -- assignee of this story. Explicit error, not a silent success (spec/mcp.md).
+  -- The FOR UPDATE above already gated authorization, so this normally hits the
+  -- locked row. It can still filter to 0 if the caller's membership/role is
+  -- revoked in the window between the two statements — project_role() reads the
+  -- unlocked project_members table and is re-evaluated per statement. Turn that
+  -- into an explicit error, not a misleading success (rls-security-reviewer 2026-07-17).
   if v_rows = 0 then
     raise exception 'Not allowed to transition this story (you are not its owner, author, or assignee)'
       using errcode = '42501';
@@ -110,7 +136,7 @@ begin
 end;
 $$;
 
-revoke execute on function public.transition_story(uuid, text) from public;
+revoke execute on function public.transition_story(uuid, text) from public, authenticated;
 grant execute on function public.transition_story(uuid, text) to authenticated;
 
 -- DOWN (rollback — not auto-applied; run manually if reverting):
