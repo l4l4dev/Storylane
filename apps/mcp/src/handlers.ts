@@ -84,15 +84,13 @@ async function storyProjectId(supabase: Db, storyId: string): Promise<string> {
 
 /**
  * Explicit error for a write RLS-filtered to zero rows (spec/mcp.md
- * "Row-count verification everywhere"): a silent 0-row UPDATE means the bot is
- * a member but not this story's author or assignee, so member-role RLS blocked
- * it. A WITH CHECK violation (e.g. reassigning an assignee-only story to
- * someone else) surfaces as a Postgres error instead, handled by the caller.
+ * "Row-count verification everywhere"): since TASK-70, member-role RLS allows
+ * writing any story in the project, so a 0-row UPDATE past the existence
+ * check is a residual race — the story was deleted, or the bot's role was
+ * revoked, between the read and this write — not an ownership denial.
  */
-function notAuthorOrAssignee(): Error {
-  return new Error(
-    "Not allowed: the agent is not the author or assignee of this story (member-role RLS only permits writing stories the agent created or is assigned to).",
-  );
+function storyNoLongerWritable(): Error {
+  return new Error("Not allowed: this story no longer exists or the agent can no longer write to it.");
 }
 
 /** Resolves label names to ids within a project, creating any that don't exist. */
@@ -419,19 +417,15 @@ export async function updateStory(supabase: Db, args: UpdateStoryArgs) {
       .eq("id", args.story_id)
       .select("id");
     if (error) {
-      if (error.code === "42501") {
-        throw new Error(
-          "Not allowed: this update is blocked by RLS. A member bot can only edit stories it authored or is assigned to, and cannot reassign a story it merely holds as assignee to someone else.",
-        );
-      }
       throw new Error(`Could not update story: ${error.message}`);
     }
-    if (!data || data.length === 0) throw notAuthorOrAssignee();
+    if (!data || data.length === 0) throw storyNoLongerWritable();
   }
 
   // ponytail: labels-only edits are governed by story_labels RLS (any project
-  // member), not the author/assignee gate above — the existing table policy,
-  // matched to the Web behaviour. Note it rather than adding a bespoke check.
+  // member) — the same "any member" rule the stories UPDATE above now uses
+  // too (TASK-70), matched to the Web behaviour. Note it rather than adding
+  // a bespoke check.
   if (args.labels !== undefined) await setLabels(supabase, args.story_id, projectId, args.labels);
 
   return { story_id: args.story_id, updated: true };
@@ -453,7 +447,11 @@ export async function transitionStory(supabase: Db, args: { story_id: string; ac
     p_action: args.action,
   });
   // The RPC raises self-explanatory messages (bad transition, unestimated
-  // feature, not-owner/author/assignee) — surface them verbatim.
+  // feature) — surface them verbatim. Its own "not owner/author/assignee"
+  // denial text is stale since TASK-70 relaxed the underlying RLS policy
+  // (any member may write any story now); it only still surfaces for a
+  // viewer or a mid-request role-revocation race. Left as-is in the RPC —
+  // TASK-91 replaces this whole function with set_story_state.
   if (error) throw new Error(error.message);
   return data;
 }

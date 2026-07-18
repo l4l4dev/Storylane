@@ -4,14 +4,25 @@
 
 - Only users present in `project_members` can read or modify data for that project
 - `viewer` role: SELECT only
-- `member` role: SELECT / INSERT / UPDATE (own stories or assigned stories)
+- `member` role: SELECT / INSERT / UPDATE — the general per-table pattern.
+  **Exception: `stories` UPDATE has no own/assigned restriction** (see the
+  board write model below); most other tables (comments' own-author UPDATE,
+  etc.) keep a narrower rule where noted
 - `owner` role: all operations including DELETE
-- **Board write model — TASK-70 owner decision (a), doc-8 §2:** the target is
-  **Pivotal-style — any project member may operate any story**, not just their
-  own/assigned. `set_story_state` is designed against this. TASK-70 delivers the
-  RLS relaxation (widening the `member` story-UPDATE policy above) that TASK-91's
-  state model runs on; until it lands the old own/assigned restriction stands.
-  This is a hard prerequisite for the custom-state implementation
+- **Board write model — TASK-70 owner decision (a), landed 2026-07-19:**
+  **Pivotal-style — any project member may operate any story** on the board
+  (move, reorder, transition, estimate) — not just their own/assigned. The
+  `stories` UPDATE policy (`members can update stories`,
+  `20260719000002_relax_stories_write_rls.sql`) is now a single unconditional
+  `project_role(project_id) in ('owner','member')` check (USING = WITH CHECK),
+  replacing the old `owner OR (member AND (created_by OR assignee_id))` rule.
+  This is what `update_story` and `transition_story` (both SECURITY INVOKER,
+  gated purely by this policy) inherit automatically, and what
+  `move_story_board` (SECURITY DEFINER) already enforced independently — all
+  three write paths now agree. `set_story_state` (TASK-91) is designed
+  against this relaxed model. **Unchanged, out of scope:** `stories` DELETE
+  and `promote_story_to_epic` stay owner-only — decision (a) is about board
+  operations, not deletion
 - Every new table with a `project_id` column gets its own policy set following
   the pattern above — policies are never inherited
 - **project_states (doc-8 §2):** same shape as the removed `custom_statuses`

@@ -20,7 +20,7 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
   let botUserId: string;
   let projectId: string; // bot is a member
   let outsideProjectId: string; // bot is NOT a member
-  let ownerStoryId: string; // authored by owner, bot is neither author nor assignee
+  let ownerStoryId: string; // authored by owner; bot is a plain member, neither author nor assignee
   let botStoryId: string;
 
   beforeAll(async () => {
@@ -86,7 +86,9 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     outsideProjectId = outside.id;
 
     // A story authored by the owner, estimated so a transition attempt reaches
-    // the RLS row-count check (not the unestimated-feature guard).
+    // the state machine (not the unestimated-feature guard). Used to prove the
+    // bot (a plain member, neither author nor assignee) can still write it
+    // (TASK-70: any member may operate any story).
     const { data: ownerStory, error: osErr } = await owner
       .from("stories")
       .insert({ project_id: projectId, title: "owner's story", story_type: "feature", points: 2, state: "unstarted" })
@@ -230,18 +232,22 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     expect(moved.iteration_id).toBeNull();
   });
 
-  // ── Permission-denied paths ────────────────────────────────────────────
+  // ── Permission paths ────────────────────────────────────────────────────
 
-  it("update_story on a story the bot neither authored nor is assigned to is denied", async () => {
-    await expect(tools.updateStory(bot, { story_id: ownerStoryId, title: "hijacked" })).rejects.toThrow(
-      /not the author or assignee/i,
-    );
+  it("update_story succeeds on a story the bot neither authored nor is assigned to (TASK-70: any member may edit any story)", async () => {
+    const result = (await tools.updateStory(bot, { story_id: ownerStoryId, title: "edited by a non-author member" })) as {
+      story_id: string;
+      updated: boolean;
+    };
+    expect(result.updated).toBe(true);
   });
 
-  it("transition_story on someone else's story is denied", async () => {
-    await expect(tools.transitionStory(bot, { story_id: ownerStoryId, action: "start" })).rejects.toThrow(
-      /not allowed to transition/i,
-    );
+  it("transition_story succeeds on someone else's story (TASK-70: any member may transition any story)", async () => {
+    const result = (await tools.transitionStory(bot, { story_id: ownerStoryId, action: "start" })) as {
+      story_id: string;
+      state: string;
+    };
+    expect(result.state).toBe("started");
   });
 
   it("writing to a project the bot is not a member of is denied", async () => {

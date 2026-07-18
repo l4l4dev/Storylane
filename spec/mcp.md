@@ -56,11 +56,15 @@ Write:
   labels, destination})` — destination: `backlog_bottom | icebox |
   current_iteration` (default `backlog_bottom`, matching spec/ux-principles.md
   principle 4's "predictable landing spot"). No `backlog_top` / arbitrary
-  positions: reordering rewrites the dense `position` sequence across rows the
-  member-role bot cannot UPDATE (partial resequence = TASK-20-class corruption).
-  Zone-bottom is `max(position)+1` and touches no other row. If arbitrary
-  placement is ever needed, it becomes a SECURITY DEFINER resequence RPC in a
-  later phase.
+  positions: an arbitrary insert would rewrite the dense `position` sequence
+  across every row between the old and new spot, and a partial resequence
+  (some rows rewritten, some not) corrupts the position-ordering invariant
+  (spec/data-model.md) regardless of who is permitted to write — a
+  reordering RPC belongs behind its own transaction + advisory lock, the
+  same shape `_splice_backlog`/`swap_adjacent` already use, not a bare
+  client-side loop of individual UPDATEs. Zone-bottom is `max(position)+1`
+  and touches no other row. If arbitrary placement is ever needed, it
+  becomes a SECURITY DEFINER resequence RPC in a later phase.
 - `update_story(story_id, fields)` — title, description, points, labels, epic,
   assignee. Partial UPDATE of exactly the passed fields (field-level
   last-write-wins per spec/screens.md), never a full-record write.
@@ -92,15 +96,19 @@ RLS denial surfaces as "the agent is not a member of this project — invite
 
 ## Write-path rules (advisor verdict 2026-07-11, TASK-47)
 
-- **Row-count verification everywhere.** Member-role RLS only allows UPDATE on
-  stories the bot created or is assigned to; anything else is a silent 0-row
-  no-op (the TASK-22/26/31 failure class). Every write tool checks affected rows
-  via `.select()` and turns 0 rows into an explicit error ("the agent is not the
-  author or assignee of this story"). Edge case: reassigning an assignee-only
-  story to someone else is blocked by WITH CHECK — surface that clearly too.
-  Dogfooding rule: stories the agent manages are created by (or assigned to) the
-  agent. The bot stays role `member` — owner would hand it deletion, settings,
-  and archive powers.
+- **Row-count verification everywhere.** Member-role RLS now allows UPDATE on
+  any story in the project (TASK-70, doc-8 §2 board write model — Pivotal-style,
+  any member may operate any story), so a 0-row result is no longer the
+  primary authorization gate; it is a residual defensive check for races —
+  the story was deleted between the existence check and the write, or the
+  caller's role was revoked mid-request (`project_role()` is re-evaluated per
+  statement, the same class `transition_story`'s own `FOR UPDATE` re-check
+  guards against). Every write tool still checks affected rows via `.select()`
+  and turns 0 rows into an explicit error rather than a silent no-op (the
+  TASK-22/26/31 failure class) — only the wording changed, not the discipline.
+  Dogfooding rule: stories the agent manages are created by (or assigned to)
+  the agent as a *convention*, not an RLS-enforced one. The bot stays role
+  `member` — owner would hand it deletion, settings, and archive powers.
 - **Lazy rollover first.** Any tool touching the current iteration
   (`board_summary`, `list_stories`, `move_story`, `create_story` →
   `current_iteration`) calls `finalize_iteration(p_manual: false)` before
