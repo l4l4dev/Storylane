@@ -1,11 +1,11 @@
 ---
 id: TASK-79
 title: 'UX panel review High fixes (2026-07-18): board screen streamlining'
-status: To Do
+status: In Progress
 assignee:
-  - '@claude-sonnet-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-17 15:16'
-updated_date: '2026-07-17 15:25'
+updated_date: '2026-07-18 00:40'
 labels:
   - web
   - ux
@@ -57,5 +57,10 @@ Full panel report (all High/Medium/Low findings, consensus themes, conflicts) ar
 created: 2026-07-17 15:25
 ---
 Ordering note: TASK-79 (then TASK-77) must land before TASK-61/52/78 — those touch the same board files, and implementing them first would invalidate this review's file:line anchors. Dependencies set accordingly; ordinals 700/750.
+---
+
+created: 2026-07-18 00:40
+---
+Reassigned sonnet-5 → codex-gpt-5 (owner decision 2026-07-18: Claude quota low; precisely-scoped list fits Codex). Implementation via Codex CLI on branch feat/ux-panel-high-fixes; fable-advisor design review still required before merge.
 ---
 <!-- COMMENTS:END -->

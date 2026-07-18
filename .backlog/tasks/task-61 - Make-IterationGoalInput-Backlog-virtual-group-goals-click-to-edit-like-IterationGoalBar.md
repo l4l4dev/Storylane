@@ -5,9 +5,9 @@ title: >-
   IterationGoalBar
 status: To Do
 assignee:
-  - '@claude-sonnet-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-14 03:15'
-updated_date: '2026-07-17 15:25'
+updated_date: '2026-07-18 00:40'
 labels:
   - web
   - ux

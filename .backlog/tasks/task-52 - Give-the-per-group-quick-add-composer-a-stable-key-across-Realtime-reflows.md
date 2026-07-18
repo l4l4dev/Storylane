@@ -3,9 +3,9 @@ id: TASK-52
 title: Give the per-group quick-add composer a stable key across Realtime reflows
 status: To Do
 assignee:
-  - '@claude-sonnet-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-11 11:29'
-updated_date: '2026-07-17 15:25'
+updated_date: '2026-07-18 00:40'
 labels:
   - web
   - bug
