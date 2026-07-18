@@ -111,6 +111,10 @@ Every Backlog task MUST have an assignee — set it at creation time, never leav
   - `@claude-fable-5` — design review, planning, and final review passes (fable-advisor).
     When Fable is unavailable (plan window closed), these duties fall to `@claude-opus-4-8`
     and the fable-advisor agent runs with `model: opus` (the /advisor skill already says so)
+  - `@gpt-5.6-sol` — (Codex CLI, ChatGPT quota) full implementation tasks when Claude
+    quota is exhausted, EXCEPT new-table RLS design and the state-model core; any
+    migration it writes is held from deploy until a deferred `rls-security-reviewer`
+    pass once Claude quota returns
   - `@codex-gpt-5` — precisely-scoped, behavior-preserving refactors/cleanups and
     second-opinion review passes, run via the Codex CLI (executes on the ChatGPT quota,
     not Claude tokens). Not for architecture-sensitive or RLS/concurrency work
