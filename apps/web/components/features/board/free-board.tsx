@@ -53,6 +53,7 @@ import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard, type StoryCardData } from "./story-card";
 import { SortableItem } from "./sortable-item";
+import { useInlineEdit } from "./use-inline-edit";
 
 export type CustomStatus = {
   id: string;
@@ -309,87 +310,63 @@ function ColumnHeaderContent({
 // writes name/color/is_done together — color and is_done are resubmitted
 // unchanged so a rename never clobbers them.
 function ColumnNameEditor({ projectId, status }: { projectId: string; status: CustomStatus }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(status.name);
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const editor = useInlineEdit({
+    initialValue: status.name,
+    fallbackError: "Failed to rename column",
+    shouldCommit: (value) => Boolean(value),
+    async onCommit(trimmed) {
+      const formData = new FormData();
+      formData.set("project_id", projectId);
+      formData.set("status_id", status.id);
+      formData.set("name", trimmed);
+      formData.set("color", status.color);
+      if (status.is_done) {
+        formData.set("is_done", "on");
+      }
+      await updateCustomStatus(formData);
+    },
+  });
 
-  if (!editing) {
+  if (!editor.editing) {
     return (
       <button
+        ref={editor.buttonRef}
         type="button"
-        onClick={() => {
-          setValue(status.name);
-          setError(null);
-          setEditing(true);
-        }}
+        onClick={editor.startEditing}
         className="h-6 min-w-0 flex-1 truncate text-left text-sm font-semibold hover:underline"
       >
-        {status.name}
+        {editor.synced}
       </button>
     );
-  }
-
-  function submit() {
-    if (isPending) {
-      return;
-    }
-    const trimmed = value.trim();
-    if (!trimmed || trimmed === status.name) {
-      setEditing(false);
-      return;
-    }
-    setError(null);
-    const formData = new FormData();
-    formData.set("project_id", projectId);
-    formData.set("status_id", status.id);
-    formData.set("name", trimmed);
-    formData.set("color", status.color);
-    if (status.is_done) {
-      formData.set("is_done", "on");
-    }
-    startTransition(async () => {
-      try {
-        await updateCustomStatus(formData);
-        setEditing(false);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to rename column");
-      }
-    });
   }
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       <input
         autoFocus
-        value={value}
-        aria-label={`Rename ${status.name}`}
+        value={editor.value}
+        aria-label={`Rename ${editor.synced}`}
         // readOnly, not disabled — a disabled input can drop focus mid-blur
         // and re-fire the commit (same defect class noted on IterationGoalBar).
-        readOnly={isPending}
-        onChange={(event) => {
-          setValue(event.target.value);
-          setError(null);
-        }}
-        onBlur={submit}
+        readOnly={editor.isSaving}
+        onChange={(event) => editor.setValue(event.target.value)}
+        onBlur={() => void editor.commitAndClose()}
         onKeyDown={(event) => {
           if (isImeComposing(event)) {
             return;
           }
           if (event.key === "Enter") {
             event.preventDefault();
-            submit();
+            void editor.commitAndClose();
           } else if (event.key === "Escape") {
-            setValue(status.name);
-            setError(null);
-            setEditing(false);
+            editor.cancel();
           }
         }}
         className="h-6 w-full min-w-0 rounded border border-input bg-background px-1 text-sm font-semibold"
       />
-      {error && (
+      {editor.error && (
         <p role="alert" className="text-xs text-destructive">
-          {error}
+          {editor.error}
         </p>
       )}
     </div>
@@ -401,20 +378,30 @@ function ColumnNameEditor({ projectId, status }: { projectId: string; status: Cu
 // createCustomStatus; default color matches Settings' status-manager.tsx.
 function AddColumnButton({ projectId }: { projectId: string }) {
   const { canEdit } = useContext(BoardPermissionsContext);
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const editor = useInlineEdit({
+    initialValue: "",
+    fallbackError: "Failed to add column",
+    shouldCommit: (value) => Boolean(value),
+    resetAfterCommit: true,
+    async onCommit(trimmed) {
+      const formData = new FormData();
+      formData.set("project_id", projectId);
+      formData.set("name", trimmed);
+      formData.set("color", "#6b7280");
+      await createCustomStatus(formData);
+    },
+  });
 
   if (!canEdit) {
     return null;
   }
 
-  if (!adding) {
+  if (!editor.editing) {
     return (
       <button
+        ref={editor.buttonRef}
         type="button"
-        onClick={() => setAdding(true)}
+        onClick={editor.startEditing}
         className="flex h-9 w-40 shrink-0 items-center justify-center gap-1.5 self-start rounded-lg border border-dashed border-border text-sm text-muted-foreground hover:border-foreground/40 hover:text-foreground"
       >
         + Add column
@@ -422,61 +409,31 @@ function AddColumnButton({ projectId }: { projectId: string }) {
     );
   }
 
-  function submit() {
-    if (isPending) {
-      return;
-    }
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setAdding(false);
-      return;
-    }
-    setError(null);
-    const formData = new FormData();
-    formData.set("project_id", projectId);
-    formData.set("name", trimmed);
-    formData.set("color", "#6b7280");
-    startTransition(async () => {
-      try {
-        await createCustomStatus(formData);
-        setName("");
-        setAdding(false);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to add column");
-      }
-    });
-  }
-
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        submit();
+        void editor.commitAndClose();
       }}
       className="flex w-40 shrink-0 flex-col gap-1.5 self-start"
     >
       <Input
         autoFocus
-        value={name}
+        value={editor.value}
         placeholder="Column name"
-        readOnly={isPending}
-        onChange={(event) => {
-          setName(event.target.value);
-          setError(null);
-        }}
-        onBlur={submit}
+        readOnly={editor.isSaving}
+        onChange={(event) => editor.setValue(event.target.value)}
+        onBlur={() => void editor.commitAndClose()}
         onKeyDown={(event) => {
           if (event.key === "Escape" && !isImeComposing(event)) {
-            setName("");
-            setError(null);
-            setAdding(false);
+            editor.cancel();
           }
         }}
         className="h-9 text-sm"
       />
-      {error && (
+      {editor.error && (
         <p role="alert" className="text-xs text-destructive">
-          {error}
+          {editor.error}
         </p>
       )}
     </form>

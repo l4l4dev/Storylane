@@ -1,13 +1,14 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BoardListView, DividerRow, InsertBetweenRows, IterationHeaderRow, RowInsertMenu } from "./board-list-view";
+import { BoardListView, DividerRow, InsertBetweenRows, IterationGoalInput, IterationHeaderRow, RowInsertMenu } from "./board-list-view";
 import type { BoardStory } from "./kanban-board";
 
-const { deleteBacklogDividerMock, createBacklogDividerMock, quickCreateStoryMock } = vi.hoisted(() => ({
+const { deleteBacklogDividerMock, createBacklogDividerMock, quickCreateStoryMock, upsertIterationGoalMock } = vi.hoisted(() => ({
   deleteBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
   createBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
   quickCreateStoryMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  upsertIterationGoalMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -23,8 +24,136 @@ vi.mock("@/app/projects/[id]/board/actions", () => ({
   estimateStory: vi.fn(),
   quickCreateStory: quickCreateStoryMock,
   transitionStory: vi.fn(),
-  upsertIterationGoal: vi.fn(),
+  upsertIterationGoal: upsertIterationGoalMock,
 }));
+
+describe("IterationGoalInput", () => {
+  beforeEach(() => {
+    upsertIterationGoalMock.mockClear();
+    upsertIterationGoalMock.mockResolvedValue(undefined);
+  });
+
+  it("renders saved or ghost text with a persistent edit affordance by default", () => {
+    const { unmount } = render(<IterationGoalInput projectId="p1" number={4} initialGoal="Ship it" />);
+    expect(screen.queryByRole("textbox", { name: "Iteration #4 goal" })).not.toBeInTheDocument();
+    const editButton = screen.getByRole("button", { name: "Edit iteration #4 goal: Ship it" });
+    expect(editButton).toHaveTextContent("Ship it");
+    expect(editButton.querySelector("svg")).toHaveClass("opacity-60");
+    unmount();
+
+    render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    expect(screen.getByRole("button", { name: "Add iteration #4 goal" })).toHaveTextContent("Add goal…");
+  });
+
+  it("opens on click, commits on Enter, and returns to text", async () => {
+    render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    fireEvent.click(screen.getByText("Add goal…"));
+    const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
+    fireEvent.change(input, { target: { value: "Ship it" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(upsertIterationGoalMock).toHaveBeenCalledTimes(1);
+    const formData = upsertIterationGoalMock.mock.calls[0]?.[0];
+    expect(formData?.get("project_id")).toBe("p1");
+    expect(formData?.get("number")).toBe("4");
+    expect(formData?.get("goal")).toBe("Ship it");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("textbox", { name: "Iteration #4 goal" })).not.toBeInTheDocument();
+  });
+
+  it("commits on blur", async () => {
+    render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    fireEvent.click(screen.getByText("Add goal…"));
+    const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
+    fireEvent.change(input, { target: { value: "Ship it" } });
+    fireEvent.blur(input);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(upsertIterationGoalMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("textbox", { name: "Iteration #4 goal" })).not.toBeInTheDocument();
+  });
+
+  it("discards on Escape without saving", () => {
+    render(<IterationGoalInput projectId="p1" number={4} initialGoal="Original" />);
+    fireEvent.click(screen.getByText("Original"));
+    const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
+    fireEvent.change(input, { target: { value: "Draft" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(upsertIterationGoalMock).not.toHaveBeenCalled();
+    expect(screen.getByText("Original")).toBeInTheDocument();
+  });
+
+  it("ignores Enter and Escape while IME composition is active", () => {
+    render(<IterationGoalInput projectId="p1" number={4} initialGoal="Original" />);
+    fireEvent.click(screen.getByText("Original"));
+    const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
+    fireEvent.change(input, { target: { value: "変換中" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Escape", isComposing: true });
+    expect(upsertIterationGoalMock).not.toHaveBeenCalled();
+    expect(input).toHaveValue("変換中");
+  });
+
+  it("keeps the editor and typed value when saving fails", async () => {
+    upsertIterationGoalMock.mockRejectedValueOnce(new Error("Not a member"));
+    render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    fireEvent.click(screen.getByText("Add goal…"));
+    const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
+    fireEvent.change(input, { target: { value: "Ship it" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("textbox", { name: "Iteration #4 goal" })).toHaveValue("Ship it");
+    expect(screen.getByText("Not a member")).toBeInTheDocument();
+  });
+
+  it("does not double-submit or lose a failure during an overlapping blur", async () => {
+    let rejectSave: ((reason: Error) => void) | undefined;
+    upsertIterationGoalMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSave = reject;
+        }),
+    );
+    render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    fireEvent.click(screen.getByText("Add goal…"));
+    const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
+    fireEvent.change(input, { target: { value: "Ship it" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.blur(input);
+    expect(upsertIterationGoalMock).toHaveBeenCalledTimes(1);
+
+    rejectSave?.(new Error("Winning failure"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(upsertIterationGoalMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("textbox", { name: "Iteration #4 goal" })).toHaveValue("Ship it");
+    expect(screen.getByText("Winning failure")).toBeInTheDocument();
+  });
+
+  it("restores focus after a successful save and after Escape", async () => {
+    const { unmount } = render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    fireEvent.click(screen.getByText("Add goal…"));
+    const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
+    fireEvent.change(input, { target: { value: "Ship it" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: /Edit iteration #4 goal/ })).toHaveFocus();
+    unmount();
+
+    render(<IterationGoalInput projectId="p1" number={4} initialGoal="Original" />);
+    fireEvent.click(screen.getByText("Original"));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Iteration #4 goal" }), { key: "Escape" });
+    expect(screen.getByRole("button", { name: /Edit iteration #4 goal/ })).toHaveFocus();
+  });
+});
 
 function backlogStory(id: string, points: number): BoardStory {
   return {

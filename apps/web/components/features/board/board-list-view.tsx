@@ -19,7 +19,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { ChevronDown, ChevronRight, MoreVertical, Snowflake, X } from "lucide-react";
+import { ChevronDown, ChevronRight, MoreVertical, Pencil, Snowflake, X } from "lucide-react";
 import {
   createBacklogDivider,
   deleteBacklogDivider,
@@ -67,6 +67,7 @@ import { BOARD_COLUMN_HEIGHT_CLASS } from "./kanban-columns-board";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryListRow } from "./story-list-row";
 import { SortableItem } from "./sortable-item";
+import { useInlineEdit } from "./use-inline-edit";
 import type { BoardStory, IterationMeta } from "./kanban-board";
 
 // Collapse state for the Backlog's virtual-iteration groups and the Current
@@ -257,7 +258,7 @@ export function DividerRow({
 // fire-and-forget `void` call — so a rejected save shows an inline error
 // and keeps what was typed instead of silently reverting. Esc reverts to
 // the last server-confirmed value without saving.
-function IterationGoalInput({
+export function IterationGoalInput({
   projectId,
   number,
   initialGoal,
@@ -266,64 +267,63 @@ function IterationGoalInput({
   number: number;
   initialGoal: string;
 }) {
-  const [value, setValue] = useState(initialGoal);
-  const [synced, setSynced] = useState(initialGoal);
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-
-  if (synced !== initialGoal) {
-    setSynced(initialGoal);
-    setValue(initialGoal);
-    setError(null);
-  }
-
-  async function commit() {
-    const trimmed = value.trim();
-    if (trimmed === synced) {
-      return;
-    }
-    setError(null);
-    setIsSaving(true);
+  const editor = useInlineEdit({
+    initialValue: initialGoal,
+    fallbackError: "Failed to save goal",
+    async onCommit(trimmed) {
     const formData = new FormData();
     formData.set("project_id", projectId);
     formData.set("number", String(number));
     formData.set("goal", trimmed);
-    try {
       await upsertIterationGoal(formData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save goal");
-    } finally {
-      setIsSaving(false);
-    }
+    },
+  });
+
+  if (!editor.editing) {
+    return (
+      <button
+        ref={editor.buttonRef}
+        type="button"
+        onClick={editor.startEditing}
+        aria-label={editor.synced ? `Edit iteration #${number} goal: ${editor.synced}` : `Add iteration #${number} goal`}
+        className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-muted"
+      >
+        {editor.synced ? (
+          <span className="truncate text-xs text-foreground">{editor.synced}</span>
+        ) : (
+          <span className="truncate text-xs italic text-muted-foreground">Add goal…</span>
+        )}
+        <Pencil className="size-3 shrink-0 text-muted-foreground opacity-60" aria-hidden />
+      </button>
+    );
   }
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1.5">
       <input
-        value={value}
-        onChange={(event) => {
-          setValue(event.target.value);
-          setError(null);
-        }}
+        autoFocus
+        value={editor.value}
+        onChange={(event) => editor.setValue(event.target.value)}
         onKeyDown={(event) => {
           if (isImeComposing(event)) {
             return;
           }
           if (event.key === "Enter") {
             event.preventDefault();
-            void commit();
+            void editor.commitAndClose();
           } else if (event.key === "Escape") {
             event.preventDefault();
-            setValue(synced);
-            setError(null);
+            editor.cancel();
           }
         }}
+        onBlur={() => void editor.commitAndClose()}
         placeholder="Goal"
         aria-label={`Iteration #${number} goal`}
-        disabled={isSaving}
-        className="h-6 min-w-0 flex-1 truncate rounded border border-transparent bg-transparent px-1 text-xs hover:border-border focus:border-border focus:outline-none disabled:opacity-60"
+        readOnly={editor.isSaving}
+        aria-busy={editor.isSaving || undefined}
+        className="h-6 min-w-0 flex-1 truncate rounded border border-border bg-transparent px-1 text-xs focus:outline-none"
       />
-      {error && <span className="shrink-0 text-destructive">{error}</span>}
+      {editor.error && <span className="shrink-0 text-destructive">{editor.error}</span>}
     </div>
   );
 }

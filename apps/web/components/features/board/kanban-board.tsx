@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState, useTransition } from "react";
+import { type ReactNode, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Crosshair, LayoutGrid, List as ListIcon, Pencil, Snowflake } from "lucide-react";
 import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/actions";
@@ -25,6 +25,7 @@ import { BoardListView } from "./board-list-view";
 import { FocusBoard } from "./focus-board";
 import { KanbanColumnsBoard } from "./kanban-columns-board";
 import type { StoryCardData } from "./story-card";
+import { useInlineEdit } from "./use-inline-edit";
 
 // Card data plus the fields the drop validation and filters need (see
 // lib/utils/kanban, lib/utils/stories "matchesStoryFilter"). `position` is
@@ -301,89 +302,29 @@ export function IterationGoalBar({
   iterationId: string;
   initialGoal: string;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(initialGoal);
-  const [synced, setSynced] = useState(initialGoal);
-  // Tracked separately from `synced` so a successful commit's optimistic
-  // `setSynced` isn't immediately clobbered back to the stale `initialGoal`
-  // prop below on the very next render — this only updates (and re-syncs
-  // `synced`/`value` from the prop) once the prop itself actually changes,
-  // i.e. once revalidation has genuinely delivered a new server value.
-  const [lastInitialGoal, setLastInitialGoal] = useState(initialGoal);
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  // Guards against a real double-submission window (fable-advisor review):
-  // marking the input `disabled` while saving made a browser fire its own
-  // blur the instant `isSaving` became true (a disabled element can't hold
-  // focus), which re-triggered commitAndClose — read-only avoids that
-  // trigger entirely, but this ref is the actual correctness guarantee: a
-  // second, overlapping commit() call (from any path) no-ops instead of
-  // resubmitting the same goal or letting whichever call resolves first
-  // decide to close the editor out from under a failure.
-  const savingRef = useRef(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const restoreFocusRef = useRef(false);
-
-  if (lastInitialGoal !== initialGoal) {
-    setLastInitialGoal(initialGoal);
-    setSynced(initialGoal);
-    setValue(initialGoal);
-    setError(null);
-  }
-
-  useEffect(() => {
-    if (!editing && restoreFocusRef.current) {
-      restoreFocusRef.current = false;
-      buttonRef.current?.focus();
-    }
-  }, [editing]);
-
-  async function commit(): Promise<boolean> {
-    const trimmed = value.trim();
-    if (trimmed === synced) {
-      return true;
-    }
-    if (savingRef.current) {
-      return false;
-    }
-    savingRef.current = true;
-    setError(null);
-    setIsSaving(true);
+  const editor = useInlineEdit({
+    initialValue: initialGoal,
+    fallbackError: "Failed to save goal",
+    async onCommit(trimmed) {
     const formData = new FormData();
     formData.set("project_id", projectId);
     formData.set("iteration_id", iterationId);
     formData.set("goal", trimmed);
-    try {
       await updateIterationGoal(formData);
-      setSynced(trimmed);
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save goal");
-      return false;
-    } finally {
-      setIsSaving(false);
-      savingRef.current = false;
-    }
-  }
+    },
+  });
 
-  async function commitAndClose() {
-    if (await commit()) {
-      restoreFocusRef.current = true;
-      setEditing(false);
-    }
-  }
-
-  if (!editing) {
+  if (!editor.editing) {
     return (
       <button
-        ref={buttonRef}
+        ref={editor.buttonRef}
         type="button"
-        onClick={() => setEditing(true)}
-        aria-label={synced ? `Edit iteration goal: ${synced}` : "Add iteration goal"}
+        onClick={editor.startEditing}
+        aria-label={editor.synced ? `Edit iteration goal: ${editor.synced}` : "Add iteration goal"}
         className="group flex min-w-0 max-w-md items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm hover:bg-muted"
       >
-        {synced ? (
-          <span className="truncate">{synced}</span>
+        {editor.synced ? (
+          <span className="truncate">{editor.synced}</span>
         ) : (
           <span className="text-muted-foreground italic">Add goal…</span>
         )}
@@ -399,34 +340,28 @@ export function IterationGoalBar({
     <div className="flex min-w-56 flex-1 items-center gap-2 sm:max-w-md">
       <input
         autoFocus
-        value={value}
-        onChange={(event) => {
-          setValue(event.target.value);
-          setError(null);
-        }}
+        value={editor.value}
+        onChange={(event) => editor.setValue(event.target.value)}
         onKeyDown={(event) => {
           if (isImeComposing(event)) {
             return;
           }
           if (event.key === "Enter") {
             event.preventDefault();
-            void commitAndClose();
+            void editor.commitAndClose();
           } else if (event.key === "Escape") {
             event.preventDefault();
-            setValue(synced);
-            setError(null);
-            restoreFocusRef.current = true;
-            setEditing(false);
+            editor.cancel();
           }
         }}
-        onBlur={() => void commitAndClose()}
+        onBlur={() => void editor.commitAndClose()}
         placeholder="Sprint goal"
         aria-label="Iteration goal"
-        readOnly={isSaving}
-        aria-busy={isSaving || undefined}
+        readOnly={editor.isSaving}
+        aria-busy={editor.isSaving || undefined}
         className="h-8 min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 text-sm focus:outline-none disabled:opacity-60"
       />
-      {error && <span className="shrink-0 text-xs text-destructive">{error}</span>}
+      {editor.error && <span className="shrink-0 text-xs text-destructive">{editor.error}</span>}
     </div>
   );
 }
