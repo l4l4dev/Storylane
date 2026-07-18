@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { appVersion } from "@/lib/utils/app-version";
 import { ProfileSettingsForm } from "@/components/features/settings/profile-settings-form";
 
 export default async function SettingsPage() {
@@ -33,6 +34,8 @@ export default async function SettingsPage() {
       </div>
 
       <ProfileSettingsForm username={profile.username} displayName={profile.display_name} />
+
+      <p className="mt-10 text-xs text-muted-foreground">Storylane {appVersion()}</p>
     </main>
   );
 }
