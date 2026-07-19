@@ -127,6 +127,12 @@ RLS denial surfaces as "the agent is not a member of this project — invite
   used by both Web and MCP is extracted to a shared workspace package (e.g.
   `packages/core`) and imported by both — never copy-pasted (decision-1's golden
   fixtures are for TS↔Swift; TS↔TS shares a package).
+- **Multi-write tools are atomic via one RPC.** Any tool that does more than one
+  write — checklist replace, label replace, create-with-labels — runs inside a
+  single `SECURITY INVOKER` RPC (TASK-71), never as separate PostgREST requests
+  (which have no shared transaction and can leave a half-applied state on
+  failure). Positioned inserts consume the column's sequence DEFAULT; never write
+  `position` explicitly (spec/data-model.md position invariant).
 
 ## Migration path from Backlog.md
 

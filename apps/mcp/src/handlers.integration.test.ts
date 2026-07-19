@@ -232,6 +232,121 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     expect(moved.iteration_id).toBeNull();
   });
 
+  // ── Atomic write paths (TASK-71) ────────────────────────────────────────
+
+  const BOGUS_UUID = "00000000-0000-0000-0000-000000000000";
+
+  it("set_story_tasks consumes the sequence — a later plain task INSERT does not collide", async () => {
+    const story = (await tools.createStory(bot, { project_id: projectId, title: "seq story" })) as { id: string };
+    await tools.setStoryTasks(bot, { story_id: story.id, tasks: [{ title: "one" }, { title: "two" }] });
+
+    // Mirror Web addTask: omit position, let the DEFAULT consume tasks_position_seq.
+    // Before the fix, set_story_tasks wrote explicit 0,1 and this INSERT's
+    // sequence value could land on 0/1 and fail the deferred UNIQUE.
+    const { error } = await bot.from("tasks").insert({ story_id: story.id, title: "three" });
+    expect(error).toBeNull();
+
+    const { data: rows } = await bot.from("tasks").select("position").eq("story_id", story.id);
+    const positions = (rows ?? []).map((r: { position: number }) => r.position);
+    expect(new Set(positions).size).toBe(positions.length); // all distinct
+  });
+
+  it("set_story_tasks failure leaves the existing checklist intact", async () => {
+    const story = (await tools.createStory(bot, { project_id: projectId, title: "atomic tasks story" })) as {
+      id: string;
+    };
+    await tools.setStoryTasks(bot, { story_id: story.id, tasks: [{ title: "keep one" }, { title: "keep two" }] });
+
+    // A task with no title hits the tasks.title NOT NULL constraint mid-insert;
+    // the whole RPC must roll back, not leave the checklist half-wiped.
+    const { error } = await bot.rpc("set_story_tasks", {
+      p_story_id: story.id,
+      p_tasks: [{ title: "new one" }, { is_done: true }],
+    });
+    // 23502 = not_null_violation, confirming this is the expected mid-insert
+    // failure rather than the RPC rejecting the call for an unrelated reason.
+    expect(error?.code).toBe("23502");
+
+    const { data: rows } = await bot.from("tasks").select("title").eq("story_id", story.id);
+    expect((rows ?? []).map((r: { title: string }) => r.title).sort()).toEqual(["keep one", "keep two"]);
+  });
+
+  it("set_story_labels failure leaves the existing labels intact", async () => {
+    const story = (await tools.createStory(bot, {
+      project_id: projectId,
+      title: "atomic labels story",
+      labels: ["alpha", "beta"],
+    })) as { id: string };
+
+    // A bogus label_id matches no row in story_labels' WITH CHECK (label must
+    // exist and share the story's project) after the DELETE; the replace must
+    // roll back so the original labels survive.
+    const { error } = await bot.rpc("set_story_labels", { p_story_id: story.id, p_label_ids: [BOGUS_UUID] });
+    // 42501 = the story_labels INSERT policy's WITH CHECK, confirming this is
+    // the expected mid-insert failure rather than the RPC rejecting the call
+    // for an unrelated reason.
+    expect(error?.code).toBe("42501");
+
+    const full = (await tools.getStory(bot, { story_id: story.id })) as { labels: { name: string }[] };
+    expect(full.labels.map((l) => l.name).sort()).toEqual(["alpha", "beta"]);
+  });
+
+  it("create_story_tracker rolls the story back when a label insert fails", async () => {
+    const title = "orphan-guard story";
+    // Story insert succeeds, then the bogus label_id fails story_labels' WITH
+    // CHECK — the story must not persist, or an agent retry would duplicate it.
+    const { error } = await bot.rpc("create_story_tracker", {
+      p_project_id: projectId,
+      p_title: title,
+      p_state: "unstarted",
+      p_iteration_id: null,
+      p_description: null,
+      p_story_type: "feature",
+      p_points: null,
+      p_epic_id: null,
+      p_label_ids: [BOGUS_UUID],
+    });
+    // 42501 = the story_labels INSERT policy's WITH CHECK, confirming this is
+    // the expected mid-insert failure rather than the RPC rejecting the call
+    // for an unrelated reason.
+    expect(error?.code).toBe("42501");
+
+    const { data: found } = await bot.from("stories").select("id").eq("project_id", projectId).eq("title", title);
+    expect(found ?? []).toHaveLength(0);
+  });
+
+  it("set_story_labels rejects a label from a different project", async () => {
+    const story = (await tools.createStory(bot, { project_id: projectId, title: "cross-project label story" })) as {
+      id: string;
+    };
+    // Owner creates a label in the OUTSIDE project (bot is not a member there).
+    const { data: foreign } = await owner
+      .from("labels")
+      .insert({ project_id: outsideProjectId, name: "foreign label" })
+      .select("id")
+      .single();
+    const { error } = await bot.rpc("set_story_labels", {
+      p_story_id: story.id,
+      p_label_ids: [(foreign as { id: string }).id],
+    });
+    expect(error).not.toBeNull(); // story_labels WITH CHECK: label must share the story's project
+
+    const full = (await tools.getStory(bot, { story_id: story.id })) as { labels: { name: string }[] };
+    expect(full.labels).toHaveLength(0);
+  });
+
+  it("set_story_tasks on a non-member project errors even with an empty payload", async () => {
+    const { data: outsideStory } = await owner
+      .from("stories")
+      .insert({ project_id: outsideProjectId, title: "outside story", story_type: "chore" })
+      .select("id")
+      .single();
+    // Empty payload used to be a silent 0-row no-op; the explicit gate errors.
+    await expect(
+      bot.rpc("set_story_tasks", { p_story_id: (outsideStory as { id: string }).id, p_tasks: [] }),
+    ).resolves.toMatchObject({ error: { code: "42501" } });
+  });
+
   // ── Permission paths ────────────────────────────────────────────────────
 
   it("update_story succeeds on a story the bot neither authored nor is assigned to (TASK-70: any member may edit any story)", async () => {

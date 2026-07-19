@@ -116,22 +116,21 @@ async function resolveLabelIds(supabase: Db, projectId: string, names: string[])
       .insert({ project_id: projectId, name })
       .select("id")
       .single();
-    if (error) throw new Error(`Could not create label "${name}": ${error.message}`);
+    if (error) throw Object.assign(new Error(`Could not create label "${name}": ${error.message}`), { code: error.code });
     ids.push((created as { id: string }).id);
   }
   return ids;
 }
 
-/** Replaces a story's labels with exactly `names`. */
+/**
+ * Replaces a story's labels with exactly `names`. The name->id resolve stays
+ * here (creating any missing labels); the DELETE+INSERT replace is one atomic
+ * RPC so a failure can't leave the story half-relabeled (TASK-71).
+ */
 async function setLabels(supabase: Db, storyId: string, projectId: string, names: string[]): Promise<void> {
   const ids = await resolveLabelIds(supabase, projectId, names);
-  const { error: delErr } = await supabase.from("story_labels").delete().eq("story_id", storyId);
-  if (delErr) throw new Error(`Could not clear labels: ${delErr.message}`);
-  if (ids.length === 0) return;
-  const { error: insErr } = await supabase
-    .from("story_labels")
-    .insert(ids.map((label_id) => ({ story_id: storyId, label_id })));
-  if (insErr) throw new Error(`Could not set labels: ${insErr.message}`);
+  const { error } = await supabase.rpc("set_story_labels", { p_story_id: storyId, p_label_ids: ids });
+  if (error) throw new Error(`Could not set labels: ${error.message}`);
 }
 
 // ── Read tools ──────────────────────────────────────────────────────────────
@@ -359,34 +358,47 @@ export async function createStory(supabase: Db, args: CreateStoryArgs) {
     iterationId = await currentIterationId(supabase, args.project_id);
   }
 
-  // position and number are assigned by the DB (sequence default + trigger);
-  // a fresh sequence value sorts after every existing row, so the story lands
-  // at the bottom of its destination zone touching no other row (spec/mcp.md).
-  const insert: Record<string, unknown> = {
-    project_id: args.project_id,
-    title: args.title,
-    state,
-    iteration_id: iterationId,
-  };
-  if (args.description !== undefined) insert.description = args.description;
-  if (args.story_type !== undefined) insert.story_type = args.story_type;
-  if (args.points !== undefined) insert.points = args.points;
-  if (args.epic_id !== undefined) insert.epic_id = args.epic_id;
+  // Resolve labels BEFORE creating the story: if this fails, no story exists
+  // yet, so an agent retry can't duplicate it. position/number are DB-assigned
+  // (sequence default + trigger) — a fresh sequence value lands the story at
+  // its zone's bottom, touching no other row (spec/mcp.md).
+  let labelIds: string[] = [];
+  if (args.labels?.length) {
+    try {
+      labelIds = await resolveLabelIds(supabase, args.project_id, args.labels);
+    } catch (err) {
+      // A viewer creating a story with a not-yet-existing label name hits the
+      // labels table's own RLS here, before the story insert below would have
+      // — surface the same friendly denial rather than the raw labels error.
+      if ((err as { code?: string }).code === "42501") {
+        throw new Error("Not allowed to create stories here — the agent must be a project member (viewers cannot write).");
+      }
+      throw err;
+    }
+  }
 
-  const { data: story, error } = await supabase
-    .from("stories")
-    .insert(insert)
-    .select("id, number, title, state, iteration_id")
-    .single();
+  // create_story_tracker inserts the story and its labels in one transaction,
+  // so a label failure rolls the story back too (TASK-71). Always routed
+  // through the RPC (not just when labels exist) — one insert path to keep in
+  // sync with the columns.
+  const { data, error } = await supabase.rpc("create_story_tracker", {
+    p_project_id: args.project_id,
+    p_title: args.title,
+    p_state: state,
+    p_iteration_id: iterationId,
+    p_description: args.description ?? null,
+    p_story_type: args.story_type ?? null,
+    p_points: args.points ?? null,
+    p_epic_id: args.epic_id ?? null,
+    p_label_ids: labelIds,
+  });
   if (error) {
     if (error.code === "42501") {
       throw new Error("Not allowed to create stories here — the agent must be a project member (viewers cannot write).");
     }
     throw new Error(`Could not create story: ${error.message}`);
   }
-
-  if (args.labels?.length) await setLabels(supabase, story.id, args.project_id, args.labels);
-  return story;
+  return Array.isArray(data) ? data[0] : data;
 }
 
 export type UpdateStoryArgs = {
@@ -528,20 +540,14 @@ export async function setStoryTasks(supabase: Db, args: { story_id: string; task
   const projectId = await storyProjectId(supabase, args.story_id);
   await assertWritableProject(supabase, projectId);
 
-  const { error: delErr } = await supabase.from("tasks").delete().eq("story_id", args.story_id);
-  if (delErr) throw new Error(`Could not clear tasks: ${delErr.message}`);
-
-  if (args.tasks.length === 0) return { story_id: args.story_id, tasks: [] };
-
-  const rows = args.tasks.map((t, i) => ({
-    story_id: args.story_id,
-    title: t.title,
-    is_done: t.done ?? false,
-    position: i,
-  }));
-  const { data, error } = await supabase.from("tasks").insert(rows).select("id, title, is_done, position");
+  // One RPC does the DELETE+INSERT atomically (a failed INSERT can't wipe the
+  // checklist) and lets tasks_position_seq assign position (TASK-71).
+  const { data, error } = await supabase.rpc("set_story_tasks", {
+    p_story_id: args.story_id,
+    p_tasks: args.tasks.map((t) => ({ title: t.title, is_done: t.done ?? false })),
+  });
   if (error) throw new Error(`Could not set tasks: ${error.message}`);
-  return { story_id: args.story_id, tasks: data };
+  return { story_id: args.story_id, tasks: data ?? [] };
 }
 
 export async function toggleStoryTask(supabase: Db, args: { task_id: string; done: boolean }) {

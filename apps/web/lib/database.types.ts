@@ -683,6 +683,26 @@ export type Database = {
         Args: { p_story_id: string; p_target_project_id: string }
         Returns: Json
       }
+      create_story_tracker: {
+        Args: {
+          p_description: string
+          p_epic_id: string
+          p_iteration_id: string
+          p_label_ids: string[]
+          p_points: number
+          p_project_id: string
+          p_state: string
+          p_story_type: string
+          p_title: string
+        }
+        Returns: {
+          id: string
+          iteration_id: string
+          number: number
+          state: string
+          title: string
+        }[]
+      }
       finalize_iteration: {
         Args: {
           p_iteration_id?: string
@@ -752,6 +772,27 @@ export type Database = {
           id: string
           username: string
         }[]
+      }
+      set_story_labels: {
+        Args: { p_label_ids: string[]; p_story_id: string }
+        Returns: undefined
+      }
+      set_story_tasks: {
+        Args: { p_story_id: string; p_tasks: Json }
+        Returns: {
+          created_at: string
+          id: string
+          is_done: boolean
+          position: number
+          story_id: string
+          title: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "tasks"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       shares_project_with: {
         Args: { p_target_user_id: string }
