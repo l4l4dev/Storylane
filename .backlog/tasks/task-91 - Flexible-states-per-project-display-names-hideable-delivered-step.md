@@ -1,11 +1,11 @@
 ---
 id: TASK-91
 title: 'State model rework: per-project custom states on fixed categories'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:05'
-updated_date: '2026-07-19 12:38'
+updated_date: '2026-07-19 13:03'
 labels:
   - web
   - db
@@ -26,12 +26,12 @@ doc-8 §2 (owner decision 2026-07-18: fully custom states, usability first; advi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 project_states + stories.state_id land with composite FK, immutable category, min-one trigger (concurrent-delete race covered by test), RLS per custom_statuses precedent; rls-security-reviewer pass
-- [ ] #2 set_story_state enforces estimation gate, done-iteration guard, and auto-assignment; any-to-any allowed; one-step ordering exists only in UI
+- [x] #1 project_states + stories.state_id land with composite FK, immutable category, min-one trigger (concurrent-delete race covered by test), RLS per custom_statuses precedent; rls-security-reviewer pass
+- [x] #2 set_story_state enforces estimation gate, done-iteration guard, and auto-assignment; any-to-any allowed; one-step ordering exists only in UI
 - [ ] #3 All state consumers re-anchored to categories; no code references state name literals; classic-template board renders identically to the pre-change Kanban (parity check recorded per ux-principles Wayback procedure)
-- [ ] #4 completed_at: set on entering done, cleared on leaving, preserved on done-to-done moves (tests)
+- [x] #4 completed_at: set on entering done, cleared on leaving, preserved on done-to-done moves (tests)
 - [ ] #5 Core pure functions data-driven with golden fixtures shared for iOS
-- [ ] #6 pnpm test passes
+- [x] #6 pnpm test passes
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -184,5 +184,10 @@ Also fixed in passing: IntegrationRow.config.merge_target_state_id type widened 
 Verification: apps/web 543/543 tests (incl. SUPABASE_INTEGRATION=1 integration suite), apps/mcp 21/21, packages/core 40/40, eslint clean, next build clean, local supabase db reset applies all migrations cleanly, rls-security-reviewer pass clean (no RLS/grant holes; the one note it raised — the guard-helper drift — was fixed).
 
 Not yet done: manual browser verification (deferred, this repo's convention — Mika verifies interactively) and a final fable-advisor design-principles pass for the UI-facing pieces (kanban drag behavior change, nullable merge-target select) per this repo's UI review workflow. Ready for commit review.
+---
+
+created: 2026-07-19 13:03
+---
+Added lib/utils/completed-at.integration.test.ts covering maintain_story_completed_at directly (enter-done sets it, leave-done clears it, done-to-done preserves it) — the trigger was already correctly re-anchored onto category by 20260719000008_reanchor_board_mechanics.sql, but had zero test coverage of this exact behavior before. 3/3 pass; full suite 546/546.
 ---
 <!-- COMMENTS:END -->
