@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-17 13:15'
-updated_date: '2026-07-18 23:59'
+updated_date: '2026-07-19 00:03'
 labels:
   - mcp
   - db
@@ -76,6 +76,8 @@ One duplication finding (permission gate and label-insert logic copy-pasted acro
 Verified against a REAL local Supabase (not sandboxed): supabase db reset applies all migrations cleanly; SUPABASE_INTEGRATION=1 vitest = 19/19 MCP integration tests, 506/506 web integration tests; pnpm -r run test = 415/415 unit tests (one transient/flaky failure on an intermediate run, confirmed non-reproducible on immediate re-run); tsc --noEmit clean; ESLint clean.
 
 feat/mcp-atomic-writes branch can now be deleted -- fully salvaged, nothing left to port.
+
+Follow-up filed as TASK-97 (the stale branch's own TASK-81 numbering collided with tasks created on main since the branch diverged): 'Add UNIQUE(project_id, name) to labels; make resolveLabelIds ON CONFLICT-based' — advisor-noted during the original TASK-71 work on the salvaged branch, low priority, race-condition hardening, out of scope for this task.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

@@ -1,0 +1,20 @@
+---
+id: TASK-97
+title: 'Add UNIQUE(project_id, name) to labels; make resolveLabelIds ON CONFLICT-based'
+status: To Do
+assignee:
+  - '@claude-sonnet-5'
+created_date: '2026-07-19 00:03'
+labels:
+  - mcp
+  - db
+dependencies: []
+priority: low
+ordinal: 68000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Advisor note during TASK-71: labels has no UNIQUE(project_id, name) constraint (20260627000003), so the MCP resolveLabelIds (apps/mcp/src/handlers.ts, select-then-insert) can create duplicate same-name labels under concurrency; the .order("id").limit(1) only masks the symptom. Add a UNIQUE(project_id, name) constraint via migration and rewrite label creation to be ON CONFLICT DO NOTHING / upsert-based so name resolution is race-free. Check the Web label-create paths for the same pattern. Mechanical, behavior-preserving.
+<!-- SECTION:DESCRIPTION:END -->
