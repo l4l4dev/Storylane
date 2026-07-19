@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:05'
-updated_date: '2026-07-19 13:03'
+updated_date: '2026-07-19 13:06'
 labels:
   - web
   - db
@@ -28,9 +28,9 @@ doc-8 §2 (owner decision 2026-07-18: fully custom states, usability first; advi
 <!-- AC:BEGIN -->
 - [x] #1 project_states + stories.state_id land with composite FK, immutable category, min-one trigger (concurrent-delete race covered by test), RLS per custom_statuses precedent; rls-security-reviewer pass
 - [x] #2 set_story_state enforces estimation gate, done-iteration guard, and auto-assignment; any-to-any allowed; one-step ordering exists only in UI
-- [ ] #3 All state consumers re-anchored to categories; no code references state name literals; classic-template board renders identically to the pre-change Kanban (parity check recorded per ux-principles Wayback procedure)
+- [x] #3 All state consumers re-anchored to categories; no code references state name literals; classic-template board renders identically to the pre-change Kanban (parity check recorded per ux-principles Wayback procedure)
 - [x] #4 completed_at: set on entering done, cleared on leaving, preserved on done-to-done moves (tests)
-- [ ] #5 Core pure functions data-driven with golden fixtures shared for iOS
+- [x] #5 Core pure functions data-driven with golden fixtures shared for iOS
 - [x] #6 pnpm test passes
 <!-- AC:END -->
 
@@ -189,5 +189,14 @@ Not yet done: manual browser verification (deferred, this repo's convention — 
 created: 2026-07-19 13:03
 ---
 Added lib/utils/completed-at.integration.test.ts covering maintain_story_completed_at directly (enter-done sets it, leave-done clears it, done-to-done preserves it) — the trigger was already correctly re-anchored onto category by 20260719000008_reanchor_board_mechanics.sql, but had zero test coverage of this exact behavior before. 3/3 pass; full suite 546/546.
+---
+
+created: 2026-07-19 13:06
+---
+AC#3/#5 re-verified this session (not just trusted from the handoff):
+- AC#5: packages/core/src/story-state.test.ts actually reads spec/fixtures/state-templates.json (golden fixture); computeStateGate has zero hardcoded state-name literals (grep confirmed, category+position only).
+- AC#3: grepped apps/web and apps/mcp non-test source for classic state name literals ('Unstarted'/'Started'/'Finished'/'Delivered'/'Accepted'/'Rejected') and old lowercase stories.state enum comparisons — zero hits. Visual parity claim itself (classic board byte-for-byte vs pre-concept-redesign tag) rests on the fable-advisor verdict already recorded above in this task's notes (MATCHES, verified against tag 5930e1f) — not independently re-screenshotted this session.
+- Also confirmed the two remaining minor review notes are addressed in current code: state-manager.tsx has reorderingId disabling the active row's arrows during a pending reorder; finish_story_from_git's v_target_category is null branch already no-ops on a dangling/stale merge_target_state_id.
+- Resolved the concurrent-session ambiguity noted above: no stash/branch/reflog trace of lost work exists. The prior session deliberately left Phase D uncommitted pending the owner-driven Codex pass; this session's fixes (in response to the owner pasting that same Codex review) are what ended up on disk, matching the fable-advisor-flagged corrections almost exactly. Nothing was clobbered.
 ---
 <!-- COMMENTS:END -->
