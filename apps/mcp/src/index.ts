@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { STORY_TRANSITION_ACTIONS } from "@storylane/core";
 import { createAgentClient } from "./client.js";
 import * as tools from "./handlers.js";
 
@@ -48,12 +47,12 @@ async function main() {
     "list_stories",
     {
       title: "List stories",
-      description: "Compact story rows (id, number, title, type, state, points, epic, labels), optionally filtered by state, iteration, epic, label, text, or zone (backlog/icebox/current).",
+      description: "Compact story rows (id, number, title, type, state, category, points, epic, labels), optionally filtered by state_id (null for the Icebox), iteration, epic, label, text, or zone (backlog/icebox/current). Read valid state_id values from board_summary.",
       inputSchema: {
         project_id: z.string().uuid(),
         filter: z
           .object({
-            state: z.string().optional(),
+            state_id: z.string().uuid().nullable().optional(),
             iteration_id: z.string().uuid().optional(),
             epic_id: z.string().uuid().optional(),
             label: z.string().optional(),
@@ -114,18 +113,16 @@ async function main() {
   );
 
   server.registerTool(
-    "transition_story",
+    "set_story_state",
     {
-      title: "Transition story",
-      description: "Advance a story through its lifecycle: start, finish, deliver, accept, reject, restart.",
+      title: "Set story state",
+      description: "Move a story to one of the project's states, addressed by state_id (or null for the Icebox). The DB allows any state to any state within the project — read valid state_id values (and their category/action_label) from board_summary.",
       inputSchema: {
         story_id: z.string().uuid(),
-        action: z.enum(STORY_TRANSITION_ACTIONS),
+        state_id: z.string().uuid().nullable(),
       },
     },
-    wrap((a: { story_id: string; action: (typeof STORY_TRANSITION_ACTIONS)[number] }) =>
-      tools.transitionStory(supabase, a),
-    ),
+    wrap((a: { story_id: string; state_id: string | null }) => tools.setStoryState(supabase, a)),
   );
 
   server.registerTool(

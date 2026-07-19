@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { calculateVelocity, type StoryTransitionAction } from "@storylane/core";
+import { calculateVelocity, shouldAssignCurrentIteration, type StateCategory } from "@storylane/core";
 
 // The MCP server talks to Supabase as an untyped client (it does not import
 // apps/web's generated Database type — that would couple the packages). Rows
@@ -51,6 +51,25 @@ async function currentIterationId(supabase: Db, projectId: string): Promise<stri
   const id = data?.[0]?.id as string | undefined;
   if (!id) throw new Error("This project has no active iteration to schedule into.");
   return id;
+}
+
+/**
+ * The project's lowest-position unstarted-category state — where a fresh
+ * backlog story lands. Resolved at runtime, never assumed to be a fixed
+ * template state: states are editable after project creation.
+ */
+async function unstartedStateId(supabase: Db, projectId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("project_states")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("category", "unstarted")
+    .order("position")
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`Could not resolve an unstarted state: ${error.message}`);
+  if (!data) throw new Error("This project has no unstarted-category state to land stories in.");
+  return data.id;
 }
 
 /**
@@ -147,6 +166,13 @@ export async function boardSummary(supabase: Db, args: { project_id: string }) {
   if (pErr) throw new Error(`Could not read project: ${pErr.message}`);
   if (!project) throw new Error(NOT_MEMBER);
 
+  const { data: states, error: sErr } = await supabase
+    .from("project_states")
+    .select("id, name, category, action_label")
+    .eq("project_id", project_id)
+    .order("position");
+  if (sErr) throw new Error(`Could not read states: ${sErr.message}`);
+
   const { data: iters } = await supabase
     .from("iterations")
     .select("id, number, goal, start_date, end_date, state")
@@ -165,16 +191,49 @@ export async function boardSummary(supabase: Db, args: { project_id: string }) {
     .limit(project.velocity_window);
   const velocity = calculateVelocity(doneIters ?? [], project.velocity_window);
 
-  const pointsByState: Record<string, number> = {};
-  const countsByState: Record<string, number> = {};
+  const pointsByStateId: Record<string, number> = {};
+  const countsByStateId: Record<string, number> = {};
   if (current) {
     const { data: stories } = await supabase
       .from("stories")
-      .select("state, points")
+      .select("state_id, points")
       .eq("iteration_id", current.id);
     for (const s of stories ?? []) {
-      pointsByState[s.state] = (pointsByState[s.state] ?? 0) + (s.points ?? 0);
-      countsByState[s.state] = (countsByState[s.state] ?? 0) + 1;
+      // Icebox (state_id null) never carries an iteration_id
+      // (spec/data-model.md "Backlog zone predicate"), so every row here has
+      // a real state_id — but guard defensively rather than assume.
+      if (!s.state_id) continue;
+      pointsByStateId[s.state_id] = (pointsByStateId[s.state_id] ?? 0) + (s.points ?? 0);
+      countsByStateId[s.state_id] = (countsByStateId[s.state_id] ?? 0) + 1;
+    }
+  }
+
+  // Every project state, not just ones with current-iteration stories — this
+  // is how the caller learns valid `state_id` targets for set_story_state
+  // (spec/mcp.md: "the caller reads valid states from board_summary").
+  const byState = (states ?? []).map((s) => ({
+    state_id: s.id,
+    name: s.name,
+    category: s.category,
+    action_label: s.action_label,
+    points: pointsByStateId[s.id] ?? 0,
+    count: countsByStateId[s.id] ?? 0,
+  }));
+  // The two reads above aren't transactional — a state created between them
+  // (a Settings-UI-only action, not an MCP tool, so this can only happen
+  // from a human editing states at the same moment) wouldn't appear in
+  // `states`. Fold any such orphaned points/count in rather than silently
+  // dropping them.
+  for (const stateId of Object.keys(pointsByStateId)) {
+    if (!byState.some((s) => s.state_id === stateId)) {
+      byState.push({
+        state_id: stateId,
+        name: "(unknown state)",
+        category: null,
+        action_label: null,
+        points: pointsByStateId[stateId],
+        count: countsByStateId[stateId] ?? 0,
+      });
     }
   }
 
@@ -183,20 +242,19 @@ export async function boardSummary(supabase: Db, args: { project_id: string }) {
       .from("stories")
       .select("id", { count: "exact", head: true })
       .eq("project_id", project_id)
-      .eq("state", "unstarted")
-      .is("iteration_id", null),
+      .is("iteration_id", null)
+      .not("state_id", "is", null),
     supabase
       .from("stories")
       .select("id", { count: "exact", head: true })
       .eq("project_id", project_id)
-      .eq("state", "unscheduled"),
+      .is("state_id", null),
   ]);
 
   return {
     current_iteration: current,
     velocity,
-    points_by_state: pointsByState,
-    counts_by_state: countsByState,
+    by_state: byState,
     backlog_count: backlogCount ?? 0,
     icebox_count: iceboxCount ?? 0,
   };
@@ -207,7 +265,8 @@ type StoryRow = {
   number: number;
   title: string;
   story_type: string;
-  state: string;
+  state_id: string | null;
+  state: { name: string; category: StateCategory; action_label: string | null } | null;
   points: number | null;
   epic: { name: string } | null;
   story_labels: { labels: { name: string } | null }[] | null;
@@ -219,7 +278,9 @@ function compactStory(row: StoryRow) {
     number: row.number,
     title: row.title,
     type: row.story_type,
-    state: row.state,
+    state_id: row.state_id,
+    state: row.state?.name ?? "Icebox",
+    category: row.state?.category ?? null,
     points: row.points,
     epic: row.epic?.name ?? null,
     labels: (row.story_labels ?? []).map((sl) => sl.labels?.name).filter(Boolean),
@@ -227,7 +288,7 @@ function compactStory(row: StoryRow) {
 }
 
 export type StoryFilter = {
-  state?: string;
+  state_id?: string | null;
   iteration_id?: string;
   epic_id?: string;
   label?: string;
@@ -235,23 +296,26 @@ export type StoryFilter = {
   zone?: "backlog" | "icebox" | "current";
 };
 
+const STATE_SELECT = "state_id, state:project_states(name, category, action_label)";
+
+const STORY_SELECT = `id, number, title, story_type, ${STATE_SELECT}, points, epic:epics(name), story_labels(labels(name))`;
+
 export async function listStories(supabase: Db, args: { project_id: string; filter?: StoryFilter }) {
   const { project_id, filter } = args;
 
-  let query = supabase
-    .from("stories")
-    .select("id, number, title, story_type, state, points, epic:epics(name), story_labels(labels(name))")
-    .eq("project_id", project_id);
+  let query = supabase.from("stories").select(STORY_SELECT).eq("project_id", project_id);
 
-  if (filter?.state) query = query.eq("state", filter.state);
+  if (filter?.state_id !== undefined) {
+    query = filter.state_id === null ? query.is("state_id", null) : query.eq("state_id", filter.state_id);
+  }
   if (filter?.epic_id) query = query.eq("epic_id", filter.epic_id);
   if (filter?.iteration_id) query = query.eq("iteration_id", filter.iteration_id);
   if (filter?.text) query = query.ilike("title", `%${filter.text}%`);
 
   if (filter?.zone === "backlog") {
-    query = query.eq("state", "unstarted").is("iteration_id", null);
+    query = query.is("iteration_id", null).not("state_id", "is", null);
   } else if (filter?.zone === "icebox") {
-    query = query.eq("state", "unscheduled");
+    query = query.is("state_id", null);
   } else if (filter?.zone === "current") {
     await ensureCurrentIteration(supabase, project_id);
     query = query.eq("iteration_id", await currentIterationId(supabase, project_id));
@@ -281,7 +345,7 @@ export async function getStory(supabase: Db, args: { story_id: string }) {
   const { data: raw, error } = await supabase
     .from("stories")
     .select(
-      "id, number, title, description, story_type, state, points, iteration_id, assignee_id, created_by, " +
+      `id, number, title, description, story_type, ${STATE_SELECT}, points, iteration_id, assignee_id, created_by, ` +
         "epic:epics(id, name), story_labels(labels(id, name, color)), " +
         "tasks(id, title, is_done, position), comments(id, body, author_id, created_at)",
     )
@@ -295,7 +359,8 @@ export async function getStory(supabase: Db, args: { story_id: string }) {
     title: string;
     description: string | null;
     story_type: string;
-    state: string;
+    state_id: string | null;
+    state: { name: string; category: StateCategory; action_label: string | null } | null;
     points: number | null;
     iteration_id: string | null;
     assignee_id: string | null;
@@ -318,7 +383,9 @@ export async function getStory(supabase: Db, args: { story_id: string }) {
     title: data.title,
     description: data.description,
     type: data.story_type,
-    state: data.state,
+    state_id: data.state_id,
+    state: data.state?.name ?? "Icebox",
+    category: data.state?.category ?? null,
     points: data.points,
     iteration_id: data.iteration_id,
     assignee_id: data.assignee_id,
@@ -349,11 +416,9 @@ export async function createStory(supabase: Db, args: CreateStoryArgs) {
   await assertWritableProject(supabase, args.project_id);
 
   const destination = args.destination ?? "backlog_bottom";
-  let state = "unstarted";
+  const stateId = destination === "icebox" ? null : await unstartedStateId(supabase, args.project_id);
   let iterationId: string | null = null;
-  if (destination === "icebox") {
-    state = "unscheduled";
-  } else if (destination === "current_iteration") {
+  if (destination === "current_iteration") {
     await ensureCurrentIteration(supabase, args.project_id);
     iterationId = await currentIterationId(supabase, args.project_id);
   }
@@ -384,7 +449,7 @@ export async function createStory(supabase: Db, args: CreateStoryArgs) {
   const { data, error } = await supabase.rpc("create_story_tracker", {
     p_project_id: args.project_id,
     p_title: args.title,
-    p_state: state,
+    p_state_id: stateId,
     p_iteration_id: iterationId,
     p_description: args.description ?? null,
     p_story_type: args.story_type ?? null,
@@ -443,41 +508,50 @@ export async function updateStory(supabase: Db, args: UpdateStoryArgs) {
   return { story_id: args.story_id, updated: true };
 }
 
-export async function transitionStory(supabase: Db, args: { story_id: string; action: StoryTransitionAction }) {
-  const projectId = await storyProjectId(supabase, args.story_id);
-  await assertWritableProject(supabase, projectId);
+export async function setStoryState(supabase: Db, args: { story_id: string; state_id: string | null }) {
+  const { data: story, error: readErr } = await supabase
+    .from("stories")
+    .select("project_id, iteration_id")
+    .eq("id", args.story_id)
+    .maybeSingle();
+  if (readErr) throw new Error(`Could not read story: ${readErr.message}`);
+  if (!story) throw new Error(NOT_MEMBER);
+  await assertWritableProject(supabase, story.project_id);
 
-  // Start/Restart may pull a backlog story into the current iteration (the RPC
-  // resolves it under a lock); roll a due iteration over first so it lands in
-  // the fresh one, not a stale past-due row (spec/mcp.md "Lazy rollover").
-  if (args.action === "start" || args.action === "restart") {
-    await ensureCurrentIteration(supabase, projectId);
+  if (args.state_id !== null) {
+    const { data: target, error: targetErr } = await supabase
+      .from("project_states")
+      .select("category")
+      .eq("id", args.state_id)
+      .eq("project_id", story.project_id)
+      .maybeSingle();
+    if (targetErr) throw new Error(`Could not read target state: ${targetErr.message}`);
+    // Entering an in_progress-category state from no iteration may pull a
+    // backlog story into the current one (the RPC resolves it under a lock)
+    // — roll a due iteration over first so it lands in the fresh one, not a
+    // stale past-due row (spec/mcp.md "Lazy rollover").
+    if (target && shouldAssignCurrentIteration(target.category as StateCategory, story.iteration_id !== null)) {
+      await ensureCurrentIteration(supabase, story.project_id);
+    }
   }
 
-  const { data, error } = await supabase.rpc("transition_story", {
+  const { data, error } = await supabase.rpc("set_story_state", {
     p_story_id: args.story_id,
-    p_action: args.action,
+    p_state_id: args.state_id,
   });
-  // The RPC raises self-explanatory messages (bad transition, unestimated
-  // feature) — surface them verbatim. Its own "not owner/author/assignee"
-  // denial text is stale since TASK-70 relaxed the underlying RLS policy
-  // (any member may write any story now); it only still surfaces for a
-  // viewer or a mid-request role-revocation race. Left as-is in the RPC —
-  // TASK-91 replaces this whole function with set_story_state.
+  // The RPC raises self-explanatory messages (bad target, unestimated
+  // feature, no active iteration) — surface them verbatim. Its own "not
+  // allowed to change this story's state" denial only fires for a viewer or
+  // a mid-request role-revocation race (TASK-70 relaxed the underlying RLS
+  // policy so any member may write any story).
   if (error) throw new Error(error.message);
   return data;
 }
 
-const MOVE_ZONES = {
-  backlog: { state: "unstarted", iteration: "none" as const, requiresUnstarted: true },
-  icebox: { state: "unscheduled", iteration: "none" as const, requiresUnstarted: true },
-  current_iteration: { state: "unstarted", iteration: "current" as const, requiresUnstarted: true },
-};
-
-export async function moveStory(supabase: Db, args: { story_id: string; destination: keyof typeof MOVE_ZONES }) {
+export async function moveStory(supabase: Db, args: { story_id: string; destination: "current_iteration" | "backlog" | "icebox" }) {
   const { data: story, error: readErr } = await supabase
     .from("stories")
-    .select("project_id, state, iteration_id, focus")
+    .select("project_id, state_id, iteration_id, focus")
     .eq("id", args.story_id)
     .maybeSingle();
   if (readErr) throw new Error(`Could not read story: ${readErr.message}`);
@@ -486,15 +560,22 @@ export async function moveStory(supabase: Db, args: { story_id: string; destinat
   await assertWritableProject(supabase, story.project_id);
   await ensureCurrentIteration(supabase, story.project_id);
 
-  const zone = MOVE_ZONES[args.destination];
   // Only pre-start work moves between these scheduling zones (mirrors
-  // kanban.ts evaluateDrop's scheduling branches); a started/finished/… story
-  // changes zone via transition_story, not move_story.
-  if (zone.requiresUnstarted && !(story.state === "unstarted" || story.state === "unscheduled")) {
+  // kanban.ts evaluateDrop's scheduling branches); a story already past
+  // unstarted changes zone via set_story_state, not move_story.
+  let currentCategory: StateCategory | null = null;
+  if (story.state_id !== null) {
+    const { data: cur } = await supabase.from("project_states").select("category").eq("id", story.state_id).maybeSingle();
+    currentCategory = (cur?.category as StateCategory | undefined) ?? null;
+  }
+  if (currentCategory !== null && currentCategory !== "unstarted") {
     throw new Error(
-      `Only unstarted or icebox stories can move between scheduling zones; this story is '${story.state}'. Use transition_story instead.`,
+      "Only unstarted or icebox stories can move between scheduling zones; this story has already started. Use set_story_state instead.",
     );
   }
+
+  const targetStateId = args.destination === "icebox" ? null : await unstartedStateId(supabase, story.project_id);
+  const targetIteration = args.destination === "current_iteration" ? "current" : "none";
 
   // move_story_board (SECURITY DEFINER) re-checks membership, resolves the
   // current iteration under the finalize+positions locks, and appends to the
@@ -506,11 +587,11 @@ export async function moveStory(supabase: Db, args: { story_id: string; destinat
     p_item: { kind: "story", id: args.story_id },
     p_view: "tracker",
     p_expected: {
-      state: story.state,
+      state_id: story.state_id,
       iteration_id: story.iteration_id,
       focus: story.focus,
     },
-    p_deltas: { state: zone.state, iteration: zone.iteration },
+    p_deltas: { state_id: targetStateId, iteration: targetIteration },
     p_anchor: {},
   });
   if (error) {

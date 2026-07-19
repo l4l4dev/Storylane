@@ -54,12 +54,12 @@ than Node type-stripping — see TASK-68.)
 
 | Tool | Kind | Notes |
 |---|---|---|
-| `board_summary` | read | current iteration, points/counts by state, velocity, backlog/icebox counts |
-| `list_stories` | read | filter by state, iteration, epic, label, text, or zone |
+| `board_summary` | read | current iteration, velocity, backlog/icebox counts, and every project state (id, name, category, action_label) with its points/counts — the source of valid `state_id` values for `set_story_state` |
+| `list_stories` | read | filter by `state_id` (nullable, for the Icebox), iteration, epic, label, text, or zone |
 | `get_story` | read | description, tasks, comments, labels, recent activity |
 | `create_story` | write | lands at the bottom of `backlog_bottom` \| `icebox` \| `current_iteration` |
 | `update_story` | write | partial update of the passed fields only |
-| `transition_story` | write | start / finish / deliver / accept / reject / restart |
+| `set_story_state` | write | move to any of the project's states by `state_id` (or `null` for the Icebox) |
 | `move_story` | write | to the bottom of the current iteration, backlog, or icebox |
 | `add_comment` | write | comment on a story |
 | `set_story_tasks` | write | replace a story's checklist |

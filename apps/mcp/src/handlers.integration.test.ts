@@ -22,6 +22,9 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
   let outsideProjectId: string; // bot is NOT a member
   let ownerStoryId: string; // authored by owner; bot is a plain member, neither author nor assignee
   let botStoryId: string;
+  // classic-template state ids, keyed by name (the auto-seed trigger gives
+  // every fresh project this template by default).
+  let states: Record<"Unstarted" | "Started" | "Finished" | "Delivered" | "Accepted" | "Rejected", string>;
 
   beforeAll(async () => {
     if (!process.env.SUPABASE_URL) {
@@ -70,6 +73,9 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     if (projErr || !proj) throw new Error(`Project create failed: ${projErr?.message}`);
     projectId = proj.id;
 
+    const { data: stateRows } = await admin.from("project_states").select("id, name").eq("project_id", projectId);
+    states = Object.fromEntries((stateRows ?? []).map((s) => [s.name, s.id])) as typeof states;
+
     const { error: inviteErr } = await owner.rpc("invite_member", {
       p_project_id: projectId,
       p_user_id: botUserId,
@@ -85,13 +91,13 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     if (outErr || !outside) throw new Error(`Outside project create failed: ${outErr?.message}`);
     outsideProjectId = outside.id;
 
-    // A story authored by the owner, estimated so a transition attempt reaches
-    // the state machine (not the unestimated-feature guard). Used to prove the
-    // bot (a plain member, neither author nor assignee) can still write it
-    // (TASK-70: any member may operate any story).
+    // A story authored by the owner, estimated so a state change attempt
+    // reaches the RPC's guards (not the unestimated-feature gate). Used to
+    // prove the bot (a plain member, neither author nor assignee) can still
+    // write it (TASK-70: any member may operate any story).
     const { data: ownerStory, error: osErr } = await owner
       .from("stories")
-      .insert({ project_id: projectId, title: "owner's story", story_type: "feature", points: 2, state: "unstarted" })
+      .insert({ project_id: projectId, title: "owner's story", story_type: "feature", points: 2, state_id: states.Unstarted })
       .select("id")
       .single();
     if (osErr || !ownerStory) throw new Error(`Owner story create failed: ${osErr?.message}`);
@@ -106,14 +112,24 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
 
   // ── Happy paths ────────────────────────────────────────────────────────
 
-  it("board_summary bootstraps and reads the current iteration", async () => {
+  it("board_summary bootstraps and reads the current iteration, and lists valid states", async () => {
     const summary = (await tools.boardSummary(bot, { project_id: projectId })) as {
       current_iteration: { number: number } | null;
       velocity: number;
       backlog_count: number;
+      by_state: { state_id: string; name: string; category: string }[];
     };
     expect(summary.current_iteration?.number).toBe(1);
     expect(summary.velocity).toBe(0);
+    expect(summary.by_state.map((s) => s.name)).toEqual([
+      "Unstarted",
+      "Started",
+      "Finished",
+      "Delivered",
+      "Accepted",
+      "Rejected",
+    ]);
+    expect(summary.by_state.find((s) => s.state_id === states.Started)?.category).toBe("in_progress");
   });
 
   it("create_story lands a story in the backlog", async () => {
@@ -121,8 +137,8 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
       project_id: projectId,
       title: "bot backlog story",
       story_type: "feature",
-    })) as { id: string; number: number; state: string; iteration_id: string | null };
-    expect(story.state).toBe("unstarted");
+    })) as { id: string; number: number; state_id: string; iteration_id: string | null };
+    expect(story.state_id).toBe(states.Unstarted);
     expect(story.iteration_id).toBeNull();
     expect(story.number).toBeGreaterThan(0);
     botStoryId = story.id;
@@ -144,6 +160,17 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
       filter: { text: "backlog story" },
     })) as { id: string; title: string }[];
     expect(rows.some((r) => r.id === botStoryId)).toBe(true);
+  });
+
+  it("list_stories filters by state_id and resolves the state's name/category", async () => {
+    const rows = (await tools.listStories(bot, {
+      project_id: projectId,
+      filter: { state_id: states.Unstarted },
+    })) as { id: string; state: string; category: string }[];
+    expect(rows.some((r) => r.id === botStoryId)).toBe(true);
+    const row = rows.find((r) => r.id === botStoryId);
+    expect(row?.state).toBe("Unstarted");
+    expect(row?.category).toBe("unstarted");
   });
 
   it("update_story edits fields the bot authored", async () => {
@@ -171,54 +198,51 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     expect(comment.id).toBeTruthy();
   });
 
-  it("transition_story advances the lifecycle and schedules a backlog story", async () => {
-    const started = (await tools.transitionStory(bot, { story_id: botStoryId, action: "start" })) as {
-      state: string;
+  it("set_story_state advances the lifecycle and schedules a backlog story", async () => {
+    const started = (await tools.setStoryState(bot, { story_id: botStoryId, state_id: states.Started })) as {
+      state_id: string;
     };
-    expect(started.state).toBe("started");
+    expect(started.state_id).toBe(states.Started);
     const story = (await tools.getStory(bot, { story_id: botStoryId })) as { iteration_id: string | null };
     expect(story.iteration_id).not.toBeNull();
 
-    await tools.transitionStory(bot, { story_id: botStoryId, action: "finish" });
-    await tools.transitionStory(bot, { story_id: botStoryId, action: "deliver" });
-    const accepted = (await tools.transitionStory(bot, { story_id: botStoryId, action: "accept" })) as {
-      state: string;
+    await tools.setStoryState(bot, { story_id: botStoryId, state_id: states.Finished });
+    await tools.setStoryState(bot, { story_id: botStoryId, state_id: states.Delivered });
+    const accepted = (await tools.setStoryState(bot, { story_id: botStoryId, state_id: states.Accepted })) as {
+      state_id: string;
     };
-    expect(accepted.state).toBe("accepted");
+    expect(accepted.state_id).toBe(states.Accepted);
   });
 
-  it("transition_story serializes concurrent accept/reject (no lost update)", async () => {
-    // A bug needs no estimate, so it can walk straight to 'delivered'.
+  it("set_story_state serializes concurrent state changes on the same story (no lost update)", async () => {
+    // A bug needs no estimate, so it can walk straight to Delivered.
     const story = (await tools.createStory(bot, {
       project_id: projectId,
       title: "contended story",
       story_type: "bug",
     })) as { id: string };
-    await tools.transitionStory(bot, { story_id: story.id, action: "start" });
-    await tools.transitionStory(bot, { story_id: story.id, action: "finish" });
-    await tools.transitionStory(bot, { story_id: story.id, action: "deliver" });
+    await tools.setStoryState(bot, { story_id: story.id, state_id: states.Started });
+    await tools.setStoryState(bot, { story_id: story.id, state_id: states.Finished });
+    await tools.setStoryState(bot, { story_id: story.id, state_id: states.Delivered });
 
-    // Fire accept and reject at the same time. Both read 'delivered', both are
-    // individually valid — without FOR UPDATE both UPDATEs commit and the last
-    // writer silently wins. FOR UPDATE forces one to block, re-read the now-
-    // committed state, and fail the state-machine check.
+    // Fire two different target states at the same time. Both reads see
+    // 'delivered'; without FOR UPDATE both UPDATEs commit and the last
+    // writer silently wins. set_story_state's FOR UPDATE forces one to
+    // block, re-read the now-committed state, and — since any->any is
+    // legal — both actually succeed serially rather than one being
+    // rejected; what must NOT happen is the row ending up in neither
+    // target (a torn write).
     const results = await Promise.allSettled([
-      tools.transitionStory(bot, { story_id: story.id, action: "accept" }),
-      tools.transitionStory(bot, { story_id: story.id, action: "reject" }),
+      tools.setStoryState(bot, { story_id: story.id, state_id: states.Accepted }),
+      tools.setStoryState(bot, { story_id: story.id, state_id: states.Rejected }),
     ]);
-    const fulfilled = results.filter((r) => r.status === "fulfilled");
-    const rejected = results.filter((r) => r.status === "rejected");
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
-    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
-      message: expect.stringMatching(/cannot "(accept|reject)"/i),
-    });
+    const fulfilled = results.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<{ state_id: string }>[];
+    expect(fulfilled).toHaveLength(2);
 
-    // The persisted state is exactly the winner's target — not a mix.
-    const final = (await tools.getStory(bot, { story_id: story.id })) as { state: string };
-    const winner = (fulfilled[0] as PromiseFulfilledResult<{ state: string }>).value;
-    expect(final.state).toBe(winner.state);
-    expect(["accepted", "rejected"]).toContain(final.state);
+    // The persisted state is exactly the LAST writer's target — not a mix —
+    // proving the lock serialized rather than let both race onto a shared read.
+    const final = (await tools.getStory(bot, { story_id: story.id })) as { state_id: string };
+    expect([states.Accepted, states.Rejected]).toContain(final.state_id);
   });
 
   it("move_story reschedules an unstarted story to a zone bottom", async () => {
@@ -227,9 +251,23 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     };
     await tools.moveStory(bot, { story_id: story.id, destination: "current_iteration" });
     await tools.moveStory(bot, { story_id: story.id, destination: "icebox" });
-    const moved = (await tools.getStory(bot, { story_id: story.id })) as { state: string; iteration_id: string | null };
-    expect(moved.state).toBe("unscheduled");
+    const moved = (await tools.getStory(bot, { story_id: story.id })) as { state_id: string | null; iteration_id: string | null };
+    expect(moved.state_id).toBeNull();
     expect(moved.iteration_id).toBeNull();
+  });
+
+  it("move_story refuses a story that has already started", async () => {
+    // A chore needs no estimate, so it can enter Started without tripping
+    // the unestimated-feature gate.
+    const story = (await tools.createStory(bot, {
+      project_id: projectId,
+      title: "already started story",
+      story_type: "chore",
+    })) as { id: string };
+    await tools.setStoryState(bot, { story_id: story.id, state_id: states.Started });
+    await expect(tools.moveStory(bot, { story_id: story.id, destination: "icebox" })).rejects.toThrow(
+      /already started/i,
+    );
   });
 
   // ── Atomic write paths (TASK-71) ────────────────────────────────────────
@@ -298,7 +336,7 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     const { error } = await bot.rpc("create_story_tracker", {
       p_project_id: projectId,
       p_title: title,
-      p_state: "unstarted",
+      p_state_id: states.Unstarted,
       p_iteration_id: null,
       p_description: null,
       p_story_type: "feature",
@@ -357,12 +395,12 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     expect(result.updated).toBe(true);
   });
 
-  it("transition_story succeeds on someone else's story (TASK-70: any member may transition any story)", async () => {
-    const result = (await tools.transitionStory(bot, { story_id: ownerStoryId, action: "start" })) as {
+  it("set_story_state succeeds on someone else's story (TASK-70: any member may change any story's state)", async () => {
+    const result = (await tools.setStoryState(bot, { story_id: ownerStoryId, state_id: states.Started })) as {
       story_id: string;
-      state: string;
+      state_id: string;
     };
-    expect(result.state).toBe("started");
+    expect(result.state_id).toBe(states.Started);
   });
 
   it("writing to a project the bot is not a member of is denied", async () => {
@@ -371,5 +409,4 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
       tools.createStory(bot, { project_id: outsideProjectId, title: "sneaky" }),
     ).rejects.toThrow(/not a member/i);
   });
-
 });
