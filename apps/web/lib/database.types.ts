@@ -423,6 +423,44 @@ export type Database = {
           },
         ]
       }
+      project_states: {
+        Row: {
+          action_label: string | null
+          category: string
+          created_at: string
+          id: string
+          name: string
+          position: number
+          project_id: string
+        }
+        Insert: {
+          action_label?: string | null
+          category: string
+          created_at?: string
+          id?: string
+          name: string
+          position?: number
+          project_id: string
+        }
+        Update: {
+          action_label?: string | null
+          category?: string
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_states_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           archived_at: string | null
@@ -434,6 +472,7 @@ export type Database = {
           iteration_length: number
           name: string
           point_scale: string
+          state_template: string
           updated_at: string
           velocity_window: number
         }
@@ -447,6 +486,7 @@ export type Database = {
           iteration_length?: number
           name: string
           point_scale?: string
+          state_template?: string
           updated_at?: string
           velocity_window?: number
         }
@@ -460,6 +500,7 @@ export type Database = {
           iteration_length?: number
           name?: string
           point_scale?: string
+          state_template?: string
           updated_at?: string
           velocity_window?: number
         }
@@ -479,7 +520,6 @@ export type Database = {
           completed_at: string | null
           created_at: string
           created_by: string
-          custom_status_id: string | null
           description: string | null
           epic_id: string | null
           focus: string | null
@@ -489,9 +529,8 @@ export type Database = {
           points: number | null
           position: number
           project_id: string
-          state: string
+          state_id: string | null
           story_type: string
-          swimlane_id: string | null
           title: string
           updated_at: string
         }
@@ -500,7 +539,6 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           created_by?: string
-          custom_status_id?: string | null
           description?: string | null
           epic_id?: string | null
           focus?: string | null
@@ -510,9 +548,8 @@ export type Database = {
           points?: number | null
           position?: number
           project_id: string
-          state?: string
+          state_id?: string | null
           story_type?: string
-          swimlane_id?: string | null
           title: string
           updated_at?: string
         }
@@ -521,7 +558,6 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           created_by?: string
-          custom_status_id?: string | null
           description?: string | null
           epic_id?: string | null
           focus?: string | null
@@ -531,9 +567,8 @@ export type Database = {
           points?: number | null
           position?: number
           project_id?: string
-          state?: string
+          state_id?: string | null
           story_type?: string
-          swimlane_id?: string | null
           title?: string
           updated_at?: string
         }
@@ -572,6 +607,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stories_state_project_fkey"
+            columns: ["state_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "project_states"
+            referencedColumns: ["id", "project_id"]
           },
         ]
       }
@@ -691,7 +733,7 @@ export type Database = {
           p_label_ids: string[]
           p_points: number
           p_project_id: string
-          p_state: string
+          p_state_id: string
           p_story_type: string
           p_title: string
         }
@@ -699,7 +741,7 @@ export type Database = {
           id: string
           iteration_id: string
           number: number
-          state: string
+          state_id: string
           title: string
         }[]
       }
@@ -773,9 +815,17 @@ export type Database = {
           username: string
         }[]
       }
+      seed_project_states: {
+        Args: { p_project_id: string; p_template: string }
+        Returns: undefined
+      }
       set_story_labels: {
         Args: { p_label_ids: string[]; p_story_id: string }
         Returns: undefined
+      }
+      set_story_state: {
+        Args: { p_state_id: string; p_story_id: string }
+        Returns: Json
       }
       set_story_tasks: {
         Args: { p_story_id: string; p_tasks: Json }
@@ -801,10 +851,6 @@ export type Database = {
       toggle_project_favorite: {
         Args: { p_favorite: boolean; p_project_id: string }
         Returns: undefined
-      }
-      transition_story: {
-        Args: { p_action: string; p_story_id: string }
-        Returns: Json
       }
       update_story: {
         Args: {

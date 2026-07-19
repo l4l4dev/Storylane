@@ -2,11 +2,14 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // TASK-13 AC #5: exercises the real `promote_story_to_epic` RPC
-// (supabase/migrations/20260710000001_promote_story_to_epic.sql) against a
-// running local Supabase instance, following the precedent set by
-// recurring.integration.test.ts for RPC-level guarantees a pure-TS unit test
-// can't cover (position-shift atomicity, the done-iteration guard, owner-only
-// permission, concurrent-promote serialization).
+// (current definition: supabase/migrations/20260719000011_reanchor_story_ops.sql,
+// re-anchored onto stories.state_id by TASK-91 — spawned task-stories always
+// land in the Icebox, doc-8's Icebox=NULL rule, regardless of the promoted
+// story's own state) against a running local Supabase instance, following
+// the precedent set by recurring.integration.test.ts for RPC-level
+// guarantees a pure-TS unit test can't cover (position-shift atomicity, the
+// done-iteration guard, owner-only permission, concurrent-promote
+// serialization).
 //
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/promote.integration.test.ts
 //
@@ -18,6 +21,7 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
   let supabase: SupabaseClient;
   let admin: SupabaseClient;
   let projectId: string;
+  let unstartedStateId: string;
 
   beforeAll(async () => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -57,6 +61,14 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
       throw new Error(`Failed to create test project: ${projectError?.message}`);
     }
     projectId = project.id;
+
+    const { data: unstarted } = await supabase
+      .from("project_states")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("category", "unstarted")
+      .single();
+    unstartedStateId = unstarted!.id;
   });
 
   afterAll(async () => {
@@ -79,6 +91,7 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
         story_type: "feature",
         points: 8,
         position: position + 1,
+        state_id: unstartedStateId,
         ...overrides,
       })
       .select("id, position")
@@ -90,9 +103,9 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
   }
 
   it("promotes a story with tasks into an epic, preserving task order at the original position (AC #2, #3)", async () => {
-    const before = await createStory({ title: "Before sibling", state: "unstarted" });
-    const target = await createStory({ title: "Story with tasks", state: "unstarted" });
-    const after = await createStory({ title: "After sibling", state: "unstarted" });
+    const before = await createStory({ title: "Before sibling" });
+    const target = await createStory({ title: "Story with tasks" });
+    const after = await createStory({ title: "After sibling" });
 
     const { data: label } = await supabase
       .from("labels")
@@ -116,14 +129,14 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
 
     const { data: newStories } = await supabase
       .from("stories")
-      .select("id, title, story_type, points, state, epic_id, position, story_labels(label_id)")
+      .select("id, title, story_type, points, state_id, epic_id, position, story_labels(label_id)")
       .in("id", result.story_ids)
       .order("position");
     expect(newStories?.map((s) => s.title)).toEqual(["task A", "task B"]);
     for (const s of newStories ?? []) {
       expect(s.story_type).toBe("feature");
       expect(s.points).toBeNull();
-      expect(s.state).toBe("unstarted");
+      expect(s.state_id).toBeNull(); // spawned stories always land Icebox (doc-8)
       expect(s.epic_id).toBe(result.epic_id);
       expect((s.story_labels as { label_id: string }[]).map((l) => l.label_id)).toEqual([label!.id]);
     }
@@ -161,7 +174,7 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
     async function createSequenced(title: string) {
       const { data, error } = await supabase
         .from("stories")
-        .insert({ project_id: projectId, title, story_type: "feature", state: "unstarted" })
+        .insert({ project_id: projectId, title, story_type: "feature", state_id: unstartedStateId })
         .select("id, position")
         .single();
       if (error || !data) throw new Error(`Failed to create story: ${error?.message}`);
@@ -256,19 +269,19 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
     expect(comments).toHaveLength(0);
   });
 
-  it("keeps a story unscheduled (icebox) after promotion instead of jumping to the backlog", async () => {
-    const story = await createStory({ title: "Icebox story", state: "unscheduled" });
+  it("keeps a story's promoted children in the Icebox when the original was already there", async () => {
+    const story = await createStory({ title: "Icebox story", state_id: null });
     await supabase.from("tasks").insert({ story_id: story.id, title: "only task", position: 0 });
 
     const { data, error } = await supabase.rpc("promote_story_to_epic", { p_story_id: story.id });
     expect(error).toBeNull();
     const result = data as { epic_id: string; story_ids: string[] };
 
-    const { data: newStory } = await supabase.from("stories").select("state").eq("id", result.story_ids[0]).single();
-    expect(newStory?.state).toBe("unscheduled");
+    const { data: newStory } = await supabase.from("stories").select("state_id").eq("id", result.story_ids[0]).single();
+    expect(newStory?.state_id).toBeNull();
   });
 
-  it("drops a done-iteration story's promoted children back to the backlog instead of raising", async () => {
+  it("drops a done-iteration story's promoted children back to the Icebox instead of raising", async () => {
     // Attach the story while the iteration is still active — the
     // reject-done-iteration-insert trigger only blocks INSERTs pointed at an
     // *already*-done iteration, which isn't how this happens in practice:
@@ -289,10 +302,17 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
       throw new Error(`Failed to create test iteration: ${iterationError?.message}`);
     }
 
+    const { data: accepted } = await supabase
+      .from("project_states")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("category", "done")
+      .single();
+
     const story = await createStory({
       title: "Accepted in a done iteration",
       iteration_id: iteration.id,
-      state: "accepted",
+      state_id: accepted!.id,
     });
     await supabase.from("tasks").insert({ story_id: story.id, title: "leftover task", position: 0 });
 
@@ -310,11 +330,11 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
 
     const { data: newStory } = await supabase
       .from("stories")
-      .select("iteration_id, state")
+      .select("iteration_id, state_id")
       .eq("id", result.story_ids[0])
       .single();
     expect(newStory?.iteration_id).toBeNull();
-    expect(newStory?.state).toBe("unstarted");
+    expect(newStory?.state_id).toBeNull();
   });
 
   it("serializes concurrent promotes of two different stories in the same project without deadlocking", async () => {

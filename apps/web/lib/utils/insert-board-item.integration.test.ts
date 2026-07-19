@@ -17,6 +17,7 @@ describe.skipIf(!RUN)("insert_board_item RPC (integration)", () => {
   let asService: SupabaseClient; // service role: fixtures + reads
   let projectId: string;
   let ownerId: string;
+  let unstartedStateId: string;
 
   beforeAll(async () => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -52,6 +53,14 @@ describe.skipIf(!RUN)("insert_board_item RPC (integration)", () => {
       throw new Error(`Failed to create test project: ${projectError?.message}`);
     }
     projectId = project.id;
+
+    const { data: unstarted } = await asService
+      .from("project_states")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("category", "unstarted")
+      .single();
+    unstartedStateId = unstarted!.id;
   });
 
   afterAll(async () => {
@@ -69,7 +78,7 @@ describe.skipIf(!RUN)("insert_board_item RPC (integration)", () => {
   async function seedBacklog(): Promise<{ s0: string; d: string; s1: string }> {
     const { data: s0 } = await asService
       .from("stories")
-      .insert({ project_id: projectId, title: "s0", state: "unstarted", iteration_id: null, position: 0, created_by: ownerId })
+      .insert({ project_id: projectId, title: "s0", state_id: unstartedStateId, iteration_id: null, position: 0, created_by: ownerId })
       .select("id")
       .single();
     const { data: d } = await asService
@@ -79,7 +88,7 @@ describe.skipIf(!RUN)("insert_board_item RPC (integration)", () => {
       .single();
     const { data: s1 } = await asService
       .from("stories")
-      .insert({ project_id: projectId, title: "s1", state: "unstarted", iteration_id: null, position: 2, created_by: ownerId })
+      .insert({ project_id: projectId, title: "s1", state_id: unstartedStateId, iteration_id: null, position: 2, created_by: ownerId })
       .select("id")
       .single();
     return { s0: s0!.id, d: d!.id, s1: s1!.id };
@@ -88,7 +97,7 @@ describe.skipIf(!RUN)("insert_board_item RPC (integration)", () => {
   // The whole backlog (stories with no iteration + all dividers) by position.
   async function backlogOrder(): Promise<BacklogRow[]> {
     const [{ data: stories }, { data: dividers }] = await Promise.all([
-      asService.from("stories").select("id, position").eq("project_id", projectId).is("iteration_id", null).neq("state", "unscheduled"),
+      asService.from("stories").select("id, position").eq("project_id", projectId).is("iteration_id", null).not("state_id", "is", null),
       asService.from("backlog_dividers").select("id, position").eq("project_id", projectId),
     ]);
     return [
@@ -158,9 +167,15 @@ describe.skipIf(!RUN)("insert_board_item RPC (integration)", () => {
       .insert({ name: "other project" })
       .select("id")
       .single();
+    const { data: foreignUnstarted } = await asService
+      .from("project_states")
+      .select("id")
+      .eq("project_id", other!.id)
+      .eq("category", "unstarted")
+      .single();
     const { data: foreign } = await asOwner
       .from("stories")
-      .insert({ project_id: other!.id, title: "foreign", state: "unstarted", iteration_id: null, position: 0 })
+      .insert({ project_id: other!.id, title: "foreign", state_id: foreignUnstarted!.id, iteration_id: null, position: 0 })
       .select("id")
       .single();
 

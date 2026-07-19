@@ -2,15 +2,16 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // TASK-56: the transactional board move + reorder RPC (move_story_board,
-// 20260715000008). Exercises the RPC directly to prove the properties the
-// per-action Promise.all pattern could not guarantee: an atomic dense
-// resequence, a stale-snapshot rejection, current-iteration re-resolution
-// under the lock, and the two-table backlog splice.
+// 20260715000008, re-anchored onto stories.state_id by TASK-91). Exercises
+// the RPC directly to prove the properties the per-action Promise.all
+// pattern could not guarantee: an atomic dense resequence, a
+// stale-snapshot rejection, current-iteration re-resolution under the
+// lock, and the two-table backlog splice.
 //
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/move-story-board.integration.test.ts
 const RUN = process.env.SUPABASE_INTEGRATION === "1";
 
-type StoryRow = { id: string; position: number; state: string; iteration_id: string | null };
+type StoryRow = { id: string; position: number; state_id: string | null; iteration_id: string | null };
 
 describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
   let asOwner: SupabaseClient; // dev user, project owner
@@ -18,6 +19,8 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
   let projectId: string;
   let iterationId: string;
   let ownerId: string;
+  // classic-template state ids, resolved once the project exists.
+  let states: Record<"Unstarted" | "Started" | "Finished" | "Delivered" | "Accepted" | "Rejected", string>;
 
   beforeAll(async () => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -53,6 +56,9 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       throw new Error(`Failed to create test project: ${projectError?.message}`);
     }
     projectId = project.id;
+
+    const { data: stateRows } = await asService.from("project_states").select("id, name").eq("project_id", projectId);
+    states = Object.fromEntries((stateRows ?? []).map((s) => [s.name, s.id])) as typeof states;
   });
 
   afterAll(async () => {
@@ -62,7 +68,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
   });
 
   // Fresh iteration + stories per test so ordering assertions don't bleed.
-  async function seedCurrentIteration(stories: { state: string; position: number }[]): Promise<string[]> {
+  async function seedCurrentIteration(stories: { stateId: string; position: number }[]): Promise<string[]> {
     await asService.from("stories").delete().eq("project_id", projectId);
     await asService.from("iterations").delete().eq("project_id", projectId);
     const { data: iter, error: iterError } = await asService
@@ -78,7 +84,15 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
     for (const s of stories) {
       const { data, error } = await asService
         .from("stories")
-        .insert({ project_id: projectId, title: `s${s.position}`, state: s.state, iteration_id: iterationId, position: s.position, created_by: ownerId })
+        .insert({
+          project_id: projectId,
+          title: `s${s.position}`,
+          state_id: s.stateId,
+          points: 2,
+          iteration_id: iterationId,
+          position: s.position,
+          created_by: ownerId,
+        })
         .select("id")
         .single();
       if (error || !data) {
@@ -97,16 +111,16 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
 
   it("reorders a column densely and atomically (AC #1)", async () => {
     const [a, b, c] = await seedCurrentIteration([
-      { state: "started", position: 0 },
-      { state: "started", position: 1 },
-      { state: "started", position: 2 },
+      { stateId: states.Started, position: 0 },
+      { stateId: states.Started, position: 1 },
+      { stateId: states.Started, position: 2 },
     ]);
     // Move c before a → expected order c, a, b.
     const { error } = await asOwner.rpc("move_story_board", {
       p_project_id: projectId,
       p_item: { kind: "story", id: c },
       p_view: "tracker",
-      p_expected: { state: "started", iteration_id: iterationId, focus: null },
+      p_expected: { state_id: states.Started, iteration_id: iterationId, focus: null },
       p_deltas: {},
       p_anchor: { before: { kind: "story", id: a } },
     });
@@ -116,70 +130,70 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
 
   it("applies a state transition and reseats the story in the target column", async () => {
     const [a] = await seedCurrentIteration([
-      { state: "started", position: 0 },
-      { state: "finished", position: 0 },
+      { stateId: states.Started, position: 0 },
+      { stateId: states.Finished, position: 0 },
     ]);
     const { error } = await asOwner.rpc("move_story_board", {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state: "started", iteration_id: iterationId, focus: null },
-      p_deltas: { state: "finished" },
+      p_expected: { state_id: states.Started, iteration_id: iterationId, focus: null },
+      p_deltas: { state_id: states.Finished },
       p_anchor: {}, // append to the finished column
     });
     expect(error).toBeNull();
-    const { data } = await asService.from("stories").select("state").eq("id", a).single();
-    expect((data as { state: string }).state).toBe("finished");
+    const { data } = await asService.from("stories").select("state_id").eq("id", a).single();
+    expect((data as { state_id: string }).state_id).toBe(states.Finished);
   });
 
   it("rejects a move whose snapshot no longer matches (AC #2, stale)", async () => {
-    const [a] = await seedCurrentIteration([{ state: "started", position: 0 }]);
+    const [a] = await seedCurrentIteration([{ stateId: states.Started, position: 0 }]);
     const { error } = await asOwner.rpc("move_story_board", {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state: "unstarted", iteration_id: iterationId, focus: null },
-      p_deltas: { state: "finished" },
+      p_expected: { state_id: states.Unstarted, iteration_id: iterationId, focus: null },
+      p_deltas: { state_id: states.Finished },
       p_anchor: {},
     });
     expect(error?.message).toMatch(/stale/i);
     // The state must be untouched.
-    const { data } = await asService.from("stories").select("state").eq("id", a).single();
-    expect((data as { state: string }).state).toBe("started");
+    const { data } = await asService.from("stories").select("state_id").eq("id", a).single();
+    expect((data as { state_id: string }).state_id).toBe(states.Started);
   });
 
   it("rejects the loser of two competing transitions (AC #4)", async () => {
-    const [a] = await seedCurrentIteration([{ state: "started", position: 0 }]);
-    const expected = { state: "started", iteration_id: iterationId, focus: null };
+    const [a] = await seedCurrentIteration([{ stateId: states.Started, position: 0 }]);
+    const expected = { state_id: states.Started, iteration_id: iterationId, focus: null };
     const first = await asOwner.rpc("move_story_board", {
       p_project_id: projectId, p_item: { kind: "story", id: a }, p_view: "tracker",
-      p_expected: expected, p_deltas: { state: "finished" }, p_anchor: {},
+      p_expected: expected, p_deltas: { state_id: states.Finished }, p_anchor: {},
     });
     expect(first.error).toBeNull();
-    // Second drag validated against the same (now stale) 'started' snapshot.
+    // Second drag validated against the same (now stale) 'Started' snapshot.
     const second = await asOwner.rpc("move_story_board", {
       p_project_id: projectId, p_item: { kind: "story", id: a }, p_view: "tracker",
-      p_expected: expected, p_deltas: { state: "delivered" }, p_anchor: {},
+      p_expected: expected, p_deltas: { state_id: states.Delivered }, p_anchor: {},
     });
     expect(second.error?.message).toMatch(/stale/i);
   });
 
   it("re-resolves iteration='current' under the lock", async () => {
-    const [a] = await seedCurrentIteration([{ state: "started", position: 0 }]);
+    const [a] = await seedCurrentIteration([{ stateId: states.Started, position: 0 }]);
     // Detach to the backlog first.
-    await asService.from("stories").update({ iteration_id: null, state: "unstarted" }).eq("id", a);
+    await asService.from("stories").update({ iteration_id: null, state_id: states.Unstarted }).eq("id", a);
     const { error } = await asOwner.rpc("move_story_board", {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state: "unstarted", iteration_id: null, focus: null },
-      p_deltas: { state: "started", iteration: "current" },
+      p_expected: { state_id: states.Unstarted, iteration_id: null, focus: null },
+      p_deltas: { state_id: states.Started, iteration: "current" },
       p_anchor: {},
     });
     expect(error).toBeNull();
-    const { data } = await asService.from("stories").select("iteration_id, state").eq("id", a).single();
+    const { data } = await asService.from("stories").select("iteration_id, state_id").eq("id", a).single();
     expect((data as StoryRow).iteration_id).toBe(iterationId);
-    expect((data as { state: string }).state).toBe("started");
+    expect((data as { state_id: string }).state_id).toBe(states.Started);
   });
 
   it("splices a story into the backlog's shared story+divider sequence", async () => {
@@ -188,18 +202,18 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
     await asService.from("backlog_dividers").delete().eq("project_id", projectId);
     // Backlog order: story s0(pos0), divider d(pos1), story s1(pos2).
     const { data: s0 } = await asService.from("stories")
-      .insert({ project_id: projectId, title: "s0", state: "unstarted", iteration_id: null, position: 0, created_by: ownerId }).select("id").single();
+      .insert({ project_id: projectId, title: "s0", state_id: states.Unstarted, iteration_id: null, position: 0, created_by: ownerId }).select("id").single();
     const { data: d } = await asService.from("backlog_dividers")
       .insert({ project_id: projectId, label: "note", kind: "note", position: 1 }).select("id").single();
     const { data: s1 } = await asService.from("stories")
-      .insert({ project_id: projectId, title: "s1", state: "unstarted", iteration_id: null, position: 2, created_by: ownerId }).select("id").single();
+      .insert({ project_id: projectId, title: "s1", state_id: states.Unstarted, iteration_id: null, position: 2, created_by: ownerId }).select("id").single();
 
     // Move s1 before the divider → order s0, s1, d.
     const { error } = await asOwner.rpc("move_story_board", {
       p_project_id: projectId,
       p_item: { kind: "story", id: s1!.id },
       p_view: "list",
-      p_expected: { state: "unstarted", iteration_id: null, focus: null },
+      p_expected: { state_id: states.Unstarted, iteration_id: null, focus: null },
       p_deltas: {},
       p_anchor: { before: { kind: "divider", id: d!.id } },
     });
@@ -228,21 +242,21 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
     // A scheduled story at a non-dense position 5 — if the buggy 'single' path
     // renumbers the current iteration, this becomes 0.
     const { data: iterStory } = await asService.from("stories")
-      .insert({ project_id: projectId, title: "scheduled", state: "started", iteration_id: iter!.id, position: 5, created_by: ownerId }).select("id").single();
+      .insert({ project_id: projectId, title: "scheduled", state_id: states.Started, iteration_id: iter!.id, position: 5, created_by: ownerId }).select("id").single();
     // Backlog: story sb0(pos0), divider d(pos1), story sb1(pos2).
     const { data: sb0 } = await asService.from("stories")
-      .insert({ project_id: projectId, title: "sb0", state: "unstarted", iteration_id: null, position: 0, created_by: ownerId }).select("id").single();
+      .insert({ project_id: projectId, title: "sb0", state_id: states.Unstarted, iteration_id: null, position: 0, created_by: ownerId }).select("id").single();
     const { data: d } = await asService.from("backlog_dividers")
       .insert({ project_id: projectId, label: "note", kind: "note", position: 1 }).select("id").single();
     const { data: sb1 } = await asService.from("stories")
-      .insert({ project_id: projectId, title: "sb1", state: "unstarted", iteration_id: null, position: 2, created_by: ownerId }).select("id").single();
+      .insert({ project_id: projectId, title: "sb1", state_id: states.Unstarted, iteration_id: null, position: 2, created_by: ownerId }).select("id").single();
 
     // Move sb1 before the divider → backlog order sb0(0), sb1(1), d(2).
     const { error } = await asOwner.rpc("move_story_board", {
       p_project_id: projectId,
       p_item: { kind: "story", id: sb1!.id },
       p_view: "list",
-      p_expected: { state: "unstarted", iteration_id: null, focus: null },
+      p_expected: { state_id: states.Unstarted, iteration_id: null, focus: null },
       p_deltas: {},
       p_anchor: { before: { kind: "divider", id: d!.id } },
     });

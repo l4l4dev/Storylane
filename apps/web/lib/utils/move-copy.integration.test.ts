@@ -113,11 +113,11 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
 
     const { data: newStory } = await supabase
       .from("stories")
-      .select("state, project_id")
+      .select("state_id, project_id")
       .eq("id", result.story_id)
       .single();
     expect(newStory?.project_id).toBe(projectBId);
-    expect(newStory?.state).toBe("unscheduled");
+    expect(newStory?.state_id).toBeNull();
 
     const { data: tasks } = await supabase.from("tasks").select("title").eq("story_id", result.story_id);
     expect(tasks?.map((t) => t.title)).toEqual(["a task"]);

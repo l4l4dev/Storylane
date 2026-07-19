@@ -65,7 +65,7 @@ describe.skipIf(!RUN)("position sequence invariant (integration)", () => {
   async function frontierProbe(title: string): Promise<number> {
     const { data, error } = await asOwner
       .from("stories")
-      .insert({ project_id: projectId, title, story_type: "feature", state: "unscheduled" })
+      .insert({ project_id: projectId, title, story_type: "feature", state_id: null })
       .select("position")
       .single();
     if (error || !data) throw new Error(`probe insert failed: ${error?.message}`);

@@ -1,12 +1,13 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// TASK-70: proves the three story write paths (direct `stories` UPDATE via
-// RLS, transition_story, move_story_board) now agree — owner decision (a),
+// TASK-70 (re-anchored by TASK-91: transition_story -> set_story_state):
+// proves the three story write paths (direct `stories` UPDATE via RLS,
+// set_story_state, move_story_board) now agree — owner decision (a),
 // Pivotal-style: any project member may operate any story, not just its
 // author/assignee. move_story_board already enforced this independently;
 // this test is the evidence that the RLS-gated paths (direct UPDATE,
-// update_story, transition_story) were relaxed to match, and that viewer
+// update_story, set_story_state) were relaxed to match, and that viewer
 // stays excluded from all three.
 //
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/stories-write-model.integration.test.ts
@@ -21,6 +22,8 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
   let viewerUserId: string;
   let projectId: string;
   let ownerId: string;
+  let unstartedStateId: string;
+  let startedStateId: string;
 
   beforeAll(async () => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -56,9 +59,13 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
     if (projectError || !project) throw new Error(`Failed to create test project: ${projectError?.message}`);
     projectId = project.id;
 
-    // transition_story's "start" action pulls a backlog story into whichever
-    // iteration is current — an active iteration must exist, but its id isn't
-    // otherwise needed here.
+    const { data: stateRows } = await admin.from("project_states").select("id, name").eq("project_id", projectId);
+    unstartedStateId = stateRows!.find((s) => s.name === "Unstarted")!.id;
+    startedStateId = stateRows!.find((s) => s.name === "Started")!.id;
+
+    // set_story_state's auto-assign-on-entering-in_progress rule pulls a
+    // backlog story into whichever iteration is current — an active
+    // iteration must exist, but its id isn't otherwise needed here.
     const { error: iterError } = await admin
       .from("iterations")
       .insert({ project_id: projectId, number: 1, state: "active", start_date: "2026-07-01", end_date: "2026-07-14" });
@@ -101,13 +108,14 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
 
   // Fresh, owner-authored, unassigned, estimated+unstarted story per test —
   // owner-authored so the acting role is never its author, unassigned so
-  // it's never its assignee either. Estimated so a "start" transition reaches
-  // the permission check, not the unestimated-feature guard.
+  // it's never its assignee either. Estimated so a state change into
+  // in_progress reaches the permission check, not the unestimated-feature
+  // gate.
   async function createOwnerStory(title: string) {
     const { data, error } = await admin
       .from("stories")
-      .insert({ project_id: projectId, title, story_type: "feature", points: 2, state: "unstarted", created_by: ownerId })
-      .select("id, state, iteration_id, focus")
+      .insert({ project_id: projectId, title, story_type: "feature", points: 2, state_id: unstartedStateId, created_by: ownerId })
+      .select("id, state_id, iteration_id, focus")
       .single();
     if (error || !data) throw new Error(`Failed to seed story: ${error?.message}`);
     return data;
@@ -121,11 +129,11 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
       expect(data).toHaveLength(1);
     });
 
-    it("transition_story succeeds for a non-author, non-assignee member", async () => {
+    it("set_story_state succeeds for a non-author, non-assignee member", async () => {
       const story = await createOwnerStory("member transition");
-      const { data, error } = await member.rpc("transition_story", { p_story_id: story.id, p_action: "start" });
+      const { data, error } = await member.rpc("set_story_state", { p_story_id: story.id, p_state_id: startedStateId });
       expect(error).toBeNull();
-      expect((data as { state: string }).state).toBe("started");
+      expect((data as { state_id: string }).state_id).toBe(startedStateId);
     });
 
     it("move_story_board succeeds for a non-author, non-assignee member", async () => {
@@ -134,7 +142,7 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
         p_project_id: projectId,
         p_item: { kind: "story", id: story.id },
         p_view: "tracker",
-        p_expected: { state: story.state, iteration_id: story.iteration_id, focus: story.focus },
+        p_expected: { state_id: story.state_id, iteration_id: story.iteration_id, focus: story.focus },
         p_deltas: {},
         p_anchor: {},
       });
@@ -150,11 +158,11 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
       expect(data).toHaveLength(0);
     });
 
-    it("transition_story is denied for a viewer", async () => {
+    it("set_story_state is denied for a viewer", async () => {
       const story = await createOwnerStory("viewer transition");
-      const { error } = await viewer.rpc("transition_story", { p_story_id: story.id, p_action: "start" });
+      const { error } = await viewer.rpc("set_story_state", { p_story_id: story.id, p_state_id: startedStateId });
       expect(error).not.toBeNull();
-      expect(error?.message).toMatch(/not allowed to transition/i);
+      expect(error?.message).toMatch(/not allowed to change this story's state/i);
     });
 
     it("move_story_board is denied for a viewer", async () => {
@@ -163,7 +171,7 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
         p_project_id: projectId,
         p_item: { kind: "story", id: story.id },
         p_view: "tracker",
-        p_expected: { state: story.state, iteration_id: story.iteration_id, focus: story.focus },
+        p_expected: { state_id: story.state_id, iteration_id: story.iteration_id, focus: story.focus },
         p_deltas: {},
         p_anchor: {},
       });
