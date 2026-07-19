@@ -8,6 +8,7 @@ created_date: '2026-07-07 14:25'
 updated_date: '2026-07-10 06:04'
 labels:
   - web
+milestone: m-0
 dependencies:
   - TASK-5
   - TASK-6

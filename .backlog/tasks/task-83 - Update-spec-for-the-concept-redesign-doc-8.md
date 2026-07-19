@@ -5,9 +5,10 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:03'
-updated_date: '2026-07-18 05:55'
+updated_date: '2026-07-19 06:29'
 labels:
   - spec
+milestone: m-5
 dependencies: []
 references:
   - doc-8

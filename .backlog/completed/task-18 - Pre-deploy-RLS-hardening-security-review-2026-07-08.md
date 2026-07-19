@@ -8,6 +8,7 @@ updated_date: '2026-07-09 03:35'
 labels:
   - db
   - security
+milestone: m-1
 dependencies:
   - TASK-22
 references:

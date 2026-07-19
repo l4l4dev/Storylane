@@ -7,6 +7,7 @@ created_date: '2026-07-07 14:28'
 updated_date: '2026-07-09 08:46'
 labels:
   - web
+milestone: m-0
 dependencies: []
 references:
   - spec/screens.md

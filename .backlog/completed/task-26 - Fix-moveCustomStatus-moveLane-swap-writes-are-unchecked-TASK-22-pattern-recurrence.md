@@ -10,6 +10,7 @@ created_date: '2026-07-10 10:37'
 updated_date: '2026-07-10 23:51'
 labels:
   - web
+milestone: m-2
 dependencies: []
 priority: medium
 ordinal: 14000

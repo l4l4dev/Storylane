@@ -5,10 +5,11 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:04'
-updated_date: '2026-07-18 03:19'
+updated_date: '2026-07-19 06:29'
 labels:
   - web
   - db
+milestone: m-5
 dependencies:
   - TASK-85
   - TASK-91

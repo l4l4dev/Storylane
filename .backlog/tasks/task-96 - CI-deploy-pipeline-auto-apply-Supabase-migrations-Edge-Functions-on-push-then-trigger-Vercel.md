@@ -7,8 +7,9 @@ status: In Progress
 assignee:
   - '@claude-fable-5'
 created_date: '2026-07-18 15:19'
-updated_date: '2026-07-18 15:27'
+updated_date: '2026-07-19 06:29'
 labels: []
+milestone: m-1
 dependencies: []
 priority: high
 ordinal: 67000

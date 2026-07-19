@@ -5,9 +5,11 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:04'
+updated_date: '2026-07-19 06:29'
 labels:
   - web
   - db
+milestone: m-5
 dependencies:
   - TASK-83
 priority: high
@@ -28,3 +30,13 @@ doc-8 §9 data layer. New table story_pins(user_id, story_id) PK; RLS: SELECT/DE
 - [ ] #4 rls-security-reviewer pass on the migration
 - [ ] #5 pnpm test passes
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-opus-4-8
+created: 2026-07-18 11:46
+---
+Coordination flag (do not start standalone yet): TASK-88 drops stories.focus at the DB layer, but TASK-89 (My Work, being worked in another session) removes the Focus-view UI that reads stories.focus. The column drop must land WITH or AFTER the Focus-view UI removal, or the app breaks. Sequence with TASK-89 before implementing. Also depends on TASK-84 landing (migration numbering + database.types.ts regen). Needs fable-advisor + rls-security-reviewer review (new table + RLS).
+---
+<!-- COMMENTS:END -->

@@ -7,10 +7,11 @@ status: Done
 assignee:
   - '@codex-gpt-5'
 created_date: '2026-07-18 01:57'
-updated_date: '2026-07-18 16:30'
+updated_date: '2026-07-19 06:28'
 labels:
   - web
   - ux
+milestone: m-0
 dependencies:
   - TASK-79
 priority: low

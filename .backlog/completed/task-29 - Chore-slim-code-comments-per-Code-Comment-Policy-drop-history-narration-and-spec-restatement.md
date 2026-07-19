@@ -10,6 +10,7 @@ created_date: '2026-07-10 14:34'
 updated_date: '2026-07-11 00:33'
 labels:
   - web
+milestone: m-0
 dependencies:
   - TASK-8
 priority: low

@@ -5,10 +5,11 @@ status: Done
 assignee:
   - '@codex-gpt-5'
 created_date: '2026-07-17 15:16'
-updated_date: '2026-07-18 02:03'
+updated_date: '2026-07-19 06:28'
 labels:
   - web
   - ux
+milestone: m-0
 dependencies: []
 priority: medium
 ordinal: 700

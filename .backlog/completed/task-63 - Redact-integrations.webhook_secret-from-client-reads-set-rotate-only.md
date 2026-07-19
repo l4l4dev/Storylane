@@ -11,6 +11,7 @@ labels:
   - rls
   - db
   - web
+milestone: m-2
 dependencies: []
 priority: high
 ordinal: 47000

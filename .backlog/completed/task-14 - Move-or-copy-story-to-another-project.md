@@ -9,6 +9,7 @@ updated_date: '2026-07-10 03:13'
 labels:
   - web
   - db
+milestone: m-0
 dependencies:
   - TASK-15
 references:

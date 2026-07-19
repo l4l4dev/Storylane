@@ -9,6 +9,7 @@ updated_date: '2026-07-10 01:03'
 labels:
   - web
   - db
+milestone: m-0
 dependencies: []
 references:
   - spec/features.md

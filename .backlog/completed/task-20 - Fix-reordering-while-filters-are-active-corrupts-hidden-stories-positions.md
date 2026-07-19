@@ -9,6 +9,7 @@ updated_date: '2026-07-08 09:30'
 labels:
   - web
   - bug
+milestone: m-2
 dependencies: []
 priority: high
 ordinal: 24000

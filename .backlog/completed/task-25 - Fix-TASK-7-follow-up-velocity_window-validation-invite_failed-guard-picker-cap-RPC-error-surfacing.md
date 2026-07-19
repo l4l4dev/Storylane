@@ -11,6 +11,7 @@ updated_date: '2026-07-10 10:12'
 labels:
   - web
   - db
+milestone: m-0
 dependencies: []
 priority: medium
 ordinal: 26000

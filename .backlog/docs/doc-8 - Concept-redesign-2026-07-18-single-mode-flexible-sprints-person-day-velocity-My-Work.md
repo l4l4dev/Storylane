@@ -5,7 +5,7 @@ title: >-
   velocity, My Work
 type: specification
 created_date: '2026-07-18 02:52'
-updated_date: '2026-07-18 05:49'
+updated_date: '2026-07-18 13:04'
 ---
 # Concept Redesign 2026-07-18 — single mode, flexible sprints, person-day velocity, My Work
 
@@ -103,6 +103,9 @@ fixed **category** per state, which users rarely think about. Reviewed by fable-
   project. Fast-moving teams may legitimately run 1-day sprints.
 - There is no special "personal mode" — a personal project is an ordinary project whose
   cadence is 1 day.
+- **Owner decision 2026-07-18: auto-create a personal project at signup** (1-day
+  cadence, minimal template, e.g. "My Tasks") so a solo user manages their own tasks
+  with zero setup and no team project. Implementation tracked as its own task.
 - **1-day cadence (advisor-corrected definition)**: an iteration's `start_date` is a
   working day and its `end_date` is the day before the *next* working day — so Friday's
   iteration spans Fri–Sun and rollover fires on Monday. Work accepted on a non-working

@@ -5,9 +5,11 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-19 00:03'
+updated_date: '2026-07-19 06:29'
 labels:
   - mcp
   - db
+milestone: m-3
 dependencies: []
 priority: low
 ordinal: 68000

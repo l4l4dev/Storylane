@@ -11,6 +11,7 @@ updated_date: '2026-07-08 15:53'
 labels:
   - web
   - bug
+milestone: m-2
 dependencies:
   - TASK-19
 priority: high

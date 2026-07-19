@@ -10,6 +10,7 @@ created_date: '2026-07-10 10:37'
 updated_date: '2026-07-11 00:12'
 labels:
   - db
+milestone: m-1
 dependencies: []
 priority: low
 ordinal: 16000

@@ -5,8 +5,10 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-18 03:28'
+updated_date: '2026-07-19 06:29'
 labels:
   - tooling
+milestone: m-1
 dependencies: []
 priority: low
 ordinal: 63000

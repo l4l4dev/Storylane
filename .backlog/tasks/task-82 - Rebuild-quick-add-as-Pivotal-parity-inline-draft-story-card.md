@@ -5,10 +5,11 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 02:53'
-updated_date: '2026-07-18 03:20'
+updated_date: '2026-07-19 06:29'
 labels:
   - web
   - ux
+milestone: m-5
 dependencies:
   - TASK-84
   - TASK-91

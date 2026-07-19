@@ -12,6 +12,7 @@ labels:
   - web
   - bug
   - e2e
+milestone: m-0
 dependencies: []
 priority: low
 ordinal: 50000
