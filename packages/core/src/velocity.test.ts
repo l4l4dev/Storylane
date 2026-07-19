@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptedPoints, calculateVelocity, clampVelocityWindow } from "./velocity";
+import { acceptedPoints, calculateVelocity, clampVelocityWindow, type PointedStory } from "./velocity";
 
 describe("calculateVelocity", () => {
   it("returns 0 when there are no completed iterations", () => {
@@ -46,13 +46,13 @@ describe("clampVelocityWindow", () => {
 });
 
 describe("acceptedPoints", () => {
-  it("sums points for accepted feature/bug stories only", () => {
-    const stories = [
-      { story_type: "feature", state: "accepted", points: 3 },
-      { story_type: "bug", state: "accepted", points: 2 },
-      { story_type: "feature", state: "started", points: 5 },
-      { story_type: "chore", state: "accepted", points: null },
-      { story_type: "release", state: "accepted", points: null },
+  it("sums points for done-category feature/bug stories only", () => {
+    const stories: PointedStory[] = [
+      { story_type: "feature", state_category: "done", points: 3 },
+      { story_type: "bug", state_category: "done", points: 2 },
+      { story_type: "feature", state_category: "in_progress", points: 5 },
+      { story_type: "chore", state_category: "done", points: null },
+      { story_type: "release", state_category: "done", points: null },
     ];
     expect(acceptedPoints(stories)).toBe(5);
   });
@@ -61,17 +61,21 @@ describe("acceptedPoints", () => {
     expect(acceptedPoints([])).toBe(0);
   });
 
-  // TASK-10: finalize_iteration (20260709000002_finalize_iteration.sql)
-  // computes velocity in SQL instead of calling this function — this fixture
-  // is the one manually cross-checked against the RPC's
-  // "sum(points) where state='accepted' and story_type in ('feature','bug')"
-  // during TASK-10 verification, confirming both give 5 for the same rows.
-  it("matches the finalize_iteration RPC's SQL computation for a mixed-state iteration", () => {
-    const stories = [
-      { story_type: "feature", state: "accepted", points: 5 },
-      { story_type: "chore", state: "accepted", points: 3 },
-      { story_type: "feature", state: "unstarted", points: 2 },
-      { story_type: "bug", state: "rejected", points: 1 },
+  it("treats a null category (Icebox) as not done", () => {
+    expect(acceptedPoints([{ story_type: "feature", state_category: null, points: 5 }])).toBe(0);
+  });
+
+  // finalize_iteration (20260719000010_reanchor_finalize_iteration.sql)
+  // computes velocity in SQL instead of calling this function — this
+  // fixture is cross-checked against the RPC's "sum(points) where
+  // category='done' and story_type in ('feature','bug')", confirming both
+  // give 5 for the same rows.
+  it("matches the finalize_iteration RPC's SQL computation for a mixed-category iteration", () => {
+    const stories: PointedStory[] = [
+      { story_type: "feature", state_category: "done", points: 5 },
+      { story_type: "chore", state_category: "done", points: 3 },
+      { story_type: "feature", state_category: "unstarted", points: 2 },
+      { story_type: "bug", state_category: "rejected", points: 1 },
     ];
     expect(acceptedPoints(stories)).toBe(5);
   });

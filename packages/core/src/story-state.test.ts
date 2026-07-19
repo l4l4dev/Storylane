@@ -1,126 +1,108 @@
 import { describe, expect, it } from "vitest";
-import {
-  applyTransition,
-  availableTransitions,
-  canTransition,
-  shouldAssignCurrentIteration,
-  STORY_STATES,
-  transitionLabel,
-  type StoryState,
-} from "./story-state";
+import { computeStateGate, shouldAssignCurrentIteration, type GateState, type StateGate } from "./story-state";
+import stateTemplates from "../../../spec/fixtures/state-templates.json";
 
-describe("availableTransitions", () => {
-  it("offers only Start from unstarted", () => {
-    expect(availableTransitions("unstarted")).toEqual(["start"]);
-  });
+type FixtureState = { name: string; category: GateState["category"]; position: number; actionLabel: string | null };
+type FixtureGate = { current: string; expected: Record<string, unknown> & { kind: string } };
+type Fixture = { states: FixtureState[]; gates: FixtureGate[] };
 
-  it("offers only Finish from started", () => {
-    expect(availableTransitions("started")).toEqual(["finish"]);
-  });
+const fixtures = stateTemplates as unknown as { classic: Fixture; minimal: Fixture };
 
-  it("offers only Deliver from finished", () => {
-    expect(availableTransitions("finished")).toEqual(["deliver"]);
-  });
+// Fixture states are keyed by name (ids are runtime UUIDs); this test
+// synthesizes stable ids by reusing the name, and resolves each fixture
+// gate's target names back to those same ids for comparison.
+function toGateStates(fixture: Fixture): GateState[] {
+  return fixture.states.map((s) => ({ id: s.name, category: s.category, actionLabel: s.actionLabel, position: s.position }));
+}
 
-  it("offers both Accept and Reject from delivered", () => {
-    expect(availableTransitions("delivered")).toEqual(["accept", "reject"]);
-  });
+function resolveExpectedGate(expected: FixtureGate["expected"]): StateGate {
+  return expected as StateGate; // target*Id fields already hold state names, matching the synthesized ids above.
+}
 
-  it("offers only Restart from rejected", () => {
-    expect(availableTransitions("rejected")).toEqual(["restart"]);
-  });
+describe.each([
+  ["classic", fixtures.classic],
+  ["minimal", fixtures.minimal],
+])("computeStateGate — %s template golden fixture", (_label, fixture) => {
+  const states = toGateStates(fixture);
 
-  it("offers nothing from accepted (terminal state)", () => {
-    expect(availableTransitions("accepted")).toEqual([]);
-  });
-
-  it("offers nothing from unscheduled (Icebox promotion is drag-and-drop, not a button)", () => {
-    expect(availableTransitions("unscheduled")).toEqual([]);
+  it.each(fixture.gates)("$current -> $expected.kind", ({ current, expected }) => {
+    expect(computeStateGate(states, current)).toEqual(resolveExpectedGate(expected));
   });
 });
 
-describe("canTransition", () => {
-  it("is true for the next valid action", () => {
-    expect(canTransition("unstarted", "start")).toBe(true);
-    expect(canTransition("delivered", "accept")).toBe(true);
-    expect(canTransition("delivered", "reject")).toBe(true);
+describe("computeStateGate", () => {
+  const classic = toGateStates(fixtures.classic);
+
+  it("returns none for the Icebox (state_id null) — promotion is drag-and-drop only", () => {
+    expect(computeStateGate(classic, null)).toEqual({ kind: "none" });
   });
 
-  it("is false for an out-of-order action", () => {
-    expect(canTransition("unstarted", "finish")).toBe(false);
-    expect(canTransition("accepted", "restart")).toBe(false);
-  });
-});
-
-describe("applyTransition", () => {
-  it("walks the full unstarted -> accepted happy path", () => {
-    let state: StoryState = "unstarted";
-    state = applyTransition(state, "start");
-    expect(state).toBe("started");
-    state = applyTransition(state, "finish");
-    expect(state).toBe("finished");
-    state = applyTransition(state, "deliver");
-    expect(state).toBe("delivered");
-    state = applyTransition(state, "accept");
-    expect(state).toBe("accepted");
+  it("returns none for an unknown state id (defensive)", () => {
+    expect(computeStateGate(classic, "not-a-real-state")).toEqual({ kind: "none" });
   });
 
-  it("rejects then restarts back to started", () => {
-    let state: StoryState = "delivered";
-    state = applyTransition(state, "reject");
-    expect(state).toBe("rejected");
-    state = applyTransition(state, "restart");
-    expect(state).toBe("started");
+  it("omits reject when the project has no rejected-category state", () => {
+    const noRejected = classic.filter((s) => s.category !== "rejected");
+    expect(computeStateGate(noRejected, "Delivered")).toEqual({
+      kind: "accept-reject",
+      acceptLabel: "Accept",
+      acceptStateId: "Accepted",
+      rejectStateId: null,
+    });
   });
 
-  it("throws on an invalid transition instead of silently jumping state", () => {
-    expect(() => applyTransition("unstarted", "deliver")).toThrow(/Cannot "deliver"/);
-    expect(() => applyTransition("accepted", "start")).toThrow(/Cannot "start"/);
+  it("omits the restart target when the project has no in_progress-category state", () => {
+    const noInProgress = classic.filter((s) => s.category !== "in_progress");
+    expect(computeStateGate(noInProgress, "Rejected")).toEqual({ kind: "restart", targetStateId: null });
   });
-});
 
-describe("transitionLabel", () => {
-  it("returns the button label for each action", () => {
-    expect(transitionLabel("start")).toBe("Start");
-    expect(transitionLabel("finish")).toBe("Finish");
-    expect(transitionLabel("deliver")).toBe("Deliver");
-    expect(transitionLabel("accept")).toBe("Accept");
-    expect(transitionLabel("reject")).toBe("Reject");
-    expect(transitionLabel("restart")).toBe("Restart");
+  it("shows no button on a state with a null action_label even when a next state exists", () => {
+    const states: GateState[] = [
+      { id: "a", category: "unstarted", actionLabel: null, position: 0 },
+      { id: "b", category: "in_progress", actionLabel: "Go", position: 1 },
+    ];
+    expect(computeStateGate(states, "a")).toEqual({ kind: "none" });
   });
-});
 
-describe("STORY_STATES", () => {
-  it("matches the DB CHECK constraint order (see spec/data-model.md)", () => {
-    expect(STORY_STATES).toEqual([
-      "unscheduled",
-      "unstarted",
-      "started",
-      "finished",
-      "delivered",
-      "accepted",
-      "rejected",
-    ]);
+  it("returns none for the last state in position order (nothing to advance to)", () => {
+    const states: GateState[] = [{ id: "only", category: "unstarted", actionLabel: "Start", position: 0 }];
+    expect(computeStateGate(states, "only")).toEqual({ kind: "none" });
+  });
+
+  it("shows no button when a rejected-category state is positioned as the very next state (not paired with a preceding done)", () => {
+    const states: GateState[] = [
+      { id: "a", category: "unstarted", actionLabel: "Start", position: 0 },
+      { id: "rejected", category: "rejected", actionLabel: null, position: 1 },
+    ];
+    // A plain advance must never silently land a story in a rejected state
+    // under the "Start" label — only the synthesized Reject half of an
+    // Accept/Reject pair may target a rejected-category state.
+    expect(computeStateGate(states, "a")).toEqual({ kind: "none" });
+  });
+
+  it("generalizes to a fully custom project with multiple unstarted-category states", () => {
+    const states: GateState[] = [
+      { id: "todo", category: "unstarted", actionLabel: "Triage", position: 0 },
+      { id: "triaged", category: "unstarted", actionLabel: "Start", position: 1 },
+      { id: "doing", category: "in_progress", actionLabel: "Done", position: 2 },
+      { id: "done", category: "done", actionLabel: null, position: 3 },
+    ];
+    expect(computeStateGate(states, "todo")).toEqual({ kind: "advance", label: "Triage", targetStateId: "triaged" });
   });
 });
 
-// TASK-19: Starting (or restarting) a story with no iteration assigned yet
-// must schedule it into the current iteration, matching what the drag path
-// already does — otherwise a Backlog row's one-click Start button produces
-// a stuck story (started, iteration_id null).
 describe("shouldAssignCurrentIteration", () => {
-  it("is true when starting a story that has no iteration yet", () => {
-    expect(shouldAssignCurrentIteration("started", false)).toBe(true);
+  it("is true when entering an in_progress-category state with no iteration yet", () => {
+    expect(shouldAssignCurrentIteration("in_progress", false)).toBe(true);
   });
 
-  it("is false when the story already has an iteration (e.g. started from the current-iteration column)", () => {
-    expect(shouldAssignCurrentIteration("started", true)).toBe(false);
+  it("is false when the story already has an iteration", () => {
+    expect(shouldAssignCurrentIteration("in_progress", true)).toBe(false);
   });
 
-  it("is false for any target state other than started", () => {
-    expect(shouldAssignCurrentIteration("finished", false)).toBe(false);
-    expect(shouldAssignCurrentIteration("delivered", false)).toBe(false);
-    expect(shouldAssignCurrentIteration("accepted", false)).toBe(false);
+  it("is false for any target category other than in_progress", () => {
+    expect(shouldAssignCurrentIteration("unstarted", false)).toBe(false);
+    expect(shouldAssignCurrentIteration("done", false)).toBe(false);
     expect(shouldAssignCurrentIteration("rejected", false)).toBe(false);
   });
 });

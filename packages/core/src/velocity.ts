@@ -1,6 +1,7 @@
 // Pure, framework-free helpers for velocity. See spec/velocity.md.
 
 import { storyTypeUsesPoints } from "./story-types";
+import type { StateCategory } from "./story-state";
 
 export type CompletedIteration = { velocity: number | null };
 
@@ -35,14 +36,16 @@ export function clampVelocityWindow(value: number): number {
   return Math.max(1, Math.floor(value));
 }
 
-export type PointedStory = { story_type: string; state: string; points: number | null };
+// Matches finalize_iteration's SQL (20260719000010_reanchor_finalize_iteration.sql: `ps.category = 'done'`).
+export type PointedStory = { story_type: string; state_category: StateCategory | null; points: number | null };
 
 /**
- * Sum of points for accepted, point-bearing stories (feature/bug). This is
- * the value finalized onto `iterations.velocity` when an iteration is marked done.
+ * Sum of points for done-category, point-bearing stories (feature/bug).
+ * This is the value finalized onto `iterations.velocity` when an iteration
+ * is marked done.
  */
 export function acceptedPoints(stories: ReadonlyArray<PointedStory>): number {
   return stories
-    .filter((story) => story.state === "accepted" && storyTypeUsesPoints(story.story_type))
+    .filter((story) => story.state_category === "done" && storyTypeUsesPoints(story.story_type))
     .reduce((total, story) => total + (story.points ?? 0), 0);
 }

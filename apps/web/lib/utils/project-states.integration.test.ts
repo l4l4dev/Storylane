@@ -1,5 +1,18 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it } from "vitest";
+import stateTemplates from "../../../../spec/fixtures/state-templates.json";
+
+// The DB seed (seed_project_states) and the packages/core golden fixture
+// must never silently drift apart (spec/data-model.md "Default templates").
+// Snake-cased to match the DB column names this test queries.
+function expectedSeedRows(template: "classic" | "minimal") {
+  return stateTemplates[template].states.map((s) => ({
+    name: s.name,
+    action_label: s.actionLabel,
+    category: s.category,
+    position: s.position,
+  }));
+}
 
 // TASK-91 (doc-8 §2): project_states integrity — category immutability and
 // the >=1 unstarted / >=1 done minimums (including the concurrent-delete
@@ -139,25 +152,18 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
     await admin.from("projects").delete().eq("id", pid);
   });
 
-  it("seeds the classic template (6 states) by default on project creation", async () => {
+  it("seeds the classic template (6 states) by default on project creation, matching the golden fixture", async () => {
     const pid = await freshProject("classic seed test");
     const { data: states } = await admin
       .from("project_states")
       .select("name, action_label, category, position")
       .eq("project_id", pid)
       .order("position");
-    expect(states).toEqual([
-      { name: "Unstarted", action_label: "Start", category: "unstarted", position: 0 },
-      { name: "Started", action_label: "Finish", category: "in_progress", position: 1 },
-      { name: "Finished", action_label: "Deliver", category: "in_progress", position: 2 },
-      { name: "Delivered", action_label: "Accept", category: "in_progress", position: 3 },
-      { name: "Accepted", action_label: null, category: "done", position: 4 },
-      { name: "Rejected", action_label: null, category: "rejected", position: 5 },
-    ]);
+    expect(states).toEqual(expectedSeedRows("classic"));
     await admin.from("projects").delete().eq("id", pid);
   });
 
-  it("seeds the minimal template (3 states) when requested", async () => {
+  it("seeds the minimal template (3 states) when requested, matching the golden fixture", async () => {
     const { data: project } = await owner
       .from("projects")
       .insert({ name: "minimal seed test", state_template: "minimal" })
@@ -168,11 +174,7 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
       .select("name, action_label, category, position")
       .eq("project_id", project!.id)
       .order("position");
-    expect(states).toEqual([
-      { name: "Todo", action_label: "Start", category: "unstarted", position: 0 },
-      { name: "Doing", action_label: "Done", category: "in_progress", position: 1 },
-      { name: "Done", action_label: null, category: "done", position: 2 },
-    ]);
+    expect(states).toEqual(expectedSeedRows("minimal"));
     await admin.from("projects").delete().eq("id", project!.id);
   });
 });

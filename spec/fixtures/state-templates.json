@@ -1,0 +1,44 @@
+{
+  "_comment": "Golden fixture: the classic/minimal project_states templates (must stay byte-identical to seed_project_states, supabase/migrations/20260719000006_stories_state_id.sql) plus the expected one-click button graph for every state, cross-checked by both packages/core/src/story-state.test.ts (computeStateGate) and a DB integration test asserting the project-creation seed matches `states` exactly. States are keyed by name here (not id) since ids are runtime UUIDs; consumers synthesize stable ids from the name for the pure-function test. Swift consumption deferred (iOS work on hold).",
+  "classic": {
+    "states": [
+      { "name": "Unstarted", "category": "unstarted", "position": 0, "actionLabel": "Start" },
+      { "name": "Started", "category": "in_progress", "position": 1, "actionLabel": "Finish" },
+      { "name": "Finished", "category": "in_progress", "position": 2, "actionLabel": "Deliver" },
+      { "name": "Delivered", "category": "in_progress", "position": 3, "actionLabel": "Accept" },
+      { "name": "Accepted", "category": "done", "position": 4, "actionLabel": null },
+      { "name": "Rejected", "category": "rejected", "position": 5, "actionLabel": null }
+    ],
+    "gates": [
+      { "current": "Unstarted", "expected": { "kind": "advance", "label": "Start", "targetStateId": "Started" } },
+      { "current": "Started", "expected": { "kind": "advance", "label": "Finish", "targetStateId": "Finished" } },
+      { "current": "Finished", "expected": { "kind": "advance", "label": "Deliver", "targetStateId": "Delivered" } },
+      {
+        "current": "Delivered",
+        "expected": {
+          "kind": "accept-reject",
+          "acceptLabel": "Accept",
+          "acceptStateId": "Accepted",
+          "rejectStateId": "Rejected"
+        }
+      },
+      { "current": "Accepted", "expected": { "kind": "none" } },
+      { "current": "Rejected", "expected": { "kind": "restart", "targetStateId": "Started" } }
+    ]
+  },
+  "minimal": {
+    "states": [
+      { "name": "Todo", "category": "unstarted", "position": 0, "actionLabel": "Start" },
+      { "name": "Doing", "category": "in_progress", "position": 1, "actionLabel": "Done" },
+      { "name": "Done", "category": "done", "position": 2, "actionLabel": null }
+    ],
+    "gates": [
+      { "current": "Todo", "expected": { "kind": "advance", "label": "Start", "targetStateId": "Doing" } },
+      {
+        "current": "Doing",
+        "expected": { "kind": "accept-reject", "acceptLabel": "Done", "acceptStateId": "Done", "rejectStateId": null }
+      },
+      { "current": "Done", "expected": { "kind": "none" } }
+    ]
+  }
+}
