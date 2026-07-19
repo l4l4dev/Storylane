@@ -78,6 +78,22 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
     await admin.from("projects").delete().eq("id", pid);
   });
 
+  // A member of two projects could otherwise move an unused state to a
+  // project they don't own, bypassing that table's owner-only DELETE
+  // policy and the minimums trigger below.
+  it("project_id cannot be changed after creation", async () => {
+    const pidA = await freshProject("project-id-immutable A");
+    const pidB = await freshProject("project-id-immutable B");
+    const id = await stateId(pidA, "Rejected"); // deletable/movable-looking: not a minimums-guarded category
+
+    const { error } = await owner.from("project_states").update({ project_id: pidB }).eq("id", id);
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/moved to a different project/i);
+
+    await admin.from("projects").delete().eq("id", pidA);
+    await admin.from("projects").delete().eq("id", pidB);
+  });
+
   it("rejects deleting the last unstarted-category state", async () => {
     const pid = await freshProject("last-unstarted test");
     const id = await stateId(pid, "Unstarted"); // the classic template's only unstarted-category state
@@ -176,5 +192,183 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
       .order("position");
     expect(states).toEqual(expectedSeedRows("minimal"));
     await admin.from("projects").delete().eq("id", project!.id);
+  });
+
+  // reorder_project_state (20260719000013) backs the Settings "States"
+  // section's up/down arrows — swaps a state with its nearest same-category
+  // neighbour's position value. Regression coverage the rls-security-reviewer
+  // flagged as missing (the RPC it supersedes, swap_adjacent, shipped one).
+  describe("reorder_project_state", () => {
+    async function positionsByName(projectId: string): Promise<Record<string, number>> {
+      const { data } = await admin.from("project_states").select("name, position").eq("project_id", projectId);
+      return Object.fromEntries((data ?? []).map((s) => [s.name, s.position]));
+    }
+
+    it("swaps a state with its nearest same-category neighbour, leaving every other state untouched", async () => {
+      const pid = await freshProject("reorder swap test");
+      const before = await positionsByName(pid);
+      const startedId = await stateId(pid, "Started");
+
+      const { error } = await owner.rpc("reorder_project_state", {
+        p_project_id: pid,
+        p_state_id: startedId,
+        p_direction: "down",
+      });
+      expect(error).toBeNull();
+
+      const after = await positionsByName(pid);
+      // Started <-> Finished (both in_progress) swap positions...
+      expect(after.Started).toBe(before.Finished);
+      expect(after.Finished).toBe(before.Started);
+      // ...and nothing else moves.
+      for (const name of ["Unstarted", "Delivered", "Accepted", "Rejected"]) {
+        expect(after[name]).toBe(before[name]);
+      }
+
+      await admin.from("projects").delete().eq("id", pid);
+    });
+
+    it("is a no-op at a category's edge (the only unstarted state moved up)", async () => {
+      const pid = await freshProject("reorder edge test");
+      const before = await positionsByName(pid);
+      const unstartedId = await stateId(pid, "Unstarted");
+
+      const { error } = await owner.rpc("reorder_project_state", {
+        p_project_id: pid,
+        p_state_id: unstartedId,
+        p_direction: "up",
+      });
+      expect(error).toBeNull();
+      expect(await positionsByName(pid)).toEqual(before);
+
+      await admin.from("projects").delete().eq("id", pid);
+    });
+
+    it("rejects a viewer-role member", async () => {
+      const pid = await freshProject("reorder viewer test");
+      const startedId = await stateId(pid, "Started");
+
+      const email = `reorder-viewer-${Date.now()}@storylane.local`;
+      const { data: created } = await admin.auth.admin.createUser({ email, password: "viewer-pw", email_confirm: true });
+      await admin.from("project_members").insert({ project_id: pid, user_id: created!.user.id, role: "viewer" });
+      const viewer = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      await viewer.auth.signInWithPassword({ email, password: "viewer-pw" });
+
+      const { error } = await viewer.rpc("reorder_project_state", {
+        p_project_id: pid,
+        p_state_id: startedId,
+        p_direction: "down",
+      });
+      expect(error?.code).toBe("42501");
+
+      await admin.from("projects").delete().eq("id", pid);
+      await admin.auth.admin.deleteUser(created!.user.id);
+    });
+
+    it("rejects a state id from a different project (cross-tenant scoping)", async () => {
+      const pidA = await freshProject("reorder tenant A");
+      const pidB = await freshProject("reorder tenant B");
+      const foreignId = await stateId(pidB, "Started");
+      const beforeB = await positionsByName(pidB);
+
+      const { error } = await owner.rpc("reorder_project_state", {
+        p_project_id: pidA,
+        p_state_id: foreignId,
+        p_direction: "down",
+      });
+      expect(error?.code).toBe("P0002");
+      // Project B's states are untouched.
+      expect(await positionsByName(pidB)).toEqual(beforeB);
+
+      await admin.from("projects").delete().eq("id", pidA);
+      await admin.from("projects").delete().eq("id", pidB);
+    });
+  });
+
+  // create_project_state (20260719000014): the original client-side insert
+  // appended every new state at the end of the whole project's position
+  // sequence instead of its own category's block, which broke
+  // computeStateGate's per-category-contiguous assumption (packages/core
+  // story-state.ts) — e.g. an in_progress state landing after Rejected.
+  // This RPC must keep every category contiguous from the moment of
+  // creation, including when the target category has zero existing rows
+  // in the project (e.g. the 'minimal' template has no 'rejected' row).
+  describe("create_project_state", () => {
+    async function orderedNames(projectId: string): Promise<string[]> {
+      const { data } = await admin
+        .from("project_states")
+        .select("name, position")
+        .eq("project_id", projectId)
+        .order("position", { ascending: true });
+      return (data ?? []).map((s) => s.name);
+    }
+
+    it("inserts a new in_progress state at the end of the in_progress block, not the end of the whole sequence", async () => {
+      const pid = await freshProject("create-state placement test");
+
+      const { data: newId, error } = await owner.rpc("create_project_state", {
+        p_project_id: pid,
+        p_name: "In Review",
+        p_category: "in_progress",
+      });
+      expect(error).toBeNull();
+      expect(newId).toBeTruthy();
+
+      // Classic template order: Unstarted, Started, Finished, Delivered,
+      // Accepted, Rejected. The new in_progress state must land right after
+      // Delivered (the last in_progress state) and before Accepted/Rejected
+      // — never after them.
+      expect(await orderedNames(pid)).toEqual([
+        "Unstarted",
+        "Started",
+        "Finished",
+        "Delivered",
+        "In Review",
+        "Accepted",
+        "Rejected",
+      ]);
+
+      await admin.from("projects").delete().eq("id", pid);
+    });
+
+    it("inserts a category's first-ever state after the nearest preceding category's block, not at position 0", async () => {
+      const { data: pid, error: projectError } = await owner
+        .from("projects")
+        .insert({ name: "create-state empty-category test", state_template: "minimal" })
+        .select("id")
+        .single();
+      expect(projectError).toBeNull();
+
+      // The 'minimal' template (Todo/Doing/Done) seeds zero 'rejected' rows —
+      // computing the insertion point off an empty same-category set must
+      // not default to position 0 (ahead of Todo).
+      const { error } = await owner.rpc("create_project_state", {
+        p_project_id: pid!.id,
+        p_name: "Cancelled",
+        p_category: "rejected",
+      });
+      expect(error).toBeNull();
+      expect(await orderedNames(pid!.id)).toEqual(["Todo", "Doing", "Done", "Cancelled"]);
+
+      await admin.from("projects").delete().eq("id", pid!.id);
+    });
+
+    it("rejects a non-member", async () => {
+      const pid = await freshProject("create-state auth test");
+      const email = `create-state-outsider-${Date.now()}@storylane.local`;
+      const { data: created } = await admin.auth.admin.createUser({ email, password: "outsider-pw", email_confirm: true });
+      const outsider = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      await outsider.auth.signInWithPassword({ email, password: "outsider-pw" });
+
+      const { error } = await outsider.rpc("create_project_state", {
+        p_project_id: pid,
+        p_name: "Sneaky",
+        p_category: "in_progress",
+      });
+      expect(error?.code).toBe("42501");
+
+      await admin.from("projects").delete().eq("id", pid);
+      await admin.auth.admin.deleteUser(created!.user.id);
+    });
   });
 });

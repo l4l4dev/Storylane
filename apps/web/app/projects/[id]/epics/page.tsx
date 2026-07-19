@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { epicProgress } from "@/lib/utils/epics";
+import type { StateCategory } from "@storylane/core";
 import { EpicDeleteMenu } from "@/components/features/epics/epic-delete-menu";
 import { EpicFormDialog } from "@/components/features/epics/epic-form-dialog";
 import { EpicProgressBar } from "@/components/features/epics/epic-progress-bar";
@@ -20,20 +21,22 @@ export default async function EpicsPage({
     notFound();
   }
 
-  const [{ data: epics }, { data: stories }] = await Promise.all([
+  const [{ data: epics }, { data: stories }, { data: states }] = await Promise.all([
     supabase
       .from("epics")
       .select("id, name, description, color, position")
       .eq("project_id", id)
       .order("position", { ascending: true }),
-    supabase.from("stories").select("epic_id, state").eq("project_id", id),
+    supabase.from("stories").select("epic_id, state_id").eq("project_id", id),
+    supabase.from("project_states").select("id, category").eq("project_id", id),
   ]);
 
-  const storiesByEpic = new Map<string, { state: string }[]>();
+  const categoryByStateId = new Map((states ?? []).map((s) => [s.id, s.category as StateCategory]));
+  const storiesByEpic = new Map<string, { category: StateCategory | null }[]>();
   for (const story of stories ?? []) {
     if (!story.epic_id) continue;
     const bucket = storiesByEpic.get(story.epic_id) ?? [];
-    bucket.push({ state: story.state });
+    bucket.push({ category: story.state_id ? (categoryByStateId.get(story.state_id) ?? null) : null });
     storiesByEpic.set(story.epic_id, bucket);
   }
 

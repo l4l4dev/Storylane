@@ -18,7 +18,10 @@ export type StoryCardData = {
   title: string;
   description: string | null;
   story_type: string;
-  state: string;
+  // Precomputed by the caller (a done-category state) rather than a raw
+  // state/category threaded into this presentational component — the only
+  // thing this card renders differently for it is the accepted tint below.
+  isDone: boolean;
   points: number | null;
   assigneeName: string | null;
   assigneeIsAgent?: boolean;
@@ -121,7 +124,7 @@ export function StoryCard({
 
   const typeMeta = STORY_TYPE_META[story.story_type as StoryType];
   const TypeIcon = STORY_TYPE_ICON[story.story_type as StoryType];
-  const isAccepted = story.state === "accepted";
+  const isAccepted = story.isDone;
 
   const cardContent = (
     <>

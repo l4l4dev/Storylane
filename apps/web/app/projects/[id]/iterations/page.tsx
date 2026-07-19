@@ -40,23 +40,25 @@ export default async function IterationsPage({
   const doneIterations = iterations ?? [];
   const doneIds = doneIterations.map((iteration) => iteration.id);
 
-  const [{ data: stories }, { data: labels }, { data: epics }] =
+  const [{ data: stories }, { data: labels }, { data: epics }, { data: states }] =
     doneIds.length > 0
       ? await Promise.all([
           supabase
             .from("stories")
             .select(
-              "id, number, title, description, story_type, state, points, position, iteration_id, epic_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
+              "id, number, title, description, story_type, state_id, points, position, iteration_id, epic_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
             )
             .in("iteration_id", doneIds)
             .order("position", { ascending: true }),
           supabase.from("labels").select("id, name, color").eq("project_id", id),
           supabase.from("epics").select("id, name, color").eq("project_id", id),
+          supabase.from("project_states").select("id, category").eq("project_id", id),
         ])
-      : [{ data: [] }, { data: [] }, { data: [] }];
+      : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
 
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
   const epicById = new Map((epics ?? []).map((e) => [e.id, e]));
+  const doneStateIds = new Set((states ?? []).filter((s) => s.category === "done").map((s) => s.id));
   const cards = (stories ?? []).map((story) => {
     const assigneeProfile = Array.isArray(story.assignee) ? story.assignee[0] : story.assignee;
     const epic = story.epic_id ? epicById.get(story.epic_id) : undefined;
@@ -66,7 +68,7 @@ export default async function IterationsPage({
       title: story.title,
       description: story.description,
       story_type: story.story_type,
-      state: story.state,
+      isDone: story.state_id !== null && doneStateIds.has(story.state_id),
       points: story.points,
       iteration_id: story.iteration_id,
       assigneeName: assigneeProfile?.display_name ?? null,

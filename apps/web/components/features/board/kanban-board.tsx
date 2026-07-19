@@ -6,10 +6,11 @@ import { Crosshair, LayoutGrid, List as ListIcon, Pencil, Snowflake } from "luci
 import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { sumPoints } from "@/lib/utils/board";
-import { ICEBOX_COLUMN_ID, STATE_COLUMNS } from "@/lib/utils/kanban";
+import { ICEBOX_COLUMN_ID } from "@/lib/utils/kanban";
 import { isImeComposing } from "@/lib/utils/keyboard";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
 import type { StoryFilter } from "@/lib/utils/stories";
+import type { ProjectState } from "@/lib/types";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,7 @@ import { useInlineEdit } from "./use-inline-edit";
 // filters match on, alongside `assigneeName`/`labels`/`epic` (from
 // `StoryCardData`), which are only ever used for display.
 export type BoardStory = StoryCardData & {
+  state_id: string | null;
   iteration_id: string | null;
   position: number;
   assignee_id: string | null;
@@ -70,6 +72,7 @@ type BoardView = "kanban" | "list" | "focus";
 export function KanbanBoard({
   projectId,
   currentIteration,
+  states,
   initialContainers,
   initialBacklogItems,
   velocity,
@@ -77,12 +80,16 @@ export function KanbanBoard({
   iterationLength,
   iterationGoals,
   canFinishIteration,
+  canManageStates,
   filter,
   toolbar,
   pointScale,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
+  // The project's states, ordered by position — the column set is
+  // per-project and data-driven (TASK-91), not a fixed 6-value list.
+  states: ProjectState[];
   // Keyed by KanbanColumnId: backlog, icebox, and one bucket per state column.
   // Unfiltered — `filter` is applied client-side, at render only,
   // so drag persistence and virtual-iteration/point-sum math never see a
@@ -103,6 +110,11 @@ export function KanbanBoard({
   // finalize_iteration RPC enforces this too, this just keeps the button off
   // a viewer's screen.
   canFinishIteration: boolean;
+  // Owner/member only (matches project_states' own INSERT/UPDATE RLS) —
+  // gates the Kanban view's inline column rename / "+ Add column" (doc-8 §2
+  // option C hybrid). The RPCs enforce this too; this just keeps the
+  // controls off a viewer's screen.
+  canManageStates: boolean;
   // Type/assignee/label criteria from the URL — hides non-matching rows in
   // both views without ever touching the underlying (unfiltered) data.
   filter: StoryFilter;
@@ -126,7 +138,8 @@ export function KanbanBoard({
   useProjectBoardRealtime(projectId, () => router.refresh());
 
   const iceboxStories = initialContainers[ICEBOX_COLUMN_ID] ?? [];
-  const iterationStories = STATE_COLUMNS.flatMap((column) => initialContainers[column] ?? []);
+  const sortedStateIds = [...states].sort((a, b) => a.position - b.position).map((s) => s.id);
+  const iterationStories = sortedStateIds.flatMap((column) => initialContainers[column] ?? []);
   const totalStoryCount =
     iterationStories.length +
     iceboxStories.length +
@@ -252,13 +265,16 @@ export function KanbanBoard({
         <KanbanColumnsBoard
           projectId={projectId}
           currentIteration={currentIteration}
+          states={states}
           initialContainers={initialContainers}
           filter={filter}
+          canManageStates={canManageStates}
         />
       ) : view === "focus" ? (
         <FocusBoard
           projectId={projectId}
           currentIteration={currentIteration}
+          states={states}
           initialContainers={initialContainers}
           filter={filter}
           pointScale={pointScale}
@@ -267,6 +283,7 @@ export function KanbanBoard({
         <BoardListView
           projectId={projectId}
           currentIteration={currentIteration}
+          states={states}
           initialContainers={initialContainers}
           initialBacklogItems={initialBacklogItems}
           velocity={velocity}

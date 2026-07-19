@@ -166,6 +166,138 @@ export async function deleteLabel(formData: FormData) {
   revalidatePath(`/projects/${projectId}/settings`);
 }
 
+const STATE_CATEGORIES = ["unstarted", "in_progress", "done", "rejected"] as const;
+
+/**
+ * Adds a new state (doc-8 §2's board-level "+ Add column" reuses this same
+ * action). Lands at the end of its own category's block, not the whole
+ * project's position sequence — see create_project_state
+ * (20260719000014) for why a plain append-to-end broke computeStateGate's
+ * per-category contiguity assumption.
+ */
+export async function createProjectState(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const name = String(formData.get("name") ?? "").trim();
+  const category = String(formData.get("category") ?? "");
+
+  if (!name || !STATE_CATEGORIES.includes(category as (typeof STATE_CATEGORIES)[number])) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("create_project_state", {
+    p_project_id: projectId,
+    p_name: name,
+    p_category: category,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+export async function renameProjectState(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const stateId = String(formData.get("state_id"));
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) {
+    return;
+  }
+
+  const supabase = await createClient();
+  await assertRowAffected(
+    await supabase.from("project_states").update({ name }).eq("id", stateId).eq("project_id", projectId).select("id"),
+  );
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+/**
+ * The button label a story sitting in this state shows for its own advance
+ * action (spec/data-model.md "Transitions") — nullable; a blank field clears
+ * it, which `computeStateGate` (packages/core) treats as "no manual advance
+ * button here" rather than falling back to any default text.
+ */
+export async function updateProjectStateActionLabel(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const stateId = String(formData.get("state_id"));
+  const actionLabel = String(formData.get("action_label") ?? "").trim() || null;
+
+  const supabase = await createClient();
+  await assertRowAffected(
+    await supabase
+      .from("project_states")
+      .update({ action_label: actionLabel })
+      .eq("id", stateId)
+      .eq("project_id", projectId)
+      .select("id"),
+  );
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+/** Swaps this state with its nearest same-category neighbour (up/down arrows) — see reorder_project_state (20260719000013). */
+export async function reorderProjectState(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const stateId = String(formData.get("state_id"));
+  const direction = String(formData.get("direction"));
+  if (direction !== "up" && direction !== "down") {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("reorder_project_state", {
+    p_project_id: projectId,
+    p_state_id: stateId,
+    p_direction: direction,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+}
+
+export type ProjectStateActionState = { error?: string };
+
+/**
+ * Deletion is plain-FK blocked while any story points at the state, and a
+ * trigger blocks removing a category's last row (spec/data-model.md
+ * "Integrity rules") — both surface as an inline message here (the
+ * custom_statuses precedent) instead of a thrown 500, since either is a
+ * routine, expected outcome of clicking delete on the wrong state, not a
+ * bug.
+ */
+export async function deleteProjectState(
+  _prev: ProjectStateActionState,
+  formData: FormData,
+): Promise<ProjectStateActionState> {
+  const projectId = String(formData.get("project_id"));
+  const stateId = String(formData.get("state_id"));
+
+  const supabase = await createClient();
+  const { error, data } = await supabase
+    .from("project_states")
+    .delete()
+    .eq("id", stateId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  if (error) {
+    if (error.code === "23503") {
+      return { error: "Move the stories off this state before deleting it." };
+    }
+    return { error: error.message };
+  }
+  if (!data || data.length === 0) {
+    return { error: "State not found." };
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/board`);
+  return {};
+}
+
 const INTEGRATION_PROVIDERS = ["github", "forgejo", "slack"] as const;
 type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 
@@ -212,6 +344,11 @@ export async function saveIntegration(formData: FormData) {
 
   const repoUrl = String(formData.get("repo_url") ?? "").trim();
   const secret = String(formData.get("webhook_secret") ?? "").trim();
+  // Nullable by spec (spec/integrations.md "integrations.config の中身"):
+  // unset disables the merge transition — finish_story_from_git already
+  // fails closed to 'not_configured' rather than erroring, so an empty
+  // value here is a valid "not configured yet" state, not an error.
+  const mergeTargetStateId = String(formData.get("merge_target_state_id") ?? "").trim() || null;
 
   // Does a row already exist? (id is SELECTable; webhook_secret is not.) On
   // create the secret is mandatory; on edit a blank field keeps the stored one.
@@ -230,8 +367,12 @@ export async function saveIntegration(formData: FormData) {
   // representation it can no longer read (webhook_secret is not SELECTable),
   // so it 42501s. Plain insert/update run return=minimal and omit the secret
   // from the payload on a blank edit, leaving the stored value intact.
-  const fields: { config: { repo_url: string }; is_active: boolean; webhook_secret?: string } = {
-    config: { repo_url: repoUrl },
+  const fields: {
+    config: { repo_url: string; merge_target_state_id: string | null };
+    is_active: boolean;
+    webhook_secret?: string;
+  } = {
+    config: { repo_url: repoUrl, merge_target_state_id: mergeTargetStateId },
     is_active: isActive,
   };
   if (secret) {

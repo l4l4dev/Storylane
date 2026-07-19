@@ -725,6 +725,15 @@ export type Database = {
         Args: { p_story_id: string; p_target_project_id: string }
         Returns: Json
       }
+      create_project_state: {
+        Args: {
+          p_action_label?: string
+          p_category: string
+          p_name: string
+          p_project_id: string
+        }
+        Returns: string
+      }
       create_story_tracker: {
         Args: {
           p_description: string
@@ -754,7 +763,11 @@ export type Database = {
         Returns: Json
       }
       finish_story_from_git: {
-        Args: { p_project_id: string; p_story_number: number }
+        Args: {
+          p_project_id: string
+          p_provider: string
+          p_story_number: number
+        }
         Returns: Json
       }
       generate_username: { Args: { base: string }; Returns: string }
@@ -791,6 +804,10 @@ export type Database = {
       promote_story_to_epic: { Args: { p_story_id: string }; Returns: Json }
       remove_member: {
         Args: { p_project_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      reorder_project_state: {
+        Args: { p_direction: string; p_project_id: string; p_state_id: string }
         Returns: undefined
       }
       require_project_role: {

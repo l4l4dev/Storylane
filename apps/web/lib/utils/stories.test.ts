@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { filterStories, formatPoints, isUnestimatedFeature, parsePoints } from "./stories";
+import { filterStories, formatPoints, isUnestimatedFeature, parsePoints, storyStateBadge } from "./stories";
+import type { ProjectState } from "@/lib/types";
+import stateTemplates from "../../../../spec/fixtures/state-templates.json";
 
 describe("filterStories", () => {
   const stories = [
@@ -79,6 +81,60 @@ describe("parsePoints", () => {
   it("rejects negatives and non-numbers", () => {
     expect(parsePoints("-1", "feature", fibonacci)).toBeNull();
     expect(parsePoints("abc", "feature", fibonacci)).toBeNull();
+  });
+});
+
+describe("storyStateBadge", () => {
+  const classicStates: ProjectState[] = stateTemplates.classic.states.map((s) => ({
+    id: s.name,
+    name: s.name,
+    category: s.category as ProjectState["category"],
+    action_label: s.actionLabel,
+    position: s.position,
+    project_id: "p1",
+    created_at: "",
+  }));
+
+  it("returns Icebox styling for state_id null", () => {
+    expect(storyStateBadge(null, classicStates)).toEqual({ label: "Icebox", className: "bg-muted text-muted-foreground" });
+  });
+
+  it("labels each state by its own name", () => {
+    expect(storyStateBadge("Started", classicStates).label).toBe("Started");
+    expect(storyStateBadge("Accepted", classicStates).label).toBe("Accepted");
+  });
+
+  it("cycles distinct colors across same-category states by position (classic template reproduces its original per-state colors)", () => {
+    const started = storyStateBadge("Started", classicStates).className;
+    const finished = storyStateBadge("Finished", classicStates).className;
+    const delivered = storyStateBadge("Delivered", classicStates).className;
+    expect(new Set([started, finished, delivered]).size).toBe(3);
+  });
+
+  it("gives every done-category and every rejected-category state the same color (only one of each in classic)", () => {
+    expect(storyStateBadge("Accepted", classicStates).className).toContain("green");
+    expect(storyStateBadge("Rejected", classicStates).className).toContain("rose");
+  });
+
+  it("falls back gracefully for a state_id not present in the given states list", () => {
+    expect(storyStateBadge("not-a-real-state", classicStates)).toEqual({
+      label: "Unknown",
+      className: "bg-muted text-muted-foreground",
+    });
+  });
+
+  it("wraps the palette when a category has more states than colors", () => {
+    const manyInProgress: ProjectState[] = Array.from({ length: 5 }, (_, i) => ({
+      id: `s${i}`,
+      name: `Step ${i}`,
+      category: "in_progress" as const,
+      action_label: "Next",
+      position: i,
+      project_id: "p1",
+      created_at: "",
+    }));
+    // 4-color palette, 5 states -> the 5th (index 4) wraps back to index 0's color.
+    expect(storyStateBadge("s4", manyInProgress).className).toBe(storyStateBadge("s0", manyInProgress).className);
   });
 });
 

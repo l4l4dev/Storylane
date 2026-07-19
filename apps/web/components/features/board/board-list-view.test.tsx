@@ -1,13 +1,14 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ActionResult, ProjectState } from "@/lib/types";
 import { BoardListView, DividerRow, InsertBetweenRows, IterationGoalInput, IterationHeaderRow, RowInsertMenu } from "./board-list-view";
 import type { BoardStory } from "./kanban-board";
 
 const { deleteBacklogDividerMock, createBacklogDividerMock, quickCreateStoryMock, upsertIterationGoalMock } = vi.hoisted(() => ({
   deleteBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
   createBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
-  quickCreateStoryMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  quickCreateStoryMock: vi.fn<(formData: FormData) => Promise<ActionResult>>(() => Promise.resolve({ ok: true })),
   upsertIterationGoalMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
 }));
 
@@ -23,7 +24,7 @@ vi.mock("@/app/projects/[id]/board/actions", () => ({
   dropStoryInList: vi.fn(),
   estimateStory: vi.fn(),
   quickCreateStory: quickCreateStoryMock,
-  transitionStory: vi.fn(),
+  setStoryState: vi.fn(),
   upsertIterationGoal: upsertIterationGoalMock,
 }));
 
@@ -227,7 +228,8 @@ function backlogStory(id: string, points: number): BoardStory {
     title: `Story ${id}`,
     description: null,
     story_type: "feature",
-    state: "unscheduled",
+    isDone: false,
+    state_id: null,
     points,
     assigneeName: null,
     labels: [],
@@ -242,10 +244,20 @@ function backlogStory(id: string, points: number): BoardStory {
   };
 }
 
+const CLASSIC_STATES: ProjectState[] = [
+  { id: "unstarted", name: "Unstarted", category: "unstarted", action_label: "Start", position: 0, project_id: "p1", created_at: "" },
+  { id: "started", name: "Started", category: "in_progress", action_label: "Finish", position: 1, project_id: "p1", created_at: "" },
+  { id: "finished", name: "Finished", category: "in_progress", action_label: "Deliver", position: 2, project_id: "p1", created_at: "" },
+  { id: "delivered", name: "Delivered", category: "in_progress", action_label: "Accept", position: 3, project_id: "p1", created_at: "" },
+  { id: "accepted", name: "Accepted", category: "done", action_label: null, position: 4, project_id: "p1", created_at: "" },
+  { id: "rejected", name: "Rejected", category: "rejected", action_label: null, position: 5, project_id: "p1", created_at: "" },
+];
+
 function boardProps(stories: BoardStory[]) {
   return {
     projectId: "p1",
     currentIteration: null,
+    states: CLASSIC_STATES,
     initialContainers: {
       backlog: [],
       icebox: [],
@@ -274,7 +286,7 @@ describe("Backlog per-group quick add", () => {
 
   beforeEach(() => {
     quickCreateStoryMock.mockClear();
-    quickCreateStoryMock.mockResolvedValue(undefined);
+    quickCreateStoryMock.mockResolvedValue({ ok: true });
   });
 
   it("preserves an open composer's typed title when Realtime changes which row ends its group", () => {

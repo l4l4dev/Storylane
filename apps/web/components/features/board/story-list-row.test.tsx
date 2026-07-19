@@ -2,6 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { StoryListRow } from "./story-list-row";
 import type { StoryCardData } from "./story-card";
+import type { ProjectState } from "@/lib/types";
+import stateTemplates from "../../../../../spec/fixtures/state-templates.json";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -11,13 +13,26 @@ vi.mock("next/navigation", () => ({
 
 const fibonacci = [0, 1, 2, 3, 5, 8, 13];
 
-const baseStory: StoryCardData = {
+// Classic-template states, keyed by name (ids are runtime UUIDs; this test
+// synthesizes stable ids by reusing the name).
+const CLASSIC_STATES: ProjectState[] = stateTemplates.classic.states.map((s) => ({
+  id: s.name,
+  name: s.name,
+  category: s.category as ProjectState["category"],
+  action_label: s.actionLabel,
+  position: s.position,
+  project_id: "p1",
+  created_at: "",
+}));
+
+const baseStory: StoryCardData & { state_id: string | null } = {
   id: "s1",
   number: 42,
   title: "Add login",
   description: null,
   story_type: "feature",
-  state: "unstarted",
+  isDone: false,
+  state_id: "Unstarted",
   points: 3,
   assigneeName: null,
   labels: [],
@@ -32,6 +47,7 @@ describe("StoryListRow", () => {
       <StoryListRow
         story={{ ...baseStory, epic: { id: "e1", name: "Checkout revamp", color: "#6366f1" } }}
         projectId="p1"
+        states={CLASSIC_STATES}
         pointScale={fibonacci}
       />,
     );
@@ -39,7 +55,7 @@ describe("StoryListRow", () => {
   });
 
   it("shows no epic badge when the story has no epic", () => {
-    render(<StoryListRow story={baseStory} projectId="p1" pointScale={fibonacci} />);
+    render(<StoryListRow story={baseStory} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />);
     expect(screen.queryByText("Checkout revamp")).not.toBeInTheDocument();
   });
 
@@ -48,11 +64,24 @@ describe("StoryListRow", () => {
       <StoryListRow
         story={{ ...baseStory, assigneeName: "Claude", assigneeIsAgent: true }}
         projectId="p1"
+        states={CLASSIC_STATES}
         pointScale={fibonacci}
       />,
     );
     expect(screen.getByTitle("Claude (agent)")).toHaveTextContent("CL");
     expect(screen.getByLabelText("Agent")).toBeInTheDocument();
+  });
+
+  it("shows the state badge with the state's own name", () => {
+    render(<StoryListRow story={baseStory} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />);
+    expect(screen.getByText("Unstarted")).toBeInTheDocument();
+  });
+
+  it("shows no state badge for an Icebox row (state_id null)", () => {
+    render(
+      <StoryListRow story={{ ...baseStory, state_id: null }} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />,
+    );
+    expect(screen.queryByText("Icebox")).not.toBeInTheDocument();
   });
 
   it("lets the title shrink and hides secondary chips below the small breakpoint", () => {
@@ -64,6 +93,7 @@ describe("StoryListRow", () => {
           labels: [{ id: "l1", name: "Urgent", color: "#ef4444" }],
         }}
         projectId="p1"
+        states={CLASSIC_STATES}
         pointScale={fibonacci}
       />,
     );
@@ -84,7 +114,7 @@ describe("StoryListRow", () => {
             ...baseStory,
             title: "A very long feature title that must truncate instead of widening the story row on a phone",
             points: null,
-            state: "rejected",
+            state_id: "Rejected",
             assigneeName: "Mary Evans",
             epic: { id: "e1", name: "Checkout revamp", color: "#6366f1" },
             labels: [
@@ -93,6 +123,7 @@ describe("StoryListRow", () => {
             ],
           }}
           projectId="p1"
+          states={CLASSIC_STATES}
           pointScale={fibonacci}
           insertMenu={<button type="button">Insert</button>}
         />

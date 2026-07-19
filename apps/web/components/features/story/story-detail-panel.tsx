@@ -312,7 +312,8 @@ export function StoryDetailPanel({
         <TransitionButtons
           storyId={detail.id}
           projectId={detail.projectId}
-          state={detail.state}
+          stateId={detail.stateId}
+          states={detail.states}
           storyType={detail.storyType}
           points={detail.points}
           pointScale={detail.pointScale}

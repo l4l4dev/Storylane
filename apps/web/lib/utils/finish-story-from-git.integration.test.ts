@@ -125,6 +125,7 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
     const { data, error } = await asService.rpc("finish_story_from_git", {
       p_project_id: projectId,
       p_story_number: number,
+      p_provider: "github",
     });
     expect(error).toBeNull();
     const events = data as FinishEvent[];
@@ -139,7 +140,7 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
   it("leaves an already-assigned story's iteration untouched", async () => {
     const number = await seedStory(states.Started, iterationId);
 
-    const { data } = await asService.rpc("finish_story_from_git", { p_project_id: projectId, p_story_number: number });
+    const { data } = await asService.rpc("finish_story_from_git", { p_project_id: projectId, p_story_number: number, p_provider: "github" });
     expect((data as FinishEvent[])[0].kind).toBe("finished");
 
     const row = await storyRow(number);
@@ -153,6 +154,7 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
     const { data, error } = await asService.rpc("finish_story_from_git", {
       p_project_id: projectId,
       p_story_number: number,
+      p_provider: "github",
     });
     expect(error).toBeNull();
     expect((data as FinishEvent[])[0].kind).toBe("finished");
@@ -167,6 +169,7 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
     const { data, error } = await asService.rpc("finish_story_from_git", {
       p_project_id: projectId,
       p_story_number: number,
+      p_provider: "github",
     });
     expect(error).toBeNull();
     expect((data as FinishEvent[])[0].kind).toBe("not_transitionable");
@@ -181,6 +184,7 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
     const { data, error } = await asService.rpc("finish_story_from_git", {
       p_project_id: projectId,
       p_story_number: number,
+      p_provider: "github",
     });
     expect(error).toBeNull();
     expect((data as FinishEvent[])[0].kind).toBe("not_transitionable");
@@ -193,6 +197,7 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
     const { data, error } = await asService.rpc("finish_story_from_git", {
       p_project_id: projectId,
       p_story_number: 9999,
+      p_provider: "github",
     });
     expect(error).toBeNull();
     expect((data as FinishEvent[])[0].kind).toBe("not_transitionable");
@@ -203,6 +208,7 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
     const { data, error } = await asService.rpc("finish_story_from_git", {
       p_project_id: otherProject!.id,
       p_story_number: 1,
+      p_provider: "github",
     });
     expect(error).toBeNull();
     expect((data as FinishEvent[])[0]).toMatchObject({ kind: "ignored", reason: "not_configured" });
@@ -223,9 +229,81 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
     const { data, error } = await asService.rpc("finish_story_from_git", {
       p_project_id: badProject!.id,
       p_story_number: 1,
+      p_provider: "github",
     });
     expect(error).toBeNull();
     expect((data as FinishEvent[])[0]).toMatchObject({ kind: "ignored", reason: "target_state_invalid" });
     await asService.from("projects").delete().eq("id", badProject!.id);
+  });
+
+  // The RPC filters by provider, so a project with only a forgejo
+  // integration configured must not have its story finished when the
+  // caller (correctly) identifies itself as github.
+  it("ignores a provider with no configured integration, even when a different provider is configured (provider mismatch guard)", async () => {
+    const { data: mismatchProject } = await asUser.from("projects").insert({ name: "provider-mismatch project" }).select("id").single();
+    const { data: mismatchStates } = await asUser
+      .from("project_states")
+      .select("id, category")
+      .eq("project_id", mismatchProject!.id);
+    const finishedStateId = mismatchStates!.find((s) => s.category === "in_progress")!.id;
+    await asUser.from("integrations").insert({
+      project_id: mismatchProject!.id,
+      provider: "forgejo",
+      config: { merge_target_state_id: finishedStateId },
+      is_active: true,
+    });
+
+    const { data, error } = await asService.rpc("finish_story_from_git", {
+      p_project_id: mismatchProject!.id,
+      p_story_number: 1,
+      p_provider: "github",
+    });
+    expect(error).toBeNull();
+    expect((data as FinishEvent[])[0]).toMatchObject({ kind: "ignored", reason: "not_configured" });
+    await asService.from("projects").delete().eq("id", mismatchProject!.id);
+  });
+
+  // Writing state_id before finding an iteration to assign would leave a
+  // Backlog/Icebox story stranded (state set, no iteration) when the
+  // project had none yet — invisible on the Kanban board, which renders no
+  // Backlog/Icebox columns.
+  it("fails closed with no_active_iteration instead of stranding a Backlog story when the project has no iteration yet (no board visit)", async () => {
+    const { data: freshProject } = await asUser.from("projects").insert({ name: "no-iteration-yet project" }).select("id").single();
+    const { data: freshStates } = await asUser
+      .from("project_states")
+      .select("id, name, category")
+      .eq("project_id", freshProject!.id);
+    const freshByName = Object.fromEntries((freshStates ?? []).map((s) => [s.name, s.id]));
+    await asUser.from("integrations").insert({
+      project_id: freshProject!.id,
+      provider: "github",
+      config: { merge_target_state_id: freshByName.Finished },
+      is_active: true,
+    });
+
+    const { data: freshStory } = await asUser
+      .from("stories")
+      .insert({ project_id: freshProject!.id, title: "No iteration yet", state_id: freshByName.Started, points: 2, iteration_id: null })
+      .select("number")
+      .single();
+
+    const { data, error } = await asService.rpc("finish_story_from_git", {
+      p_project_id: freshProject!.id,
+      p_story_number: freshStory!.number,
+      p_provider: "github",
+    });
+    expect(error).toBeNull();
+    expect((data as FinishEvent[])[0]).toMatchObject({ kind: "ignored", reason: "no_active_iteration" });
+
+    const { data: row } = await asService
+      .from("stories")
+      .select("state_id, iteration_id")
+      .eq("project_id", freshProject!.id)
+      .eq("number", freshStory!.number)
+      .single();
+    expect(row?.state_id).toBe(freshByName.Started); // untouched — not stranded in Finished with no iteration
+    expect(row?.iteration_id).toBeNull();
+
+    await asService.from("projects").delete().eq("id", freshProject!.id);
   });
 });

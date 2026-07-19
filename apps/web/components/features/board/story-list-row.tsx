@@ -3,8 +3,9 @@
 import type { ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bug, Star, Wrench, type LucideIcon } from "lucide-react";
-import { formatPoints, STORY_STATE_META, STORY_TYPE_META, type StoryState, type StoryType } from "@/lib/utils/stories";
+import { formatPoints, storyStateBadge, STORY_TYPE_META, type StoryType } from "@/lib/utils/stories";
 import { initials } from "@/lib/utils/format";
+import type { ProjectState } from "@/lib/types";
 import { EpicBadge, ReleaseMarkerRow, type StoryCardData } from "./story-card";
 import { TransitionButtons } from "@/components/features/story/transition-buttons";
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
@@ -22,11 +23,15 @@ const STORY_TYPE_ICON: Record<Exclude<StoryType, "release">, LucideIcon> = {
 export function StoryListRow({
   story,
   projectId,
+  states,
   pointScale,
   insertMenu,
 }: {
-  story: StoryCardData;
+  // StoryCardData plus state_id — the row needs it for the badge and
+  // transition buttons; the physical card (isDone only) doesn't.
+  story: StoryCardData & { state_id: string | null };
   projectId: string;
+  states: ProjectState[];
   pointScale: number[];
   // Row-level "insert note/iteration break here" menu (TASK-42) — Backlog
   // rows pass this; Current/Icebox rows (no notes/breaks there) don't.
@@ -48,8 +53,8 @@ export function StoryListRow({
 
   const typeMeta = STORY_TYPE_META[story.story_type as StoryType];
   const TypeIcon = STORY_TYPE_ICON[story.story_type as Exclude<StoryType, "release">];
-  const stateMeta = STORY_STATE_META[story.state as StoryState];
-  const isAccepted = story.state === "accepted";
+  const stateBadge = storyStateBadge(story.state_id, states);
+  const isAccepted = story.isDone;
 
   return (
     <div
@@ -77,9 +82,11 @@ export function StoryListRow({
           <EpicBadge epic={story.epic} />
         </span>
       )}
-      {stateMeta && (
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${stateMeta.className}`}>
-          {stateMeta.label}
+      {/* No badge for Icebox rows — the column/section itself already says
+          "Icebox", so a per-row badge there would be redundant noise. */}
+      {story.state_id !== null && (
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${stateBadge.className}`}>
+          {stateBadge.label}
         </span>
       )}
       {story.points != null && (
@@ -111,7 +118,8 @@ export function StoryListRow({
         <TransitionButtons
           storyId={story.id}
           projectId={projectId}
-          state={story.state}
+          stateId={story.state_id}
+          states={states}
           storyType={story.story_type}
           points={story.points}
           pointScale={pointScale}

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { KanbanBoard } from "./kanban-board";
+import type { ProjectState } from "@/lib/types";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
@@ -20,13 +21,26 @@ vi.mock("@/app/projects/[id]/board/actions", () => ({
   deleteBacklogDivider: vi.fn(),
   quickCreateStory: vi.fn(),
   estimateStory: vi.fn(),
-  transitionStory: vi.fn(),
+  setStoryState: vi.fn(),
 }));
+
+// Ids match initialContainers' keys below — this test never resolves a real
+// state_id, it just needs the state list shaped consistently with the
+// containers it seeds.
+const CLASSIC_STATES: ProjectState[] = [
+  { id: "unstarted", name: "Unstarted", category: "unstarted", action_label: "Start", position: 0, project_id: "p1", created_at: "" },
+  { id: "started", name: "Started", category: "in_progress", action_label: "Finish", position: 1, project_id: "p1", created_at: "" },
+  { id: "finished", name: "Finished", category: "in_progress", action_label: "Deliver", position: 2, project_id: "p1", created_at: "" },
+  { id: "delivered", name: "Delivered", category: "in_progress", action_label: "Accept", position: 3, project_id: "p1", created_at: "" },
+  { id: "accepted", name: "Accepted", category: "done", action_label: null, position: 4, project_id: "p1", created_at: "" },
+  { id: "rejected", name: "Rejected", category: "rejected", action_label: null, position: 5, project_id: "p1", created_at: "" },
+];
 
 function baseProps() {
   return {
     projectId: "p1",
     currentIteration: null,
+    states: CLASSIC_STATES,
     initialContainers: {
       backlog: [],
       icebox: [],
@@ -43,6 +57,7 @@ function baseProps() {
     iterationLength: 14,
     iterationGoals: {},
     canFinishIteration: false,
+    canManageStates: false,
     filter: {},
     pointScale: [0, 1, 2, 3, 5, 8, 13],
   };

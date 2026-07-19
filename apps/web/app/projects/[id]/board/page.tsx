@@ -7,6 +7,7 @@ import {
 } from "@/lib/utils/kanban";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
 import { pointScaleValues } from "@/lib/utils/stories";
+import type { ProjectState } from "@/lib/types";
 import { calculateVelocity } from "@storylane/core";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
@@ -72,7 +73,7 @@ export default async function BoardPage({
   // iterations query below.
   await ensureCurrentIteration(project.id);
 
-  const [{ data: iterations }, { data: stories }, { data: labels }, { data: epics }, { data: members }, { data: dividers }, { data: pendingGoals }] =
+  const [{ data: iterations }, { data: stories }, { data: labels }, { data: epics }, { data: members }, { data: dividers }, { data: pendingGoals }, { data: statesData }] =
     await Promise.all([
       supabase
         .from("iterations")
@@ -82,7 +83,7 @@ export default async function BoardPage({
       supabase
         .from("stories")
         .select(
-          "id, number, title, description, story_type, state, points, position, iteration_id, epic_id, assignee_id, focus, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
+          "id, number, title, description, story_type, state_id, points, position, iteration_id, epic_id, assignee_id, focus, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
         )
         .eq("project_id", id)
         .order("position", { ascending: true }),
@@ -101,7 +102,17 @@ export default async function BoardPage({
       // fetch everything and filter to `number > currentIteration.number`
       // below than to await `currentIteration` first for a second query.
       supabase.from("iteration_goals").select("number, goal").eq("project_id", id),
+      // The project's states (TASK-91) — the physical Kanban column set,
+      // threaded down through KanbanBoard to every view.
+      supabase
+        .from("project_states")
+        .select("id, project_id, name, action_label, category, position, created_at")
+        .eq("project_id", id)
+        .order("position", { ascending: true }),
     ]);
+
+  const states: ProjectState[] = (statesData ?? []) as ProjectState[];
+  const stateById = new Map(states.map((s) => [s.id, s]));
 
   const storyPositionById = new Map((stories ?? []).map((s) => [s.id, s.position]));
 
@@ -135,7 +146,8 @@ export default async function BoardPage({
         title: story.title,
         description: story.description,
         story_type: story.story_type,
-        state: story.state,
+        state_id: story.state_id,
+        isDone: story.state_id !== null && stateById.get(story.state_id)?.category === "done",
         points: story.points,
         position: story.position,
         iteration_id: story.iteration_id,
@@ -166,16 +178,13 @@ export default async function BoardPage({
   const initialContainers: Record<string, BoardStory[]> = {
     [BACKLOG_COLUMN_ID]: [],
     [ICEBOX_COLUMN_ID]: [],
-    unstarted: [],
-    started: [],
-    finished: [],
-    delivered: [],
-    accepted: [],
-    rejected: [],
   };
+  for (const state of states) {
+    initialContainers[state.id] = [];
+  }
   for (const card of cards) {
     const column = columnForStory(card, currentIteration?.id ?? null);
-    initialContainers[column].push(card);
+    (initialContainers[column] ??= []).push(card);
   }
 
   // Merges backlog stories and freeform planning dividers by their shared
@@ -253,6 +262,7 @@ export default async function BoardPage({
       <KanbanBoard
         projectId={project.id}
         currentIteration={currentIteration}
+        states={states}
         initialContainers={initialContainers}
         initialBacklogItems={initialBacklogItems}
         velocity={currentVelocity}
@@ -260,6 +270,9 @@ export default async function BoardPage({
         iterationLength={project.iteration_length}
         iterationGoals={iterationGoals}
         canFinishIteration={canFinishIteration}
+        // Same predicate as canFinishIteration (owner/member) — matches
+        // project_states' own INSERT/UPDATE RLS policy.
+        canManageStates={canFinishIteration}
         filter={filter}
         pointScale={pointScaleValues(project.point_scale, project.custom_points)}
         toolbar={

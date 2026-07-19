@@ -5,6 +5,8 @@
 // timestamp to the viewer's local calendar date before calling
 // `groupDoneStories`, this module never touches `Date`/`Intl` itself.
 
+import type { StateCategory } from "@storylane/core";
+
 export const FOCUS_COLUMNS = ["todo", "today", "in_progress", "done"] as const;
 export type FocusColumnId = (typeof FOCUS_COLUMNS)[number];
 
@@ -15,7 +17,8 @@ export const FOCUS_DRAG_TARGETS = ["todo", "today"] as const;
 export type FocusDragTarget = (typeof FOCUS_DRAG_TARGETS)[number];
 
 export type FocusStory = {
-  state: string;
+  /** The story's state category, null for the Icebox (state_id null). */
+  category: StateCategory | null;
   focus: string | null;
   iteration_id: string | null;
 };
@@ -23,10 +26,9 @@ export type FocusStory = {
 /**
  * The Focus-view column a story belongs to, or null if it doesn't belong in
  * this view at all (not in the current iteration, or Icebox/Backlog).
- * `rejected` groups into `in_progress` alongside started/finished/delivered
- * rather than getting its own column — it still needs the Restart
- * transition, same reasoning as Kanban view's
- * Rejected column.
+ * `rejected` groups into `in_progress` alongside the rest of the
+ * in-progress work rather than getting its own column — it still needs the
+ * Restart transition, same reasoning as Kanban view's Rejected column.
  */
 export function focusColumnForStory(
   story: FocusStory,
@@ -35,12 +37,10 @@ export function focusColumnForStory(
   if (!currentIterationId || story.iteration_id !== currentIterationId) {
     return null;
   }
-  switch (story.state) {
-    case "accepted":
+  switch (story.category) {
+    case "done":
       return "done";
-    case "started":
-    case "finished":
-    case "delivered":
+    case "in_progress":
     case "rejected":
       return "in_progress";
     case "unstarted":
@@ -49,7 +49,7 @@ export function focusColumnForStory(
       }
       return "todo";
     default:
-      // unscheduled (Icebox) never belongs to the current iteration's view.
+      // null (Icebox) never belongs to the current iteration's view.
       return null;
   }
 }
@@ -61,11 +61,11 @@ export type FocusDropEvaluation =
 /**
  * Validates dragging `story` onto `to` (Todo / Today). Drag only ever sets
  * or clears `focus` and never touches state (spec/screens.md) — only
- * `unstarted` stories can be dragged here at all, since In progress and
- * Done aren't drop sources in the UI; re-checked server-side too.
+ * unstarted-category stories can be dragged here at all, since In progress
+ * and Done aren't drop sources in the UI; re-checked server-side too.
  */
-export function evaluateFocusDrop(story: Pick<FocusStory, "state">, to: FocusDragTarget): FocusDropEvaluation {
-  if (story.state !== "unstarted") {
+export function evaluateFocusDrop(story: Pick<FocusStory, "category">, to: FocusDragTarget): FocusDropEvaluation {
+  if (story.category !== "unstarted") {
     return { ok: false, reason: "Only not-yet-started stories can be moved here" };
   }
   return { ok: true, focus: to === "todo" ? null : to };

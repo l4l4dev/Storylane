@@ -2,13 +2,21 @@
 
 import { useState } from "react";
 import { createProject, type NewProjectInviteResult } from "@/app/dashboard/actions";
-import { ITERATION_LENGTHS, POINT_SCALES } from "@/lib/types";
+import { ITERATION_LENGTHS, POINT_SCALES, STATE_TEMPLATES } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { NewProjectInvitePicker } from "./new-project-invite-picker";
+
+// classic = the Pivotal-parity anchor (6 states matching the pre-redesign
+// fixed Kanban exactly); minimal = a 3-state Todo/Doing/Done board
+// (spec/data-model.md "Default templates").
+const TEMPLATE_LABELS: Record<(typeof STATE_TEMPLATES)[number], string> = {
+  classic: "Classic (Unstarted → Started → Finished → Delivered → Accepted / Rejected)",
+  minimal: "Minimal (Todo → Doing → Done)",
+};
 
 // Inline panel (spec/screens.md "Projects page") that expands in place
 // above the card grid — no route change, no dialog role.
@@ -71,6 +79,20 @@ export function InlineCreatePanel() {
               </option>
             ))}
           </NativeSelect>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="project-state-template">Board template</Label>
+          <NativeSelect id="project-state-template" name="state_template" defaultValue="classic">
+            {STATE_TEMPLATES.map((t) => (
+              <option key={t} value={t}>
+                {TEMPLATE_LABELS[t]}
+              </option>
+            ))}
+          </NativeSelect>
+          <p className="text-xs text-muted-foreground">
+            Customizable later in Settings → States.
+          </p>
         </div>
 
         <div className="flex flex-col gap-1.5">

@@ -16,7 +16,7 @@ const baseStory: StoryCardData = {
   title: "Add login",
   description: null,
   story_type: "feature",
-  state: "unstarted",
+  isDone: false,
   points: 3,
   assigneeName: null,
   labels: [],

@@ -35,6 +35,7 @@ import {
   ICEBOX_COLUMN_ID,
   evaluateListDrop,
   flattenCurrentZone,
+  toGateStates,
   zoneForStory,
   type ListZoneId,
 } from "@/lib/utils/kanban";
@@ -46,6 +47,7 @@ import {
   type BacklogRowItem,
 } from "@/lib/utils/iterations";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
+import type { ProjectState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -134,6 +136,7 @@ function wrapStory(story: BoardStory): ListItem {
 function toListItemContainers(
   source: Record<string, BoardStory[]>,
   backlogItems: ReadonlyArray<BacklogRowItem<BoardStory>>,
+  states: ReadonlyArray<ProjectState>,
 ): Record<string, ListItem[]> {
   return {
     [ICEBOX_COLUMN_ID]: (source[ICEBOX_COLUMN_ID] ?? []).map(wrapStory),
@@ -141,7 +144,7 @@ function toListItemContainers(
     // current zone is one flat, priority-ordered list spanning every state
     // (see spec/screens.md "List view"); concatenating the physical Kanban
     // columns in state order would bucket by state instead.
-    current: flattenCurrentZone(source).map(wrapStory),
+    current: flattenCurrentZone(source, states).map(wrapStory),
     [BACKLOG_COLUMN_ID]: backlogItems.map((item) =>
       item.kind === "story" ? wrapStory(item.story) : { kind: "divider", id: item.divider.id, divider: item.divider },
     ),
@@ -156,10 +159,12 @@ function toListItemContainers(
 function SortableListRow({
   item,
   projectId,
+  states,
   pointScale,
 }: {
   item: ListItem;
   projectId: string;
+  states: ProjectState[];
   pointScale: number[];
 }) {
   return (
@@ -171,7 +176,7 @@ function SortableListRow({
         // for a branch that never renders.
         <DividerRow projectId={projectId} divider={item.divider} onError={() => {}} />
       ) : (
-        <StoryListRow story={item.story} projectId={projectId} pointScale={pointScale} />
+        <StoryListRow story={item.story} projectId={projectId} states={states} pointScale={pointScale} />
       )}
     </SortableItem>
   );
@@ -614,6 +619,7 @@ export function RowInsertMenu({
 function SortableBacklogRow({
   row,
   projectId,
+  states,
   pointScale,
   insertAboveId,
   insertBelowId,
@@ -621,6 +627,7 @@ function SortableBacklogRow({
 }: {
   row: Extract<BacklogRow<BoardStory>, { kind: "story" | "note" }>;
   projectId: string;
+  states: ProjectState[];
   pointScale: number[];
   insertAboveId: string;
   insertBelowId: string | null;
@@ -635,7 +642,7 @@ function SortableBacklogRow({
   return (
     <SortableItem id={dragId} className={row.kind === "story" ? "pl-3" : ""}>
       {row.kind === "story" ? (
-        <StoryListRow story={row.story} projectId={projectId} pointScale={pointScale} insertMenu={insertMenu} />
+        <StoryListRow story={row.story} projectId={projectId} states={states} pointScale={pointScale} insertMenu={insertMenu} />
       ) : (
         <DividerRow projectId={projectId} divider={row.divider} insertMenu={insertMenu} onError={onError} />
       )}
@@ -782,6 +789,7 @@ function ListSection({
   title,
   items,
   projectId,
+  states,
   composer,
   collapsed,
   onToggleCollapse,
@@ -791,6 +799,7 @@ function ListSection({
   title: ReactNode;
   items: ListItem[];
   projectId: string;
+  states: ProjectState[];
   composer?: ReactNode;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -818,7 +827,7 @@ function ListSection({
       <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className={`flex min-h-10 flex-col gap-1.5 ${collapsed ? "hidden" : ""}`}>
           {items.map((item) => (
-            <SortableListRow key={item.id} item={item} projectId={projectId} pointScale={pointScale} />
+            <SortableListRow key={item.id} item={item} projectId={projectId} states={states} pointScale={pointScale} />
           ))}
         </ul>
       </SortableContext>
@@ -853,6 +862,7 @@ function BacklogSection({
   velocity,
   startingIterationNumber,
   projectId,
+  states,
   filter,
   iterationGoals,
   projectedDatesFor,
@@ -868,6 +878,7 @@ function BacklogSection({
   velocity: number;
   startingIterationNumber: number;
   projectId: string;
+  states: ProjectState[];
   filter: StoryFilter;
   iterationGoals: Record<number, string>;
   projectedDatesFor: (iterationNumber: number) => { start_date: string; end_date: string } | null;
@@ -980,6 +991,7 @@ function BacklogSection({
                     key={rowKey(row, index)}
                     row={row}
                     projectId={projectId}
+                    states={states}
                     pointScale={pointScale}
                     insertAboveId={aboveId}
                     insertBelowId={nextRealRowIds[index + 1]}
@@ -1033,10 +1045,12 @@ function BacklogSection({
 function IceboxColumn({
   items,
   projectId,
+  states,
   pointScale,
 }: {
   items: ListItem[];
   projectId: string;
+  states: ProjectState[];
   pointScale: number[];
 }) {
   const { setNodeRef } = useDroppable({ id: ICEBOX_COLUMN_ID });
@@ -1052,7 +1066,7 @@ function IceboxColumn({
         <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-1.5">
             {items.map((item) => (
-              <SortableListRow key={item.id} item={item} projectId={projectId} pointScale={pointScale} />
+              <SortableListRow key={item.id} item={item} projectId={projectId} states={states} pointScale={pointScale} />
             ))}
           </ul>
         </SortableContext>
@@ -1075,6 +1089,7 @@ function IceboxColumn({
 export function BoardListView({
   projectId,
   currentIteration,
+  states,
   initialContainers,
   initialBacklogItems,
   velocity,
@@ -1087,6 +1102,7 @@ export function BoardListView({
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
+  states: ProjectState[];
   // Unfiltered — see `filter` below, applied only at render.
   initialContainers: Record<string, BoardStory[]>;
   // Backlog stories and freeform planning rows, pre-merged and ordered
@@ -1107,7 +1123,7 @@ export function BoardListView({
   // picker offers the right scale (TASK-37).
   pointScale: number[];
 }) {
-  const [containers, setContainers] = useState(() => toListItemContainers(initialContainers, initialBacklogItems));
+  const [containers, setContainers] = useState(() => toListItemContainers(initialContainers, initialBacklogItems, states));
   const [synced, setSynced] = useState(initialContainers);
   const [syncedBacklogItems, setSyncedBacklogItems] = useState(initialBacklogItems);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -1120,7 +1136,7 @@ export function BoardListView({
   if (synced !== initialContainers || syncedBacklogItems !== initialBacklogItems) {
     setSynced(initialContainers);
     setSyncedBacklogItems(initialBacklogItems);
-    setContainers(toListItemContainers(initialContainers, initialBacklogItems));
+    setContainers(toListItemContainers(initialContainers, initialBacklogItems, states));
   }
 
   const sensors = useSensors(
@@ -1144,7 +1160,7 @@ export function BoardListView({
       return false;
     }
     const from = zoneForStory(story, currentIteration?.id ?? null);
-    return evaluateListDrop(story, from, targetZone as ListZoneId).ok;
+    return evaluateListDrop(story, from, targetZone as ListZoneId, toGateStates(states)).ok;
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -1168,7 +1184,7 @@ export function BoardListView({
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null);
     const { active, over } = event;
-    const fallback = () => setContainers(toListItemContainers(synced, syncedBacklogItems));
+    const fallback = () => setContainers(toListItemContainers(synced, syncedBacklogItems, states));
 
     if (!over) {
       fallback();
@@ -1276,6 +1292,7 @@ export function BoardListView({
             }
             items={visibleCurrentItems}
             projectId={projectId}
+            states={states}
             composer={<QuickAddComposer projectId={projectId} target="unstarted" />}
             collapsed={collapsedGroups.has("current")}
             onToggleCollapse={() => onToggleGroup("current")}
@@ -1287,6 +1304,7 @@ export function BoardListView({
             velocity={velocity}
             startingIterationNumber={nextVirtualIterationNumber}
             projectId={projectId}
+            states={states}
             filter={filter}
             iterationGoals={iterationGoals}
             projectedDatesFor={projectedDatesFor}
@@ -1298,7 +1316,7 @@ export function BoardListView({
         </div>
 
         {showIcebox && (
-          <IceboxColumn items={visibleIceboxItems} projectId={projectId} pointScale={pointScale} />
+          <IceboxColumn items={visibleIceboxItems} projectId={projectId} states={states} pointScale={pointScale} />
         )}
       </div>
 
@@ -1308,7 +1326,7 @@ export function BoardListView({
             {activeItem.kind === "divider" ? (
               <DividerRow projectId={projectId} divider={activeItem.divider} onError={setMutationError} />
             ) : (
-              <StoryListRow story={activeItem.story} projectId={projectId} pointScale={pointScale} />
+              <StoryListRow story={activeItem.story} projectId={projectId} states={states} pointScale={pointScale} />
             )}
           </div>
         )}

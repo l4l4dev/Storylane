@@ -3,16 +3,15 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { Square, SquareCheck, X } from "lucide-react";
 import { addTask, deleteTask, toggleTask } from "@/app/stories/[id]/actions";
+import type { ActionResult } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export type TaskData = { id: string; title: string; is_done: boolean };
 
-// A plain `<form action={...}>` used to back each row — no pending state and
-// a thrown failure crashed into the route error boundary instead of staying
-// inline (fable-advisor review 2026-07-17, TASK-74, same class of bug as
-// transition-buttons.tsx). Each control disables itself while its own
-// request is in flight; one shared inline error covers the section.
+// Each control disables itself while its own request is in flight; one shared
+// inline error covers the section. Server Actions return failures as values
+// so production error masking cannot replace that message.
 export function TaskChecklist({
   storyId,
   tasks,
@@ -32,15 +31,19 @@ export function TaskChecklist({
   const [isPending, startTransition] = useTransition();
   const [newTitle, setNewTitle] = useState("");
 
-  function run(key: string, action: () => Promise<void>) {
+  function run(key: string, action: () => Promise<ActionResult>) {
     setError(null);
     setPendingKey(key);
     startTransition(async () => {
       try {
-        await action();
-        await onMutated?.();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to update tasks");
+        const result = await action();
+        if (result.ok) {
+          await onMutated?.();
+        } else {
+          setError(result.message);
+        }
+      } catch {
+        setError("Failed to update tasks");
       } finally {
         setPendingKey(null);
       }
@@ -72,8 +75,11 @@ export function TaskChecklist({
     formData.set("story_id", storyId);
     formData.set("title", trimmed);
     run("add", async () => {
-      await addTask(formData);
-      setNewTitle("");
+      const result = await addTask(formData);
+      if (result.ok) {
+        setNewTitle("");
+      }
+      return result;
     });
   }
 

@@ -173,6 +173,7 @@ export async function handleGitWebhookRequest(
     const { data, error } = await supabase.rpc("finish_story_from_git", {
       p_project_id: projectId,
       p_story_number: number,
+      p_provider: provider,
     });
     if (error) {
       return json(500, { error: error.message, matched: numbers });

@@ -1,77 +1,104 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { estimateStory, transitionStory } from "@/app/projects/[id]/board/actions";
-import {
-  availableTransitions,
-  transitionLabel,
-  type StoryState as StoryLifecycleState,
-} from "@storylane/core";
+import { estimateStory, setStoryState } from "@/app/projects/[id]/board/actions";
+import { computeStateGate, type StateCategory } from "@storylane/core";
 import { formatPoints, isUnestimatedFeature } from "@/lib/utils/stories";
+import { toGateStates } from "@/lib/utils/kanban";
+import type { ActionResult, ProjectState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-// One-click state-transition buttons (Start / Finish / Deliver / Accept /
-// Reject / Restart — see spec/screens.md "Story card UX"). Shared by the
-// story card (always visible) and the story detail panel (standalone page +
-// board inline expansion), so the transition rules live in one place.
+type ButtonSpec = { key: string; label: string; targetStateId: string };
+
+// One-click state-transition buttons (advance / Accept / Reject / Restart —
+// see spec/screens.md "Story card UX"). Shared by the story card (always
+// visible) and the story detail panel (standalone page + board inline
+// expansion), so the transition rules live in one place. The offered
+// button(s) are computed by `computeStateGate` (packages/core) from the
+// project's states — the DB permits any->any within the project, this is
+// the UI-owned ordering discipline (spec/data-model.md "Transitions").
 //
-// A plain `<form action={...}>` used to back these — no pending state (a
-// double-click could double-submit) and a thrown error (e.g. the everyday
-// race where another user already transitioned the story) crashed into the
-// route error boundary, replacing the whole board (fable-advisor review
-// 2026-07-17, TASK-74). The whole group now disables while any one request
-// is in flight — not just the clicked button — since transition_story has no
-// FOR UPDATE lock yet (TASK-48 AC#5): a concurrent Accept/Reject click here
-// could otherwise race the same lost-update bug at the UI layer. A failure
-// shows inline instead of throwing.
+// The whole group disables while any one request is in flight — not just the
+// clicked button — since set_story_state has no FOR UPDATE lock yet: a
+// concurrent Accept/Reject click here could otherwise race the same
+// lost-update bug at the UI layer. Server Actions return failures as values
+// so production error masking cannot replace the message shown inline.
 export function TransitionButtons({
   storyId,
   projectId,
-  state,
+  stateId,
+  states,
   storyType,
   points,
   pointScale,
 }: {
   storyId: string;
   projectId: string;
-  state: string;
+  stateId: string | null;
+  states: ProjectState[];
   storyType: string;
   points: number | null;
   pointScale: number[];
 }) {
-  const actions = availableTransitions(state as StoryLifecycleState);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function run(key: string, action: () => Promise<void>) {
+  function run(key: string, action: () => Promise<ActionResult>) {
     setError(null);
     setPendingKey(key);
     startTransition(async () => {
       try {
-        await action();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to update the story");
+        const result = await action();
+        if (!result.ok) {
+          setError(result.message);
+        }
+      } catch {
+        setError("Failed to update the story");
       } finally {
         setPendingKey(null);
       }
     });
   }
 
-  if (actions.length === 0) {
+  const gateStates = toGateStates(states);
+  const gate = computeStateGate(gateStates, stateId);
+  const categoryOf = (id: string): StateCategory | undefined => gateStates.find((s) => s.id === id)?.category;
+
+  const buttons: ButtonSpec[] = [];
+  if (gate.kind === "advance") {
+    buttons.push({ key: "advance", label: gate.label, targetStateId: gate.targetStateId });
+  } else if (gate.kind === "accept-reject") {
+    buttons.push({ key: "accept", label: gate.acceptLabel, targetStateId: gate.acceptStateId });
+    if (gate.rejectStateId) {
+      buttons.push({ key: "reject", label: "Reject", targetStateId: gate.rejectStateId });
+    }
+  } else if (gate.kind === "restart" && gate.targetStateId) {
+    buttons.push({ key: "restart", label: "Restart", targetStateId: gate.targetStateId });
+  }
+
+  if (buttons.length === 0) {
     return null;
   }
 
-  // An unestimated feature can't Start/Restart (spec/features.md). Pivotal
-  // Tracker parity (TASK-37, spec/ux-principles.md principle 1 — no dead
-  // controls): instead of a disabled button, show an Estimate trigger with
-  // the point scale in a popover. Both states this can happen in (`unstarted`,
-  // `rejected`) offer exactly one transition action, so replacing the whole
-  // group is equivalent to replacing just that button. Estimating never
-  // auto-starts the story — Start/Restart appears as the next click once
-  // `points` is set.
-  if (isUnestimatedFeature(storyType, points)) {
+  // An unestimated feature can't move into a non-unstarted-category state
+  // (spec/features.md; mirrors set_story_state's own gate). Pivotal Tracker
+  // parity (TASK-37, spec/ux-principles.md principle 1 — no dead controls):
+  // instead of a disabled button, show an Estimate trigger with the point
+  // scale in a popover whenever every offered target would be blocked (a
+  // custom project's unstarted-category-to-unstarted-category button, e.g.
+  // a triage step, is NOT blocked — the DB doesn't require an estimate for
+  // that). Estimating never auto-advances the story — the normal button
+  // appears as the next click once `points` is set.
+  const needsEstimate =
+    isUnestimatedFeature(storyType, points) &&
+    buttons.every((button) => {
+      const category = categoryOf(button.targetStateId);
+      return category !== undefined && category !== "unstarted";
+    });
+
+  if (needsEstimate) {
     return (
       <div className="flex flex-col gap-1">
         <Popover>
@@ -115,9 +142,9 @@ export function TransitionButtons({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-1">
-        {actions.map((action) => (
+        {buttons.map((button) => (
           <Button
-            key={action}
+            key={button.key}
             type="button"
             variant="outline"
             size="xs"
@@ -126,11 +153,11 @@ export function TransitionButtons({
               const formData = new FormData();
               formData.set("project_id", projectId);
               formData.set("story_id", storyId);
-              formData.set("action", action);
-              run(action, () => transitionStory(formData));
+              formData.set("state_id", button.targetStateId);
+              run(button.key, () => setStoryState(formData));
             }}
           >
-            {pendingKey === action ? `${transitionLabel(action)}…` : transitionLabel(action)}
+            {pendingKey === button.key ? `${button.label}…` : button.label}
           </Button>
         ))}
       </div>

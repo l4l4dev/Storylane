@@ -77,16 +77,20 @@ export function QuickAddComposer({
 
     setError(null);
     startTransition(async () => {
+      formData.set("target", target);
+      if (target === "backlog" && beforeItemId) {
+        formData.set("before_item_id", beforeItemId);
+      }
       try {
-        formData.set("target", target);
-        if (target === "backlog" && beforeItemId) {
-          formData.set("before_item_id", beforeItemId);
+        const result = await quickCreateStory(formData);
+        if (result.ok) {
+          setTitle("");
+          inputRef.current?.focus();
+        } else {
+          setError(result.message);
         }
-        await quickCreateStory(formData);
-        setTitle("");
-        inputRef.current?.focus();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to create story");
+      } catch {
+        setError("Failed to create story");
       }
     });
   }

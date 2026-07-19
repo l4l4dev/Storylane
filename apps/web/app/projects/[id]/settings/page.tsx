@@ -5,6 +5,8 @@ import { IntegrationSettings, type IntegrationRow } from "@/components/features/
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
 import { MemberList } from "@/components/features/projects/member-list";
 import { LabelManager } from "@/components/features/projects/label-manager";
+import { StateManager } from "@/components/features/projects/state-manager";
+import type { ProjectState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +50,13 @@ export default async function ProjectSettingsPage({
     .select("id, name, color")
     .eq("project_id", id)
     .order("name");
+
+  const { data: statesData } = await supabase
+    .from("project_states")
+    .select("id, project_id, name, action_label, category, position, created_at")
+    .eq("project_id", id)
+    .order("position");
+  const states = (statesData ?? []) as ProjectState[];
 
   // RLS returns integrations only to owners — empty for everyone else.
   const { data: integrations } = isOwner
@@ -167,6 +176,14 @@ export default async function ProjectSettingsPage({
         />
       </section>
 
+      {/* States (doc-8 §2): board columns are per-project and editable here.
+          Every member can reorder/rename/edit the action label; only the
+          owner can delete one (matches project_states RLS). */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold">States</h2>
+        <StateManager projectId={project.id} states={states} canManage={isMember} canDelete={isOwner} />
+      </section>
+
       {/* Integrations (owner-only: config holds secrets — see spec/integrations.md) */}
       {isOwner && (
         <section className="mt-8">
@@ -174,6 +191,7 @@ export default async function ProjectSettingsPage({
           <IntegrationSettings
             projectId={project.id}
             integrations={(integrations ?? []) as IntegrationRow[]}
+            states={states}
             functionsBaseUrl={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`}
           />
         </section>

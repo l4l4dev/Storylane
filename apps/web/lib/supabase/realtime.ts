@@ -178,7 +178,11 @@ export function useNotificationsRealtime(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "stories", filter: `assignee_id=eq.${userId}` },
           (payload: RealtimePostgresInsertPayload<StoryNotificationRow>) => {
-            const notification = storyChangeNotification(null, payload.new, userId);
+            // No states list: this listener is mounted app-shell-wide,
+            // spanning every project the user belongs to, so there's no
+            // single project's states to resolve state_id against —
+            // storyChangeNotification degrades to a generic body.
+            const notification = storyChangeNotification(null, payload.new, userId, []);
             if (notification) {
               onNotify(notification);
             }
@@ -193,7 +197,7 @@ export function useNotificationsRealtime(
             // primary key — the `"id" in` check only guards against a
             // misconfigured environment where that isn't the case.
             const oldRow = "id" in payload.old ? (payload.old as StoryNotificationRow) : null;
-            const notification = storyChangeNotification(oldRow, payload.new, userId);
+            const notification = storyChangeNotification(oldRow, payload.new, userId, []);
             if (notification) {
               onNotify(notification);
             }

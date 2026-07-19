@@ -6,20 +6,20 @@ const OTHER = "iter-2";
 
 describe("focusColumnForStory", () => {
   it("returns null for a story outside the current iteration", () => {
-    expect(focusColumnForStory({ state: "unstarted", focus: null, iteration_id: OTHER }, CURRENT)).toBeNull();
-    expect(focusColumnForStory({ state: "unstarted", focus: null, iteration_id: null }, CURRENT)).toBeNull();
+    expect(focusColumnForStory({ category: "unstarted", focus: null, iteration_id: OTHER }, CURRENT)).toBeNull();
+    expect(focusColumnForStory({ category: "unstarted", focus: null, iteration_id: null }, CURRENT)).toBeNull();
   });
 
   it("returns null when there is no current iteration at all", () => {
-    expect(focusColumnForStory({ state: "unstarted", focus: null, iteration_id: CURRENT }, null)).toBeNull();
+    expect(focusColumnForStory({ category: "unstarted", focus: null, iteration_id: CURRENT }, null)).toBeNull();
   });
 
-  it("buckets an unstarted story with no focus into todo", () => {
-    expect(focusColumnForStory({ state: "unstarted", focus: null, iteration_id: CURRENT }, CURRENT)).toBe("todo");
+  it("buckets an unstarted-category story with no focus into todo", () => {
+    expect(focusColumnForStory({ category: "unstarted", focus: null, iteration_id: CURRENT }, CURRENT)).toBe("todo");
   });
 
-  it("buckets an unstarted story by its focus value", () => {
-    expect(focusColumnForStory({ state: "unstarted", focus: "today", iteration_id: CURRENT }, CURRENT)).toBe(
+  it("buckets an unstarted-category story by its focus value", () => {
+    expect(focusColumnForStory({ category: "unstarted", focus: "today", iteration_id: CURRENT }, CURRENT)).toBe(
       "today",
     );
   });
@@ -28,43 +28,43 @@ describe("focusColumnForStory", () => {
   // (20260709000004 -> the follow-up migration), but any stale value from
   // before the migration falls back to todo rather than throwing.
   it("falls back to todo for a stale 'this_week' focus value", () => {
-    expect(focusColumnForStory({ state: "unstarted", focus: "this_week", iteration_id: CURRENT }, CURRENT)).toBe(
+    expect(focusColumnForStory({ category: "unstarted", focus: "this_week", iteration_id: CURRENT }, CURRENT)).toBe(
       "todo",
     );
   });
 
-  it("groups started/finished/delivered/rejected into in_progress regardless of focus", () => {
-    for (const state of ["started", "finished", "delivered", "rejected"]) {
-      expect(focusColumnForStory({ state, focus: "today", iteration_id: CURRENT }, CURRENT)).toBe("in_progress");
+  it("groups in_progress and rejected categories into in_progress regardless of focus", () => {
+    for (const category of ["in_progress", "rejected"] as const) {
+      expect(focusColumnForStory({ category, focus: "today", iteration_id: CURRENT }, CURRENT)).toBe("in_progress");
     }
   });
 
-  it("buckets accepted into done", () => {
-    expect(focusColumnForStory({ state: "accepted", focus: null, iteration_id: CURRENT }, CURRENT)).toBe("done");
+  it("buckets done-category into done", () => {
+    expect(focusColumnForStory({ category: "done", focus: null, iteration_id: CURRENT }, CURRENT)).toBe("done");
   });
 
-  it("returns null for unscheduled (Icebox) stories", () => {
-    expect(focusColumnForStory({ state: "unscheduled", focus: null, iteration_id: CURRENT }, CURRENT)).toBeNull();
+  it("returns null for Icebox stories (category null)", () => {
+    expect(focusColumnForStory({ category: null, focus: null, iteration_id: CURRENT }, CURRENT)).toBeNull();
   });
 });
 
 describe("evaluateFocusDrop", () => {
-  it("allows moving an unstarted story between todo/today", () => {
-    expect(evaluateFocusDrop({ state: "unstarted" }, "today")).toEqual({
+  it("allows moving an unstarted-category story between todo/today", () => {
+    expect(evaluateFocusDrop({ category: "unstarted" }, "today")).toEqual({
       ok: true,
       focus: "today",
     });
   });
 
   it("clears focus when dropped on todo", () => {
-    expect(evaluateFocusDrop({ state: "unstarted" }, "todo")).toEqual({
+    expect(evaluateFocusDrop({ category: "unstarted" }, "todo")).toEqual({
       ok: true,
       focus: null,
     });
   });
 
   it("rejects a story that has already started", () => {
-    expect(evaluateFocusDrop({ state: "started" }, "today")).toEqual({
+    expect(evaluateFocusDrop({ category: "in_progress" }, "today")).toEqual({
       ok: false,
       reason: "Only not-yet-started stories can be moved here",
     });

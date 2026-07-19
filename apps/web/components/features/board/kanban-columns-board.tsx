@@ -29,15 +29,199 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { dropStory } from "@/app/projects/[id]/board/actions";
+import { createProjectState, renameProjectState } from "@/app/projects/[id]/settings/actions";
 import { beforeAnchorId, findContainer, moveBetweenContainers, storyById, sumPoints } from "@/lib/utils/board";
 import { reorderContainer } from "@/lib/utils/board-dnd";
-import { STATE_COLUMNS, columnForStory, evaluateDrop, type KanbanColumnId, type StateColumnId } from "@/lib/utils/kanban";
-import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
+import { columnForStory, evaluateDrop, lowestUnstartedStateId, toGateStates, type KanbanColumnId } from "@/lib/utils/kanban";
+import { categoryRank, matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
+import { isImeComposing } from "@/lib/utils/keyboard";
+import type { ProjectState } from "@/lib/types";
+import type { StateCategory } from "@storylane/core";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard } from "./story-card";
 import { SortableItem } from "./sortable-item";
+import { useInlineEdit } from "./use-inline-edit";
 import type { BoardStory, IterationMeta } from "./kanban-board";
+
+const CATEGORY_LABELS: Record<StateCategory, string> = {
+  unstarted: "Unstarted",
+  in_progress: "In progress",
+  done: "Done",
+  rejected: "Rejected",
+};
+const CATEGORIES = Object.keys(CATEGORY_LABELS) as StateCategory[];
+
+// Column header rename (doc-8 §2 option C hybrid) — reuses the retired
+// free-mode ColumnNameEditor's exact interaction pattern (useInlineEdit is
+// state-model-agnostic and survived that removal): click-to-edit, Enter/blur
+// commits, Escape reverts.
+function ColumnNameEditor({
+  projectId,
+  state,
+  canEdit,
+}: {
+  projectId: string;
+  state: ProjectState;
+  canEdit: boolean;
+}) {
+  const { buttonRef, editor } = useInlineEdit({
+    initialValue: state.name,
+    fallbackError: "Failed to rename",
+    shouldCommit: (value) => Boolean(value),
+    async onCommit(trimmed) {
+      const formData = new FormData();
+      formData.set("project_id", projectId);
+      formData.set("state_id", state.id);
+      formData.set("name", trimmed);
+      await renameProjectState(formData);
+    },
+  });
+
+  if (!canEdit) {
+    return <h2 className="truncate text-sm font-semibold">{state.name}</h2>;
+  }
+
+  if (!editor.editing) {
+    return (
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={editor.startEditing}
+        aria-label={`Rename column: ${editor.synced}`}
+        className="truncate text-sm font-semibold hover:underline"
+      >
+        {editor.synced}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <input
+        autoFocus
+        value={editor.value}
+        onChange={(event) => editor.setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (isImeComposing(event)) {
+            return;
+          }
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void editor.commitAndClose("keyboard");
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            editor.cancel("keyboard");
+          }
+        }}
+        onBlur={() => void editor.commitAndClose("blur")}
+        readOnly={editor.isSaving}
+        aria-busy={editor.isSaving || undefined}
+        className="h-6 w-32 rounded border border-border bg-transparent px-1 text-sm font-semibold focus:outline-none disabled:opacity-60"
+      />
+      {editor.error && <span className="text-xs text-destructive">{editor.error}</span>}
+    </div>
+  );
+}
+
+// Trailing "+ Add column" (doc-8 §2 option C hybrid), same board-level
+// surface as the rename above. Unlike the retired AddColumnButton (a single
+// name field with a hardcoded default color), a state also needs a
+// category — a real form with an explicit submit rather than
+// useInlineEdit's blur-commits (blurring between the name and category
+// fields would otherwise misfire a premature commit).
+function AddColumnButton({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState<StateCategory>("unstarted");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  if (!canEdit) {
+    return null;
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className={`flex w-40 shrink-0 items-start justify-center self-start rounded-lg border border-dashed border-border py-3 text-sm text-muted-foreground hover:text-foreground ${BOARD_COLUMN_HEIGHT_CLASS}`}
+      >
+        + Add column
+      </button>
+    );
+  }
+
+  function submit() {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      try {
+        const formData = new FormData();
+        formData.set("project_id", projectId);
+        formData.set("name", trimmed);
+        formData.set("category", category);
+        await createProjectState(formData);
+        setName("");
+        setEditing(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to add column");
+      }
+    });
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+      className="flex w-40 shrink-0 flex-col gap-1.5 self-start rounded-lg border border-border p-2"
+    >
+      <Input
+        autoFocus
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        onKeyDown={(event) => {
+          if (isImeComposing(event)) {
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setName("");
+            setEditing(false);
+          }
+        }}
+        placeholder="Column name"
+        readOnly={isPending}
+        className="h-7 text-sm"
+      />
+      <NativeSelect
+        value={category}
+        onChange={(event) => setCategory(event.target.value as StateCategory)}
+        disabled={isPending}
+        className="h-7 text-sm"
+      >
+        {CATEGORIES.map((c) => (
+          <option key={c} value={c}>
+            {CATEGORY_LABELS[c]}
+          </option>
+        ))}
+      </NativeSelect>
+      <Button type="submit" size="xs" disabled={isPending || !name.trim()}>
+        {isPending ? "Adding…" : "Add"}
+      </Button>
+      {error && <span className="text-xs text-destructive">{error}</span>}
+    </form>
+  );
+}
 
 type ColumnMeta = { label: string; icon: LucideIcon; iconClass: string; tintClass: string };
 
@@ -46,46 +230,42 @@ type ColumnMeta = { label: string; icon: LucideIcon; iconClass: string; tintClas
 // the List view's Icebox column so this sizing rule has one source of truth.
 export const BOARD_COLUMN_HEIGHT_CLASS = "lg:h-[calc(100dvh-13rem)]";
 
-// Column headers and tints follow the state hues already used by
-// STORY_STATE_META (lib/utils/stories.ts) so badges and columns agree.
-const COLUMN_META: Record<StateColumnId, ColumnMeta> = {
-  unstarted: {
-    label: "Unstarted",
-    icon: Circle,
-    iconClass: "text-muted-foreground",
-    tintClass: "bg-muted/40",
-  },
-  started: {
-    label: "Started",
-    icon: CirclePlay,
-    iconClass: "text-blue-600 dark:text-blue-400",
-    tintClass: "bg-blue-50/60 dark:bg-blue-950/20",
-  },
-  finished: {
-    label: "Finished",
-    icon: CircleCheck,
-    iconClass: "text-purple-600 dark:text-purple-400",
-    tintClass: "bg-purple-50/60 dark:bg-purple-950/20",
-  },
-  delivered: {
-    label: "Delivered",
-    icon: PackageCheck,
-    iconClass: "text-cyan-600 dark:text-cyan-400",
-    tintClass: "bg-cyan-50/60 dark:bg-cyan-950/20",
-  },
-  accepted: {
-    label: "Accepted",
-    icon: CircleCheckBig,
-    iconClass: "text-green-600 dark:text-green-400",
-    tintClass: "bg-green-50/60 dark:bg-green-950/20",
-  },
-  rejected: {
-    label: "Rejected",
-    icon: CircleX,
-    iconClass: "text-rose-600 dark:text-rose-400",
-    tintClass: "bg-rose-50/60 dark:bg-rose-950/20",
-  },
+// Icon/tint palettes, cycled by `categoryRank` (lib/utils/stories.ts) — the
+// same index the state badges cycle their colors by, so a column and its
+// stories' badges agree. This reproduces the classic template's original
+// per-state look (Unstarted=muted circle, Started=blue play, Finished=purple
+// check, Delivered=cyan package, Accepted=green check, Rejected=rose X) as
+// the category-0/1/2 cycle, and degrades gracefully for a custom project
+// with more states per category than a palette has entries.
+const ICON_PALETTES: Record<ProjectState["category"], LucideIcon[]> = {
+  unstarted: [Circle],
+  in_progress: [CirclePlay, CircleCheck, PackageCheck],
+  done: [CircleCheckBig],
+  rejected: [CircleX],
 };
+const ICON_CLASS_PALETTES: Record<ProjectState["category"], string[]> = {
+  unstarted: ["text-muted-foreground"],
+  in_progress: ["text-blue-600 dark:text-blue-400", "text-purple-600 dark:text-purple-400", "text-cyan-600 dark:text-cyan-400"],
+  done: ["text-green-600 dark:text-green-400"],
+  rejected: ["text-rose-600 dark:text-rose-400"],
+};
+const TINT_PALETTES: Record<ProjectState["category"], string[]> = {
+  unstarted: ["bg-muted/40"],
+  in_progress: ["bg-blue-50/60 dark:bg-blue-950/20", "bg-purple-50/60 dark:bg-purple-950/20", "bg-cyan-50/60 dark:bg-cyan-950/20"],
+  done: ["bg-green-50/60 dark:bg-green-950/20"],
+  rejected: ["bg-rose-50/60 dark:bg-rose-950/20"],
+};
+
+function columnMeta(state: ProjectState, states: ReadonlyArray<ProjectState>): ColumnMeta {
+  const rank = categoryRank(state.id, states);
+  const atIndex = <T,>(palette: T[]) => palette[rank % palette.length];
+  return {
+    label: state.name,
+    icon: atIndex(ICON_PALETTES[state.category]),
+    iconClass: atIndex(ICON_CLASS_PALETTES[state.category]),
+    tintClass: atIndex(TINT_PALETTES[state.category]),
+  };
+}
 
 // The whole card is the drag handle (spec/screens.md "Story card UX": "no
 // dedicated drag handle"). A plain click still opens the story normally —
@@ -124,19 +304,25 @@ function DroppableStoryList({
 // One kanban column: tinted surface, header with state icon / count / point
 // sum, independently scrollable body (spec/screens.md "Board layout").
 function KanbanColumn({
-  columnId,
+  projectId,
+  state,
+  states,
   stories,
+  canManageStates,
   children,
   composer,
 }: {
-  columnId: StateColumnId;
+  projectId: string;
+  state: ProjectState;
+  states: ReadonlyArray<ProjectState>;
   stories: BoardStory[];
+  canManageStates: boolean;
   children: ReactNode;
   // Quick-add composer, pinned above the scrollable card list so it stays
   // reachable however long the column grows.
   composer?: ReactNode;
 }) {
-  const meta = COLUMN_META[columnId];
+  const meta = columnMeta(state, states);
   const Icon = meta.icon;
   const points = sumPoints(stories);
 
@@ -146,7 +332,7 @@ function KanbanColumn({
     >
       <header className="flex items-center gap-2 px-3 pt-3 pb-2">
         <Icon className={`size-4 shrink-0 ${meta.iconClass}`} aria-hidden />
-        <h2 className="text-sm font-semibold">{meta.label}</h2>
+        <ColumnNameEditor projectId={projectId} state={state} canEdit={canManageStates} />
         <span className="text-xs text-muted-foreground">{stories.length}</span>
         {points > 0 && <span className="text-xs text-muted-foreground">· {points} pts</span>}
       </header>
@@ -164,17 +350,24 @@ function KanbanColumn({
 export function KanbanColumnsBoard({
   projectId,
   currentIteration,
+  states,
   initialContainers,
   filter,
+  canManageStates,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
+  // The project's states, ordered by position — the physical column set.
+  states: ProjectState[];
   // Keyed by KanbanColumnId: only the state-column buckets are read here —
   // this same object's backlog/icebox buckets are what `BoardListView` reads.
   // Unfiltered — see `visibleContainers` below for the rendered, filtered
   // view.
   initialContainers: Record<string, BoardStory[]>;
   filter: StoryFilter;
+  // Gates the inline column rename / "+ Add column" controls (doc-8 §2
+  // option C hybrid) — matches project_states' own RLS.
+  canManageStates: boolean;
 }) {
   // Local order so drops/reorders reflect instantly; server revalidation
   // re-syncs via props afterwards. Reset during render when the prop changes
@@ -216,7 +409,7 @@ export function KanbanColumnsBoard({
       return false;
     }
     const from = columnForStory(story, currentIteration?.id ?? null);
-    return evaluateDrop(story, from, targetContainer as KanbanColumnId).ok;
+    return evaluateDrop(story, from, targetContainer as KanbanColumnId, toGateStates(states)).ok;
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -288,9 +481,14 @@ export function KanbanColumnsBoard({
     });
   }
 
-  // Based on the visible set — an empty column that only has content hidden
-  // by the active filter shouldn't clutter the board.
-  const showRejected = (visibleContainers.rejected ?? []).length > 0;
+  const sortedStates = [...states].sort((a, b) => a.position - b.position);
+  const firstUnstartedId = lowestUnstartedStateId(toGateStates(states));
+  // Based on the visible set — an empty rejected-category column that only
+  // has content hidden by the active filter shouldn't clutter the board.
+  // Non-rejected columns always render, even empty.
+  const visibleColumns = sortedStates.filter(
+    (state) => state.category !== "rejected" || (visibleContainers[state.id] ?? []).length > 0,
+  );
   const activeStory = activeId ? storyById(containers, activeId) : undefined;
 
   return (
@@ -309,24 +507,28 @@ export function KanbanColumnsBoard({
         </div>
       )}
       <div className="flex gap-3 overflow-x-auto pb-2">
-        {STATE_COLUMNS.filter((column) => column !== "rejected" || showRejected).map((column) => (
+        {visibleColumns.map((state) => (
           <KanbanColumn
-            key={column}
-            columnId={column}
-            stories={visibleContainers[column] ?? []}
+            key={state.id}
+            projectId={projectId}
+            state={state}
+            states={states}
+            stories={visibleContainers[state.id] ?? []}
+            canManageStates={canManageStates}
             composer={
-              column === "unstarted" ? (
+              state.id === firstUnstartedId ? (
                 <QuickAddComposer projectId={projectId} target="unstarted" />
               ) : undefined
             }
           >
             <DroppableStoryList
-              containerId={column}
-              stories={visibleContainers[column] ?? []}
+              containerId={state.id}
+              stories={visibleContainers[state.id] ?? []}
               projectId={projectId}
             />
           </KanbanColumn>
         ))}
+        <AddColumnButton projectId={projectId} canEdit={canManageStates} />
       </div>
 
       {/* Renders the dragged card in a top-level portal (see @dnd-kit docs)

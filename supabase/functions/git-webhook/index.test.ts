@@ -86,7 +86,7 @@ Deno.test("tracker-mode merged PR: finishes the story via the RPC", async () => 
 
   assertEquals(res.status, 200);
   assertEquals(body, { matched: [42], events: [{ kind: "finished", number: 42, iteration_number: 1 }] });
-  assertEquals(rpcCalls, [{ fn: "finish_story_from_git", args: { p_project_id: "proj-1", p_story_number: 42 } }]);
+  assertEquals(rpcCalls, [{ fn: "finish_story_from_git", args: { p_project_id: "proj-1", p_story_number: 42, p_provider: "github" } }]);
 });
 
 
@@ -137,8 +137,8 @@ Deno.test("a multi-story PR calls the RPC once per number and stops at the first
   assertEquals(res.status, 500);
   assertEquals(body, { error: "boom", matched: [42, 99] });
   assertEquals(rpcCalls, [
-    { fn: "finish_story_from_git", args: { p_project_id: "proj-1", p_story_number: 42 } },
-    { fn: "finish_story_from_git", args: { p_project_id: "proj-1", p_story_number: 99 } },
+    { fn: "finish_story_from_git", args: { p_project_id: "proj-1", p_story_number: 42, p_provider: "github" } },
+    { fn: "finish_story_from_git", args: { p_project_id: "proj-1", p_story_number: 99, p_provider: "github" } },
   ]);
 });
 

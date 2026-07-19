@@ -34,6 +34,8 @@ import {
   type FocusDragTarget,
 } from "@/lib/utils/focus";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
+import type { ProjectState } from "@/lib/types";
+import type { StateCategory } from "@storylane/core";
 import { MutationErrorBanner } from "./mutation-error-banner";
 import { QuickAddComposer } from "./quick-add-composer";
 import { StoryCard } from "./story-card";
@@ -139,12 +141,14 @@ function ReadOnlyColumn({
 export function FocusBoard({
   projectId,
   currentIteration,
+  states,
   initialContainers,
   filter,
   pointScale,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
+  states: ProjectState[];
   initialContainers: Record<string, BoardStory[]>;
   filter: StoryFilter;
   pointScale: number[];
@@ -160,6 +164,11 @@ export function FocusBoard({
     setContainers(initialContainers);
   }
 
+  function categoryOf(story: BoardStory): StateCategory | null {
+    if (story.state_id === null) return null;
+    return states.find((s) => s.id === story.state_id)?.category ?? null;
+  }
+
   const currentIterationId = currentIteration?.id ?? null;
   const allStories = Object.values(containers).flat();
 
@@ -173,7 +182,7 @@ export function FocusBoard({
     if (!matchesStoryFilter(story, filter)) {
       continue;
     }
-    const column = focusColumnForStory(story, currentIterationId);
+    const column = focusColumnForStory({ category: categoryOf(story), focus: story.focus, iteration_id: story.iteration_id }, currentIterationId);
     if (column) {
       buckets[column].push(story);
     }
@@ -200,7 +209,7 @@ export function FocusBoard({
     if (!story || !FOCUS_DRAG_TARGETS.includes(target as FocusDragTarget)) {
       return false;
     }
-    return evaluateFocusDrop(story, target as FocusDragTarget).ok;
+    return evaluateFocusDrop({ category: categoryOf(story) }, target as FocusDragTarget).ok;
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -292,7 +301,7 @@ export function FocusBoard({
 
         <ReadOnlyColumn icon={PlayCircle} label="In progress" count={buckets.in_progress.length}>
           {buckets.in_progress.map((story) => (
-            <StoryListRow key={story.id} story={story} projectId={projectId} pointScale={pointScale} />
+            <StoryListRow key={story.id} story={story} projectId={projectId} states={states} pointScale={pointScale} />
           ))}
         </ReadOnlyColumn>
 
@@ -301,7 +310,7 @@ export function FocusBoard({
             <div key={group.dateKey} className="flex flex-col gap-2">
               <h3 className="text-xs font-semibold text-muted-foreground">{group.label}</h3>
               {group.stories.map((story) => (
-                <StoryListRow key={story.id} story={story} projectId={projectId} pointScale={pointScale} />
+                <StoryListRow key={story.id} story={story} projectId={projectId} states={states} pointScale={pointScale} />
               ))}
             </div>
           ))}

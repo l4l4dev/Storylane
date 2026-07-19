@@ -22,9 +22,25 @@
 -- git-webhook Edge Function) already treats a non-'finished' outcome as
 -- "nothing to do", so this degrades safely to "integration effectively
 -- disabled until reconfigured", not a stuck 5xx retry loop.
+--
+-- p_provider: the Edge Function already knows
+-- which provider's webhook fired (it looked up that provider's row for
+-- signature verification). Without it, a project with BOTH github and
+-- forgejo configured would have this RPC pick whichever integration was
+-- created first, regardless of which one actually sent the request —
+-- silently applying the wrong provider's merge target. Adding this
+-- parameter changes the function's signature, so `create or replace`
+-- below defines a NEW overload alongside the old (uuid, int) one rather
+-- than replacing it — Postgres also grants EXECUTE to PUBLIC on any new
+-- function by default, regardless of what the old overload's grants were
+-- (caught by lib/utils/grant-lockdown.integration.test.ts). The old
+-- overload is dropped explicitly so the provider-blind version can't
+-- still be called, and the new one gets its own revoke.
 -- ============================================================
 
-create or replace function public.finish_story_from_git(p_project_id uuid, p_story_number int)
+drop function if exists public.finish_story_from_git(uuid, int);
+
+create function public.finish_story_from_git(p_project_id uuid, p_story_number int, p_provider text)
 returns jsonb
 language plpgsql
 security definer
@@ -42,6 +58,7 @@ declare
   v_story_rank int;
   v_current_id uuid;
   v_current_number int;
+  v_needs_iteration boolean;
 begin
   if not exists (select 1 from public.projects where id = p_project_id) then
     return jsonb_build_array(jsonb_build_object('kind', 'ignored', 'number', p_story_number, 'reason', 'project_not_found'));
@@ -49,8 +66,7 @@ begin
 
   select (i.config->>'merge_target_state_id')::uuid into v_target_state_id
     from public.integrations i
-    where i.project_id = p_project_id and i.provider in ('github', 'forgejo') and i.is_active
-    order by i.created_at
+    where i.project_id = p_project_id and i.provider = p_provider and i.is_active
     limit 1;
 
   if v_target_state_id is null then
@@ -100,33 +116,47 @@ begin
     return jsonb_build_array(jsonb_build_object('kind', 'not_transitionable', 'number', p_story_number));
   end if;
 
-  update public.stories set state_id = v_target_state_id where id = v_story.id;
-
   -- A story force-finished from the Backlog/Icebox (no iteration) would be
   -- stranded there (only an unstarted-category state may cross zones on
-  -- the board), so it is pulled into the current iteration — a merged PR
-  -- means the work happened in this iteration. Under the shared lock that
-  -- iteration cannot finalize mid-flight.
-  if v_story.iteration_id is null then
+  -- the board, and the Kanban board renders no Backlog/Icebox columns at
+  -- all), so it must be pulled into the current iteration — a merged PR
+  -- means the work happened in this iteration. Resolved BEFORE writing
+  -- state_id: iterations are lazy-created on Board visit, so a project
+  -- nobody has opened yet may have none, and writing state_id first would
+  -- leave such a story with its target state but no iteration — invisible
+  -- on the board. Fail closed instead: if an iteration is needed and none
+  -- exists, change nothing.
+  v_needs_iteration := v_story.iteration_id is null;
+  if v_needs_iteration then
     select id, number into v_current_id, v_current_number
       from public.iterations
       where project_id = p_project_id and state <> 'done'
       order by number desc
       limit 1;
 
-    if v_current_id is not null then
-      update public.stories
-        set iteration_id = v_current_id
-        where id = v_story.id and iteration_id is null;
+    if v_current_id is null then
       return jsonb_build_array(jsonb_build_object(
-        'kind', 'finished', 'number', p_story_number, 'iteration_number', v_current_number
+        'kind', 'ignored', 'number', p_story_number, 'reason', 'no_active_iteration'
       ));
     end if;
+  end if;
+
+  update public.stories set state_id = v_target_state_id where id = v_story.id;
+
+  if v_needs_iteration then
+    update public.stories
+      set iteration_id = v_current_id
+      where id = v_story.id and iteration_id is null;
+    return jsonb_build_array(jsonb_build_object(
+      'kind', 'finished', 'number', p_story_number, 'iteration_number', v_current_number
+    ));
   end if;
 
   return jsonb_build_array(jsonb_build_object('kind', 'finished', 'number', p_story_number));
 end;
 $$;
+
+revoke execute on function public.finish_story_from_git(uuid, int, text) from public, authenticated;
 
 -- DOWN (rollback — not auto-applied; run manually if reverting):
 -- (restore finish_story_from_git from 20260718000001_remove_free_mode.sql —

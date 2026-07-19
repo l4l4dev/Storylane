@@ -9,13 +9,9 @@ import { CommentBody } from "./comment-body";
 
 export type CommentData = { id: string; body: string; createdAt: string; authorName: string };
 
-// A plain `<form action={...}>` used to back this — no pending state and a
-// thrown failure crashed into the route error boundary instead of staying
-// inline (fable-advisor review 2026-07-17, TASK-74, same class of bug as
-// transition-buttons.tsx). A controlled textarea also keeps the draft on
-// failure — the previous version relied on an uncontrolled field the failed
-// action never got a chance to clear, which happened to work but wasn't
-// guaranteed once errors are actually caught here.
+// A controlled textarea keeps the draft on failure. The Server Action returns
+// failures as values so production error masking cannot replace the message
+// shown inline.
 export function CommentThread({
   storyId,
   projectId,
@@ -46,11 +42,15 @@ export function CommentThread({
     setError(null);
     startTransition(async () => {
       try {
-        await addComment(formData);
-        await onMutated?.();
-        setBody("");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to add the comment");
+        const result = await addComment(formData);
+        if (result.ok) {
+          await onMutated?.();
+          setBody("");
+        } else {
+          setError(result.message);
+        }
+      } catch {
+        setError("Failed to add the comment");
       }
     });
   }

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import type { InviteSearchResult } from "@/lib/types";
+import { STATE_TEMPLATES } from "@/lib/types";
 import { clampVelocityWindow } from "@storylane/core";
 
 export type NewProjectInviteResult = InviteSearchResult;
@@ -51,6 +52,12 @@ export async function createProject(formData: FormData) {
   const iterationLength = Number(formData.get("iteration_length") ?? 14);
   const pointScale = String(formData.get("point_scale") ?? "fibonacci");
   const velocityWindow = clampVelocityWindow(Number(formData.get("velocity_window") ?? 3));
+  const rawTemplate = String(formData.get("state_template") ?? "classic");
+  // Falls back to the column default ('classic') for anything unrecognized
+  // rather than passing a tampered/stale value straight to the insert.
+  const stateTemplate = STATE_TEMPLATES.includes(rawTemplate as (typeof STATE_TEMPLATES)[number])
+    ? rawTemplate
+    : "classic";
 
   if (!name) {
     return;
@@ -80,6 +87,7 @@ export async function createProject(formData: FormData) {
       iteration_length: iterationLength,
       point_scale: pointScale,
       velocity_window: velocityWindow,
+      state_template: stateTemplate,
     })
     .select("id")
     .single();

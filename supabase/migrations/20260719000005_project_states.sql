@@ -49,16 +49,27 @@ create policy "owners can delete project states"
   on public.project_states for delete to authenticated
   using (public.project_role(project_id) = 'owner');
 
--- Category is immutable after creation — recategorize = create a new state
--- and move stories (doc-8 §2 advisor). Matches this repo's existing
--- reject_done_iteration_assignment style (BEFORE UPDATE ... WHEN, RAISE).
+-- Category and project_id are immutable after creation — recategorize =
+-- create a new state and move stories (doc-8 §2 advisor). project_id is
+-- guarded for the same reason: a member UPDATE is allowed (see policy
+-- above) but "move" is not one of the update surfaces this table exposes,
+-- and letting project_id through would let any two-project member
+-- reassign an unused state to a project they don't own, bypassing the
+-- owner-only DELETE policy and the "at least one unstarted/done state"
+-- DELETE trigger below. Matches this repo's
+-- existing reject_done_iteration_assignment style (BEFORE UPDATE ...
+-- WHEN, RAISE).
 create or replace function public.reject_project_state_category_change()
 returns trigger
 language plpgsql
 set search_path = public
 as $$
 begin
-  raise exception 'A state''s category cannot be changed after creation — create a new state and move stories instead'
+  if new.category is distinct from old.category then
+    raise exception 'A state''s category cannot be changed after creation — create a new state and move stories instead'
+      using errcode = 'P0001';
+  end if;
+  raise exception 'A state cannot be moved to a different project — create a new state there instead'
     using errcode = 'P0001';
 end;
 $$;
@@ -68,7 +79,7 @@ revoke execute on function public.reject_project_state_category_change() from pu
 create trigger project_states_reject_category_change
   before update on public.project_states
   for each row
-  when (new.category is distinct from old.category)
+  when (new.category is distinct from old.category or new.project_id is distinct from old.project_id)
   execute function public.reject_project_state_category_change();
 
 -- Enforces >=1 unstarted-category and >=1 done-category state per project at

@@ -4,28 +4,9 @@
 // STORY_TYPES/StoryType/storyTypeUsesPoints/pointScaleValues live in
 // @storylane/core (TASK-68), shared with the MCP server; re-exported here so
 // this module's other importers are unaffected.
-//
-// STORY_STATES/StoryState below are this module's OWN, narrower definition
-// (no 'unscheduled') — used only to key STORY_STATE_META, since an Icebox
-// card renders no state badge via this map. This is intentionally NOT merged
-// with story-state.ts's 7-value StoryState (which includes 'unscheduled' and
-// backs the transition state machine): the two never collide in the same
-// import (nothing imports StoryState from both modules), and unifying them
-// would force STORY_STATE_META to answer what an Icebox row's badge looks
-// like — a product decision out of scope for TASK-68's behavior-preserving
-// restructuring.
-import { STORY_TYPES, storyTypeUsesPoints, pointScaleValues, type StoryType } from "@storylane/core";
+import { STORY_TYPES, storyTypeUsesPoints, pointScaleValues, type StateCategory, type StoryType } from "@storylane/core";
+import type { ProjectState } from "@/lib/types";
 export { STORY_TYPES, storyTypeUsesPoints, pointScaleValues, type StoryType };
-
-export const STORY_STATES = [
-  "unstarted",
-  "started",
-  "finished",
-  "delivered",
-  "accepted",
-  "rejected",
-] as const;
-export type StoryState = (typeof STORY_STATES)[number];
 
 export const STORY_TYPE_META: Record<StoryType, { label: string; className: string }> = {
   feature: { label: "Feature", className: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" },
@@ -34,14 +15,60 @@ export const STORY_TYPE_META: Record<StoryType, { label: string; className: stri
   release: { label: "Release", className: "bg-primary/15 text-primary" },
 };
 
-export const STORY_STATE_META: Record<StoryState, { label: string; className: string }> = {
-  unstarted: { label: "Unstarted", className: "bg-muted text-muted-foreground" },
-  started: { label: "Started", className: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" },
-  finished: { label: "Finished", className: "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300" },
-  delivered: { label: "Delivered", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300" },
-  accepted: { label: "Accepted", className: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300" },
-  rejected: { label: "Rejected", className: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" },
+const ICEBOX_CLASS_NAME = "bg-muted text-muted-foreground";
+
+// A project's states are arbitrary per-category (TASK-91) — color can't be
+// hardcoded per state NAME the way the old fixed 6-state map did. Instead
+// each category gets a small palette, cycled by the state's position among
+// its own category's states, so a project with N states per category still
+// gets N visually distinct badges. This exactly reproduces the classic
+// template's original per-state colors (Unstarted=muted, Started=blue,
+// Finished=purple, Delivered=cyan, Accepted=green, Rejected=rose) as the
+// category-0/1/2 cycle, and degrades gracefully for a custom project with
+// more states per category than the palette has colors.
+const CATEGORY_PALETTES: Record<StateCategory, string[]> = {
+  unstarted: [ICEBOX_CLASS_NAME],
+  in_progress: [
+    "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
+    "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300",
+    "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300",
+    "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+  ],
+  done: ["bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300"],
+  rejected: ["bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"],
 };
+
+/**
+ * A state's 0-based rank among its own category's states, ordered by
+ * position — the shared cycle index every category-driven palette (this
+ * module's badge colors, kanban-columns-board.tsx's column tints/icons) uses
+ * so a given state renders the same "hue slot" everywhere, keeping badges
+ * and columns visually in sync (they always were, back when both were keyed
+ * by the same literal state name).
+ */
+export function categoryRank(stateId: string, states: ReadonlyArray<Pick<ProjectState, "id" | "category" | "position">>): number {
+  const state = states.find((s) => s.id === stateId);
+  if (!state) return 0;
+  const sameCategory = states.filter((s) => s.category === state.category).sort((a, b) => a.position - b.position);
+  return Math.max(0, sameCategory.findIndex((s) => s.id === stateId));
+}
+
+/** A story's state badge: its name (or "Icebox" for `state_id === null`) and a category-derived color. */
+export function storyStateBadge(
+  stateId: string | null,
+  states: ReadonlyArray<ProjectState>,
+): { label: string; className: string } {
+  if (stateId === null) {
+    return { label: "Icebox", className: ICEBOX_CLASS_NAME };
+  }
+  const state = states.find((s) => s.id === stateId);
+  if (!state) {
+    return { label: "Unknown", className: ICEBOX_CLASS_NAME };
+  }
+  const index = categoryRank(stateId, states);
+  const palette = CATEGORY_PALETTES[state.category];
+  return { label: state.name, className: palette[index % palette.length] };
+}
 
 /**
  * An unestimated `feature` cannot be started (see spec/features.md).

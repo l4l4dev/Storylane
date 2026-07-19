@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
+import type { ActionResult, ProjectState } from "@/lib/types";
 import { pointScaleValues } from "@/lib/utils/stories";
 
 export type StoryDetail = {
@@ -15,7 +16,10 @@ export type StoryDetail = {
   title: string;
   description: string | null;
   storyType: string;
-  state: string;
+  stateId: string | null;
+  // The project's states, ordered by position — TransitionButtons'
+  // computeStateGate input (packages/core).
+  states: ProjectState[];
   points: number | null;
   epicId: string | null;
   assigneeId: string | null;
@@ -50,7 +54,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     return null;
   }
 
-  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: history }] =
+  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: history }, { data: statesData }] =
     await Promise.all([
       supabase
         .from("projects")
@@ -79,6 +83,11 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .in("action", ["story.created", "story.state_changed", "story.column_changed"])
         .order("created_at", { ascending: false })
         .limit(50),
+      supabase
+        .from("project_states")
+        .select("id, project_id, name, action_label, category, position, created_at")
+        .eq("project_id", story.project_id)
+        .order("position"),
     ]);
 
   return {
@@ -88,7 +97,8 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     title: story.title,
     description: story.description,
     storyType: story.story_type,
-    state: story.state,
+    stateId: story.state_id,
+    states: (statesData ?? []) as ProjectState[],
     points: story.points,
     epicId: story.epic_id,
     assigneeId: story.assignee_id,
@@ -300,13 +310,13 @@ export async function copyStoryToProject(storyId: string, targetProjectId: strin
   return transferStoryToProject("copy", storyId, targetProjectId);
 }
 
-export async function addComment(formData: FormData) {
+export async function addComment(formData: FormData): Promise<ActionResult> {
   const storyId = String(formData.get("story_id"));
   const projectId = String(formData.get("project_id"));
   const body = String(formData.get("body") ?? "").trim();
 
   if (!body) {
-    return;
+    return { ok: true };
   }
 
   const supabase = await createClient();
@@ -315,52 +325,70 @@ export async function addComment(formData: FormData) {
   const { error } = await supabase.from("comments").insert({ story_id: storyId, body });
 
   if (error) {
-    throw new Error(error.message);
+    return { ok: false, message: error.message };
   }
 
   revalidatePath(`/stories/${storyId}`);
   revalidatePath(`/projects/${projectId}`);
+  return { ok: true };
 }
 
-export async function addTask(formData: FormData) {
+export async function addTask(formData: FormData): Promise<ActionResult> {
   const storyId = String(formData.get("story_id"));
   const title = String(formData.get("title") ?? "").trim();
 
   if (!title) {
-    return;
+    return { ok: true };
   }
 
   const supabase = await createClient();
   const { error } = await supabase.from("tasks").insert({ story_id: storyId, title });
 
   if (error) {
-    throw new Error(error.message);
+    return { ok: false, message: error.message };
   }
 
   revalidatePath(`/stories/${storyId}`);
+  return { ok: true };
 }
 
-export async function toggleTask(formData: FormData) {
+export async function toggleTask(formData: FormData): Promise<ActionResult> {
   const taskId = String(formData.get("task_id"));
   const storyId = String(formData.get("story_id"));
   const isDone = formData.get("is_done") === "true";
 
   const supabase = await createClient();
-  await assertRowAffected(
-    await supabase.from("tasks").update({ is_done: !isDone }).eq("id", taskId).select("id"),
-  );
+  try {
+    await assertRowAffected(
+      await supabase.from("tasks").update({ is_done: !isDone }).eq("id", taskId).select("id"),
+    );
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Failed to update task",
+    };
+  }
 
   revalidatePath(`/stories/${storyId}`);
+  return { ok: true };
 }
 
-export async function deleteTask(formData: FormData) {
+export async function deleteTask(formData: FormData): Promise<ActionResult> {
   const taskId = String(formData.get("task_id"));
   const storyId = String(formData.get("story_id"));
 
   const supabase = await createClient();
-  await assertRowAffected(await supabase.from("tasks").delete().eq("id", taskId).select("id"));
+  try {
+    await assertRowAffected(await supabase.from("tasks").delete().eq("id", taskId).select("id"));
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Failed to delete task",
+    };
+  }
 
   revalidatePath(`/stories/${storyId}`);
+  return { ok: true };
 }
 
 export async function deleteStory(formData: FormData) {

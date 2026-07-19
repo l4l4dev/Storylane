@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ActionResult } from "@/lib/types";
 import { CommentThread } from "./comment-thread";
 
 const { addCommentMock } = vi.hoisted(() => ({
-  addCommentMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  addCommentMock: vi.fn<(formData: FormData) => Promise<ActionResult>>(() => Promise.resolve({ ok: true })),
 }));
 
 vi.mock("@/app/stories/[id]/actions", () => ({
@@ -13,7 +14,7 @@ vi.mock("@/app/stories/[id]/actions", () => ({
 describe("CommentThread", () => {
   beforeEach(() => {
     addCommentMock.mockReset();
-    addCommentMock.mockResolvedValue(undefined);
+    addCommentMock.mockResolvedValue({ ok: true });
   });
 
   it("shows an empty state when there are no comments", () => {
@@ -44,9 +45,9 @@ describe("CommentThread", () => {
   // TASK-74: a bare <form action> had no pending state, so a double-click
   // fired the submit twice — the button must disable itself immediately.
   it("disables the submit while pending so a double-click only submits once", async () => {
-    let resolveAdd!: () => void;
+    let resolveAdd!: (result: ActionResult) => void;
     addCommentMock.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
+      new Promise<ActionResult>((resolve) => {
         resolveAdd = resolve;
       }),
     );
@@ -60,13 +61,13 @@ describe("CommentThread", () => {
     expect(addCommentMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveAdd();
+      resolveAdd({ ok: true });
       await Promise.resolve();
     });
   });
 
-  it("shows a rejected submit inline and keeps the typed draft", async () => {
-    addCommentMock.mockRejectedValueOnce(new Error("Story not found"));
+  it("shows a failed submit result inline and keeps the typed draft", async () => {
+    addCommentMock.mockResolvedValueOnce({ ok: false, message: "Story not found" });
     render(<CommentThread storyId="s1" projectId="p1" comments={[]} />);
     const textarea = screen.getByPlaceholderText(/Add a comment/);
     fireEvent.change(textarea, { target: { value: "Looks good" } });

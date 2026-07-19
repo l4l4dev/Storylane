@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ActionResult } from "@/lib/types";
 import { QuickAddComposer } from "./quick-add-composer";
 
 const { quickCreateStoryMock } = vi.hoisted(() => ({
-  quickCreateStoryMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  quickCreateStoryMock: vi.fn<(formData: FormData) => Promise<ActionResult>>(() => Promise.resolve({ ok: true })),
 }));
 
 vi.mock("@/app/projects/[id]/board/actions", () => ({
@@ -12,7 +13,8 @@ vi.mock("@/app/projects/[id]/board/actions", () => ({
 
 describe("QuickAddComposer", () => {
   beforeEach(() => {
-    quickCreateStoryMock.mockClear();
+    quickCreateStoryMock.mockReset();
+    quickCreateStoryMock.mockResolvedValue({ ok: true });
   });
 
   // TASK-11: the old composer morphed the trigger button itself into the
@@ -103,7 +105,7 @@ describe("QuickAddComposer", () => {
   });
 
   it("keeps the typed title and shows an error when creation fails", async () => {
-    quickCreateStoryMock.mockRejectedValueOnce(new Error("No active iteration"));
+    quickCreateStoryMock.mockResolvedValueOnce({ ok: false, message: "No active iteration" });
     render(<QuickAddComposer projectId="p1" target="unstarted" />);
     fireEvent.click(screen.getByRole("button", { name: /Add story/ }));
 

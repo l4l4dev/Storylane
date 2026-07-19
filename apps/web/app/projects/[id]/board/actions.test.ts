@@ -106,6 +106,18 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("@/lib/integrations/slack", () => ({ notifySlack: vi.fn() }));
 
+// project_states rows, keyed by name-as-id like the rest of this file's
+// literal state strings — the classic template, matching the DB seed
+// (20260719000006_stories_state_id.sql).
+const CLASSIC_STATE_ROWS = [
+  { id: "unstarted", project_id: "project-1", name: "Unstarted", category: "unstarted", action_label: "Start", position: 0, created_at: "" },
+  { id: "started", project_id: "project-1", name: "Started", category: "in_progress", action_label: "Finish", position: 1, created_at: "" },
+  { id: "finished", project_id: "project-1", name: "Finished", category: "in_progress", action_label: "Deliver", position: 2, created_at: "" },
+  { id: "delivered", project_id: "project-1", name: "Delivered", category: "in_progress", action_label: "Accept", position: 3, created_at: "" },
+  { id: "accepted", project_id: "project-1", name: "Accepted", category: "done", action_label: null, position: 4, created_at: "" },
+  { id: "rejected", project_id: "project-1", name: "Rejected", category: "rejected", action_label: null, position: 5, created_at: "" },
+];
+
 describe("upsertIterationGoal", () => {
   beforeEach(() => {
     upsertMock.mockReset();
@@ -155,43 +167,46 @@ describe("estimateStory", () => {
     return formData;
   }
 
-  it("no-ops (doesn't throw or write) for a story that's already estimated", async () => {
+  it("returns success without writing for a story that's already estimated", async () => {
     // A benign race (another tab/user estimated first, or a resubmit after
     // the first click landed) — not a user error, so this must not surface
     // as a crash (spec/ux-principles.md principle 2).
     fixtures.stories = { single: { data: { story_type: "feature", points: 3 }, error: null } };
     const { estimateStory } = await import("./actions");
 
-    await expect(estimateStory(baseFormData())).resolves.toBeUndefined();
+    await expect(estimateStory(baseFormData())).resolves.toEqual({ ok: true });
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it("rejects a story type that doesn't use points", async () => {
+  it("returns the failure for a story type that doesn't use points", async () => {
     fixtures.stories = { single: { data: { story_type: "chore", points: null }, error: null } };
     const { estimateStory } = await import("./actions");
 
-    await expect(estimateStory(baseFormData())).rejects.toThrow("This story is not awaiting estimation");
+    await expect(estimateStory(baseFormData())).resolves.toEqual({
+      ok: false,
+      message: "This story is not awaiting estimation",
+    });
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it("rejects a point value outside the project's point scale", async () => {
+  it("returns the failure for a point value outside the project's point scale", async () => {
     const { estimateStory } = await import("./actions");
     const formData = baseFormData();
     formData.set("points", "4");
 
-    await expect(estimateStory(formData)).rejects.toThrow("Invalid point value");
+    await expect(estimateStory(formData)).resolves.toEqual({ ok: false, message: "Invalid point value" });
     expect(updateMock).not.toHaveBeenCalled();
   });
 
   it("sets points for a valid estimate, without touching state", async () => {
     const { estimateStory } = await import("./actions");
 
-    await estimateStory(baseFormData());
+    await expect(estimateStory(baseFormData())).resolves.toEqual({ ok: true });
 
     expect(updateMock).toHaveBeenCalledWith("stories", { points: 5 }, "story-1");
   });
 
-  it("throws when the points update matches no row (TASK-58 zero-row guard)", async () => {
+  it("returns the failure when the points update matches no row", async () => {
     // The story was fetched successfully but the update hit zero rows (deleted
     // or RLS-filtered between the read and the write) — must surface, not no-op.
     fixtures.stories = {
@@ -200,72 +215,89 @@ describe("estimateStory", () => {
     };
     const { estimateStory } = await import("./actions");
 
-    await expect(estimateStory(baseFormData())).rejects.toThrow(/no matching row/i);
+    await expect(estimateStory(baseFormData())).resolves.toEqual({
+      ok: false,
+      message: expect.stringMatching(/no matching row/i),
+    });
   });
 });
 
-// TASK-50: transitionStory is a thin caller of the transition_story RPC
-// (TASK-48) — the state machine, unestimated-feature guard, and
-// start-from-backlog current-iteration assignment all now live server-side in
-// the RPC, proven directly against the real DB in
-// apps/mcp/src/handlers.integration.test.ts. These assert the action forwards
-// the right args, reads the RPC's result for the Slack message, and surfaces
-// the RPC's errors verbatim.
-describe("transitionStory", () => {
+// TASK-91: setStoryState is a thin caller of the set_story_state RPC — the
+// estimation gate, done-iteration guard, and start-from-backlog
+// current-iteration assignment all now live server-side in the RPC, proven
+// directly against the real DB in apps/mcp/src/handlers.integration.test.ts.
+// The target state_id is resolved client-side (computeStateGate,
+// packages/core) before this action is ever called — these assert the
+// action forwards it verbatim, reads the RPC's result for the Slack
+// message, and surfaces the RPC's errors verbatim.
+describe("setStoryState", () => {
   beforeEach(() => {
     rpcMock.mockReset();
     for (const key of Object.keys(rpcResults)) {
       delete rpcResults[key];
     }
     fixtures.stories = { single: { data: { number: 7, title: "A story" }, error: null } };
+    fixtures.project_states = { list: { data: CLASSIC_STATE_ROWS, error: null } };
   });
 
-  function formData(action = "start") {
+  function formData(stateId = "started") {
     const data = new FormData();
     data.set("project_id", "project-1");
     data.set("story_id", "story-1");
-    data.set("action", action);
+    data.set("state_id", stateId);
     return data;
   }
 
-  it("calls transition_story with the story id and action", async () => {
-    rpcResults.transition_story = { data: { story_id: "story-1", state: "started" }, error: null };
-    const { transitionStory } = await import("./actions");
+  it("calls set_story_state with the story id and target state_id", async () => {
+    rpcResults.set_story_state = { data: { story_id: "story-1", state_id: "started" }, error: null };
+    const { setStoryState } = await import("./actions");
 
-    await transitionStory(formData("start"));
+    await expect(setStoryState(formData("started"))).resolves.toEqual({ ok: true });
 
-    expect(rpcMock).toHaveBeenCalledWith("transition_story", { p_story_id: "story-1", p_action: "start" });
+    expect(rpcMock).toHaveBeenCalledWith("set_story_state", { p_story_id: "story-1", p_state_id: "started" });
   });
 
   it("surfaces the RPC's unestimated-feature guard verbatim", async () => {
-    rpcResults.transition_story = { data: null, error: { message: "An unestimated feature cannot be started" } };
-    const { transitionStory } = await import("./actions");
+    rpcResults.set_story_state = { data: null, error: { message: "An unestimated feature can only be in the Icebox or an unstarted state" } };
+    const { setStoryState } = await import("./actions");
 
-    await expect(transitionStory(formData("start"))).rejects.toThrow("An unestimated feature cannot be started");
+    await expect(setStoryState(formData("started"))).resolves.toEqual({
+      ok: false,
+      message: "An unestimated feature can only be in the Icebox or an unstarted state",
+    });
   });
 
   it("surfaces the RPC's no-active-iteration error verbatim", async () => {
-    rpcResults.transition_story = { data: null, error: { message: "No active iteration" } };
-    const { transitionStory } = await import("./actions");
+    rpcResults.set_story_state = { data: null, error: { message: "No active iteration" } };
+    const { setStoryState } = await import("./actions");
 
-    await expect(transitionStory(formData("start"))).rejects.toThrow("No active iteration");
+    await expect(setStoryState(formData("started"))).resolves.toEqual({
+      ok: false,
+      message: "No active iteration",
+    });
   });
 
-  it("surfaces the RPC's not-author-or-assignee denial verbatim", async () => {
-    rpcResults.transition_story = {
+  it("surfaces the RPC's permission denial verbatim", async () => {
+    rpcResults.set_story_state = {
       data: null,
-      error: { code: "42501", message: "Not allowed to transition this story (you are not its owner, author, or assignee)" },
+      error: { code: "42501", message: "Not allowed to change this story's state" },
     };
-    const { transitionStory } = await import("./actions");
+    const { setStoryState } = await import("./actions");
 
-    await expect(transitionStory(formData("start"))).rejects.toThrow(/not allowed to transition/i);
+    await expect(setStoryState(formData("started"))).resolves.toEqual({
+      ok: false,
+      message: expect.stringMatching(/not allowed to change/i),
+    });
   });
 
-  it("throws the fetch error when the story can't be read (not found / not a member)", async () => {
+  it("returns the fetch error when the story can't be read (not found / not a member)", async () => {
     fixtures.stories = { single: { data: null, error: { message: "Story not found" } } };
-    const { transitionStory } = await import("./actions");
+    const { setStoryState } = await import("./actions");
 
-    await expect(transitionStory(formData("start"))).rejects.toThrow("Story not found");
+    await expect(setStoryState(formData("started"))).resolves.toEqual({
+      ok: false,
+      message: "Story not found",
+    });
     expect(rpcMock).not.toHaveBeenCalled();
   });
 });
@@ -340,6 +372,16 @@ describe("backlog insert actions -> insert_board_item", () => {
 
       expect(rpcMock).not.toHaveBeenCalled();
     });
+
+    it("returns the RPC error message instead of throwing it", async () => {
+      rpcResults.insert_board_item = { data: null, error: { message: "Backlog insert failed" } };
+      const { quickCreateStory } = await import("./actions");
+
+      await expect(quickCreateStory(formData())).resolves.toEqual({
+        ok: false,
+        message: "Backlog insert failed",
+      });
+    });
   });
 
   describe("createBacklogDivider", () => {
@@ -393,6 +435,7 @@ describe("board drop actions -> move_story_board", () => {
       delete rpcResults[key];
     }
     fixtures.iterations = { list: { data: [{ id: CURRENT_ITERATION }], error: null } };
+    fixtures.project_states = { list: { data: CLASSIC_STATE_ROWS, error: null } };
   });
 
   // The single move_story_board call an action made, as [fnName, args].
@@ -418,7 +461,7 @@ describe("board drop actions -> move_story_board", () => {
           data: {
             number: 1,
             title: "A story",
-            state: "unstarted",
+            state_id: "unstarted",
             story_type: "feature",
             points: 3,
             iteration_id: CURRENT_ITERATION,
@@ -450,11 +493,11 @@ describe("board drop actions -> move_story_board", () => {
         p_item: { kind: "story", id: "story-1" },
         p_view: "tracker",
         p_expected: {
-          state: "unstarted",
+          state_id: "unstarted",
           iteration_id: CURRENT_ITERATION,
           focus: null,
         },
-        p_deltas: { state: "started" },
+        p_deltas: { state_id: "started" },
         p_anchor: { before: { kind: "story", id: "neighbour" } },
       });
     });
@@ -492,7 +535,7 @@ describe("board drop actions -> move_story_board", () => {
       fixtures.stories = {
         single: {
           data: {
-            state: "unstarted",
+            state_id: "unstarted",
             iteration_id: CURRENT_ITERATION,
             focus: null,
           },
@@ -574,7 +617,7 @@ describe("board drop actions -> move_story_board", () => {
           data: {
             number: 4,
             title: "Backlog story",
-            state: "unstarted",
+            state_id: "unstarted",
             story_type: "feature",
             points: 1,
             iteration_id: null,

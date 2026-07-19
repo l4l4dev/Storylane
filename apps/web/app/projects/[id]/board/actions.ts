@@ -5,12 +5,15 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import { notifySlack } from "@/lib/integrations/slack";
+import type { ActionResult, ProjectState } from "@/lib/types";
 import { iterationDoneMessage, iterationStartedMessage, storyStateChangeMessage } from "@/lib/utils/slack";
 import {
   BACKLOG_COLUMN_ID,
   columnForStory,
   evaluateDrop,
   evaluateListDrop,
+  lowestUnstartedStateId,
+  toGateStates,
   zoneForStory,
   type KanbanColumnId,
   type ListZoneId,
@@ -18,7 +21,25 @@ import {
 import { evaluateFocusDrop, type FocusDragTarget } from "@/lib/utils/focus";
 import { utcTodayKey } from "@/lib/utils/format";
 import { parsePoints, pointScaleValues } from "@/lib/utils/stories";
-import { type StoryState, type StoryTransitionAction } from "@storylane/core";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+/** Every state in the project, ordered by position (kept small — a handful of rows per project). */
+async function fetchProjectStates(supabase: SupabaseServerClient, projectId: string): Promise<ProjectState[]> {
+  const { data, error } = await supabase
+    .from("project_states")
+    .select("id, project_id, name, action_label, category, position, created_at")
+    .eq("project_id", projectId)
+    .order("position");
+  if (error) throw new Error(`Could not read project states: ${error.message}`);
+  return (data ?? []) as ProjectState[];
+}
+
+/** A state_id's display name for Slack messages ("Icebox" for null, "Unknown" for a stale/foreign id). */
+function stateName(stateId: string | null, states: ReadonlyArray<ProjectState>): string {
+  if (stateId === null) return "Icebox";
+  return states.find((s) => s.id === stateId)?.name ?? "Unknown";
+}
 
 // Single UTC date convention shared with the DB — see utcTodayKey.
 
@@ -36,12 +57,12 @@ const STALE_MOVE_MESSAGE = "This story changed on the board. Refresh and try aga
 // The RPC re-reads these FOR UPDATE and rejects (P0001 "stale") if any moved
 // between this read and the locked write — closing that TOCTOU window.
 function moveExpected(row: {
-  state: string;
+  state_id: string | null;
   iteration_id: string | null;
   focus: string | null;
 }) {
   return {
-    state: row.state,
+    state_id: row.state_id,
     iteration_id: row.iteration_id,
     focus: row.focus,
   };
@@ -78,13 +99,13 @@ function moveErrorMessage(error: { code?: string; message: string }): string {
  * insert + reposition run atomically in the `insert_board_item` RPC (TASK-51),
  * shared with `createBacklogDivider`.
  */
-export async function quickCreateStory(formData: FormData) {
+export async function quickCreateStory(formData: FormData): Promise<ActionResult> {
   const projectId = String(formData.get("project_id"));
   const title = String(formData.get("title") ?? "").trim();
   const target = String(formData.get("target"));
 
   if (!title) {
-    return;
+    return { ok: true };
   }
 
   const supabase = await createClient();
@@ -99,45 +120,49 @@ export async function quickCreateStory(formData: FormData) {
       p_anchor: moveAnchor(beforeItemId),
     });
     if (error) {
-      throw new Error(error.message);
+      return { ok: false, message: error.message };
     }
 
     revalidatePath(`/projects/${projectId}/board`);
-    return;
+    return { ok: true };
   }
-
-  const { data: currentRows } =
-    target === "unstarted"
-      ? await supabase
-          .from("iterations")
-          .select("id")
-          .eq("project_id", projectId)
-          .neq("state", "done")
-          .order("number", { ascending: false })
-          .limit(1)
-      : { data: null };
 
   let iterationId: string | null = null;
+  let stateId: string | null = null;
   if (target === "unstarted") {
+    const { data: currentRows } = await supabase
+      .from("iterations")
+      .select("id")
+      .eq("project_id", projectId)
+      .neq("state", "done")
+      .order("number", { ascending: false })
+      .limit(1);
     iterationId = currentRows?.[0]?.id ?? null;
     if (!iterationId) {
-      throw new Error("No active iteration");
+      return { ok: false, message: "No active iteration" };
+    }
+    const states = await fetchProjectStates(supabase, projectId);
+    stateId = lowestUnstartedStateId(toGateStates(states));
+    if (!stateId) {
+      return { ok: false, message: "This project has no unstarted state to create stories in" };
     }
   }
+  // target === "icebox" (or anything else): stateId/iterationId stay null.
 
   const { error } = await supabase.from("stories").insert({
     project_id: projectId,
     title,
     story_type: "feature",
-    state: target === "icebox" ? "unscheduled" : "unstarted",
+    state_id: stateId,
     iteration_id: iterationId,
   });
 
   if (error) {
-    throw new Error(error.message);
+    return { ok: false, message: error.message };
   }
 
   revalidatePath(`/projects/${projectId}/board`);
+  return { ok: true };
 }
 
 /**
@@ -155,10 +180,10 @@ export async function dropStory(formData: FormData) {
 
   const supabase = await createClient();
 
-  const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
+  const [{ data: story, error: fetchError }, { data: currentRows }, states] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, state, story_type, points, iteration_id, focus")
+      .select("number, title, state_id, story_type, points, iteration_id, focus")
       .eq("id", storyId)
       .eq("project_id", projectId)
       .single(),
@@ -169,6 +194,7 @@ export async function dropStory(formData: FormData) {
       .neq("state", "done")
       .order("number", { ascending: false })
       .limit(1),
+    fetchProjectStates(supabase, projectId),
   ]);
 
   if (fetchError || !story) {
@@ -180,8 +206,9 @@ export async function dropStory(formData: FormData) {
     throw new Error("No active iteration");
   }
 
+  const gateStates = toGateStates(states);
   const from = columnForStory(story, currentIterationId);
-  const evaluation = evaluateDrop(story, from, targetColumn);
+  const evaluation = evaluateDrop(story, from, targetColumn, gateStates);
   if (!evaluation.ok) {
     throw new Error(evaluation.reason);
   }
@@ -200,9 +227,9 @@ export async function dropStory(formData: FormData) {
     throw new Error(moveErrorMessage(error));
   }
 
-  if (evaluation.state) {
-    const newState = evaluation.state;
-    after(() => notifySlack(projectId, storyStateChangeMessage(story, newState)));
+  if ("state_id" in evaluation) {
+    const newName = stateName(evaluation.state_id ?? null, states);
+    after(() => notifySlack(projectId, storyStateChangeMessage(story, newName)));
   }
 
   revalidatePath(`/projects/${projectId}/board`);
@@ -212,14 +239,17 @@ export async function dropStory(formData: FormData) {
 // State/iteration deltas from an evaluateDrop/evaluateListDrop result. The RPC
 // re-resolves iteration='current' to the latest non-done iteration under its
 // lock, so the id is never passed from here (a concurrent rollover would make
-// a client-resolved id stale).
+// a client-resolved id stale). Presence, not truthiness: `state_id` can
+// legitimately be `null` (an Icebox target), which is falsy but a real delta
+// — checking `"state_id" in evaluation` distinguishes that from the key
+// being absent entirely (no state change).
 function trackerDeltas(evaluation: {
-  state?: string;
+  state_id?: string | null;
   iteration: "current" | "none" | "keep";
-}): { state?: string; iteration?: "current" | "none" } {
-  const deltas: { state?: string; iteration?: "current" | "none" } = {};
-  if (evaluation.state) {
-    deltas.state = evaluation.state;
+}): { state_id?: string | null; iteration?: "current" | "none" } {
+  const deltas: { state_id?: string | null; iteration?: "current" | "none" } = {};
+  if ("state_id" in evaluation) {
+    deltas.state_id = evaluation.state_id;
   }
   if (evaluation.iteration !== "keep") {
     deltas.iteration = evaluation.iteration;
@@ -241,10 +271,10 @@ export async function setStoryFocus(formData: FormData) {
 
   const supabase = await createClient();
 
-  const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
+  const [{ data: story, error: fetchError }, { data: currentRows }, states] = await Promise.all([
     supabase
       .from("stories")
-      .select("state, iteration_id, focus")
+      .select("state_id, iteration_id, focus")
       .eq("id", storyId)
       .eq("project_id", projectId)
       .single(),
@@ -255,6 +285,7 @@ export async function setStoryFocus(formData: FormData) {
       .neq("state", "done")
       .order("number", { ascending: false })
       .limit(1),
+    fetchProjectStates(supabase, projectId),
   ]);
 
   if (fetchError || !story) {
@@ -266,7 +297,8 @@ export async function setStoryFocus(formData: FormData) {
     throw new Error("Story is not in the current iteration");
   }
 
-  const evaluation = evaluateFocusDrop(story, target);
+  const category = story.state_id === null ? null : (states.find((s) => s.id === story.state_id)?.category ?? null);
+  const evaluation = evaluateFocusDrop({ category }, target);
   if (!evaluation.ok) {
     throw new Error(evaluation.reason);
   }
@@ -335,10 +367,10 @@ export async function dropStoryInList(formData: FormData) {
     return;
   }
 
-  const [{ data: story, error: fetchError }, { data: currentRows }] = await Promise.all([
+  const [{ data: story, error: fetchError }, { data: currentRows }, states] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, state, story_type, points, iteration_id, focus")
+      .select("number, title, state_id, story_type, points, iteration_id, focus")
       .eq("id", itemId)
       .eq("project_id", projectId)
       .single(),
@@ -349,6 +381,7 @@ export async function dropStoryInList(formData: FormData) {
       .neq("state", "done")
       .order("number", { ascending: false })
       .limit(1),
+    fetchProjectStates(supabase, projectId),
   ]);
 
   if (fetchError || !story) {
@@ -360,8 +393,9 @@ export async function dropStoryInList(formData: FormData) {
     throw new Error("No active iteration");
   }
 
+  const gateStates = toGateStates(states);
   const from = zoneForStory(story, currentIterationId);
-  const evaluation = evaluateListDrop(story, from, targetZone);
+  const evaluation = evaluateListDrop(story, from, targetZone, gateStates);
   if (!evaluation.ok) {
     throw new Error(evaluation.reason);
   }
@@ -378,9 +412,9 @@ export async function dropStoryInList(formData: FormData) {
     throw new Error(moveErrorMessage(error));
   }
 
-  if (evaluation.state) {
-    const newState = evaluation.state;
-    after(() => notifySlack(projectId, storyStateChangeMessage(story, newState)));
+  if ("state_id" in evaluation) {
+    const newName = stateName(evaluation.state_id ?? null, states);
+    after(() => notifySlack(projectId, storyStateChangeMessage(story, newName)));
   }
 
   revalidatePath(`/projects/${projectId}/board`);
@@ -438,27 +472,31 @@ export async function deleteBacklogDivider(formData: FormData) {
 }
 
 /**
- * Applies a one-click state-transition button (Start / Finish / Deliver /
- * Accept / Reject / Restart — see spec/screens.md "Story card UX"). Delegates
- * the state machine, the unestimated-feature guard, and the start-from-backlog
- * current-iteration assignment (TASK-19) to the `transition_story` RPC
- * (TASK-48) — the same enforcement point the MCP server uses, so the rule
- * can't drift between clients (spec/mcp.md). The RPC re-derives the story's
- * project internally and is gated by the stories UPDATE RLS policy, so a
- * stale/forged project_id in the form can't misdirect the write; the initial
- * read here is only to scope this action's own error and Slack notification
- * to the expected project.
+ * Applies a one-click state-transition button (advance / Accept / Reject /
+ * Restart — see spec/screens.md "Story card UX"). The client resolves the
+ * target `state_id` itself via `computeStateGate` (packages/core) — the
+ * button's own available-targets computation — and this action just
+ * delegates the actual write, plus the shared guards (estimation gate,
+ * done-iteration guard, start-from-backlog current-iteration assignment), to
+ * the `set_story_state` RPC — the same enforcement point the MCP server
+ * uses, so the rule can't drift between clients (spec/mcp.md). The RPC
+ * re-derives the story's project internally and is gated by the stories
+ * UPDATE RLS policy, so a stale/forged project_id in the form can't
+ * misdirect the write; the initial read here is only to scope this action's
+ * own error and Slack notification to the expected project.
  *
  * The List view renders this button on every row, including Backlog ones (a
- * backlog story is `unstarted`, whose only action is Start) — so unlike the
- * physical Kanban board, this can transition a story that has no iteration
- * assigned yet. The RPC schedules it into the current iteration in that case,
- * matching what dragging it into the current zone already does.
+ * backlog story is unstarted-category, whose only action is the first
+ * advance) — so unlike the physical Kanban board, this can transition a
+ * story that has no iteration assigned yet. The RPC schedules it into the
+ * current iteration in that case, matching what dragging it into the
+ * current zone already does.
  */
-export async function transitionStory(formData: FormData) {
+export async function setStoryState(formData: FormData): Promise<ActionResult> {
   const projectId = String(formData.get("project_id"));
   const storyId = String(formData.get("story_id"));
-  const action = String(formData.get("action")) as StoryTransitionAction;
+  const stateIdRaw = String(formData.get("state_id") ?? "");
+  const stateId = stateIdRaw === "" ? null : stateIdRaw;
 
   const supabase = await createClient();
   const { data: story, error: fetchError } = await supabase
@@ -468,23 +506,28 @@ export async function transitionStory(formData: FormData) {
     .eq("project_id", projectId)
     .single();
   if (fetchError || !story) {
-    throw new Error(fetchError?.message ?? "Story not found");
+    return { ok: false, message: fetchError?.message ?? "Story not found" };
   }
 
-  const { data, error } = await supabase.rpc("transition_story", {
+  // The generated RPC Args type marks p_state_id non-null — a known codegen
+  // gap (see app/stories/[id]/actions.ts's update_story call for the same
+  // pattern) even though set_story_state's SQL body accepts null (Icebox).
+  const { data, error } = await supabase.rpc("set_story_state", {
     p_story_id: storyId,
-    p_action: action,
+    p_state_id: stateId as string,
   });
   if (error) {
-    throw new Error(error.message);
+    return { ok: false, message: error.message };
   }
-  const nextState = (data as { state: StoryState }).state;
+  const newStateId = (data as { state_id: string | null }).state_id;
 
-  after(() => notifySlack(projectId, storyStateChangeMessage(story, nextState)));
+  const states = await fetchProjectStates(supabase, projectId);
+  after(() => notifySlack(projectId, storyStateChangeMessage(story, stateName(newStateId, states))));
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/stories/${storyId}`);
+  return { ok: true };
 }
 
 /**
@@ -494,7 +537,7 @@ export async function transitionStory(formData: FormData) {
  * `points` — never `state`, so estimating never auto-starts the story (the
  * normal Start/Restart button appears as the follow-up click).
  */
-export async function estimateStory(formData: FormData) {
+export async function estimateStory(formData: FormData): Promise<ActionResult> {
   const projectId = String(formData.get("project_id"));
   const storyId = String(formData.get("story_id"));
   const rawPoints = formData.get("points");
@@ -511,14 +554,14 @@ export async function estimateStory(formData: FormData) {
   ]);
 
   if (fetchError || !story) {
-    throw new Error(fetchError?.message ?? "Story not found");
+    return { ok: false, message: fetchError?.message ?? "Story not found" };
   }
 
   // The estimation picker only ever renders for a `feature` (spec/features.md
   // — bug/chore/release never use it). A non-feature reaching this action is
   // tampering, not a race, so it's a hard error.
   if (story.story_type !== "feature") {
-    throw new Error("This story is not awaiting estimation");
+    return { ok: false, message: "This story is not awaiting estimation" };
   }
 
   // A story that already has points got there legitimately — another
@@ -531,22 +574,30 @@ export async function estimateStory(formData: FormData) {
     revalidatePath(`/projects/${projectId}/board`);
     revalidatePath(`/projects/${projectId}`);
     revalidatePath(`/stories/${storyId}`);
-    return;
+    return { ok: true };
   }
 
   const allowedPoints = pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points);
   const points = parsePoints(String(rawPoints ?? ""), story.story_type, allowedPoints);
   if (points === null) {
-    throw new Error("Invalid point value");
+    return { ok: false, message: "Invalid point value" };
   }
 
-  await assertRowAffected(
-    await supabase.from("stories").update({ points }).eq("id", storyId).eq("project_id", projectId).select("id"),
-  );
+  try {
+    await assertRowAffected(
+      await supabase.from("stories").update({ points }).eq("id", storyId).eq("project_id", projectId).select("id"),
+    );
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Failed to estimate story",
+    };
+  }
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/stories/${storyId}`);
+  return { ok: true };
 }
 
 type FinalizeIterationEvent =

@@ -39,6 +39,8 @@ const AUTHENTICATED_ALLOWLIST = new Set([
   "move_story_board",
   "insert_board_item",
   "set_story_state",
+  "reorder_project_state",
+  "create_project_state",
   // MCP entry-point RPCs (apps/mcp/src/handlers.ts), also granted to
   // `authenticated` since the MCP bot signs in as an ordinary Supabase user
   "set_story_tasks",

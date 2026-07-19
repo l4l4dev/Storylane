@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ActionResult } from "@/lib/types";
 import { TaskChecklist } from "./task-checklist";
 
 const { addTaskMock, toggleTaskMock, deleteTaskMock } = vi.hoisted(() => ({
-  addTaskMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
-  toggleTaskMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
-  deleteTaskMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+  addTaskMock: vi.fn<(formData: FormData) => Promise<ActionResult>>(() => Promise.resolve({ ok: true })),
+  toggleTaskMock: vi.fn<(formData: FormData) => Promise<ActionResult>>(() => Promise.resolve({ ok: true })),
+  deleteTaskMock: vi.fn<(formData: FormData) => Promise<ActionResult>>(() => Promise.resolve({ ok: true })),
 }));
 
 vi.mock("@/app/stories/[id]/actions", () => ({
@@ -17,11 +18,11 @@ vi.mock("@/app/stories/[id]/actions", () => ({
 describe("TaskChecklist", () => {
   beforeEach(() => {
     addTaskMock.mockReset();
-    addTaskMock.mockResolvedValue(undefined);
+    addTaskMock.mockResolvedValue({ ok: true });
     toggleTaskMock.mockReset();
-    toggleTaskMock.mockResolvedValue(undefined);
+    toggleTaskMock.mockResolvedValue({ ok: true });
     deleteTaskMock.mockReset();
-    deleteTaskMock.mockResolvedValue(undefined);
+    deleteTaskMock.mockResolvedValue({ ok: true });
   });
 
   it("shows an empty state when there are no tasks", () => {
@@ -64,9 +65,9 @@ describe("TaskChecklist", () => {
   // TASK-74: a bare <form action> had no pending state, so a double-click
   // fired the toggle twice — the clicked control must disable itself.
   it("disables the toggle while pending so a double-click only submits once", async () => {
-    let resolveToggle!: () => void;
+    let resolveToggle!: (result: ActionResult) => void;
     toggleTaskMock.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
+      new Promise<ActionResult>((resolve) => {
         resolveToggle = resolve;
       }),
     );
@@ -79,7 +80,7 @@ describe("TaskChecklist", () => {
     expect(toggleTaskMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveToggle();
+      resolveToggle({ ok: true });
       await Promise.resolve();
     });
     expect(toggle).toBeEnabled();
@@ -87,8 +88,8 @@ describe("TaskChecklist", () => {
 
   // TASK-74: a rejected mutation used to throw into the route error
   // boundary instead of staying inline.
-  it("shows a rejected toggle inline instead of throwing", async () => {
-    toggleTaskMock.mockRejectedValueOnce(new Error("Task not found"));
+  it("shows a failed toggle result inline instead of throwing", async () => {
+    toggleTaskMock.mockResolvedValueOnce({ ok: false, message: "Task not found" });
     render(<TaskChecklist storyId="s1" tasks={[{ id: "t1", title: "Ship it", is_done: false }]} />);
     fireEvent.click(screen.getByLabelText('Mark "Ship it" as done'));
 
@@ -96,8 +97,8 @@ describe("TaskChecklist", () => {
     expect(screen.getByLabelText('Mark "Ship it" as done')).toBeEnabled();
   });
 
-  it("shows a rejected delete inline and keeps the task", async () => {
-    deleteTaskMock.mockRejectedValueOnce(new Error("Task not found"));
+  it("shows a failed delete result inline and keeps the task", async () => {
+    deleteTaskMock.mockResolvedValueOnce({ ok: false, message: "Task not found" });
     render(<TaskChecklist storyId="s1" tasks={[{ id: "t1", title: "Ship it", is_done: false }]} />);
     fireEvent.click(screen.getByLabelText('Delete task "Ship it"'));
 
@@ -117,7 +118,7 @@ describe("TaskChecklist", () => {
     expect(addTaskMock).toHaveBeenCalledTimes(1);
     expect(input).toHaveValue("");
 
-    addTaskMock.mockRejectedValueOnce(new Error("Failed to add task"));
+    addTaskMock.mockResolvedValueOnce({ ok: false, message: "Failed to add task" });
     fireEvent.change(input, { target: { value: "Second task" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 

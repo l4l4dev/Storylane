@@ -1,7 +1,21 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StoryDetail } from "@/app/stories/[id]/actions";
+import type { ProjectState } from "@/lib/types";
 import { StoryDetailPanel } from "./story-detail-panel";
+import stateTemplates from "../../../../../spec/fixtures/state-templates.json";
+
+// Classic-template states, keyed by name (ids are runtime UUIDs; this test
+// synthesizes stable ids by reusing the name).
+const CLASSIC_STATES: ProjectState[] = stateTemplates.classic.states.map((s) => ({
+  id: s.name,
+  name: s.name,
+  category: s.category as ProjectState["category"],
+  action_label: s.actionLabel,
+  position: s.position,
+  project_id: "p1",
+  created_at: "",
+}));
 
 // These tests stub routing/realtime (no App Router context or real Supabase
 // client/env vars in this environment) and the `updateStory` action itself
@@ -31,7 +45,8 @@ const baseDetail: StoryDetail = {
   title: "Add login",
   description: "Let users sign in",
   storyType: "feature",
-  state: "unstarted",
+  stateId: "Unstarted",
+  states: CLASSIC_STATES,
   points: 3,
   epicId: null,
   assigneeId: null,
