@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:05'
-updated_date: '2026-07-19 06:29'
+updated_date: '2026-07-19 12:38'
 labels:
   - web
   - db
@@ -95,6 +95,40 @@ fable-advisor plan review: approve-with-corrections, incorporated into Phase A/D
 - promote_story_to_epic's spawned stories always land state_id = NULL (Icebox) per doc-8's Icebox=NULL rule -- simpler than my original draft (no unstarted-category resolution needed at all).
 - project_states.position: no UNIQUE constraint (or DEFERRABLE INITIALLY DEFERRED if added) -- a plain settings reorder swap would deadlock/fail otherwise; ORDER BY position, id is sufficient.
 - New table/RPC grants follow the 20260715000005_function_grant_lockdown.sql convention (explicit revoke+grant, RLS alone isn't the full story for RPCs).
+
+Phase A review (2026-07-19):
+- rls-security-reviewer: no findings. Live-exploitation-verified: project_states RLS (member CRUD, owner-only delete, cross-tenant blocked), stories.state_id composite FK blocks cross-project assignment at the DB level, set_story_state confirmed SECURITY INVOKER with correct viewer/outsider denial, all new/changed function grants correct (grant-lockdown allowlist 3/3), finish_story_from_git still service_role-only, auto-seed trigger has no privilege-escalation surface.
+- code-review (high, 8-angle): 2 confirmed bugs, both fixed —
+  1. promote_story_to_epic spawned Icebox children were keeping the original story's iteration_id unless that iteration was done, breaking the "Icebox (state_id NULL) never carries an iteration_id" invariant finalize_iteration's rollover query depends on. Fixed: children now always get iteration_id = NULL alongside state_id = NULL.
+  2. set_story_state(story_id, NULL) (move to Icebox) left iteration_id untouched, same invariant break. Fixed: iteration_id is now explicitly cleared when p_state_id is NULL.
+  3rd finding (lock-order inversion between set_story_state and move_story_board's iteration_finalize advisory lock vs row lock) confirmed real but PRE-EXISTING (same pattern already present between the old transition_story and move_story_board before this task) — not fixed in Phase A, left as-is; may be worth a separate follow-up if the owner wants it addressed.
+- Full web test suite: 518/518 passing after fixes. database.types.ts regenerated.
+- Deploy-order risk identified and confirmed with owner: Phase A migrations are committed LOCALLY ONLY. Pushing now would apply the DB migration to production immediately (deploy.yml: migrate -> functions deploy -> Vercel hook) while currently-deployed app code (board/page.tsx etc.) still queries the dropped stories.state column — that would break production before Phase D (web app re-anchor) lands. Push/deploy deferred until Phase D is complete.
+
+Phase B review (2026-07-19):
+- code-review (medium): 3 findings, all addressed —
+  1. computeStateGate's advance branch didn't special-case a next-by-position state whose category is 'rejected' (nothing in the schema forbids a rejected-category state being positioned outside the spot immediately after a pre-done state) — a plain advance button could silently land a story in a rejected state under a misleading label. Fixed: next.category === 'rejected' now returns {kind:"none"}; added a regression test.
+  2. Duplicate-position tie-break (id-string sort) flagged as non-deterministic — reviewed and confirmed this matches the Phase A advisor's own documented design ("no UNIQUE constraint on position ... ORDER BY position, id is sufficient"), not a gap. Left as-is; added a code comment pointing at that design note for future readers.
+  3. Three comments violated CLAUDE.md's Code Comment Policy (history narration referencing "TASK-91"/"TASK-19"/"re-anchored from X to Y"). Fixed: reworded to state the current invariant/why only, no task-number narration.
+- packages/core test suite: 40/40 passing (added 1 test for the fixed edge case). tsc clean. Golden fixture (spec/fixtures/state-templates.json) hand-traced against both templates by the reviewer — no data bugs found. acceptedPoints' category-based filter cross-checked against finalize_iteration's SQL — matches exactly.
+- Known, accepted breakage (per owner decision, asked and confirmed before committing): committing this phase leaves `pnpm test` failing for apps/web (42 unit tests across kanban.test.ts, transition-buttons.test.tsx, story-detail-panel.test.tsx, story-list-row.test.tsx, board-list-view.test.tsx, board/actions.test.ts) because those files still import the OLD story-state API this phase removed (STORY_STATES, availableTransitions, applyTransition, canTransition, transitionLabel, StoryTransitionAction). This is NOT integration-test-gated (unlike Phase A's tsc-only breakage) — it's real unit-test failure in the default `pnpm test` run. Re-anchoring these consumers onto the new computeStateGate API is Phase C (apps/mcp) and Phase D (apps/web) work, not yet started. Committed locally only (not pushed), same as Phase A.
+
+Phase C review (2026-07-19):
+- code-review (medium): 4 findings, all addressed —
+  1. board_summary's by_state built from two unsynchronized reads (project_states snapshot, then stories) could silently drop points/count for a state created in the gap between them. Fixed: an orphaned state_id (present in the story aggregation but not the states snapshot) now folds into a "(unknown state)" fallback row instead of vanishing. Narrow window in practice — state creation is a Settings-UI-only action, not an MCP tool, so an agent alone can't trigger it.
+  2. setStoryState re-implemented shouldAssignCurrentIteration's rule inline and dropped the hasIterationId half, causing a redundant ensureCurrentIteration round-trip on every in_progress-category target even when the story already has an iteration. Fixed: now reads the story's iteration_id and calls the shared @storylane/core shouldAssignCurrentIteration(category, hasIterationId).
+  3. apps/mcp/README.md's tool table still listed the dropped transition_story tool and described list_stories as filtering "by state". Fixed: updated to set_story_state / state_id.
+  4. getStory's select string duplicated STORY_SELECT's state-embed fragment verbatim. Fixed: extracted a shared STATE_SELECT constant used by both.
+- apps/mcp integration suite: 21/21 passing after fixes (rewritten against the new state_id/set_story_state API — including a new test asserting board_summary's by_state exposes every project state for set_story_state target discovery, and a re-worked concurrent-write test reflecting any-to-any semantics: both concurrent set_story_state calls now succeed serially rather than one being state-machine-rejected, since neither depends on a specific prior state anymore).
+- Committed locally only — not pushed, same reasoning as Phase A/B (Phase D, the web app re-anchor, hasn't landed).
+
+Phase D reviews (2026-07-19):
+- fable-advisor (design/parity): AC#3 parity verdict = MATCHES. Verified against tag pre-concept-redesign (5930e1f): classic-template column order/icons/tints (category+categoryRank palette reproduces old COLUMN_META byte-for-byte), badge colors (CATEGORY_PALETTES = old STORY_STATE_META), one-click buttons (computeStateGate = old verb table: Start/Finish/Deliver/Accept+Reject/Restart/none), rejected-hide, quick-add placement — all identical. Recorded divergences (intentional, not Phase D defects): TASK-80's Estimate-popover (already design-reviewed), and doc-8 board-level management controls (hidden from viewers). Two corrections raised: (#2 BLOCKING) new-column default placement must be category-end not global-end, because reorder_project_state only value-swaps within a category so a global-tail state is permanently unreachable via the arrows — needs a create_project_state RPC (category-end insert + shift, positions lock, rls-security-reviewer pass); (#3 owner-decision) a null-action_label state is a drag+button dead-end since evaluateDrop reuses computeStateGate — advisor recommends decoupling drag-legality from action_label. (#4 minor) verify git-webhook no-ops on a stale merge_target_state_id.
+- rls-security-reviewer (reorder_project_state migration): no findings; live-verified viewer/outsider rejection, cross-tenant scoping (P0002), position-swap correctness, grants. Flagged missing regression test -> added (4 cases in project-states.integration.test.ts).
+- /code-review (high, 8-angle): 3 low-severity findings — (1) Slack name lookup after set_story_state can read 'Unknown' on a concurrent rename (cosmetic race, left documented); (2) new-column global-end placement = same as fable-advisor #2; (3) reorder arrows lacked per-row pending -> FIXED (reorderingId disables the active row's arrows).
+- AC#3 parity: MATCHES (recorded above). Full web suite 536/536, packages/core 40/40, apps/mcp 21/21, tsc + lint clean before the concurrent-session comingling below.
+
+CONCURRENT-SESSION NOTE: while these reviews ran, a Codex session (@codex-gpt-5 / owner-driven) implemented the fable-advisor corrections directly in the shared working tree, comingled with the Phase D re-anchor: 20260719000014_create_project_state.sql (fix #2), kanban.ts drag-decouple (fix #3), integration-settings optional merge-target, git-webhook + finish_story_from_git edits (fix #4), plus a project_id-immutability guard on 20260719000005. Phase D was therefore NOT committed by @claude-sonnet-5 to avoid clobbering that in-flight work — handoff to the owner to reconcile/commit.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -103,5 +137,52 @@ fable-advisor plan review: approve-with-corrections, incorporated into Phase A/D
 created: 2026-07-18 05:49
 ---
 State-editing UI decided by the owner 2026-07-18 (doc-8 §2, option C hybrid): board-level everyday edits (inline column rename; trailing "+ Add column" with a small category picker — reuse the old free-mode ColumnNameEditor / AddColumnButton interaction patterns) plus a project-settings "States" section for structural management (reorder within category, action_label editing, delete with a stories-remain error, category badges) and a classic/minimal template picker at project creation. Include both surfaces in this tasks UI scope.
+---
+
+created: 2026-07-19 07:38
+---
+Second-opinion review requested via Codex CLI (@codex-gpt-5), to be run separately by the owner outside this session — not a reassignment of TASK-91 itself. Review scope: the per-project custom-states-on-fixed-categories model (spec/data-model.md project_states, doc-8 §2) and the set_story_state write path once implemented.
+---
+
+created: 2026-07-19 12:03
+---
+Codex CLI (@codex-gpt-5) second-opinion review result: HOLD FOR FIXES, do not merge.
+
+Tests/build all green (Web 532/532, MCP 21/21, Core 40/40, ESLint, Next build) but 5 High + 2 Medium spec/security deviations found — passing tests do not cover them:
+
+1. [High] project_states.project_id is mutable under member UPDATE (only category is protected) — supabase/migrations/20260719000005_project_states.sql:44. A member of two projects can move an unused state's project_id to bypass owner-only DELETE and the 'at least one unstarted/done' DELETE trigger. Fix: make project_id immutable too, add a direct-PostgREST-UPDATE regression test.
+2. [High] Kanban drag only allows the single next state from computeStateGate, not free any-to-any drag — apps/web/lib/utils/kanban.ts:152 vs spec/screens.md:138 ('drag = any state, ordering only enforced by the advance button'). Existing tests assert the wrong one-step constraint, so green tests hide this.
+3. [High] git-webhook RPC picks the earliest-created active Git integration regardless of provider, so GitHub vs Forgejo merge targets can be swapped when both are configured — supabase/functions/git-webhook/index.ts:173 (Edge Function knows provider but doesn't pass it) + supabase/migrations/20260719000012_reanchor_finish_story_from_git.sql:50.
+4. [High] finish-from-git RPC sets state_id to finished before checking for an active iteration; with no active iteration (lazy-created on Board visit — apps/web/app/projects/[id]/board/page.tsx:71) the story is left stranded — supabase/migrations/20260719000012_reanchor_finish_story_from_git.sql:103. Fix: create the iteration if missing, or roll back the state update.
+5. [Medium] Newly-added project state always appends to the end of the whole ordering, not the end of its own category's slot — apps/web/app/projects/[id]/settings/actions.ts:171, reorder only swaps positions within the same category (supabase/migrations/20260719000013_reorder_project_state.sql:53). E.g. adding an in_progress state to 'classic' leaves it after Rejected; advance graph looks wrong.
+6. [Medium] merge_target_state_id is nullable per spec (null = transition disabled) but both the settings UI and server action require it — apps/web/components/features/projects/integration-settings.tsx:70, apps/web/app/projects/[id]/settings/actions.ts:356.
+
+No test exists for StateManager or reorder_project_state behavior directly. No files changed by the review itself — working tree/backlog diffs outside this review untouched.
+
+Per project workflow: holding merge, no auto-fix without owner go-ahead.
+---
+
+created: 2026-07-19 12:38
+---
+All 6 Codex findings fixed and verified this session, plus 3 additional issues found by a self-run 5-angle code-review + rls-security-reviewer pass on the fix patch itself:
+
+Codex findings (all fixed):
+1. project_states.project_id now immutable (same trigger as category).
+2. Kanban drag is any-state-to-any-state per spec (evaluateDrop no longer restricts to computeStateGate's offered target); ordering discipline lives only in the advance button.
+3. finish_story_from_git now takes p_provider and filters by it; old 2-arg overload dropped, new one re-revoked (Postgres grants EXECUTE to PUBLIC on new function signatures by default — caught by grant-lockdown.integration.test.ts).
+4. finish_story_from_git resolves the target iteration BEFORE writing state_id; fails closed with 'no_active_iteration' instead of stranding a Backlog/Icebox story when the project has none yet.
+5. New states now insert via a new create_project_state RPC that lands at the end of their own category's block (category-rank based, not global max), keeping computeStateGate's per-category contiguity intact.
+6. integrations.merge_target_state_id is nullable end-to-end (UI select + server action) per spec — unset disables the merge transition instead of being force-required.
+
+Additional findings from this session's own review pass (all fixed):
+7. create_project_state's position math broke when the target category had zero existing rows in the project (e.g. 'minimal' template has no 'rejected' state) — landed the new state at position 0 ahead of everything. Fixed with a category-rank-based insertion point; regression test added (minimal-template Rejected-state case).
+8. create_project_state and reorder_project_state shared the generic positions:<project_id> advisory lock key with ~9 unrelated stories.position RPCs — renamed both to a dedicated project_states_positions:<project_id> key.
+9. Both RPCs hand-wrote the owner/member role guard instead of using the shared require_project_role helper (supabase/migrations/20260717000001_guard_helpers.sql) that spec/rls.md says new RPCs must use — switched both over.
+
+Also fixed in passing: IntegrationRow.config.merge_target_state_id type widened to include null; removed reviewer-attribution phrasing ('Codex review, TASK-91') from comments per this repo's Code Comment Policy.
+
+Verification: apps/web 543/543 tests (incl. SUPABASE_INTEGRATION=1 integration suite), apps/mcp 21/21, packages/core 40/40, eslint clean, next build clean, local supabase db reset applies all migrations cleanly, rls-security-reviewer pass clean (no RLS/grant holes; the one note it raised — the guard-helper drift — was fixed).
+
+Not yet done: manual browser verification (deferred, this repo's convention — Mika verifies interactively) and a final fable-advisor design-principles pass for the UI-facing pieces (kanban drag behavior change, nullable merge-target select) per this repo's UI review workflow. Ready for commit review.
 ---
 <!-- COMMENTS:END -->

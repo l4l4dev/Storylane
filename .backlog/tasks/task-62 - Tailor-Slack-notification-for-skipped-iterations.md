@@ -3,9 +3,9 @@ id: TASK-62
 title: Tailor Slack notification for skipped iterations
 status: To Do
 assignee:
-  - '@claude-haiku-4-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-14 16:06'
-updated_date: '2026-07-18 02:59'
+updated_date: '2026-07-19 07:38'
 labels:
   - web
   - slack

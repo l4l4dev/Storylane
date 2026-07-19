@@ -5,9 +5,9 @@ title: >-
   radius, StoryPeek focus, activity paging, view persistence
 status: To Do
 assignee:
-  - '@claude-sonnet-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-17 13:16'
-updated_date: '2026-07-18 02:59'
+updated_date: '2026-07-19 07:38'
 labels:
   - web
   - ux
