@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 02:53'
-updated_date: '2026-07-19 06:29'
+updated_date: '2026-07-20 01:18'
 labels:
   - web
   - ux
@@ -32,6 +32,18 @@ The current quick-add is Trello-style: an always-visible "+ Add story" trigger p
 - [ ] #5 fable-advisor design review against spec/ux-principles.md passes with findings triaged
 - [ ] #6 pnpm test passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Design fixed by Fable advisor 2026-07-20. Parity target per task description (Wayback-verified). (1) Extract the story field editors (type, points w/ estimate scale, labels, description) from story-detail-panel.tsx into a shared fields component; story-detail-panel keeps autosave wiring, the new draft card uses local state + explicit save — do NOT fork the field markup. (2) New draft-story-card.tsx replaces quick-add-composer.tsx: rendered inline at the top of a panel; title required, all else optional; Save button + Cmd/Ctrl+S (guard event.isComposing per review-sharp-edges IME rule); Esc / click-outside discards silently (Pivotal parity, AC#3); failed create keeps input + inline error (spec/screens.md quick-add failure rule). (3) Triggers: List view = one small '+' in each panel header (Current / Backlog / Icebox); Kanban = one '+' on the unstarted-category column header (OPEN QUESTION logged with owner; default = keep). Remove all per-group always-visible triggers. (4) Placement: INSERT takes position from stories_position_seq (position invariant — never hand-pick a position), then reuse the existing board move/reposition path to place the story at the top of the panel in the same server action. (5) Delete quick-add-composer.tsx/.test.tsx; update board tests. (6) End with fable-advisor design review vs spec/ux-principles.md (AC#5) then full suite. No new tables, no RLS work.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Owner decision 2026-07-20: Kanban '+' = one on the unstarted-category column header (plan item 3 confirmed, no longer open).
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 

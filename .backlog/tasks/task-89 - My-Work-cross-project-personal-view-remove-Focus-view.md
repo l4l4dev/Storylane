@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 03:05'
-updated_date: '2026-07-19 06:29'
+updated_date: '2026-07-20 01:18'
 labels:
   - web
   - ux
@@ -32,6 +32,18 @@ doc-8 §9 UI. New cross-project view for the signed-in user: stories assigned to
 - [ ] #4 fable-advisor design review against spec/ux-principles.md passes with findings triaged
 - [ ] #5 pnpm test passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Design fixed by Fable advisor 2026-07-20 (screen spec for the doc-8 §9 stub; Focus-view removal moved into TASK-88 — see its plan). (1) Route /my-work (already in spec/screens.md routing table) — server component: stories assigned to auth user across projects (RLS scopes membership) + their project (name, iteration_length) + current-iteration ids + the user's story_pins; single query with joins, no client fetching. (2) Screen structure (PROPOSED, owner confirms): section 'Today' = stories in a 1-day project's current iteration (by definition) + pinned stories from longer-cadence projects; section 'Assigned' = everything else grouped by project. Ordering: personal/1-day projects first, then project name; within a group, board position order. Done-category stories drop out of Today once completed_at is set (keep visible until midnight? NO — drop immediately, simplest, Pivotal-like). (3) Pin gestures: pin/unpin icon on row hover in My Work AND in the board story rows + StoryPeek menu (story-peek-menu.tsx) so pinning happens where stories are found; optimistic toggle, plain table INSERT/DELETE through RLS (no RPC needed — self-only writes). (4) Personal-project accent: left border + muted project tag color token, defined once in the shared row component. (5) Sidebar: add My Work entry above project list (spec/screens.md Navigation section gets the addendum). (6) Global quick-add (doc-8 §10 decision deferred to here): OPEN QUESTION with owner — recommended: skip global shortcut for now; My Work header gets a '+' that quick-adds into the personal project. (7) End with fable-advisor design review vs spec/ux-principles.md (AC#4), spec addendum to screens.md My Work section, full suite.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Owner decisions 2026-07-20: (a) no global quick-add shortcut — My Work header gets a '+' adding into the personal project; (b) Today/Assigned two-section layout confirmed, personal-first ordering, done stories drop out of Today immediately. Plan items 2 and 6 are no longer open.
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 

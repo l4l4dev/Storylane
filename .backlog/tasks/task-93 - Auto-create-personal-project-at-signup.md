@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 13:04'
-updated_date: '2026-07-19 06:29'
+updated_date: '2026-07-20 01:16'
 labels:
   - web
   - db
@@ -29,3 +29,9 @@ doc-8 §4 owner decision 2026-07-18: on signup, auto-create a personal project f
 - [ ] #2 Spec updated (screens onboarding + features)
 - [ ] #3 pnpm test passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Design fixed by Fable advisor 2026-07-20. (1) Extract the project-seeding core of create_project (project row + owner membership + state template) into an internal SECURITY DEFINER function seed_project(p_owner uuid, p_name text, p_iteration_length int, p_template text) — needed because handle_new_user runs in the auth-service context where auth.uid() is not the new user; create_project RPC becomes a thin wrapper passing auth.uid(). REVOKE EXECUTE on seed_project from anon/authenticated (internal only — function_grant_lockdown pattern). (2) handle_new_user trigger (20260627000001_profiles.sql, replaced in a new migration) additionally calls seed_project(new.id, 'My Tasks', 1, minimal template = the smallest TASK-91 template: unstarted/in_progress/done). Personal project is a NORMAL project — no flag column, invites allowed, no special-casing anywhere (YAGNI; My Work accent keys off iteration_length=1, not a flag). (3) No backfill: production is fully reset in TASK-98, local dev seeds fresh. (4) Trigger failure must not block signup? NO — seeding is in the same transaction deliberately: a user without their personal project violates the product promise; if seeding fails, signup fails loudly (test this). (5) Integration test: fresh auth user -> profile + 1 project (1-day, 3 states, owner member); My Work renders it. (6) Spec addenda: spec/screens.md onboarding note + spec/features.md personal project paragraph. (7) rls-security-reviewer pass (SECURITY DEFINER + trigger touch), full suite.
+<!-- SECTION:PLAN:END -->
