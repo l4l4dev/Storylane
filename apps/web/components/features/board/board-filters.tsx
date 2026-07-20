@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { Filter } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { STORY_TYPES } from "@/lib/utils/stories";
@@ -33,6 +34,12 @@ export function BoardFilters({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  function replaceParams(params: URLSearchParams) {
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }
 
   function setParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams);
@@ -41,7 +48,16 @@ export function BoardFilters({
     } else {
       params.delete(key);
     }
-    router.replace(`${pathname}?${params.toString()}`);
+    replaceParams(params);
+  }
+
+  function clearAll() {
+    const params = new URLSearchParams(searchParams);
+    for (const key of ["type", "assignee", "label", "epic"]) {
+      params.delete(key);
+    }
+    replaceParams(params);
+    triggerRef.current?.focus();
   }
 
   const type = searchParams.get("type") ?? "";
@@ -53,7 +69,7 @@ export function BoardFilters({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
+        <Button ref={triggerRef} type="button" variant="outline" size="sm">
           <Filter />
           Filters
           {activeCount > 0 && <span className="text-xs text-muted-foreground">· {activeCount}</span>}
@@ -139,6 +155,12 @@ export function BoardFilters({
             ))}
           </NativeSelect>
         </div>
+
+        {activeCount > 0 && (
+          <Button type="button" variant="ghost" size="sm" onClick={clearAll} className="self-start">
+            Clear all
+          </Button>
+        )}
       </PopoverContent>
     </Popover>
   );

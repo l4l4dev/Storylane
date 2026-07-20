@@ -60,7 +60,8 @@ describe("StoryCard", () => {
 
   it("shows the points dot notation on the card", () => {
     render(<StoryCard story={baseStory} projectId="p1" />);
-    expect(screen.getByText("•••")).toBeInTheDocument();
+    expect(screen.getByText("•••")).toHaveAttribute("data-slot", "badge");
+    expect(screen.getByLabelText("3 points")).toBeInTheDocument();
   });
 
   it("shows the per-project story number on the card", () => {

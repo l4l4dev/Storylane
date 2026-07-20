@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import type { StoryDetail } from "@/app/stories/[id]/actions";
@@ -16,6 +16,9 @@ export function StoryPeek({ detail }: { detail: StoryDetail }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const panelRef = useRef<HTMLElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
 
   const close = useCallback(() => {
     const params = new URLSearchParams(searchParams);
@@ -39,13 +42,36 @@ export function StoryPeek({ detail }: { detail: StoryDetail }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [close]);
 
+  useEffect(() => {
+    const activeElement = document.activeElement;
+    const panel = panelRef.current;
+    returnFocusRef.current = activeElement instanceof HTMLElement ? activeElement : null;
+    panel?.focus({ preventScroll: true });
+
+    return () => {
+      const activeElementAtClose = document.activeElement;
+      if (
+        returnFocusRef.current?.isConnected &&
+        (panel?.contains(activeElementAtClose) || activeElementAtClose === document.body)
+      ) {
+        returnFocusRef.current?.focus({ preventScroll: true });
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    panelRef.current?.focus({ preventScroll: true });
+  }, [detail.id]);
+
   return (
     <aside
-      aria-label="Story detail"
+      ref={panelRef}
+      tabIndex={-1}
+      aria-labelledby={titleId}
       className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-border bg-background shadow-xl"
     >
       <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <h2 className="truncate text-sm font-semibold">
+        <h2 id={titleId} className="truncate text-sm font-semibold">
           <span className="mr-1.5 font-normal text-muted-foreground">#{detail.number}</span>
           {detail.title}
         </h2>

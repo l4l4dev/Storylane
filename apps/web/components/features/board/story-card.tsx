@@ -10,6 +10,7 @@ import {
 } from "@/lib/utils/stories";
 import { initials } from "@/lib/utils/format";
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
+import { Badge } from "@/components/ui/badge";
 
 export type StoryCardData = {
   id: string;
@@ -151,9 +152,9 @@ export function StoryCard({
       <div className="mt-2 flex items-center gap-1.5">
         <span className="shrink-0 text-xs text-muted-foreground">#{story.number}</span>
         {story.points != null && (
-          <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+          <Badge variant="secondary" aria-label={`${story.points} points`}>
             {formatPoints(story.points)}
-          </span>
+          </Badge>
         )}
         {story.epic && <EpicBadge epic={story.epic} />}
         {story.labels.map((label) => (

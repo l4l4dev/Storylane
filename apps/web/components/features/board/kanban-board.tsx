@@ -1,18 +1,20 @@
 "use client";
 
-import { type ReactNode, useState, useTransition } from "react";
+import { type ReactNode, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Crosshair, LayoutGrid, List as ListIcon, Pencil, Snowflake } from "lucide-react";
 import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { sumPoints } from "@/lib/utils/board";
+import { focusColumnForStory } from "@/lib/utils/focus";
 import { ICEBOX_COLUMN_ID } from "@/lib/utils/kanban";
 import { isImeComposing } from "@/lib/utils/keyboard";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
-import type { StoryFilter } from "@/lib/utils/stories";
+import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +64,47 @@ export type IterationMeta = {
 };
 
 type BoardView = "kanban" | "list" | "focus";
+type PersistentBoardView = Exclude<BoardView, "focus">;
+const BOARD_VIEW_CHANGE_EVENT = "storylane:board-view-change";
+const inMemoryBoardViews = new Map<string, PersistentBoardView>();
+
+function boardViewStorageKey(projectId: string) {
+  return `storylane:board-view:${projectId}`;
+}
+
+function isPersistentBoardView(value: string | null): value is PersistentBoardView {
+  return value === "list" || value === "kanban";
+}
+
+function readBoardView(projectId: string): PersistentBoardView {
+  try {
+    const stored = window.localStorage.getItem(boardViewStorageKey(projectId));
+    return isPersistentBoardView(stored)
+      ? stored
+      : inMemoryBoardViews.get(projectId) ?? "list";
+  } catch {
+    return inMemoryBoardViews.get(projectId) ?? "list";
+  }
+}
+
+function subscribeBoardView(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(BOARD_VIEW_CHANGE_EVENT, onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(BOARD_VIEW_CHANGE_EVENT, onStoreChange);
+  };
+}
+
+function writeBoardView(projectId: string, view: PersistentBoardView) {
+  try {
+    window.localStorage.setItem(boardViewStorageKey(projectId), view);
+    inMemoryBoardViews.delete(projectId);
+  } catch {
+    inMemoryBoardViews.set(projectId, view);
+  }
+  window.dispatchEvent(new Event(BOARD_VIEW_CHANGE_EVENT));
+}
 
 // Top-level board component: owns the shared header (iteration bar, goal
 // form, Icebox toggle, filters, and the Kanban/List view toggle — see
@@ -126,9 +169,24 @@ export function KanbanBoard({
   // state changes there are drag-only, no transition buttons render.
   pointScale: number[];
 }) {
-  const [view, setView] = useState<BoardView>("list");
+  const persistentView = useSyncExternalStore<PersistentBoardView>(
+    subscribeBoardView,
+    () => readBoardView(projectId),
+    () => "list",
+  );
+  const [focusProjectId, setFocusProjectId] = useState<string | null>(null);
+  const view: BoardView = focusProjectId === projectId ? "focus" : persistentView;
   const [showIcebox, setShowIcebox] = useState(false);
   const router = useRouter();
+
+  function selectView(next: BoardView) {
+    if (isPersistentBoardView(next)) {
+      setFocusProjectId(null);
+      writeBoardView(projectId, next);
+    } else {
+      setFocusProjectId(projectId);
+    }
+  }
 
   // Other users' story/divider changes arrive here and re-fetch the
   // board's Server Component, which flows back in as `initialContainers` /
@@ -140,10 +198,35 @@ export function KanbanBoard({
   const iceboxStories = initialContainers[ICEBOX_COLUMN_ID] ?? [];
   const sortedStateIds = [...states].sort((a, b) => a.position - b.position).map((s) => s.id);
   const iterationStories = sortedStateIds.flatMap((column) => initialContainers[column] ?? []);
-  const totalStoryCount =
-    iterationStories.length +
-    iceboxStories.length +
-    initialBacklogItems.filter((item) => item.kind === "story").length;
+  const backlogStories = initialBacklogItems
+    .filter((item): item is Extract<BacklogRowItem<BoardStory>, { kind: "story" }> => item.kind === "story")
+    .map((item) => item.story);
+  const allStories = [...iterationStories, ...iceboxStories, ...backlogStories];
+  const totalStoryCount = allStories.length;
+  const isFiltered = Object.values(filter).some(Boolean);
+  const displayedStories =
+    view === "kanban"
+      ? iterationStories
+      : view === "list"
+        ? [...iterationStories, ...backlogStories, ...(showIcebox ? iceboxStories : [])]
+        : allStories.filter((story) => {
+            const category =
+              story.state_id === null
+                ? null
+                : states.find((state) => state.id === story.state_id)?.category ?? null;
+            return (
+              focusColumnForStory(
+                { category, focus: story.focus, iteration_id: story.iteration_id },
+                currentIteration?.id ?? null,
+              ) !== null
+            );
+          });
+  const visibleDisplayedStoryCount = displayedStories.filter((story) =>
+    matchesStoryFilter(story, filter),
+  ).length;
+  const hiddenIterationStoryCount = iterationStories.filter(
+    (story) => !matchesStoryFilter(story, filter),
+  ).length;
 
   return (
     <div>
@@ -160,14 +243,22 @@ export function KanbanBoard({
         {currentIteration && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <span className="text-base font-semibold">Iteration #{currentIteration.number}</span>
-            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+            <Badge className="bg-primary/15 text-primary">
               Current
-            </span>
+            </Badge>
             <span className="text-xs text-muted-foreground">
               {formatDate(currentIteration.start_date)} – {formatDate(currentIteration.end_date)} (auto-finishes)
             </span>
             <span className="text-xs text-muted-foreground">
               {sumPoints(iterationStories)} / {velocity} pts committed
+              <span
+                className={`ml-1 inline-block w-16 ${
+                  isFiltered && hiddenIterationStoryCount > 0 ? "" : "invisible"
+                }`}
+                aria-hidden={!(isFiltered && hiddenIterationStoryCount > 0) || undefined}
+              >
+                (all stories)
+              </span>
             </span>
             <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />
             <IterationGoalBar
@@ -183,7 +274,8 @@ export function KanbanBoard({
               type="button"
               variant={view === "list" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setView("list")}
+              onClick={() => selectView("list")}
+              aria-pressed={view === "list"}
             >
               <ListIcon />
               List
@@ -192,7 +284,8 @@ export function KanbanBoard({
               type="button"
               variant={view === "kanban" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setView("kanban")}
+              onClick={() => selectView("kanban")}
+              aria-pressed={view === "kanban"}
             >
               <LayoutGrid />
               Kanban
@@ -201,7 +294,8 @@ export function KanbanBoard({
               type="button"
               variant={view === "focus" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setView("focus")}
+              onClick={() => selectView("focus")}
+              aria-pressed={view === "focus"}
             >
               <Crosshair />
               Focus
@@ -259,6 +353,16 @@ export function KanbanBoard({
       {totalStoryCount === 0 && (
         <p className="mb-3 text-sm text-muted-foreground">
           No stories yet. Use &quot;+ Add story&quot; below to create the first one.
+        </p>
+      )}
+      {isFiltered && displayedStories.length > 0 && visibleDisplayedStoryCount === 0 && (
+        <p
+          className="mb-3 text-sm text-muted-foreground"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          No stories match the current filters.
         </p>
       )}
       {view === "kanban" ? (

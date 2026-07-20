@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { groupStoriesByIteration } from "@/lib/utils/board";
 import { formatDate } from "@/lib/utils/format";
 import { StoryCard, type StoryCardData } from "@/components/features/board/story-card";
+import { Badge } from "@/components/ui/badge";
 import { ensureCurrentIteration } from "../board/actions";
 
 // Iteration history (spec/screens.md): past (done) iterations with their
@@ -101,13 +102,13 @@ export default async function IterationsPage({
               <div className="mb-1 flex items-center justify-between">
                 <h2 className="font-semibold">Iteration #{iteration.number}</h2>
                 {iteration.skipped ? (
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  <Badge variant="secondary" className="text-muted-foreground">
                     Skipped
-                  </span>
+                  </Badge>
                 ) : (
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  <Badge variant="secondary" className="text-muted-foreground">
                     {iteration.velocity ?? 0} pts
-                  </span>
+                  </Badge>
                 )}
               </div>
               <p className="mb-2 text-xs text-muted-foreground">

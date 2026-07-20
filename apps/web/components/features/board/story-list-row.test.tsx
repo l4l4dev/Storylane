@@ -74,7 +74,7 @@ describe("StoryListRow", () => {
 
   it("shows the state badge with the state's own name", () => {
     render(<StoryListRow story={baseStory} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />);
-    expect(screen.getByText("Unstarted")).toBeInTheDocument();
+    expect(screen.getByText("Unstarted")).toHaveAttribute("data-slot", "badge");
   });
 
   it("shows no state badge for an Icebox row (state_id null)", () => {
@@ -82,6 +82,21 @@ describe("StoryListRow", () => {
       <StoryListRow story={{ ...baseStory, state_id: null }} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />,
     );
     expect(screen.queryByText("Icebox")).not.toBeInTheDocument();
+  });
+
+  it("truncates a long custom state name without widening the row", () => {
+    const states = CLASSIC_STATES.map((state) =>
+      state.id === "Unstarted"
+        ? { ...state, name: "Ready for a very long cross-team verification phase" }
+        : state,
+    );
+    render(<StoryListRow story={baseStory} projectId="p1" states={states} pointScale={fibonacci} />);
+
+    expect(screen.getByTitle("Ready for a very long cross-team verification phase")).toHaveClass(
+      "max-w-24",
+      "truncate",
+      "sm:max-w-32",
+    );
   });
 
   it("lets the title shrink and hides secondary chips below the small breakpoint", () => {
@@ -101,7 +116,9 @@ describe("StoryListRow", () => {
     expect(screen.getByRole("button", { name: /Add login/ })).toHaveClass("min-w-0");
     expect(screen.getByText("Add login")).toHaveClass("min-w-0", "flex-1");
     expect(screen.getByText("Checkout revamp").parentElement?.parentElement).toHaveClass("hidden", "sm:inline-flex");
-    expect(screen.getByText("•••")).toHaveClass("hidden", "sm:inline");
+    expect(screen.getByText("•••")).toHaveClass("hidden", "sm:inline-flex");
+    expect(screen.getByText("•••")).toHaveAttribute("data-slot", "badge");
+    expect(screen.getByLabelText("3 points")).toBeInTheDocument();
     expect(screen.getByText("Urgent")).toHaveClass("text-foreground");
     expect(screen.getByText("Urgent").style.color).toBe("");
   });

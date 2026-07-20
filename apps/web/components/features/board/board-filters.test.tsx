@@ -87,7 +87,30 @@ describe("BoardFilters", () => {
     const typeSelect = screen.getByRole("combobox", { name: "Filter by type" });
     fireEvent.change(typeSelect, { target: { value: "" } });
 
-    expect(replaceMock).toHaveBeenCalledWith("/projects/p1/board?");
+    expect(replaceMock).toHaveBeenCalledWith("/projects/p1/board");
+  });
+
+  it("clears all filters while preserving unrelated query params", async () => {
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("type=feature&assignee=u1&label=l1&epic=e1&story=s1"),
+    );
+    const user = userEvent.setup();
+    render(<BoardFilters assignees={assignees} labels={labels} epics={epics} />);
+
+    await user.click(screen.getByRole("button", { name: /^Filters/ }));
+    await user.click(screen.getByRole("button", { name: "Clear all" }));
+
+    expect(replaceMock).toHaveBeenCalledWith("/projects/p1/board?story=s1");
+    expect(screen.getByRole("button", { name: /^Filters/ })).toHaveFocus();
+  });
+
+  it("does not show Clear all when no filters are active", async () => {
+    const user = userEvent.setup();
+    render(<BoardFilters assignees={assignees} labels={labels} epics={epics} />);
+
+    await user.click(screen.getByRole("button", { name: /^Filters/ }));
+
+    expect(screen.queryByRole("button", { name: "Clear all" })).not.toBeInTheDocument();
   });
 
   // fable-advisor review: Radix DropdownMenu's Content unconditionally

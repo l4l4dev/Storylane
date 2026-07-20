@@ -9,6 +9,7 @@ import type { ProjectState } from "@/lib/types";
 import { EpicBadge, ReleaseMarkerRow, type StoryCardData } from "./story-card";
 import { TransitionButtons } from "@/components/features/story/transition-buttons";
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
+import { Badge } from "@/components/ui/badge";
 
 const STORY_TYPE_ICON: Record<Exclude<StoryType, "release">, LucideIcon> = {
   feature: Star,
@@ -85,14 +86,18 @@ export function StoryListRow({
       {/* No badge for Icebox rows — the column/section itself already says
           "Icebox", so a per-row badge there would be redundant noise. */}
       {story.state_id !== null && (
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${stateBadge.className}`}>
+        <Badge className={`max-w-24 truncate sm:max-w-32 ${stateBadge.className}`} title={stateBadge.label}>
           {stateBadge.label}
-        </span>
+        </Badge>
       )}
       {story.points != null && (
-        <span className="hidden shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground sm:inline">
+        <Badge
+          variant="secondary"
+          className="hidden sm:inline-flex"
+          aria-label={`${story.points} points`}
+        >
           {formatPoints(story.points)}
-        </span>
+        </Badge>
       )}
       {story.labels.map((label) => (
         <span

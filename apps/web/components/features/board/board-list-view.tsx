@@ -895,6 +895,9 @@ function BacklogSection({
     item.kind === "story" ? { kind: "story", story: item.story } : { kind: "divider", divider: item.divider },
   );
   const rows = buildBacklogRows(rowItems, velocity, startingIterationNumber);
+  const hasHiddenStories = rowItems.some(
+    (item) => item.kind === "story" && !matchesStoryFilter(item.story, filter),
+  );
   const nextRealRowIds: Array<string | null> = Array(rows.length + 1).fill(null);
   for (let index = rows.length - 1; index >= 0; index--) {
     const row = rows[index];
@@ -945,6 +948,7 @@ function BacklogSection({
     <section className="flex flex-col gap-2">
       <header className="flex items-center gap-3 py-1 text-xs text-muted-foreground">
         <span className="font-semibold text-foreground">Backlog</span>
+        {hasHiddenStories && <span>Point totals include hidden stories</span>}
         <span className="h-px flex-1 bg-border" />
       </header>
       <SortableContext items={[...visibleRowIds]} strategy={verticalListSortingStrategy}>
@@ -1249,6 +1253,7 @@ export function BoardListView({
   const isVisible = (item: ListItem) => item.kind !== "story" || matchesStoryFilter(item.story, filter);
   const visibleCurrentItems = currentItems.filter(isVisible);
   const visibleIceboxItems = iceboxItems.filter(isVisible);
+  const currentHasHiddenStories = visibleCurrentItems.length < currentItems.length;
 
   // Projected date range for a virtual iteration's group header, derived
   // from the current iteration's real end_date + the project's
@@ -1288,6 +1293,9 @@ export function BoardListView({
             title={
               <span className="font-semibold text-foreground">
                 Current · {sumPoints(currentStoryItems.map((item) => item.story))} pts
+                {currentHasHiddenStories && (
+                  <span className="ml-1 font-normal text-muted-foreground">(all stories)</span>
+                )}
               </span>
             }
             items={visibleCurrentItems}

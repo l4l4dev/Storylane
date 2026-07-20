@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { KanbanBoard } from "./kanban-board";
 import type { ProjectState } from "@/lib/types";
 
@@ -63,7 +63,22 @@ function baseProps() {
   };
 }
 
+const localStorageValues = new Map<string, string>();
+Object.defineProperty(window, "localStorage", {
+  configurable: true,
+  value: {
+    clear: vi.fn(() => localStorageValues.clear()),
+    getItem: vi.fn((key: string) => localStorageValues.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => localStorageValues.set(key, value)),
+    removeItem: vi.fn((key: string) => localStorageValues.delete(key)),
+  },
+});
+
 describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it("shows the iteration end date once and keeps committed points beside velocity", () => {
     render(
       <KanbanBoard
@@ -118,5 +133,128 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
     render(<KanbanBoard {...baseProps()} />);
     fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
     expect(screen.getByTestId("icebox-toggle")).toHaveAttribute("tabIndex", "-1");
+  });
+
+  it("persists List/Kanban selection per project", () => {
+    render(<KanbanBoard {...baseProps()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
+
+    expect(window.localStorage.getItem("storylane:board-view:p1")).toBe("kanban");
+    expect(screen.getByRole("button", { name: "Kanban" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("restores a saved Kanban view after mount", async () => {
+    window.localStorage.setItem("storylane:board-view:p1", "kanban");
+    render(<KanbanBoard {...baseProps()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Kanban" })).toHaveAttribute("aria-pressed", "true");
+    });
+  });
+
+  it("ignores a legacy Focus value when restoring the saved view", async () => {
+    window.localStorage.setItem("storylane:board-view:p1", "focus");
+    render(<KanbanBoard {...baseProps()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+    });
+  });
+
+  it("keeps the selection in memory when localStorage writes fail", () => {
+    vi.mocked(window.localStorage.setItem).mockImplementationOnce(() => {
+      throw new DOMException("Quota exceeded", "QuotaExceededError");
+    });
+    render(<KanbanBoard {...baseProps()} projectId="p-quota" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
+
+    expect(screen.getByRole("button", { name: "Kanban" })).toHaveAttribute("aria-pressed", "true");
+    expect(window.localStorage.getItem("storylane:board-view:p-quota")).toBeNull();
+  });
+
+  it("explains filtered totals and distinguishes an empty match from an empty project", () => {
+    const story = {
+      id: "s1",
+      number: 1,
+      title: "Feature story",
+      description: null,
+      story_type: "feature",
+      isDone: false,
+      points: 3,
+      assigneeName: null,
+      labels: [],
+      epic: null,
+      state_id: "unstarted",
+      iteration_id: null,
+      position: 1,
+      assignee_id: null,
+      labelIds: [],
+      epic_id: null,
+      focus: null,
+      completed_at: null,
+    };
+    render(
+      <KanbanBoard
+        {...baseProps()}
+        initialContainers={{ ...baseProps().initialContainers, backlog: [story] }}
+        initialBacklogItems={[{ kind: "story", story }]}
+        filter={{ type: "bug" }}
+      />,
+    );
+
+    expect(screen.getByText("Point totals include hidden stories")).toBeInTheDocument();
+    expect(screen.getByText("No stories match the current filters.")).toBeInTheDocument();
+    expect(screen.queryByText(/No stories yet/)).not.toBeInTheDocument();
+  });
+
+  it("shows the filtered-empty status for the active view even when another zone has a match", () => {
+    const currentStory = {
+      id: "s-current",
+      number: 1,
+      title: "Current feature",
+      description: null,
+      story_type: "feature",
+      isDone: false,
+      points: 3,
+      assigneeName: null,
+      labels: [],
+      epic: null,
+      state_id: "unstarted",
+      iteration_id: "i1",
+      position: 1,
+      assignee_id: null,
+      labelIds: [],
+      epic_id: null,
+      focus: null,
+      completed_at: null,
+    };
+    const backlogStory = {
+      ...currentStory,
+      id: "s-backlog",
+      number: 2,
+      title: "Backlog bug",
+      story_type: "bug",
+      state_id: "unstarted",
+      iteration_id: null,
+    };
+    render(
+      <KanbanBoard
+        {...baseProps()}
+        initialContainers={{
+          ...baseProps().initialContainers,
+          unstarted: [currentStory],
+          backlog: [backlogStory],
+        }}
+        initialBacklogItems={[{ kind: "story", story: backlogStory }]}
+        filter={{ type: "bug" }}
+      />,
+    );
+
+    expect(screen.queryByText("No stories match the current filters.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
+    expect(screen.getByText("No stories match the current filters.")).toHaveAttribute("role", "status");
   });
 });
