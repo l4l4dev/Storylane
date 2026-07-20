@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { iterationDoneMessage, iterationStartedMessage, storyStateChangeMessage } from "./slack";
+import {
+  iterationDoneMessage,
+  iterationSkippedMessage,
+  iterationStartedMessage,
+  storyStateChangeMessage,
+} from "./slack";
 
 describe("storyStateChangeMessage", () => {
   it("includes the story number, title, and new state", () => {
@@ -33,6 +38,12 @@ describe("iterationDoneMessage", () => {
 
   it("omits the rate for a capacity-0 iteration (a catch-up gap row)", () => {
     expect(iterationDoneMessage(4, 0, 0)).toBe("Iteration #4 is done — 0 pts");
+  });
+});
+
+describe("iterationSkippedMessage", () => {
+  it("reports the skip without describing it as a zero-point completion", () => {
+    expect(iterationSkippedMessage(4)).toBe("Iteration #4 skipped");
   });
 });
 

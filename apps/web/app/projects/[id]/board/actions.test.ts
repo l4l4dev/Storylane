@@ -106,6 +106,61 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("@/lib/integrations/slack", () => ({ notifySlack: vi.fn() }));
 
+describe("finishIteration Slack notifications", () => {
+  beforeEach(async () => {
+    rpcMock.mockReset();
+    for (const key of Object.keys(rpcResults)) {
+      delete rpcResults[key];
+    }
+
+    const { after } = await import("next/server");
+    vi.mocked(after).mockReset();
+    vi.mocked(after).mockImplementation((callback) => {
+      void callback();
+    });
+
+    const { notifySlack } = await import("@/lib/integrations/slack");
+    vi.mocked(notifySlack).mockReset();
+    vi.mocked(notifySlack).mockResolvedValue(undefined);
+  });
+
+  function formData() {
+    const data = new FormData();
+    data.set("project_id", "project-1");
+    data.set("iteration_id", "iteration-4");
+    return data;
+  }
+
+  it("sends a skip-specific message for a skipped finalized event", async () => {
+    rpcResults.finalize_iteration = {
+      data: [{ kind: "finalized", number: 4, velocity: 0, capacity: 10, skipped: true }],
+      error: null,
+    };
+    const { finishIteration } = await import("./actions");
+    const { notifySlack } = await import("@/lib/integrations/slack");
+
+    await finishIteration(formData());
+
+    expect(notifySlack).toHaveBeenCalledWith("project-1", "Iteration #4 skipped");
+  });
+
+  it("keeps the existing done message for a non-skipped finalized event", async () => {
+    rpcResults.finalize_iteration = {
+      data: [{ kind: "finalized", number: 4, velocity: 8, capacity: 10, skipped: false }],
+      error: null,
+    };
+    const { finishIteration } = await import("./actions");
+    const { notifySlack } = await import("@/lib/integrations/slack");
+
+    await finishIteration(formData());
+
+    expect(notifySlack).toHaveBeenCalledWith(
+      "project-1",
+      "Iteration #4 is done — 8 pts over 10 person-days (0.8 pts/person-day)",
+    );
+  });
+});
+
 // project_states rows, keyed by name-as-id like the rest of this file's
 // literal state strings — the classic template, matching the DB seed
 // (20260719000006_stories_state_id.sql).

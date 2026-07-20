@@ -34,6 +34,11 @@ export function iterationDoneMessage(iterationNumber: number, velocity: number, 
   return `Iteration #${iterationNumber} is done — ${summary}`;
 }
 
+/** Message for an iteration intentionally skipped before it started. */
+export function iterationSkippedMessage(iterationNumber: number): string {
+  return `Iteration #${iterationNumber} skipped`;
+}
+
 /** Message for a new iteration being created by the lazy rollover. */
 export function iterationStartedMessage(iterationNumber: number, startDate: string, endDate: string): string {
   return `Iteration #${iterationNumber} started (${startDate} – ${endDate})`;

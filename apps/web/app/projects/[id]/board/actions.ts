@@ -6,7 +6,12 @@ import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import { notifySlack } from "@/lib/integrations/slack";
 import type { ActionResult, ProjectState } from "@/lib/types";
-import { iterationDoneMessage, iterationStartedMessage, storyStateChangeMessage } from "@/lib/utils/slack";
+import {
+  iterationDoneMessage,
+  iterationSkippedMessage,
+  iterationStartedMessage,
+  storyStateChangeMessage,
+} from "@/lib/utils/slack";
 import {
   BACKLOG_COLUMN_ID,
   columnForStory,
@@ -629,7 +634,10 @@ function parseFinalizeEvents(raw: unknown): FinalizeIterationEvent[] {
 function notifyFinalizeEvents(projectId: string, events: FinalizeIterationEvent[]) {
   for (const event of events) {
     if (event.kind === "finalized") {
-      after(() => notifySlack(projectId, iterationDoneMessage(event.number, event.velocity, event.capacity)));
+      const message = event.skipped
+        ? iterationSkippedMessage(event.number)
+        : iterationDoneMessage(event.number, event.velocity, event.capacity);
+      after(() => notifySlack(projectId, message));
     } else if (event.kind === "started") {
       after(() => notifySlack(projectId, iterationStartedMessage(event.number, event.start_date, event.end_date)));
     }
