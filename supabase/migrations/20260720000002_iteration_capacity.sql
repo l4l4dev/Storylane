@@ -15,7 +15,7 @@ alter table public.iterations
 
 -- `iterations` UPDATE RLS (20260627000004_iterations.sql) is row-level and
 -- unconditional for owner/member, and RLS cannot restrict columns — so
--- without this guard any member could PATCH a finished iteration's snapshot
+-- without a guard any member could PATCH a finished iteration's snapshot
 -- straight through PostgREST, and the "written once, never recomputed"
 -- invariant above would be a comment rather than a rule.
 --
@@ -24,10 +24,23 @@ alter table public.iterations
 -- one past iteration inflates the rate — and therefore the auto-assignment
 -- budget of every future sprint — for the whole project.
 --
--- Keyed on OLD.state so it never blocks finalization itself: finalize's
--- update carries `where state <> 'done'`, so the row is still open at the
--- moment the snapshot is written. `goal` stays editable on a done row (the
--- only column clients actually update there).
+-- The PRIMARY guard is the column grant below: `goal` is the only column
+-- clients update directly, so table-level UPDATE is revoked and only
+-- `update (goal)` is granted back. A trigger alone is NOT enough — keyed on
+-- OLD.state it misses a member finishing the row themselves (state='done' +
+-- forged metrics in ONE statement, empirically confirmed by the 2026-07-20
+-- rls-security-reviewer pass), and a column-only REVOKE without revoking the
+-- table-level grant is a no-op in Postgres. finalize_iteration /
+-- skip_iteration are postgres-owned SECURITY DEFINER, unaffected. Any future
+-- RPC that writes other iterations columns (e.g. TASK-87's length override)
+-- must be SECURITY DEFINER too.
+revoke update on public.iterations from authenticated;
+grant update (goal) on public.iterations to authenticated;
+
+-- Defense-in-depth behind the column grant (e.g. against a future migration
+-- re-granting broad UPDATE): rejects metric edits on already-done rows. It
+-- never blocks finalization itself — finalize's update carries
+-- `where state <> 'done'`, so the row is still open at snapshot time.
 create or replace function public.reject_finalized_iteration_metric_edit()
 returns trigger
 language plpgsql
@@ -70,6 +83,11 @@ create or replace function public.project_capacity(
 returns numeric
 language sql
 stable
+-- INVOKER is inert today: both reachable callers (finalize_iteration as
+-- postgres, the fixture test as service_role) have rolbypassrls, so the
+-- full cross-member read of user_time_off is guaranteed by the grants
+-- above, not by shares_project_with reach. If EXECUTE were ever granted to
+-- authenticated, results would silently vary by caller — don't.
 security invoker
 set search_path = public
 as $$
@@ -270,6 +288,8 @@ $$;
 
 -- DOWN (rollback — not auto-applied; run manually if reverting):
 -- (restore finalize_iteration from 20260719000010_reanchor_finalize_iteration.sql)
+-- revoke update (goal) on public.iterations from authenticated;
+-- grant update on public.iterations to authenticated;
 -- drop trigger iterations_reject_finalized_metric_edit on public.iterations;
 -- drop function public.reject_finalized_iteration_metric_edit();
 -- drop function public.project_capacity(uuid, date, date);

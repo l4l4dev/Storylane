@@ -213,6 +213,44 @@ describe.skipIf(!RUN)("project capacity (integration)", () => {
       expect(editGoal.error).toBeNull();
     });
 
+    it("rejects finishing an iteration with forged metrics in one update (rls review 2026-07-20)", async () => {
+      // The trigger alone misses this: on a still-open row OLD.state is not
+      // 'done', so a member could set state + both metrics in one statement.
+      // The column grant (update (goal) only) is what closes it.
+      const projectId = await createProject("capacity one-shot forge", { iteration_length: 7 });
+      const seed = await owner.rpc("finalize_iteration", { p_project_id: projectId, p_manual: false });
+      expect(seed.error).toBeNull();
+
+      const { data: open } = await owner
+        .from("iterations")
+        .select("id, state")
+        .eq("project_id", projectId)
+        .neq("state", "done")
+        .order("number", { ascending: false })
+        .limit(1)
+        .single();
+      expect(open).not.toBeNull();
+
+      const forge = await owner
+        .from("iterations")
+        .update({ state: "done", velocity: 999, capacity: 0.001 })
+        .eq("id", open!.id);
+      expect(forge.error).not.toBeNull();
+
+      const { data: untouched } = await owner
+        .from("iterations")
+        .select("state, velocity, capacity")
+        .eq("id", open!.id)
+        .single();
+      expect(untouched!.state).not.toBe("done");
+      expect(untouched!.velocity).toBeNull();
+      expect(untouched!.capacity).toBeNull();
+
+      // The open row's goal stays editable through the column grant.
+      const editOpenGoal = await owner.from("iterations").update({ goal: "sprint goal" }).eq("id", open!.id);
+      expect(editOpenGoal.error).toBeNull();
+    });
+
     it("rejects a negative capacity at the schema level", async () => {
       const projectId = await createProject("capacity negative", { iteration_length: 1 });
       const seed = await owner.rpc("finalize_iteration", { p_project_id: projectId, p_manual: false });
