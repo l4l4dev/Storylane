@@ -15,7 +15,7 @@ milestone: m-5
 dependencies:
   - TASK-86
 priority: high
-ordinal: 58000
+ordinal: 2000
 ---
 
 ## Description

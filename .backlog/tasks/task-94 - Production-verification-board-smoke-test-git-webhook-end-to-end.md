@@ -5,11 +5,12 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-18 15:10'
+updated_date: '2026-07-19 17:02'
 labels: []
 milestone: m-1
 dependencies: []
 priority: high
-ordinal: 65000
+ordinal: 12000
 ---
 
 ## Description
@@ -27,3 +28,9 @@ Webhook steps: in project Settings configure the Git integration (repo URL + gen
 - [ ] #1 Production board flow works end to end (project -> story -> estimate -> accepted, comment, task, activity feed)
 - [ ] #2 A real merged PR referencing a story transitions that story to finished in production
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Absorbed deferrals (2026-07-20): before the smoke test, complete TASK-96 owner setup (DEPLOY.md 'One-time setup (owner)': 3 GitHub secrets + Vercel Deploy Hook + auto-deploy off), then push main — the first green workflow run proves TASK-96 AC#1-4. During the smoke test also confirm the settings footer shows 'v<version> (<sha>)' (TASK-95 AC#1).
+<!-- SECTION:NOTES:END -->

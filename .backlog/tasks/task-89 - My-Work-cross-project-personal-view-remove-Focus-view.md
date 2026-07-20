@@ -15,7 +15,7 @@ dependencies:
   - TASK-88
   - TASK-91
 priority: high
-ordinal: 60000
+ordinal: 5000
 ---
 
 ## Description
