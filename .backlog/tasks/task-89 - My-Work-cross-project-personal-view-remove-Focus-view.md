@@ -1,11 +1,11 @@
 ---
 id: TASK-89
 title: 'My Work: cross-project personal view, remove Focus view'
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 03:05'
-updated_date: '2026-07-20 09:13'
+updated_date: '2026-07-20 09:15'
 labels:
   - web
   - ux
