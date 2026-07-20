@@ -6,14 +6,13 @@ import { useStoryRealtime, type StoryRealtimeRow } from "@/lib/supabase/realtime
 import { describeActivity } from "@/lib/utils/activity";
 import { formatDateTime } from "@/lib/utils/format";
 import { isImeComposing } from "@/lib/utils/keyboard";
-import { STORY_TYPES } from "@/lib/utils/stories";
 import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { CommentThread } from "./comment-thread";
 import { TaskChecklist } from "./task-checklist";
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 import { TransitionButtons } from "./transition-buttons";
+import { StoryFields } from "./story-fields";
 
 // The story fields this panel edits inline — everything else on
 // `StoryDetail` (comments, tasks, epics/labels/members lists,
@@ -335,127 +334,19 @@ export function StoryDetailPanel({
         </span>
       </div>
 
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="detail-title">Title</Label>
-          <input
-            id="detail-title"
-            value={local.title}
-            required
-            onChange={(e) => handleTextChange("title", e.target.value)}
-            onFocus={() => focusedRef.current.add("title")}
-            onBlur={() => handleTextBlur("title")}
-            onKeyDown={(e) => handleTextKeyDown("title", e)}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="detail-description">Description</Label>
-          <Textarea
-            id="detail-description"
-            value={local.description}
-            rows={4}
-            onChange={(e) => handleTextChange("description", e.target.value)}
-            onFocus={() => focusedRef.current.add("description")}
-            onBlur={() => handleTextBlur("description")}
-            onKeyDown={(e) => handleTextKeyDown("description", e)}
-          />
-        </div>
-
-        <div className="flex gap-4">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Label htmlFor="detail-type">Type</Label>
-            <NativeSelect
-              id="detail-type"
-              value={local.storyType}
-              onChange={(e) => handleDiscreteChange("storyType", e.target.value)}
-            >
-              {STORY_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-
-          <div className="flex w-32 flex-col gap-1.5">
-            <Label htmlFor="detail-points">Points</Label>
-            {/* Points come from the project's point scale — no free numeric
-                input (see spec/features.md). */}
-            <NativeSelect
-              id="detail-points"
-              value={local.points ?? ""}
-              onChange={(e) => handleDiscreteChange("points", e.target.value === "" ? null : Number(e.target.value))}
-            >
-              <option value="">Unestimated</option>
-              {detail.pointScale.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-        </div>
-
-        <div className="flex gap-4">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Label htmlFor="detail-epic">Epic</Label>
-            <NativeSelect
-              id="detail-epic"
-              value={local.epicId}
-              onChange={(e) => handleDiscreteChange("epicId", e.target.value)}
-            >
-              <option value="">None</option>
-              {detail.epics.map((epic) => (
-                <option key={epic.id} value={epic.id}>
-                  {epic.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Label htmlFor="detail-assignee">Assignee</Label>
-            <NativeSelect
-              id="detail-assignee"
-              value={local.assigneeId}
-              onChange={(e) => handleDiscreteChange("assigneeId", e.target.value)}
-            >
-              <option value="">Unassigned</option>
-              {detail.members.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}{member.isAgent ? " (agent)" : ""}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-        </div>
-
-        {detail.labels.length > 0 && (
-          <fieldset className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Labels</span>
-            <div className="flex flex-wrap gap-2">
-              {detail.labels.map((label) => (
-                <label key={label.id} className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={local.labelIds.includes(label.id)}
-                    onChange={(e) => {
-                      const next = e.target.checked
-                        ? [...local.labelIds, label.id]
-                        : local.labelIds.filter((id) => id !== label.id);
-                      handleDiscreteChange("labelIds", next);
-                    }}
-                    className="accent-primary"
-                  />
-                  {label.name}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-        )}
-      </div>
+      <StoryFields
+        value={local}
+        onTextChange={handleTextChange}
+        onTextFocus={(field) => focusedRef.current.add(field)}
+        onTextBlur={handleTextBlur}
+        onTextKeyDown={handleTextKeyDown}
+        onDiscreteChange={handleDiscreteChange}
+        pointScale={detail.pointScale}
+        epics={detail.epics}
+        members={detail.members}
+        labels={detail.labels}
+        idPrefix="detail"
+      />
 
       <TaskChecklist storyId={detail.id} tasks={detail.tasks} onMutated={onMutated} />
       <CommentThread

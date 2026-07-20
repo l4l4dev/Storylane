@@ -66,7 +66,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { MutationErrorBanner } from "./mutation-error-banner";
 import { BOARD_COLUMN_HEIGHT_CLASS } from "./kanban-columns-board";
-import { QuickAddComposer } from "./quick-add-composer";
+import { DraftStoryCard, DraftStoryTrigger } from "./draft-story-card";
 import { StoryListRow } from "./story-list-row";
 import { SortableItem } from "./sortable-item";
 import { useInlineEdit } from "./use-inline-edit";
@@ -790,22 +790,31 @@ function ListSection({
   items,
   projectId,
   states,
-  composer,
   collapsed,
   onToggleCollapse,
   pointScale,
+  draftAdd,
 }: {
   zoneId: string;
   title: ReactNode;
   items: ListItem[];
   projectId: string;
   states: ProjectState[];
-  composer?: ReactNode;
   collapsed: boolean;
   onToggleCollapse: () => void;
   pointScale: number[];
+  // Only the Current panel gets a draft-story trigger — Backlog/Icebox have
+  // their own header trigger (BacklogSection/IceboxColumn), and ListSection
+  // itself is Current-only.
+  draftAdd: {
+    target: "unstarted";
+    epics: { id: string; name: string }[];
+    members: { id: string; name: string; isAgent?: boolean }[];
+    labels: { id: string; name: string }[];
+  };
 }) {
   const { setNodeRef } = useDroppable({ id: zoneId });
+  const [draftOpen, setDraftOpen] = useState(false);
 
   return (
     <section className="flex flex-col gap-2">
@@ -820,7 +829,21 @@ function ListSection({
         </button>
         {title}
         <span className="h-px flex-1 bg-border" />
+        <DraftStoryTrigger label="Add story to Current" onClick={() => setDraftOpen(true)} />
       </header>
+      {draftOpen && (
+        <DraftStoryCard
+          projectId={projectId}
+          target={draftAdd.target}
+          view="list"
+          beforeItemId={items[0]?.id ?? null}
+          pointScale={pointScale}
+          epics={draftAdd.epics}
+          members={draftAdd.members}
+          labels={draftAdd.labels}
+          onClose={() => setDraftOpen(false)}
+        />
+      )}
       {/* Kept mounted (not conditionally rendered) even while collapsed —
           dnd-kit's droppable ref must stay registered so a story can still
           be dropped into this zone. */}
@@ -831,10 +854,6 @@ function ListSection({
           ))}
         </ul>
       </SortableContext>
-      {/* The add-story affordance lives at the group's bottom edge, not the
-          header (TASK-36) — hidden along with the rest of a collapsed
-          group's content. */}
-      {!collapsed && composer}
     </section>
   );
 }
@@ -869,6 +888,9 @@ function BacklogSection({
   collapsedGroups,
   onToggleGroup,
   pointScale,
+  epics,
+  members,
+  labels,
   onError,
 }: {
   // Full, unfiltered backlog (stories + dividers) — the virtual-iteration
@@ -887,11 +909,16 @@ function BacklogSection({
   collapsedGroups: ReadonlySet<string>;
   onToggleGroup: (key: string) => void;
   pointScale: number[];
+  // The draft story card's Epic/Assignee/Labels field options (TASK-82).
+  epics: { id: string; name: string }[];
+  members: { id: string; name: string; isAgent?: boolean }[];
+  labels: { id: string; name: string }[];
   // Surfaces a row insert-menu failure (TASK-42) in the shared banner at
   // the top of the list, the same slot drag failures already use.
   onError: (message: string) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: BACKLOG_COLUMN_ID });
+  const [draftOpen, setDraftOpen] = useState(false);
 
   const rowItems: BacklogRowItem<BoardStory>[] = items.map((item) =>
     item.kind === "story" ? { kind: "story", story: item.story } : { kind: "divider", divider: item.divider },
@@ -918,22 +945,11 @@ function BacklogSection({
   // it creates, see the `rows.map` below) — unlike before, it's never a
   // member of the sortable/visible set.
   let currentGroupCollapsed = false;
-  let currentGroupNumber = startingIterationNumber;
   const visibleRowIds = new Set<string>();
-  // Parallel to `rows` — whether the row at that index's group is collapsed,
-  // computed in this same pass so the per-group "+ Add story" composer
-  // (TASK-36) below can look it up by index instead of tracking its own
-  // mutable state across the JSX-building `.map()` (React disallows
-  // reassigning a plain variable from inside a render-time callback).
-  const rowGroupCollapsed: boolean[] = [];
-  const rowGroupNumbers: number[] = [];
   for (const row of rows) {
     if (row.kind === "iteration-header") {
-      currentGroupNumber = row.number;
       currentGroupCollapsed = collapsedGroups.has(String(row.number));
     }
-    rowGroupCollapsed.push(currentGroupCollapsed);
-    rowGroupNumbers.push(currentGroupNumber);
     if (row.kind === "iteration-header" || row.kind === "iteration-break") {
       continue;
     }
@@ -952,7 +968,20 @@ function BacklogSection({
         <span className="font-semibold text-foreground">Backlog</span>
         {hasHiddenStories && <span>Point totals include hidden stories</span>}
         <span className="h-px flex-1 bg-border" />
+        <DraftStoryTrigger label="Add story to Backlog" onClick={() => setDraftOpen(true)} />
       </header>
+      {draftOpen && (
+        <DraftStoryCard
+          projectId={projectId}
+          target="backlog"
+          beforeItemId={nextRealRowIds[0]}
+          pointScale={pointScale}
+          epics={epics}
+          members={members}
+          labels={labels}
+          onClose={() => setDraftOpen(false)}
+        />
+      )}
       <SortableContext items={[...visibleRowIds]} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-10 flex-col gap-1.5">
           <InsertBetweenRows projectId={projectId} beforeItemId={nextRealRowIds[0]} onError={onError} />
@@ -965,12 +994,6 @@ function BacklogSection({
               return [];
             }
 
-            // This row is the last one in its virtual-iteration group (or,
-            // for an empty group, the header itself) whenever the next row
-            // starts a new group/break or there is none — that's exactly
-            // the group's bottom edge the per-group composer belongs at.
-            const next = rows[index + 1];
-            const isGroupEnd = !next || next.kind === "iteration-header" || next.kind === "iteration-break";
             const renderedRows: ReactNode[] = [];
 
             if (row.kind === "iteration-header") {
@@ -1007,21 +1030,6 @@ function BacklogSection({
               }
             }
 
-            // Stable by virtual iteration rather than by whichever story is
-            // currently last in it. Realtime can move this sibling without
-            // remounting it, preserving QuickAddComposer's open/title state.
-            if (isGroupEnd && !rowGroupCollapsed[index]) {
-              renderedRows.push(
-                <li key={`group-composer-${rowGroupNumbers[index]}`} className="pl-3">
-                  <QuickAddComposer
-                    projectId={projectId}
-                    target="backlog"
-                    beforeItemId={nextRealRowIds[index + 1] ?? undefined}
-                  />
-                </li>,
-              );
-            }
-
             renderedRows.push(
               <InsertBetweenRows
                 key={`insert-after-${rowKey(row, index)}`}
@@ -1035,10 +1043,6 @@ function BacklogSection({
           })}
         </ul>
       </SortableContext>
-      {/* No virtual-iteration group renders at all for a totally empty
-          backlog (buildBacklogRows emits nothing) — this fallback keeps an
-          add-story affordance available even then. */}
-      {rows.length === 0 && <QuickAddComposer projectId={projectId} target="backlog" />}
     </section>
   );
 }
@@ -1053,13 +1057,20 @@ function IceboxColumn({
   projectId,
   states,
   pointScale,
+  epics,
+  members,
+  labels,
 }: {
   items: ListItem[];
   projectId: string;
   states: ProjectState[];
   pointScale: number[];
+  epics: { id: string; name: string }[];
+  members: { id: string; name: string; isAgent?: boolean }[];
+  labels: { id: string; name: string }[];
 }) {
   const { setNodeRef } = useDroppable({ id: ICEBOX_COLUMN_ID });
+  const [draftOpen, setDraftOpen] = useState(false);
 
   return (
     <section className={`flex w-72 shrink-0 flex-col rounded-lg border border-border bg-sky-50/50 dark:bg-sky-950/20 ${BOARD_COLUMN_HEIGHT_CLASS}`}>
@@ -1067,8 +1078,21 @@ function IceboxColumn({
         <Snowflake className="size-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
         <h2 className="text-sm font-semibold">Icebox</h2>
         <span className="text-xs text-muted-foreground">{items.length}</span>
+        <DraftStoryTrigger label="Add story to Icebox" onClick={() => setDraftOpen(true)} />
       </header>
       <div className="flex flex-1 flex-col overflow-y-auto px-3 pb-3">
+        {draftOpen && (
+          <DraftStoryCard
+            projectId={projectId}
+            target="icebox"
+            beforeItemId={items[0]?.id ?? null}
+            pointScale={pointScale}
+            epics={epics}
+            members={members}
+            labels={labels}
+            onClose={() => setDraftOpen(false)}
+          />
+        )}
         <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-1.5">
             {items.map((item) => (
@@ -1076,11 +1100,6 @@ function IceboxColumn({
             ))}
           </ul>
         </SortableContext>
-      </div>
-      {/* Pinned below the scroll area (TASK-36) rather than inside it, so
-          it's reachable without scrolling to the bottom of a long Icebox. */}
-      <div className="px-3 pb-3">
-        <QuickAddComposer projectId={projectId} target="icebox" />
       </div>
     </section>
   );
@@ -1105,6 +1124,9 @@ export function BoardListView({
   showIcebox,
   filter,
   pointScale,
+  epics,
+  members,
+  labels,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
@@ -1128,6 +1150,10 @@ export function BoardListView({
   // to every TransitionButtons render so an unestimated feature's estimation
   // picker offers the right scale (TASK-37).
   pointScale: number[];
+  // The draft story card's Epic/Assignee/Labels field options (TASK-82).
+  epics: { id: string; name: string }[];
+  members: { id: string; name: string; isAgent?: boolean }[];
+  labels: { id: string; name: string }[];
 }) {
   const [containers, setContainers] = useState(() => toListItemContainers(initialContainers, initialBacklogItems, states));
   const [synced, setSynced] = useState(initialContainers);
@@ -1303,7 +1329,7 @@ export function BoardListView({
             items={visibleCurrentItems}
             projectId={projectId}
             states={states}
-            composer={<QuickAddComposer projectId={projectId} target="unstarted" />}
+            draftAdd={{ target: "unstarted", epics, members, labels }}
             collapsed={collapsedGroups.has("current")}
             onToggleCollapse={() => onToggleGroup("current")}
             pointScale={pointScale}
@@ -1321,12 +1347,23 @@ export function BoardListView({
             collapsedGroups={collapsedGroups}
             onToggleGroup={onToggleGroup}
             pointScale={pointScale}
+            epics={epics}
+            members={members}
+            labels={labels}
             onError={setMutationError}
           />
         </div>
 
         {showIcebox && (
-          <IceboxColumn items={visibleIceboxItems} projectId={projectId} states={states} pointScale={pointScale} />
+          <IceboxColumn
+            items={visibleIceboxItems}
+            projectId={projectId}
+            states={states}
+            pointScale={pointScale}
+            epics={epics}
+            members={members}
+            labels={labels}
+          />
         )}
       </div>
 

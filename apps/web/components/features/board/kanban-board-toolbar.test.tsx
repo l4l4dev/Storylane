@@ -19,7 +19,7 @@ vi.mock("@/app/projects/[id]/board/actions", () => ({
   dropStoryInList: vi.fn(),
   createBacklogDivider: vi.fn(),
   deleteBacklogDivider: vi.fn(),
-  quickCreateStory: vi.fn(),
+  createDraftStory: vi.fn(),
   estimateStory: vi.fn(),
   setStoryState: vi.fn(),
 }));
@@ -61,6 +61,9 @@ function baseProps() {
     canManageStates: false,
     filter: {},
     pointScale: [0, 1, 2, 3, 5, 8, 13],
+    epics: [],
+    members: [],
+    labels: [],
   };
 }
 
@@ -254,5 +257,28 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
     expect(screen.queryByText("No stories match the current filters.")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
     expect(screen.getByText("No stories match the current filters.")).toHaveAttribute("role", "status");
+  });
+});
+
+// TASK-82 AC#1: Kanban gets exactly one "+" trigger, on the
+// unstarted-category column — not one per column.
+describe("Kanban draft-story trigger", () => {
+  it("shows the trigger only on the unstarted-category column", () => {
+    render(<KanbanBoard {...baseProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
+
+    expect(screen.getAllByRole("button", { name: /^Add story to /i })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Add story to Unstarted" })).toBeInTheDocument();
+  });
+
+  it("opens a draft card with the full field set on click", () => {
+    render(<KanbanBoard {...baseProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add story to Unstarted" }));
+
+    expect(screen.getByLabelText("Title")).toBeInTheDocument();
+    expect(screen.getByLabelText("Type")).toBeInTheDocument();
+    expect(screen.getByLabelText("Points")).toBeInTheDocument();
   });
 });

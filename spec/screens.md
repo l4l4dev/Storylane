@@ -155,11 +155,11 @@ present) — the Pivotal-parity anchor.
     (`state_id IS NULL`) or an `unstarted`-category state; a drop into any
     other category is rejected and the card snaps back.
   - Dragging within a column reorders (position).
-- **Inline quick-add:** the first `unstarted`-category column has a `+`
-  composer pinned to the column — type a title, press Enter to create
-  (defaults: type `feature`, unestimated, unassigned), and the composer stays
-  open for consecutive adds; Esc closes it. Every other field is edited
-  afterwards in the side peek. No modal, no navigation.
+- **Inline quick-add (TASK-82, Pivotal parity):** the first `unstarted`-
+  category column header carries a single small **"+"** trigger. Clicking it
+  opens an inline **draft story card** at the top of that column — the full
+  field set (title, description, type, points, epic, assignee, labels),
+  title the only required one. See "Quick-add: draft story card" below.
 - **Side peek:** clicking a card opens the story detail in a right-hand panel
   overlaying the board's right edge, driven by `?story=<id>` on the board URL
   (shareable/bookmarkable). The board stays visible and interactive; Esc or ✕
@@ -247,42 +247,47 @@ a physical column.
   there's no column to drop onto for a state change: one advance-to-next
   button labelled with the next state's `action_label`, the Accept/Reject
   pair on the state before done, and Restart on a rejected story.
-- **Quick-add sits at each group's bottom edge (2026-07-11):** every
-  List-view group — Current, each virtual future-iteration group inside
-  Backlog (even an empty one), and Icebox — gets its own full-width dashed
-  "+ Add story" button after that group's last row, not the section
-  header, so where a new story will land is never ambiguous. A story added
-  from a specific virtual-iteration group's composer inserts at that exact
-  group's bottom, not just the end of the whole Backlog. A group's
-  composer is hidden while that group is collapsed (its rows aren't visible
-  either). Composer behavior: see "Quick-add composer" below.
+- **Quick-add: one "+" per panel header (TASK-82, supersedes the earlier
+  per-group bottom-edge composer):** Current, Backlog, and Icebox each carry
+  a single small **"+"** trigger in their section header — not one per
+  virtual-iteration group. Clicking it opens a draft story card at the very
+  top of that panel (Backlog: before the whole backlog's first row,
+  regardless of which virtual-iteration group that row belongs to — there is
+  no per-group placement anymore). See "Quick-add: draft story card" below.
 - The side peek works the same as Kanban.
 
-### Quick-add composer (2026-07-07, revised 2026-07-11 — all boards)
+### Quick-add: draft story card (2026-07-07, reworked 2026-07-20 — TASK-82, Pivotal parity)
 
-> **Parity note (doc-8 §10, TASK-82):** original Pivotal used a single
-> "+ Add Story" icon per panel that opens an **inline draft story detail
-> card** (all fields editable, title the only required one, Save / Cmd+S),
-> not an always-visible title-only composer. The current Trello-style
-> composer below is the accident to fix — reworked in TASK-82, scheduled
-> after free-mode removal so it isn't rebuilt against boards about to
-> disappear.
+> **Parity note (doc-8 §10):** original Pivotal used a single "+ Add Story"
+> icon per panel that opens an inline draft story detail card (all fields
+> editable, title the only required one, Save / Cmd+S) — not an
+> always-visible title-only composer. This replaces the earlier Trello-style
+> composer (one dashed "+ Add story" button per group, title-only, Enter to
+> create) with that shape.
 
-The old composer morphed the "+ Add story" button itself into an input,
-which felt broken. Current behavior (Trello/Linear convention), shared by
-the List-view groups and the Kanban `unstarted`-category column:
+Shared by every panel that can create a story — Kanban's `unstarted`
+column, and List's Current / Backlog / Icebox — via one component
+(`StoryFields`, also used by the side peek and `/stories/[id]`, so the two
+never fork):
 
-- The "+ Add story" trigger stays visible where it is; clicking it reveals
-  a **separate card-shaped composer** beneath it: a title input, an
-  explicit **Add** button, and a hint "Esc to close".
-- Enter also submits (same as clicking Add): creates the story (same
-  defaults as before: type `feature`, unestimated, unassigned) and keeps
-  the composer open with an empty input for consecutive adds; Esc or
-  clicking outside closes it, discarding the draft. An empty submit does
-  nothing.
-- The trigger itself never changes shape or turns into an input.
-- A failed create keeps the typed title and shows an inline error,
-  offering retry (press Enter or Add again).
+- **Trigger:** a single small "+" icon button in the panel's header (not a
+  full-width always-visible bar). Clicking it renders the draft card inline
+  at the top of that panel's list, pushing existing rows down rather than
+  opening a modal.
+- **Fields:** title (required), description, type, points (from the
+  project's point scale), epic, assignee, labels — the same field set and
+  markup as the side peek, just with local state and an explicit save
+  instead of autosave.
+- **Save:** the **Save** button or **Cmd/Ctrl+S** creates the story with
+  every field in one action, positioned at the top of the panel that opened
+  it (the same move/reposition path a drag uses — never a hand-picked
+  position). The card closes on success; it does **not** reopen for
+  consecutive adds (Pivotal parity).
+- **Discard:** **Esc** or a click outside the card discards it silently —
+  no confirmation, nothing is created. Escape during an IME composition is
+  ignored (doesn't discard mid-conversion).
+- **Failure:** a failed save keeps the card open with the typed fields
+  intact and shows an inline error; the user edits and saves again.
 
 ### Story detail editing — autosave (2026-07-07)
 
@@ -359,11 +364,11 @@ inside My Work.
 
 No global quick-add shortcut (doc-8 §10, decided here): a Linear-style
 shortcut is deferred indefinitely. Instead, when the user has exactly one
-1-day (personal) project, My Work's header carries that project's own
-quick-add composer, scheduling straight into its current iteration — the
-common case (a single personal task list) needs no shortcut at all. Zero or
-multiple personal projects: no composer here (ambiguous which one), same as
-today.
+1-day (personal) project, My Work's header carries that project's own draft
+story card (see "Quick-add: draft story card"), scheduling straight into
+its current iteration — the common case (a single personal task list) needs
+no shortcut at all. Zero or multiple personal projects: no trigger here
+(ambiguous which one), same as today.
 
 The per-project Focus view is removed with `stories.focus` (TASK-88); board
 views reduce to List / Kanban.

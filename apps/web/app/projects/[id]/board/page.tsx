@@ -308,6 +308,17 @@ export default async function BoardPage({
     const name = profile?.display_name ?? m.user_id.slice(0, 8);
     return { id: m.user_id, name: profile?.is_agent ? `${name} (agent)` : name };
   });
+  // Unlike assigneeOptions above (a flat filter-dropdown label), the draft
+  // story card's Assignee field renders the "(agent)" tag itself — same
+  // shape getStoryDetail's own `members` uses (StoryFields is shared).
+  const memberOptions = (members ?? []).map((m) => {
+    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+    return {
+      id: m.user_id,
+      name: profile?.display_name ?? m.user_id.slice(0, 8),
+      isAgent: profile?.is_agent ?? false,
+    };
+  });
 
   // "Finish iteration" is owner/member only (spec/velocity.md "Manual
   // finish") — the RPC enforces this too, this is just so viewers don't see
@@ -352,6 +363,9 @@ export default async function BoardPage({
         canManageStates={canFinishIteration}
         filter={filter}
         pointScale={pointScaleValues(project.point_scale, project.custom_points)}
+        epics={(epics ?? []).map((e) => ({ id: e.id, name: e.name }))}
+        members={memberOptions}
+        labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
         toolbar={
           <BoardFilters
             assignees={assigneeOptions}

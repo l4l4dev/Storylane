@@ -5,10 +5,10 @@ import type { ActionResult, ProjectState } from "@/lib/types";
 import { BoardListView, DividerRow, InsertBetweenRows, IterationGoalInput, IterationHeaderRow, RowInsertMenu } from "./board-list-view";
 import type { BoardStory } from "./kanban-board";
 
-const { deleteBacklogDividerMock, createBacklogDividerMock, quickCreateStoryMock, upsertIterationGoalMock } = vi.hoisted(() => ({
+const { deleteBacklogDividerMock, createBacklogDividerMock, createDraftStoryMock, upsertIterationGoalMock } = vi.hoisted(() => ({
   deleteBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
   createBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
-  quickCreateStoryMock: vi.fn<(formData: FormData) => Promise<ActionResult>>(() => Promise.resolve({ ok: true })),
+  createDraftStoryMock: vi.fn<(input: unknown) => Promise<ActionResult>>(() => Promise.resolve({ ok: true })),
   upsertIterationGoalMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
 }));
 
@@ -20,10 +20,10 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/app/projects/[id]/board/actions", () => ({
   createBacklogDivider: createBacklogDividerMock,
+  createDraftStory: createDraftStoryMock,
   deleteBacklogDivider: deleteBacklogDividerMock,
   dropStoryInList: vi.fn(),
   estimateStory: vi.fn(),
-  quickCreateStory: quickCreateStoryMock,
   setStoryState: vi.fn(),
   upsertIterationGoal: upsertIterationGoalMock,
 }));
@@ -275,47 +275,73 @@ function boardProps(stories: BoardStory[]) {
     showIcebox: false,
     filter: {},
     pointScale: [0, 1, 2, 3, 5, 8, 13],
+    epics: [],
+    members: [],
+    labels: [],
   };
 }
 
-describe("Backlog per-group quick add", () => {
+// TASK-82: the per-group "Add story" composer is gone (Pivotal parity) —
+// each panel gets exactly one "+" in its header, opening a draft card
+// anchored at the top of the whole panel, not a specific group.
+describe("Panel draft-story triggers", () => {
   const s1 = backlogStory("s1", 3);
   const s2 = backlogStory("s2", 2);
   const s3 = backlogStory("s3", 3);
 
   beforeEach(() => {
-    quickCreateStoryMock.mockClear();
-    quickCreateStoryMock.mockResolvedValue({ ok: true });
+    createDraftStoryMock.mockClear();
+    createDraftStoryMock.mockResolvedValue({ ok: true });
   });
 
-  it("preserves an open composer's typed title when Realtime changes which row ends its group", () => {
-    const { rerender } = render(<BoardListView {...boardProps([s1, s2, s3])} />);
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Add story" })[1]!);
-    fireEvent.change(screen.getByRole("textbox", { name: "New story title" }), {
-      target: { value: "Still drafting" },
-    });
-
-    // Group #4 remains, but its bottom changes from s2 to s3.
-    rerender(<BoardListView {...boardProps([s2, s3, s1])} />);
-
-    expect(screen.getByRole("textbox", { name: "New story title" })).toHaveValue("Still drafting");
-  });
-
-  it("still inserts immediately before the first row of the following group", async () => {
+  it("shows exactly one draft-story trigger for the Backlog panel regardless of group count", () => {
     render(<BoardListView {...boardProps([s1, s2, s3])} />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Add story" })[1]!);
-    const input = screen.getByRole("textbox", { name: "New story title" });
-    fireEvent.change(input, { target: { value: "At group bottom" } });
-    fireEvent.submit(input.closest("form")!);
+    expect(screen.getAllByRole("button", { name: "Add story to Backlog" })).toHaveLength(1);
+  });
+
+  it("Backlog's trigger opens a draft card anchored before the whole panel's first row, not a group's", async () => {
+    render(<BoardListView {...boardProps([s1, s2, s3])} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add story to Backlog" }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "New backlog story" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await act(async () => {
       await Promise.resolve();
     });
-    const formData = quickCreateStoryMock.mock.calls[0]?.[0];
-    expect(formData?.get("target")).toBe("backlog");
-    expect(formData?.get("before_item_id")).toBe("story:s3");
+    const call = createDraftStoryMock.mock.calls[0]?.[0] as { target: string; beforeItemId: string | null };
+    expect(call.target).toBe("backlog");
+    expect(call.beforeItemId).toBe("story:s1");
+  });
+
+  it("Current panel's trigger creates with target unstarted and view list", async () => {
+    render(<BoardListView {...boardProps([])} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add story to Current" }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "New current story" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const call = createDraftStoryMock.mock.calls[0]?.[0] as { target: string; view?: string };
+    expect(call.target).toBe("unstarted");
+    expect(call.view).toBe("list");
+  });
+
+  it("Icebox panel's trigger creates with target icebox when shown", async () => {
+    render(<BoardListView {...boardProps([])} showIcebox />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add story to Icebox" }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "New icebox story" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const call = createDraftStoryMock.mock.calls[0]?.[0] as { target: string };
+    expect(call.target).toBe("icebox");
   });
 });
 

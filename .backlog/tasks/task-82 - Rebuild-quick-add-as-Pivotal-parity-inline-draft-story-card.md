@@ -1,11 +1,11 @@
 ---
 id: TASK-82
 title: Rebuild quick-add as Pivotal-parity inline draft story card
-status: To Do
+status: In Progress
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 02:53'
-updated_date: '2026-07-20 01:18'
+updated_date: '2026-07-20 09:53'
 labels:
   - web
   - ux
@@ -25,12 +25,12 @@ The current quick-add is Trello-style: an always-visible "+ Add story" trigger p
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Each board panel shows exactly one small "+" add trigger in its header; per-group and per-column always-visible triggers are removed
-- [ ] #2 Clicking the trigger opens an inline draft story card at the top of that panel with the full field set (type, points, labels, description); only the title is required
-- [ ] #3 Save button and Cmd/Ctrl+S both save; Esc or clicking outside discards the draft without creating a story
-- [ ] #4 Saved story appears at the top of the panel and the draft card closes (Pivotal parity: no auto-reopen)
-- [ ] #5 fable-advisor design review against spec/ux-principles.md passes with findings triaged
-- [ ] #6 pnpm test passes
+- [x] #1 Each board panel shows exactly one small "+" add trigger in its header; per-group and per-column always-visible triggers are removed
+- [x] #2 Clicking the trigger opens an inline draft story card at the top of that panel with the full field set (type, points, labels, description); only the title is required
+- [x] #3 Save button and Cmd/Ctrl+S both save; Esc or clicking outside discards the draft without creating a story
+- [x] #4 Saved story appears at the top of the panel and the draft card closes (Pivotal parity: no auto-reopen)
+- [x] #5 fable-advisor design review against spec/ux-principles.md passes with findings triaged
+- [x] #6 pnpm test passes
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -42,7 +42,15 @@ Design fixed by Fable advisor 2026-07-20. Parity target per task description (Wa
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Owner decision 2026-07-20: Kanban '+' = one on the unstarted-category column header (plan item 3 confirmed, no longer open).
+Implementation complete.
+
+Built: StoryFields shared field-editor component (components/features/story/story-fields.tsx), extracted verbatim from story-detail-panel.tsx's JSX (pure refactor, its 16 existing tests pass unchanged); DraftStoryCard + DraftStoryTrigger (components/features/board/draft-story-card.tsx); createDraftStory server action (app/projects/[id]/board/actions.ts) composing existing RPCs only — insert_board_item (Backlog) or a plain insert (Icebox/Current) for create+position, move_story_board (empty deltas = reposition-only, same mechanism a drag uses) to place unstarted/icebox targets at the panel's top, then update_story (existing, reused unchanged) for every other field. No new migrations. Wired into Kanban's unstarted column header, List's Current/Backlog/Icebox panel headers (Backlog's old per-virtual-iteration-group composers removed entirely — one header trigger for the whole panel now, landing before the panel's first row via the existing nextRealRowIds[0] anchor regardless of group), and My Work's solo-personal-project quick-add (ported from the old composer). Deleted quick-add-composer.tsx and its test.
+
+fable-advisor design review (AC#5) ran twice: first pass approved with one required fix — Kanban's unstarted column and List's Icebox column each have their own independent-scroll body (overflow-y-auto) below a header that stays visible regardless of scroll position; opening the draft card (always inserted at the body's top) could land off-screen with no visible feedback if the user had scrolled down, violating spec/ux-principles.md principle 2. Fixed with a scrollIntoView({block:'nearest', behavior:'smooth'}) on mount in DraftStoryCard itself (List's Current/Backlog panels have no separate scroll container, so it's a no-op there). jsdom has no scrollIntoView implementation at all, so a small polyfill was added to vitest.setup.ts (Element.prototype.scrollIntoView, only if absent) — global, reusable by any future component. Advisor's other four review points (losing 'stays open for consecutive adds', icon-only trigger with no visible label, Backlog's insertion point moving from per-group to whole-panel-top, the layout shift when the card opens) all passed with no changes needed — cited established precedent elsewhere in the codebase for each.
+
+Verification: pnpm test (non-integration) 498 passed / 159 skipped; SUPABASE_INTEGRATION=1 full suite 658 passed; tsc --noEmit and pnpm run lint clean in apps/web. Browser verification NOT done — the Claude-in-Chrome extension was not connected this session; dev server was left running (pnpm dev, localhost:3000) for the owner's own check.
+
+No new integration test was added for createDraftStory itself (it's a TS-orchestrated sequence of existing RPC calls, not new SQL) — its call-shape correctness per target/view is covered by 12 mocked action tests in board/actions.test.ts, and the underlying RPCs' own atomicity/positioning correctness is already proven in insert-board-item.integration.test.ts, move-story-board.integration.test.ts, and update-story.integration.test.ts (the exact 'reposition-only with empty deltas + anchor' call shape used here already has a matching real-DB test case in move-story-board.integration.test.ts's 'reorders a column densely and atomically' test).
 <!-- SECTION:NOTES:END -->
 
 ## Comments

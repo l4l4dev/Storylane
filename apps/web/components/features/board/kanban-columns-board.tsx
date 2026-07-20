@@ -41,7 +41,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { MutationErrorBanner } from "./mutation-error-banner";
-import { QuickAddComposer } from "./quick-add-composer";
+import { DraftStoryCard, DraftStoryTrigger } from "./draft-story-card";
 import { StoryCard } from "./story-card";
 import { SortableItem } from "./sortable-item";
 import { useInlineEdit } from "./use-inline-edit";
@@ -310,7 +310,7 @@ function KanbanColumn({
   stories,
   canManageStates,
   children,
-  composer,
+  draftAdd,
 }: {
   projectId: string;
   state: ProjectState;
@@ -318,13 +318,20 @@ function KanbanColumn({
   stories: BoardStory[];
   canManageStates: boolean;
   children: ReactNode;
-  // Quick-add composer, pinned above the scrollable card list so it stays
-  // reachable however long the column grows.
-  composer?: ReactNode;
+  // Only the unstarted-category column gets the draft-story trigger
+  // (TASK-82 AC#1: one "+" per panel — Kanban's is here, List's Current/
+  // Backlog/Icebox panels get their own in BoardListView).
+  draftAdd?: {
+    pointScale: number[];
+    epics: { id: string; name: string }[];
+    members: { id: string; name: string; isAgent?: boolean }[];
+    labels: { id: string; name: string }[];
+  };
 }) {
   const meta = columnMeta(state, states);
   const Icon = meta.icon;
   const points = sumPoints(stories);
+  const [draftOpen, setDraftOpen] = useState(false);
 
   return (
     <section
@@ -335,9 +342,26 @@ function KanbanColumn({
         <ColumnNameEditor projectId={projectId} state={state} canEdit={canManageStates} />
         <span className="text-xs text-muted-foreground">{stories.length}</span>
         {points > 0 && <span className="text-xs text-muted-foreground">· {points} pts</span>}
+        {draftAdd && (
+          <DraftStoryTrigger label={`Add story to ${state.name}`} onClick={() => setDraftOpen(true)} />
+        )}
       </header>
-      {composer && <div className="px-3 pb-2">{composer}</div>}
-      <div className="flex flex-1 flex-col overflow-y-auto px-3 pb-3">{children}</div>
+      <div className="flex flex-1 flex-col overflow-y-auto px-3 pb-3">
+        {draftAdd && draftOpen && (
+          <DraftStoryCard
+            projectId={projectId}
+            target="unstarted"
+            view="tracker"
+            beforeItemId={stories[0]?.id ?? null}
+            pointScale={draftAdd.pointScale}
+            epics={draftAdd.epics}
+            members={draftAdd.members}
+            labels={draftAdd.labels}
+            onClose={() => setDraftOpen(false)}
+          />
+        )}
+        {children}
+      </div>
     </section>
   );
 }
@@ -354,6 +378,10 @@ export function KanbanColumnsBoard({
   initialContainers,
   filter,
   canManageStates,
+  pointScale,
+  epics,
+  members,
+  labels,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
@@ -368,6 +396,12 @@ export function KanbanColumnsBoard({
   // Gates the inline column rename / "+ Add column" controls (doc-8 §2
   // option C hybrid) — matches project_states' own RLS.
   canManageStates: boolean;
+  // The draft story card's field options (TASK-82) — only the unstarted
+  // column's trigger ever uses these.
+  pointScale: number[];
+  epics: { id: string; name: string }[];
+  members: { id: string; name: string; isAgent?: boolean }[];
+  labels: { id: string; name: string }[];
 }) {
   // Local order so drops/reorders reflect instantly; server revalidation
   // re-syncs via props afterwards. Reset during render when the prop changes
@@ -515,10 +549,8 @@ export function KanbanColumnsBoard({
             states={states}
             stories={visibleContainers[state.id] ?? []}
             canManageStates={canManageStates}
-            composer={
-              state.id === firstUnstartedId ? (
-                <QuickAddComposer projectId={projectId} target="unstarted" />
-              ) : undefined
+            draftAdd={
+              state.id === firstUnstartedId ? { pointScale, epics, members, labels } : undefined
             }
           >
             <DroppableStoryList

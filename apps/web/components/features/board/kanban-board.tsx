@@ -126,6 +126,9 @@ export function KanbanBoard({
   filter,
   toolbar,
   pointScale,
+  epics,
+  members,
+  labels,
 }: {
   projectId: string;
   currentIteration: IterationMeta | null;
@@ -170,6 +173,11 @@ export function KanbanBoard({
   // estimation picker (TASK-37). The Kanban columns view never needs it —
   // state changes there are drag-only, no transition buttons render.
   pointScale: number[];
+  // The draft story card's Epic/Assignee/Labels fields (TASK-82) — same
+  // shapes StoryDetail uses, so StoryFields renders identically either way.
+  epics: { id: string; name: string }[];
+  members: { id: string; name: string; isAgent?: boolean }[];
+  labels: { id: string; name: string }[];
 }) {
   const view = useSyncExternalStore<BoardView>(
     subscribeBoardView,
@@ -341,6 +349,10 @@ export function KanbanBoard({
           initialContainers={initialContainers}
           filter={filter}
           canManageStates={canManageStates}
+          pointScale={pointScale}
+          epics={epics}
+          members={members}
+          labels={labels}
         />
       ) : (
         <BoardListView
@@ -356,6 +368,9 @@ export function KanbanBoard({
           showIcebox={showIcebox}
           filter={filter}
           pointScale={pointScale}
+          epics={epics}
+          members={members}
+          labels={labels}
         />
       )}
     </div>

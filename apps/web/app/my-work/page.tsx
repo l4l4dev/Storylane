@@ -1,10 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { rolloverIterationSafely } from "@/lib/supabase/rollover";
 import { buildMyWorkSections, type MyWorkStory } from "@/lib/utils/my-work";
-import { storyStateBadge } from "@/lib/utils/stories";
+import { pointScaleValues, storyStateBadge } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
 import { MyWorkRow, type MyWorkRowData } from "@/components/features/my-work/my-work-row";
-import { QuickAddComposer } from "@/components/features/board/quick-add-composer";
+import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add";
 
 // Cross-project personal view (spec/screens.md "My Work", doc-8 §9): the
 // signed-in user's assigned, non-Icebox, non-done stories, split into Today
@@ -105,18 +105,41 @@ export default async function MyWorkPage() {
 
   const isEmpty = today.length === 0 && assigned.length === 0;
   // No global quick-add shortcut (doc-8 §10) — instead, the common case of
-  // exactly one personal project gets its own composer right here. Zero or
-  // multiple personal projects: ambiguous which one, so none renders.
+  // exactly one personal project gets its own draft card right here (TASK-82
+  // Pivotal-parity form, reused). Zero or multiple personal projects:
+  // ambiguous which one, so none renders.
   const soloPersonalProject = personalProjects.length === 1 ? personalProjects[0] : null;
+  const [{ data: soloEpics }, { data: soloLabels }, { data: soloMembers }, { data: soloProject }] = soloPersonalProject
+    ? await Promise.all([
+        supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position"),
+        supabase.from("labels").select("id, name").eq("project_id", soloPersonalProject.id).order("name"),
+        supabase
+          .from("project_members")
+          .select("user_id, profiles(display_name, is_agent)")
+          .eq("project_id", soloPersonalProject.id),
+        supabase.from("projects").select("point_scale, custom_points").eq("id", soloPersonalProject.id).single(),
+      ])
+    : [{ data: null }, { data: null }, { data: null }, { data: null }];
 
   return (
     <main className="mx-auto max-w-3xl p-6">
       <div className="mb-6 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">My Work</h1>
         {soloPersonalProject && (
-          <div className="w-64">
-            <QuickAddComposer projectId={soloPersonalProject.id} target="unstarted" />
-          </div>
+          <MyWorkQuickAdd
+            projectId={soloPersonalProject.id}
+            pointScale={pointScaleValues(soloProject?.point_scale ?? "fibonacci", soloProject?.custom_points)}
+            epics={(soloEpics ?? []).map((e) => ({ id: e.id, name: e.name }))}
+            labels={(soloLabels ?? []).map((l) => ({ id: l.id, name: l.name }))}
+            members={(soloMembers ?? []).map((m) => {
+              const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+              return {
+                id: m.user_id,
+                name: profile?.display_name ?? m.user_id.slice(0, 8),
+                isAgent: profile?.is_agent ?? false,
+              };
+            })}
+          />
         )}
       </div>
 

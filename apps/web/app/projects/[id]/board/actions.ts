@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import { notifySlack } from "@/lib/integrations/slack";
+import { updateStory } from "@/app/stories/[id]/actions";
 import type { ActionResult, ProjectState } from "@/lib/types";
 import {
   iterationDoneMessage,
@@ -161,6 +162,131 @@ export async function quickCreateStory(formData: FormData): Promise<ActionResult
   }
 
   revalidatePath(`/projects/${projectId}/board`);
+  return { ok: true };
+}
+
+export type DraftStoryInput = {
+  projectId: string;
+  target: "backlog" | "icebox" | "unstarted";
+  // Which physical zone's ordering to reposition within, for target
+  // "unstarted" only: the story sits in one place either way, but Kanban
+  // (state-scoped, like dropStory) and List (whole-current-iteration, like
+  // dropStoryInList) order that zone differently. Ignored for
+  // "backlog"/"icebox", which only ever have one ordering.
+  view?: "tracker" | "list";
+  // The zone's current first item ("story:<id>" / "divider:<id>"), so the
+  // new story lands at the top of the panel (TASK-82 AC#4) instead of
+  // wherever its sequence-issued position happens to sort by default (the
+  // end). null when the zone is empty — nothing to anchor before.
+  beforeItemId: string | null;
+  title: string;
+  description: string | null;
+  storyType: string;
+  points: number | null;
+  epicId: string | null;
+  assigneeId: string | null;
+  labelIds: string[];
+};
+
+/**
+ * Creates a story from the Pivotal-parity draft card (spec/screens.md
+ * "Quick-add"): the full field set in one save, landing at the top of
+ * whichever panel opened it. Two DB round trips, reusing existing paths
+ * rather than a new RPC (TASK-82 plan item 4):
+ *
+ * 1. Create + position: `backlog` reuses `insert_board_item` (already
+ *    insert-plus-anchor in one call). `icebox`/`unstarted` insert plainly
+ *    (position defaults from `stories_position_seq` — TASK-58 — landing at
+ *    the zone's end), then reuse `move_story_board`'s reposition-only path
+ *    (empty `p_deltas`, same mechanism as a drag) to splice it in at
+ *    `beforeItemId` instead.
+ * 2. `updateStory` (existing RPC) applies every other field in one
+ *    transaction, the same validation path a later edit would use.
+ */
+export async function createDraftStory(input: DraftStoryInput): Promise<ActionResult> {
+  const title = input.title.trim();
+  if (!title) {
+    return { ok: false, message: "Title is required" };
+  }
+
+  const supabase = await createClient();
+  let storyId: string;
+
+  if (input.target === "backlog") {
+    const { data, error } = await supabase.rpc("insert_board_item", {
+      p_project_id: input.projectId,
+      p_kind: "story",
+      p_payload: { title },
+      p_anchor: moveAnchor(input.beforeItemId),
+    });
+    if (error) {
+      return { ok: false, message: error.message };
+    }
+    storyId = data as string;
+  } else {
+    let iterationId: string | null = null;
+    let stateId: string | null = null;
+    if (input.target === "unstarted") {
+      const { data: currentRows } = await supabase
+        .from("iterations")
+        .select("id")
+        .eq("project_id", input.projectId)
+        .neq("state", "done")
+        .order("number", { ascending: false })
+        .limit(1);
+      iterationId = currentRows?.[0]?.id ?? null;
+      if (!iterationId) {
+        return { ok: false, message: "No active iteration" };
+      }
+      const states = await fetchProjectStates(supabase, input.projectId);
+      stateId = lowestUnstartedStateId(toGateStates(states));
+      if (!stateId) {
+        return { ok: false, message: "This project has no unstarted state to create stories in" };
+      }
+    }
+    // target === "icebox": stateId/iterationId stay null.
+
+    const { data: inserted, error: insertError } = await supabase
+      .from("stories")
+      .insert({ project_id: input.projectId, title, story_type: "feature", state_id: stateId, iteration_id: iterationId })
+      .select("id")
+      .single();
+    if (insertError || !inserted) {
+      return { ok: false, message: insertError?.message ?? "Failed to create story" };
+    }
+    storyId = inserted.id;
+
+    if (input.beforeItemId) {
+      // Best-effort: the story already exists with its fields about to be
+      // saved below, so a reposition failure isn't worth failing the whole
+      // create over — it just lands at the zone's end instead of the top.
+      await supabase.rpc("move_story_board", {
+        p_project_id: input.projectId,
+        p_item: { kind: "story", id: storyId },
+        p_view: input.target === "icebox" ? "list" : (input.view ?? "list"),
+        p_expected: moveExpected({ state_id: stateId, iteration_id: iterationId }),
+        p_deltas: {},
+        p_anchor: moveAnchor(input.beforeItemId),
+      });
+    }
+  }
+
+  const result = await updateStory({
+    storyId,
+    title,
+    description: input.description,
+    storyType: input.storyType,
+    points: input.points,
+    epicId: input.epicId,
+    assigneeId: input.assigneeId,
+    labelIds: input.labelIds,
+  });
+  if (!result.ok) {
+    return { ok: false, message: result.reason === "error" ? result.message : "Story was created but its fields could not be saved" };
+  }
+
+  revalidatePath(`/projects/${input.projectId}/board`);
+  revalidatePath("/my-work");
   return { ok: true };
 }
 
