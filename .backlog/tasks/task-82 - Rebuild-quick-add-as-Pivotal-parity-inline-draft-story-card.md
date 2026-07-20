@@ -1,11 +1,11 @@
 ---
 id: TASK-82
 title: Rebuild quick-add as Pivotal-parity inline draft story card
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 02:53'
-updated_date: '2026-07-20 09:53'
+updated_date: '2026-07-20 09:58'
 labels:
   - web
   - ux
