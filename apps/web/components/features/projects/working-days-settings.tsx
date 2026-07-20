@@ -26,6 +26,10 @@ const WEEKDAYS = [
   { value: 7, label: "Sun" },
 ] as const;
 
+// Matches the Label component's type treatment for headings that name a group
+// or a value rather than a single control.
+const SECTION_HEADING = "text-sm font-medium leading-none";
+
 const KIND_LABELS = {
   holiday: "Holiday",
   extra_workday: "Extra workday",
@@ -75,24 +79,28 @@ export function WorkingDaysSettings({
       {canEditWeekdays ? (
         <form action={saveWeekdays} className="flex flex-col gap-2">
           <input type="hidden" name="project_id" value={projectId} />
-          <Label>Working days</Label>
-          <div className="flex flex-wrap gap-3">
-            {WEEKDAYS.map((day) => (
-              <label
-                key={day.value}
-                className="flex items-center gap-1.5 text-sm text-muted-foreground"
-              >
-                <input
-                  type="checkbox"
-                  name="weekday"
-                  value={day.value}
-                  defaultChecked={workingWeekdays.includes(day.value)}
-                  className="size-4 accent-primary"
-                />
-                {day.label}
-              </label>
-            ))}
-          </div>
+          {/* fieldset/legend, not a Label: seven checkboxes need a group name,
+              and a <label> can only name a single control. */}
+          <fieldset>
+            <legend className={SECTION_HEADING}>Working days</legend>
+            <div className="mt-2 flex flex-wrap gap-3">
+              {WEEKDAYS.map((day) => (
+                <label
+                  key={day.value}
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground"
+                >
+                  <input
+                    type="checkbox"
+                    name="weekday"
+                    value={day.value}
+                    defaultChecked={workingWeekdays.includes(day.value)}
+                    className="size-4 accent-primary"
+                  />
+                  {day.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <div className="mt-1 flex items-center gap-3">
             <Button type="submit" variant="outline" size="sm" disabled={savingWeekdays}>
               {savingWeekdays ? "Saving…" : "Save working days"}
@@ -107,7 +115,7 @@ export function WorkingDaysSettings({
         </form>
       ) : (
         <div className="flex flex-col gap-1.5">
-          <Label>Working days</Label>
+          <h3 className={SECTION_HEADING}>Working days</h3>
           <p className="text-sm text-muted-foreground">
             {selectedWeekdays.length > 0
               ? selectedWeekdays.map((day) => day.label).join(", ")
@@ -117,7 +125,7 @@ export function WorkingDaysSettings({
       )}
 
       <div className="flex flex-col gap-3">
-        <Label>Date exceptions</Label>
+        <h3 className={SECTION_HEADING}>Date exceptions</h3>
         <ul className="flex flex-col gap-1">
           {exceptions.map((exception) => (
             <li key={exception.id} className="flex items-center gap-2 text-sm">

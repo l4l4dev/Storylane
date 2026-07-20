@@ -42,6 +42,22 @@ describe("WorkingDaysSettings", () => {
     }
   });
 
+  // A <label> can only name one control, so the seven checkboxes need a
+  // group name a screen reader will announce.
+  it("names the weekday checkbox group", () => {
+    render(
+      <WorkingDaysSettings
+        projectId="p1"
+        workingWeekdays={[1]}
+        exceptions={[]}
+        canEditWeekdays
+        canManageExceptions
+      />,
+    );
+
+    expect(screen.getByRole("group", { name: "Working days" })).toBeInTheDocument();
+  });
+
   it("lists exceptions with their kind", () => {
     render(
       <WorkingDaysSettings
