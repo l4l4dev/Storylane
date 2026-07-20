@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { formatDate } from "@/lib/utils/format";
 
 export type UpdateProfileState = { error?: string; success?: string };
 
@@ -47,4 +48,71 @@ export async function updateProfile(
   revalidatePath("/settings");
   revalidatePath("/dashboard");
   return { success: "Saved." };
+}
+
+export type TimeOffState = { error?: string };
+
+/**
+ * Personal time off (doc-8 §6) — cross-project by design: one absence applies
+ * everywhere the user works. Dates only; the table has no reason field
+ * because co-members read these rows for capacity math (spec/rls.md).
+ */
+export async function addTimeOff(
+  _prev: TimeOffState,
+  formData: FormData,
+): Promise<TimeOffState> {
+  const date = String(formData.get("date") ?? "");
+  if (!date) {
+    return { error: "Pick a date." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "Not signed in." };
+  }
+
+  const { error } = await supabase
+    .from("user_time_off")
+    .insert({ user_id: user.id, date, kind: "off" });
+
+  if (error) {
+    if (error.code === "23505") {
+      return { error: `${formatDate(date)} is already marked as time off.` };
+    }
+    return { error: error.message };
+  }
+
+  revalidatePath("/settings");
+  return {};
+}
+
+export async function removeTimeOff(formData: FormData) {
+  const date = String(formData.get("date") ?? "");
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return;
+  }
+
+  // Zero rows is not an error here — the row is self-owned, so "already gone"
+  // (double click, stale page) is the intended end state. Only a real failure
+  // is worth surfacing, and it must not pass silently.
+  const { error } = await supabase
+    .from("user_time_off")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("date", date);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  revalidatePath("/settings");
 }

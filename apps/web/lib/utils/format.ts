@@ -12,7 +12,20 @@ export function utcTodayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// A bare YYYY-MM-DD, as every `date` column reaches the client.
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 export function formatDate(date: Date | string): string {
+  if (typeof date === "string") {
+    const parts = DATE_ONLY.exec(date);
+    // A date-only string carries no zone, so `new Date` reads it as UTC
+    // midnight while the getters below are local — west of UTC that lands on
+    // the previous day. Calendar dates (iteration bounds, holidays, time off)
+    // are wall dates, not instants: format them from the digits.
+    if (parts) {
+      return `${Number(parts[1])}/${Number(parts[2])}/${Number(parts[3])}`;
+    }
+  }
   const d = typeof date === "string" ? new Date(date) : date;
   const year = d.getFullYear();
   const month = d.getMonth() + 1;

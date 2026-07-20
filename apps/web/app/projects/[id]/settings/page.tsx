@@ -6,6 +6,10 @@ import { InviteMemberForm } from "@/components/features/projects/invite-member-f
 import { MemberList } from "@/components/features/projects/member-list";
 import { LabelManager } from "@/components/features/projects/label-manager";
 import { StateManager } from "@/components/features/projects/state-manager";
+import {
+  WorkingDaysSettings,
+  type CalendarException,
+} from "@/components/features/projects/working-days-settings";
 import type { ProjectState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +61,12 @@ export default async function ProjectSettingsPage({
     .eq("project_id", id)
     .order("position");
   const states = (statesData ?? []) as ProjectState[];
+
+  const { data: calendarExceptions } = await supabase
+    .from("project_calendar_exceptions")
+    .select("id, date, kind")
+    .eq("project_id", id)
+    .order("date");
 
   // RLS returns integrations only to owners — empty for everyone else.
   const { data: integrations } = isOwner
@@ -173,6 +183,19 @@ export default async function ProjectSettingsPage({
           labels={labels ?? []}
           canCreate={isMember}
           canDelete={isOwner}
+        />
+      </section>
+
+      {/* Working-day calendar (doc-8 §6): affects planning capacity only —
+          it never moves an iteration's start or end date. */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold">Calendar</h2>
+        <WorkingDaysSettings
+          projectId={project.id}
+          workingWeekdays={project.working_weekdays}
+          exceptions={(calendarExceptions ?? []) as CalendarException[]}
+          canEditWeekdays={isOwner}
+          canManageExceptions={isMember}
         />
       </section>
 

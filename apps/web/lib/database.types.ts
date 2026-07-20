@@ -384,6 +384,35 @@ export type Database = {
         }
         Relationships: []
       }
+      project_calendar_exceptions: {
+        Row: {
+          date: string
+          id: string
+          kind: string
+          project_id: string
+        }
+        Insert: {
+          date: string
+          id?: string
+          kind: string
+          project_id: string
+        }
+        Update: {
+          date?: string
+          id?: string
+          kind?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_calendar_exceptions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_members: {
         Row: {
           is_favorite: boolean
@@ -475,6 +504,7 @@ export type Database = {
           state_template: string
           updated_at: string
           velocity_window: number
+          working_weekdays: number[]
         }
         Insert: {
           archived_at?: string | null
@@ -489,6 +519,7 @@ export type Database = {
           state_template?: string
           updated_at?: string
           velocity_window?: number
+          working_weekdays?: number[]
         }
         Update: {
           archived_at?: string | null
@@ -503,6 +534,7 @@ export type Database = {
           state_template?: string
           updated_at?: string
           velocity_window?: number
+          working_weekdays?: number[]
         }
         Relationships: [
           {
@@ -678,6 +710,32 @@ export type Database = {
             columns: ["story_id"]
             isOneToOne: false
             referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_time_off: {
+        Row: {
+          date: string
+          kind: string
+          user_id: string
+        }
+        Insert: {
+          date: string
+          kind: string
+          user_id: string
+        }
+        Update: {
+          date?: string
+          kind?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_time_off_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

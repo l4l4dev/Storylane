@@ -1,11 +1,11 @@
 ---
 id: TASK-85
 title: 'Working-day calendar: project weekdays + two-layer date exceptions'
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:04'
-updated_date: '2026-07-19 06:29'
+updated_date: '2026-07-20 00:34'
 labels:
   - web
   - db
@@ -47,3 +47,13 @@ ORDERING: implement only AFTER TASK-84 (free-mode drop, in progress on Codex) la
 5. Tests: RLS integration tests — user_time_off cross-user READ visible only via shared project, self-only WRITE, project-exception membership gating (AC#2); component tests for both settings UIs; full pnpm test before commit (AC#4).
 6. rls-security-reviewer pass on the migration (AC#1); hold merge on findings.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implementation (2026-07-20): migration 20260720000001_working_day_calendar.sql adds projects.working_weekdays int[] (range CHECK, dedup/sort enforced in the action since no immutable single-row expression rejects repeats), project_calendar_exceptions (members read / owner+member write), user_time_off (READ self-or-shares_project_with, WRITE self-only, no free-text column). database.types.ts regenerated. Settings UI: WorkingDaysSettings in project settings 'Calendar' section, TimeOffSettings in account settings. New tests: working-day-calendar.integration.test.ts (6 RLS cases incl. non-member/viewer/member gating, cross-user read gated by shared project, self-only write, absent reason column), plus component tests for both UIs. Full suite green: 70 files / 559 tests with SUPABASE_INTEGRATION=1; eslint clean. Pre-existing (not from this task): 3 tsc errors in lib/utils/project-states.integration.test.ts from the TASK-91 commit.
+
+Review passes (2026-07-20). rls-security-reviewer: one minor non-blocking finding — project_calendar_exceptions UPDATE did not pin project_id, letting a user with owner/member in two projects teleport a row between them (no privilege escalation; equivalent to delete+insert, but keeps id/created_at). Fixed by adding a BEFORE UPDATE reject trigger matching the project_states precedent, plus an integration regression test. Everything else passed (all four commands covered on both tables, user_time_off UPDATE pinned, table grants covered by 20260630000002_grants.sql default privileges, no new functions so no grant checklist item). fable-advisor design review: approved with corrections, all 5 applied — (1) dates now rendered via the shared formatDate (YYYY/M/D) in both components, both aria-labels, and both duplicate-date error strings; (2) weekday form converted to useActionState with pending/Saved./error feedback; (3) updateWorkingWeekdays rejects an empty weekday set (and reports the zero-row RLS no-op a non-owner would otherwise get silently); (4) non-owners see the weekday value as text instead of disabled checkboxes; (5) added a capacity-only caption clarifying iteration dates are unaffected. Weekday parsing extracted to lib/utils/working-days.ts with its own unit test (a sync export is illegal in a 'use server' module). Non-blocking advisor note deferred: past-dated exception/time-off rows accumulate at the top of both lists — revisit after a season of real use. Verification: 71 files / 565 tests with SUPABASE_INTEGRATION=1, eslint clean, tsc clean apart from the pre-existing project-states.integration.test.ts errors, and pnpm run build succeeds. STILL PENDING: /code-review (owner-invocable only) before commit.
+
+Code review (/code-review high, 2026-07-20): 8 findings; owner chose to fix 1/2/3/5 now. (1) formatDate parsed date-only strings as UTC midnight and read them back with local getters, rendering every calendar date a day early west of UTC — a pre-existing bug this task spread to six new call sites and which also affected iteration start/end dates on the iterations page and board. Fixed in lib/utils/format.ts by formatting YYYY-MM-DD from its digits (wall date, not instant); new lib/utils/format.test.ts pins it under TZ=America/Los_Angeles (runtime TZ change verified effective in Node, so the test genuinely fails against the old implementation). (2) The empty-weekday invariant lived only in the server action, bypassable by an owner PATCHing the column with the public anon key; moved into the CHECK as cardinality(working_weekdays) > 0 with a DB-level integration test. (3) removeTimeOff discarded its delete error; now throws on a real failure while still treating zero rows as the intended already-gone end state. (5) Dropped the created_at columns from both new tables — spec/data-model.md's DDL does not declare them, and matching the spec beat editing it. Verification after fixes: 75 files / 590 tests with SUPABASE_INTEGRATION=1, eslint clean, tsc clean apart from the pre-existing project-states.integration.test.ts errors, pnpm run build succeeds, supabase db reset applies cleanly. DEFERRED (owner not yet asked): finding 4 deleteCalendarException 500s on a concurrent delete instead of an inline message; finding 6 bare <Label> elements bound to no control in WorkingDaysSettings; finding 7 raw Postgres error text surfaced on unexpected write failures; finding 8 shares_project_with evaluated per row in the user_time_off SELECT policy (measure during TASK-86).
+<!-- SECTION:NOTES:END -->

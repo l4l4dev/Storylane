@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import { clampVelocityWindow } from "@storylane/core";
+import { formatDate } from "@/lib/utils/format";
+import { parseWorkingWeekdays } from "@/lib/utils/working-days";
 import type { InviteSearchResult } from "@/lib/types";
 
 export type { InviteSearchResult } from "@/lib/types";
@@ -162,6 +164,95 @@ export async function deleteLabel(formData: FormData) {
   const supabase = await createClient();
   await assertRowAffected(
     await supabase.from("labels").delete().eq("id", id).eq("project_id", projectId).select("id"),
+  );
+  revalidatePath(`/projects/${projectId}/settings`);
+}
+
+/**
+ * Working-day calendar (doc-8 §6). These feed capacity/velocity math only —
+ * nothing here may move an iteration's start or end date.
+ */
+export type WorkingWeekdaysState = { error?: string; success?: string };
+
+export async function updateWorkingWeekdays(
+  _prev: WorkingWeekdaysState,
+  formData: FormData,
+): Promise<WorkingWeekdaysState> {
+  const projectId = String(formData.get("project_id"));
+  const weekdays = parseWorkingWeekdays(formData.getAll("weekday"));
+
+  // A project with no working days has zero capacity every sprint, which
+  // breaks planning and TASK-87's 1-day start-date selection. The DB CHECK
+  // only bounds the range, so the guard lives here.
+  if (weekdays.length === 0) {
+    return { error: "Select at least one working day." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .update({ working_weekdays: weekdays })
+    .eq("id", projectId)
+    .select("id");
+
+  if (error) {
+    return { error: error.message };
+  }
+  // RLS makes a non-owner's update a silent zero-row no-op rather than an error.
+  if (!data || data.length === 0) {
+    return { error: "Only the project owner can change working days." };
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  return { success: "Saved." };
+}
+
+export type CalendarExceptionState = { error?: string };
+
+const CALENDAR_EXCEPTION_KINDS = ["holiday", "extra_workday"] as const;
+
+export async function createCalendarException(
+  _prev: CalendarExceptionState,
+  formData: FormData,
+): Promise<CalendarExceptionState> {
+  const projectId = String(formData.get("project_id"));
+  const date = String(formData.get("date") ?? "");
+  const kind = String(formData.get("kind") ?? "");
+
+  if (!date) {
+    return { error: "Pick a date." };
+  }
+  if (!CALENDAR_EXCEPTION_KINDS.includes(kind as (typeof CALENDAR_EXCEPTION_KINDS)[number])) {
+    return { error: "Pick a kind." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("project_calendar_exceptions")
+    .insert({ project_id: projectId, date, kind });
+
+  if (error) {
+    // One exception per date by construction — editing means replacing.
+    if (error.code === "23505") {
+      return { error: `${formatDate(date)} already has an exception. Remove it first.` };
+    }
+    return { error: error.message };
+  }
+  revalidatePath(`/projects/${projectId}/settings`);
+  return {};
+}
+
+export async function deleteCalendarException(formData: FormData) {
+  const id = String(formData.get("exception_id"));
+  const projectId = String(formData.get("project_id"));
+
+  const supabase = await createClient();
+  await assertRowAffected(
+    await supabase
+      .from("project_calendar_exceptions")
+      .delete()
+      .eq("id", id)
+      .eq("project_id", projectId)
+      .select("id"),
   );
   revalidatePath(`/projects/${projectId}/settings`);
 }
