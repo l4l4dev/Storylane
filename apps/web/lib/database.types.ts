@@ -937,7 +937,6 @@ export type Database = {
       update_story: {
         Args: {
           p_assignee_id: string
-          p_custom_status_id: string
           p_description: string
           p_epic_id: string
           p_label_ids?: string[]
@@ -948,7 +947,6 @@ export type Database = {
         }
         Returns: {
           assignee_id: string
-          custom_status_id: string
           description: string
           epic_id: string
           id: string
@@ -956,7 +954,7 @@ export type Database = {
           number: number
           points: number
           project_id: string
-          state: string
+          state_id: string
           story_type: string
           title: string
         }[]

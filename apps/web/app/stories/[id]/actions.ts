@@ -198,7 +198,6 @@ export async function updateStory(input: UpdateStoryInput): Promise<UpdateStoryR
     p_points: input.points as number,
     p_epic_id: input.epicId as string,
     p_assignee_id: input.assigneeId as string,
-    p_custom_status_id: null as unknown as string,
     p_label_ids: input.labelIds,
   });
 

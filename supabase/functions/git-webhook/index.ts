@@ -27,6 +27,10 @@ export interface WebhookClient {
 
 // Story references: `[SL-123]` (PR title convention) and `storylane/123`
 // (branch name convention) — see spec/integrations.md.
+// Digit runs that overflow int4 would make the RPC error → 500 → the git
+// provider retries the delivery forever; treat them as no match instead.
+const MAX_STORY_NUMBER = 2147483647;
+
 export function extractStoryNumbers(title: string, branch: string): number[] {
   const numbers = new Set<number>();
   for (const match of title.matchAll(/\[SL-(\d+)\]/gi)) {
@@ -36,7 +40,7 @@ export function extractStoryNumbers(title: string, branch: string): number[] {
   if (branchMatch) {
     numbers.add(Number(branchMatch[1]));
   }
-  return [...numbers];
+  return [...numbers].filter((n) => n > 0 && n <= MAX_STORY_NUMBER);
 }
 
 export async function hmacSha256Hex(secret: string, body: string): Promise<string> {

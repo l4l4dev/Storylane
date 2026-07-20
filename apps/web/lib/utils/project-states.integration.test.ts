@@ -250,7 +250,7 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
 
       const email = `reorder-viewer-${Date.now()}@storylane.local`;
       const { data: created } = await admin.auth.admin.createUser({ email, password: "viewer-pw", email_confirm: true });
-      await admin.from("project_members").insert({ project_id: pid, user_id: created!.user.id, role: "viewer" });
+      await admin.from("project_members").insert({ project_id: pid, user_id: created!.user!.id, role: "viewer" });
       const viewer = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
       await viewer.auth.signInWithPassword({ email, password: "viewer-pw" });
 
@@ -262,7 +262,7 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
       expect(error?.code).toBe("42501");
 
       await admin.from("projects").delete().eq("id", pid);
-      await admin.auth.admin.deleteUser(created!.user.id);
+      await admin.auth.admin.deleteUser(created!.user!.id);
     });
 
     it("rejects a state id from a different project (cross-tenant scoping)", async () => {
@@ -368,7 +368,7 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
       expect(error?.code).toBe("42501");
 
       await admin.from("projects").delete().eq("id", pid);
-      await admin.auth.admin.deleteUser(created!.user.id);
+      await admin.auth.admin.deleteUser(created!.user!.id);
     });
   });
 });

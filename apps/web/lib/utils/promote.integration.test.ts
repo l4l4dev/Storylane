@@ -316,7 +316,10 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
     });
     await supabase.from("tasks").insert({ story_id: story.id, title: "leftover task", position: 0 });
 
-    const { error: finalizeError } = await supabase
+    // Setup shortcut via service_role: authenticated clients can no longer
+    // update iterations.state (TASK-86 column-grant fix) — which is the
+    // very guard the app relies on, so the test must bypass it deliberately.
+    const { error: finalizeError } = await admin
       .from("iterations")
       .update({ state: "done" })
       .eq("id", iteration.id);
