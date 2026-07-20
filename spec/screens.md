@@ -69,17 +69,20 @@ UsernameEditor is removed from this page (moved to `/settings`).
 ### Navigation (Web) — updated 2026-07-06
 
 A fixed left sidebar (multica/Linear style) replaces the former top header tabs.
-It is rendered once by the project layout and contains, top to bottom: the
-Storylane brand (links to `/dashboard`), the project switcher, the section nav
-(**Board / Epics / Iterations / Activity / Settings**, active item highlighted),
-and at the bottom the theme toggle and the account menu (sign out, link to
-`/settings`). Pages outside a project (dashboard, login) keep their own
-minimal headers.
+It is rendered once by the project layout (and, with no current project, by
+the My Work layout — doc-8 §9) and contains, top to bottom: the Storylane
+brand (links to `/dashboard`), the project switcher, the section nav
+(**Board / Epics / Iterations / Activity / Settings**, active item
+highlighted — omitted outside a project), and at the bottom the theme
+toggle and the account menu (sign out, link to `/settings`). Pages outside
+a project or My Work (dashboard, login) keep their own minimal headers.
 
 **Project switcher (polished 2026-07-07):** the switcher must read as a
 control, not a label — chevron affordance on the trigger. The dropdown
-lists favorites first (pin icon) and excludes archived projects; "All
-projects" links to `/dashboard`.
+lists a **My Work** entry above the Projects list (doc-8 §9 — reachable
+from any project page, not just `/my-work` itself), then favorites first
+(pin icon) among the projects, excluding archived ones; "All projects"
+links to `/dashboard`.
 
 ### Board layout (Web) — List / Kanban views
 
@@ -325,21 +328,45 @@ Conflict & failure rules (2026-07-08):
   **Move / Copy to another project** (behavior in spec/features.md
   "Story Management"), alongside Delete.
 
-### My Work (`/my-work`, replaces the per-project Focus view — doc-8 §9)
+### My Work (`/my-work`, replaces the per-project Focus view — doc-8 §9, TASK-89)
 
-A cross-project personal view: all stories assigned to the signed-in user
-across every project they belong to. **Screen details (buckets, ordering,
-pin interactions) are deliberately not fully specced yet** — this is a stub
-recording the model decisions:
+A cross-project personal view: the signed-in user's stories assigned to
+them, across every project they belong to (archived projects excluded).
+Scoped to **assigned, non-Icebox, non-done** stories — Icebox stories
+haven't entered a board yet, and accepted stories' history belongs to each
+project's own Iterations page, not a growing personal list. Two sections,
+top to bottom:
 
-- Stories from a **1-day project's current iteration** are today's plan by
-  definition (no pin needed).
-- Stories from **longer-cadence projects** appear in "today" only when the
-  user personally **pins** them (`story_pins`, spec/data-model.md).
-- 1-day / personal-project stories are visually distinguished (e.g. a color
-  accent).
-- The per-project Focus view is removed with `stories.focus`; board views
-  reduce to List / Kanban.
+- **Today** — a **1-day (personal) project's current-iteration** stories
+  (today's plan by definition, no pin needed) plus any story the user has
+  personally **pinned** (`story_pins`, spec/data-model.md), regardless of
+  which project it's in.
+- **Assigned** — everything else, grouped by project: personal (1-day)
+  projects first, then project name; within a group, board position order.
+
+Every row shows a pin toggle, the story's type icon/title (linking to the
+standalone `/stories/[id]` page — My Work has no side peek of its own),
+its project as a chip, its state badge, and its points. A 1-day project's
+rows carry a left-border accent distinguishing personal from team work.
+No reordering inside My Work (parity: it is a read view; priority lives on
+each project's own board).
+
+**Pinning** is a plain per-user table write (`story_pins`, no RPC — TASK-88)
+available from three places: the row's pin toggle in My Work itself, and
+the **Pin to My Work / Unpin from My Work** item in the story peek's
+overflow (⋯) menu — so pinning happens where stories are found, not only
+inside My Work.
+
+No global quick-add shortcut (doc-8 §10, decided here): a Linear-style
+shortcut is deferred indefinitely. Instead, when the user has exactly one
+1-day (personal) project, My Work's header carries that project's own
+quick-add composer, scheduling straight into its current iteration — the
+common case (a single personal task list) needs no shortcut at all. Zero or
+multiple personal projects: no composer here (ambiguous which one), same as
+today.
+
+The per-project Focus view is removed with `stories.focus` (TASK-88); board
+views reduce to List / Kanban.
 
 ### Story card UX (Kanban view)
 

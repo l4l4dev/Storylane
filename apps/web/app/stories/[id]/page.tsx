@@ -31,7 +31,7 @@ export default async function StoryDetailPage({
             {detail.title}
           </h1>
         </div>
-        <StoryPeekMenu detail={detail} />
+        <StoryPeekMenu key={detail.id} detail={detail} />
       </div>
 
       <StoryDetailPanel detail={detail} />

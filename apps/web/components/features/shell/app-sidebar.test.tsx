@@ -72,4 +72,32 @@ describe("AppSidebar project switcher", () => {
     expect(items.some((t) => t?.includes("Active Project"))).toBe(true);
     expect(items.some((t) => t?.includes("Archived Project"))).toBe(false);
   });
+
+  it("lists My Work above the Projects list", async () => {
+    render(<AppSidebar project={CURRENT_PROJECT} projects={[CURRENT_PROJECT]} username="dev" />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Current Project" }));
+
+    const items = screen.getAllByRole("menuitem").map((el) => el.textContent);
+    const myWorkIndex = items.findIndex((t) => t?.includes("My Work"));
+    const projectIndex = items.findIndex((t) => t?.includes("Current Project"));
+    expect(myWorkIndex).toBeGreaterThanOrEqual(0);
+    expect(myWorkIndex).toBeLessThan(projectIndex);
+  });
+});
+
+describe("AppSidebar with no current project (My Work)", () => {
+  it("shows 'My Work' as the switcher trigger label", () => {
+    render(<AppSidebar project={null} projects={[CURRENT_PROJECT]} username="dev" />);
+
+    expect(screen.getByRole("button", { name: "My Work" })).toBeInTheDocument();
+  });
+
+  it("omits the per-project section nav", () => {
+    render(<AppSidebar project={null} projects={[CURRENT_PROJECT]} username="dev" />);
+
+    expect(screen.queryByRole("link", { name: /board/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /settings/i })).not.toBeInTheDocument();
+  });
 });

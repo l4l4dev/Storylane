@@ -9,6 +9,7 @@ import {
   History,
   Layers,
   LogOut,
+  ListTodo,
   Pin,
   Settings,
   SquareKanban,
@@ -49,19 +50,22 @@ const NAV_ITEMS: NavItem[] = [
 
 // Persistent app shell sidebar (spec/screens.md "Navigation"): brand,
 // project switcher, section nav, and at the bottom the theme toggle and
-// account menu. Rendered once by the project layout so every project page
-// shares one navigation surface.
+// account menu. Rendered once by the project layout (and by the My Work
+// layout, with `project: null`) so every page shares one navigation surface.
 export function AppSidebar({
   project,
   projects,
   username,
 }: {
-  project: ProjectRef;
+  // null outside a project's pages (currently only /my-work) — the switcher
+  // trigger shows "My Work" instead of a project name, and the per-project
+  // section nav (Board/Epics/…) has nothing to point at, so it's omitted.
+  project: ProjectRef | null;
   projects: ProjectRef[];
   username: string | null;
 }) {
   const pathname = usePathname();
-  const base = `/projects/${project.id}`;
+  const base = project ? `/projects/${project.id}` : null;
   const navItems = NAV_ITEMS;
 
   // Favorites first, archived excluded (spec/screens.md "Project switcher"),
@@ -90,17 +94,25 @@ export function AppSidebar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="w-full justify-between gap-1.5">
-              <span className="truncate">{project.name}</span>
+              <span className="truncate">{project ? project.name : "My Work"}</span>
               <ChevronsUpDown className="shrink-0 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuItem asChild>
+              <Link href="/my-work">
+                <Check className={cn("mr-1", project === null ? "opacity-100" : "opacity-0")} />
+                <ListTodo className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">My Work</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuLabel>Projects</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {sortedProjects.map((p) => (
               <DropdownMenuItem key={p.id} asChild>
                 <Link href={`/projects/${p.id}`}>
-                  <Check className={cn("mr-1", p.id === project.id ? "opacity-100" : "opacity-0")} />
+                  <Check className={cn("mr-1", p.id === project?.id ? "opacity-100" : "opacity-0")} />
                   {p.isFavorite && (
                     <Pin data-testid="pin-icon" className="size-3.5 shrink-0 text-muted-foreground" />
                   )}
@@ -118,7 +130,7 @@ export function AppSidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 px-3">
-        {navItems.map((item) => {
+        {base && navItems.map((item) => {
           const href = `${base}/${item.segment}`;
           // pathname === base covers the instant before the /board redirect
           // resolves, so the Board item doesn't flash inactive.

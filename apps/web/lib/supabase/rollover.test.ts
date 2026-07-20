@@ -10,21 +10,12 @@ beforeEach(() => {
   ensureCurrentIterationMock.mockReset();
 });
 
-// This page is a Server Component (async function returning JSX from a
-// database-backed fetch), so rendering it end-to-end would need a much
-// heavier test harness (mocked Supabase query builder for every `.from()`
-// call, a React server-rendering shim, etc.). Instead we test the extracted
-// `rolloverIterationSafely` helper directly — the exact unit the review
-// finding is about — which is enough to prove one project's rollover
-// failure can no longer reject the batched `Promise.all` in the page.
 // TASK-8 fable-advisor finding: /dashboard was rolling over every tracker
 // project on every load, including archived ones — creating a new empty
-// iteration in an archived project each time anyone viewed the page. Same
-// test-scope tradeoff as rolloverIterationSafely above: test the extracted
-// predicate directly rather than the whole Server Component.
+// iteration in an archived project each time anyone viewed the page.
 describe("projectsNeedingRollover", () => {
   it("excludes archived tracker projects", async () => {
-    const { projectsNeedingRollover } = await import("./page");
+    const { projectsNeedingRollover } = await import("./rollover");
     const projects = [
       { id: "active", archived_at: null },
       { id: "archived", archived_at: "2026-07-10T00:00:00.000Z" },
@@ -37,7 +28,7 @@ describe("projectsNeedingRollover", () => {
 describe("rolloverIterationSafely", () => {
   it("resolves even when ensureCurrentIteration throws", async () => {
     ensureCurrentIterationMock.mockRejectedValueOnce(new Error("finalize_iteration failed"));
-    const { rolloverIterationSafely } = await import("./page");
+    const { rolloverIterationSafely } = await import("./rollover");
 
     await expect(rolloverIterationSafely("project-broken")).resolves.toBeUndefined();
   });
@@ -48,7 +39,7 @@ describe("rolloverIterationSafely", () => {
         throw new Error("finalize_iteration failed");
       }
     });
-    const { rolloverIterationSafely } = await import("./page");
+    const { rolloverIterationSafely } = await import("./rollover");
 
     const projectIds = ["project-a", "project-broken", "project-b"];
     await expect(

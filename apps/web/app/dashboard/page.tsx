@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ensureCurrentIteration } from "@/app/projects/[id]/board/actions";
+import { projectsNeedingRollover, rolloverIterationSafely } from "@/lib/supabase/rollover";
 import { velocityRate } from "@storylane/core";
 import { InlineCreatePanel } from "@/components/features/projects/inline-create-panel";
 import { InviteFailedBanner, parseInviteFailedCount } from "@/components/features/projects/invite-failed-banner";
@@ -8,40 +8,6 @@ import type { ProjectCardData } from "@/components/features/projects/project-car
 import { ProjectGrid } from "@/components/features/projects/project-grid";
 import { Button } from "@/components/ui/button";
 import { signOut } from "./actions";
-
-/**
- * Rolls over one tracker project's current iteration, swallowing any
- * failure from `ensureCurrentIteration` (e.g. a transient DB error, or a
- * genuinely broken iteration state on that one project).
- *
- * Exported at module scope — rather than nested in the page component like
- * this file's other `fetchX` helpers — so it can be unit tested directly,
- * and so a batched `Promise.all` over many projects never rejects because
- * of a single project's rollover failure. The project's card simply falls
- * back to whatever iteration data was already fetched (possibly stale by
- * one rollover) instead of crashing the page.
- */
-/**
- * Tracker projects that should be rolled over on this page load — excludes
- * archived ones. Without this, visiting `/dashboard` would call
- * `ensureCurrentIteration` on every tracker project unconditionally,
- * creating a new empty iteration in an archived project each time anyone
- * viewed the page — exactly the app-driven write the read-only scoping
- * (Move/Copy checks + this UI's own gating) is supposed to prevent.
- */
-export function projectsNeedingRollover<T extends { archived_at: string | null }>(
-  projects: readonly T[],
-): T[] {
-  return projects.filter((p) => p.archived_at === null);
-}
-
-export async function rolloverIterationSafely(projectId: string): Promise<void> {
-  try {
-    await ensureCurrentIteration(projectId);
-  } catch {
-    // Intentionally ignored — see comment above.
-  }
-}
 
 export default async function DashboardPage({
   searchParams,

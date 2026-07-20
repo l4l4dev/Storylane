@@ -1,11 +1,11 @@
 ---
 id: TASK-89
 title: 'My Work: cross-project personal view, remove Focus view'
-status: To Do
+status: In Progress
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 03:05'
-updated_date: '2026-07-20 01:18'
+updated_date: '2026-07-20 09:13'
 labels:
   - web
   - ux
@@ -26,11 +26,11 @@ doc-8 §9 UI. New cross-project view for the signed-in user: stories assigned to
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 My Work shows assigned stories from all projects; today = 1-day current iteration + pinned stories; pin/unpin works from the view
-- [ ] #2 Personal-project stories are visually distinguished
-- [ ] #3 Focus view is gone; board toggle is List/Kanban only
-- [ ] #4 fable-advisor design review against spec/ux-principles.md passes with findings triaged
-- [ ] #5 pnpm test passes
+- [x] #1 My Work shows assigned stories from all projects; today = 1-day current iteration + pinned stories; pin/unpin works from the view
+- [x] #2 Personal-project stories are visually distinguished
+- [x] #3 Focus view is gone; board toggle is List/Kanban only
+- [x] #4 fable-advisor design review against spec/ux-principles.md passes with findings triaged
+- [x] #5 pnpm test passes
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -42,7 +42,17 @@ Design fixed by Fable advisor 2026-07-20 (screen spec for the doc-8 §9 stub; Fo
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Owner decisions 2026-07-20: (a) no global quick-add shortcut — My Work header gets a '+' adding into the personal project; (b) Today/Assigned two-section layout confirmed, personal-first ordering, done stories drop out of Today immediately. Plan items 2 and 6 are no longer open.
+Implementation complete. Design conflict resolution and Done/Icebox exclusion decisions already recorded in earlier notes on this task.
+
+Built: /my-work route (Today + Assigned sections), lib/utils/my-work.ts pure bucketing logic (unit tested), components/features/my-work/my-work-row.tsx row component, story_pins-backed pin/unpin from both My Work rows and the StoryPeekMenu overflow menu, AppSidebar project prop made nullable with a My Work entry added to the switcher dropdown (above the Projects list, reachable from every project page), /my-work/layout.tsx, and a solo-personal-project quick-add composer in the My Work header (doc-8 §10 — no global shortcut; hidden when the user has zero or multiple personal projects).
+
+Refactor: extracted the dashboard's rollover helpers (projectsNeedingRollover, rolloverIterationSafely) into lib/supabase/rollover.ts since My Work needed the same logic — dashboard/page.tsx now imports from there, its own duplicate definitions and test file removed (tests moved to rollover.test.ts). Extracted fetchSidebarData (project switcher list + username) into lib/supabase/sidebar-data.ts, shared by projects/[id]/layout.tsx and the new my-work/layout.tsx.
+
+fable-advisor design review (AC#4): approved with one required fix — the pin toggle's failure path was a silent revert (no visible feedback), violating spec/ux-principles.md principle 2. Fixed in both my-work-row.tsx (inline text below the row) and story-peek-menu.tsx (the dropdown was converted to controlled open state so it can stay open on failure to show the error, closing automatically only on success). Advisor's other four review points (2-section non-reorderable structure, AppSidebar's conditionally-empty nav, quick-add's solo-project gating, general pattern consistency) passed with no changes needed.
+
+Verification: pnpm test (non-integration) 483 passed / 159 skipped; SUPABASE_INTEGRATION=1 full suite 642 passed; tsc --noEmit and pnpm run lint clean in apps/web. Browser verification NOT done — the Claude-in-Chrome extension was not connected this session. Dev server was left running (pnpm dev, localhost:3000) for the owner's own check; deferring the actual click-through to the owner or a later session, consistent with this project's existing pattern of deferring some manual browser checks to TASK-94.
+
+Scope note: the Implementation Plan's item 3 said pinning should also be reachable from board story rows (kanban card + list row hover icons), not just My Work + StoryPeekMenu. That part was deliberately NOT built this pass — it would have required threading a pinned flag through the board's data layer and both card components (StoryCard, StoryListRow), a materially larger footprint than the AC (which only requires pin/unpin to work "from the view"). Flagged to the owner; can be picked up as a small follow-up if wanted.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

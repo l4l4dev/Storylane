@@ -1,0 +1,157 @@
+import { createClient } from "@/lib/supabase/server";
+import { rolloverIterationSafely } from "@/lib/supabase/rollover";
+import { buildMyWorkSections, type MyWorkStory } from "@/lib/utils/my-work";
+import { storyStateBadge } from "@/lib/utils/stories";
+import type { ProjectState } from "@/lib/types";
+import { MyWorkRow, type MyWorkRowData } from "@/components/features/my-work/my-work-row";
+import { QuickAddComposer } from "@/components/features/board/quick-add-composer";
+
+// Cross-project personal view (spec/screens.md "My Work", doc-8 §9): the
+// signed-in user's assigned, non-Icebox, non-done stories, split into Today
+// (a personal project's current iteration + anything pinned) and Assigned
+// (everything else, grouped by project).
+export default async function MyWorkPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // RLS already scopes this to the signed-in user's memberships.
+  const { data: projectRows } = await supabase
+    .from("projects")
+    .select("id, name, iteration_length")
+    .is("archived_at", null);
+  const projects = (projectRows ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    isPersonal: p.iteration_length === 1,
+  }));
+  const projectIds = new Set(projects.map((p) => p.id));
+  const personalProjects = projects.filter((p) => p.isPersonal);
+
+  // Roll over personal projects before reading their current iteration —
+  // only cadence that matters for "today" membership (spec/velocity.md
+  // "Automatic scheduling & rollover"); other projects' Today membership
+  // depends only on pins, not on their current iteration being fresh.
+  await Promise.all(personalProjects.map((p) => rolloverIterationSafely(p.id)));
+
+  async function fetchCurrentIteration(projectId: string): Promise<readonly [string, string | null]> {
+    const { data } = await supabase
+      .from("iterations")
+      .select("id")
+      .eq("project_id", projectId)
+      .neq("state", "done")
+      .order("number", { ascending: false })
+      .limit(1);
+    return [projectId, data?.[0]?.id ?? null] as const;
+  }
+
+  const [{ data: statesRows }, { data: storyRows }, { data: pinRows }, currentIterationEntries] = await Promise.all([
+    supabase
+      .from("project_states")
+      .select("id, project_id, name, action_label, category, position, created_at")
+      .in("project_id", [...projectIds]),
+    user
+      ? supabase
+          .from("stories")
+          .select("id, project_id, number, title, story_type, state_id, points, iteration_id, position")
+          .eq("assignee_id", user.id)
+          .not("state_id", "is", null)
+      : Promise.resolve({ data: null }),
+    user
+      ? supabase.from("story_pins").select("story_id").eq("user_id", user.id)
+      : Promise.resolve({ data: null }),
+    Promise.all(personalProjects.map((p) => fetchCurrentIteration(p.id))),
+  ]);
+
+  const statesByProject = new Map<string, ProjectState[]>();
+  for (const state of (statesRows ?? []) as ProjectState[]) {
+    const bucket = statesByProject.get(state.project_id);
+    if (bucket) bucket.push(state);
+    else statesByProject.set(state.project_id, [state]);
+  }
+  const categoryByStateId = new Map((statesRows ?? []).map((s) => [s.id, s.category]));
+  const currentIterationByProject = new Map(currentIterationEntries);
+  const pinnedStoryIds = new Set((pinRows ?? []).map((p) => p.story_id));
+
+  // projectIds already excludes archived projects; state_id IS NOT NULL
+  // (Icebox) is filtered in the query above.
+  const activeStories: MyWorkStory[] = (storyRows ?? [])
+    .filter((s) => projectIds.has(s.project_id) && categoryByStateId.get(s.state_id as string) !== "done")
+    .map((s) => ({ id: s.id, projectId: s.project_id, iterationId: s.iteration_id, position: s.position }));
+
+  const { today, assigned } = buildMyWorkSections(activeStories, projects, currentIterationByProject, pinnedStoryIds);
+
+  const storyById = new Map((storyRows ?? []).map((s) => [s.id, s]));
+  const projectById = new Map(projects.map((p) => [p.id, p]));
+
+  function toRowData(story: MyWorkStory): MyWorkRowData {
+    const raw = storyById.get(story.id)!;
+    const project = projectById.get(story.projectId)!;
+    const states = statesByProject.get(story.projectId) ?? [];
+    return {
+      id: raw.id,
+      number: raw.number,
+      title: raw.title,
+      storyType: raw.story_type,
+      points: raw.points,
+      projectId: project.id,
+      projectName: project.name,
+      isPersonal: project.isPersonal,
+      stateBadge: storyStateBadge(raw.state_id, states),
+      pinned: pinnedStoryIds.has(raw.id),
+    };
+  }
+
+  const isEmpty = today.length === 0 && assigned.length === 0;
+  // No global quick-add shortcut (doc-8 §10) — instead, the common case of
+  // exactly one personal project gets its own composer right here. Zero or
+  // multiple personal projects: ambiguous which one, so none renders.
+  const soloPersonalProject = personalProjects.length === 1 ? personalProjects[0] : null;
+
+  return (
+    <main className="mx-auto max-w-3xl p-6">
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold">My Work</h1>
+        {soloPersonalProject && (
+          <div className="w-64">
+            <QuickAddComposer projectId={soloPersonalProject.id} target="unstarted" />
+          </div>
+        )}
+      </div>
+
+      {isEmpty && (
+        <p className="text-sm text-muted-foreground">
+          Nothing assigned to you yet. Stories assigned to you across your projects will show up here.
+        </p>
+      )}
+
+      {today.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Today</h2>
+          <div className="flex flex-col gap-1.5">
+            {today.map((story) => (
+              <MyWorkRow key={story.id} story={toRowData(story)} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {assigned.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Assigned</h2>
+          {assigned.map((group) => (
+            <div key={group.projectId} className="mb-6">
+              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.projectName}</h3>
+              <div className="flex flex-col gap-1.5">
+                {group.stories.map((story) => (
+                  <MyWorkRow key={story.id} story={toRowData(story)} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+    </main>
+  );
+}

@@ -76,7 +76,7 @@ export function StoryPeek({ detail }: { detail: StoryDetail }) {
           {detail.title}
         </h2>
         <div className="flex items-center gap-1">
-          <StoryPeekMenu detail={detail} />
+          <StoryPeekMenu key={detail.id} detail={detail} />
           <Button variant="ghost" size="icon-sm" onClick={close} aria-label="Close story detail">
             <X />
           </Button>

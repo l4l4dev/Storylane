@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchSidebarData } from "@/lib/supabase/sidebar-data";
 import { AppSidebar } from "@/components/features/shell/app-sidebar";
 
 // Shared shell for every project page. Fetches the navigation context once
@@ -19,37 +20,16 @@ export default async function ProjectLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: project }, { data: projectRows }, { data: myMemberships }, { data: profile }] = await Promise.all([
+  const [{ data: project }, { projects, username }] = await Promise.all([
     supabase.from("projects").select("id, name").eq("id", id).single(),
-    supabase
-      .from("projects")
-      .select("id, name")
-      .is("archived_at", null)
-      .order("updated_at", { ascending: false }),
-    user
-      ? supabase.from("project_members").select("project_id, is_favorite").eq("user_id", user.id)
-      : Promise.resolve({ data: null }),
-    user
-      ? supabase.from("profiles").select("username").eq("id", user.id).single()
-      : Promise.resolve({ data: null }),
+    fetchSidebarData(supabase, user?.id),
   ]);
-
-  const favoriteProjectIds = new Set(
-    (myMemberships ?? []).filter((m) => m.is_favorite).map((m) => m.project_id),
-  );
-  const projects = (projectRows ?? []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    isFavorite: favoriteProjectIds.has(p.id),
-    // The query above already excludes archived_at rows, but the switcher
-    // filters this flag itself too (see app-sidebar.tsx) so that behavior
-    // stays testable independent of this query.
-    isArchived: false,
-  }));
 
   if (!project) {
     notFound();
   }
+
+  const isFavorite = projects.find((p) => p.id === project.id)?.isFavorite ?? false;
 
   return (
     <div className="flex min-h-dvh">
@@ -57,11 +37,11 @@ export default async function ProjectLayout({
         project={{
           id: project.id,
           name: project.name,
-          isFavorite: favoriteProjectIds.has(project.id),
+          isFavorite,
           isArchived: false,
         }}
         projects={projects}
-        username={profile?.username ?? null}
+        username={username}
       />
       <div className="min-w-0 flex-1">{children}</div>
     </div>

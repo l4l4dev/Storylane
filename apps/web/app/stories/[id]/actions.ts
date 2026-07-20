@@ -33,6 +33,10 @@ export type StoryDetail = {
   // Chronological status/column history from activity_logs (newest first).
   // `payload` is the raw activity_logs payload, shaped for describeActivity.
   history: { id: string; action: string; payload: unknown; actorName: string; actorIsAgent?: boolean; createdAt: string }[];
+  // Whether the signed-in user has pinned this story into My Work's Today
+  // bucket (spec/screens.md "My Work") — false when signed out (no page
+  // using this without auth) or the pin lookup finds nothing.
+  pinned: boolean;
 };
 
 /**
@@ -44,17 +48,16 @@ export type StoryDetail = {
 export async function getStoryDetail(storyId: string): Promise<StoryDetail | null> {
   const supabase = await createClient();
 
-  const { data: story } = await supabase
-    .from("stories")
-    .select("*, story_labels(label_id)")
-    .eq("id", storyId)
-    .single();
+  const [{ data: story }, { data: { user } }] = await Promise.all([
+    supabase.from("stories").select("*, story_labels(label_id)").eq("id", storyId).single(),
+    supabase.auth.getUser(),
+  ]);
 
   if (!story) {
     return null;
   }
 
-  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: history }, { data: statesData }] =
+  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: history }, { data: statesData }, { data: pin }] =
     await Promise.all([
       supabase
         .from("projects")
@@ -88,6 +91,9 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .select("id, project_id, name, action_label, category, position, created_at")
         .eq("project_id", story.project_id)
         .order("position"),
+      user
+        ? supabase.from("story_pins").select("story_id").eq("user_id", user.id).eq("story_id", storyId).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
   return {
@@ -135,7 +141,42 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         createdAt: entry.created_at,
       };
     }),
+    pinned: pin !== null,
   };
+}
+
+/**
+ * Pins/unpins a story into the signed-in user's My Work Today bucket
+ * (spec/screens.md "My Work", TASK-88 `story_pins`). Self-only writes
+ * covered entirely by `story_pins`' own RLS — no RPC needed. Called from
+ * My Work's own rows and the StoryPeekMenu, both optimistic on the client
+ * side, so `pin` is the target state rather than a blind toggle.
+ */
+export async function togglePin(storyId: string, pin: boolean): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, message: "Not signed in" };
+  }
+
+  const { error } = pin
+    ? await supabase.from("story_pins").insert({ user_id: user.id, story_id: storyId })
+    : await supabase.from("story_pins").delete().eq("user_id", user.id).eq("story_id", storyId);
+
+  if (error) {
+    // A race between two "pin" clicks hits the PK conflict on the second
+    // insert — the end state already matches what was asked for, so this
+    // isn't a real failure to surface.
+    if (pin && error.code === "23505") {
+      return { ok: true };
+    }
+    return { ok: false, message: error.message };
+  }
+
+  revalidatePath("/my-work");
+  return { ok: true };
 }
 
 export type UpdateStoryInput = {

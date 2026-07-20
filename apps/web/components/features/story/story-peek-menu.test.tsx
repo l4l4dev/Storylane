@@ -20,12 +20,14 @@ vi.mock("next/navigation", () => ({
 }));
 const getMoveTargetProjectsMock = vi.fn();
 const promoteStoryToEpicMock = vi.fn();
+const togglePinMock = vi.fn();
 vi.mock("@/app/stories/[id]/actions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/app/stories/[id]/actions")>();
   return {
     ...actual,
     promoteStoryToEpic: (...args: unknown[]) => promoteStoryToEpicMock(...args),
     getMoveTargetProjects: (...args: unknown[]) => getMoveTargetProjectsMock(...args),
+    togglePin: (...args: unknown[]) => togglePinMock(...args),
   };
 });
 
@@ -49,6 +51,7 @@ const baseDetail: StoryDetail = {
   comments: [],
   tasks: [],
   history: [],
+  pinned: false,
 };
 
 async function openPromoteDialog() {
@@ -64,6 +67,53 @@ describe("StoryPeekMenu", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams());
     promoteStoryToEpicMock.mockReset();
     promoteStoryToEpicMock.mockResolvedValue({ ok: true, epicId: "e1" });
+    togglePinMock.mockReset();
+    togglePinMock.mockResolvedValue({ ok: true });
+  });
+
+  it("shows 'Pin to My Work' for an unpinned story and pins it optimistically", async () => {
+    render(<StoryPeekMenu detail={{ ...baseDetail, pinned: false }} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    await user.click(screen.getByRole("menuitem", { name: /Pin to My Work/i }));
+
+    expect(togglePinMock).toHaveBeenCalledWith("s1", true);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+    expect(screen.getByRole("menuitem", { name: /Unpin from My Work/i })).toBeInTheDocument();
+  });
+
+  it("shows 'Unpin from My Work' for a pinned story and unpins it", async () => {
+    render(<StoryPeekMenu detail={{ ...baseDetail, pinned: true }} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    await user.click(screen.getByRole("menuitem", { name: /Unpin from My Work/i }));
+
+    expect(togglePinMock).toHaveBeenCalledWith("s1", false);
+  });
+
+  it("reverts the optimistic pin and shows a visible error if the server call fails", async () => {
+    togglePinMock.mockResolvedValueOnce({ ok: false, message: "nope" });
+    render(<StoryPeekMenu detail={{ ...baseDetail, pinned: false }} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+    await user.click(screen.getByRole("menuitem", { name: /Pin to My Work/i }));
+
+    // The menu stays open on failure (closing it would hide the error
+    // instead of just reverting silently) — no need to reopen it.
+    expect(await screen.findByRole("alert")).toHaveTextContent("nope");
+    expect(screen.getByRole("menuitem", { name: /Pin to My Work/i })).toBeInTheDocument();
+  });
+
+  it("closes the menu on a successful pin", async () => {
+    render(<StoryPeekMenu detail={{ ...baseDetail, pinned: false }} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    await user.click(screen.getByRole("menuitem", { name: /Pin to My Work/i }));
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("warns the epic starts empty when the story has no tasks", async () => {

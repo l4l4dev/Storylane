@@ -58,6 +58,7 @@ const baseDetail: StoryDetail = {
   comments: [],
   tasks: [],
   history: [],
+  pinned: false,
 };
 
 describe("StoryDetailPanel", () => {
