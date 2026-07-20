@@ -140,6 +140,14 @@ export function evaluateDrop(
     }
     // Assign to the current iteration and advance in one gesture — only the
     // gate-offered next state from the story's current one is valid.
+    //
+    // No UI gesture reaches this: the Kanban view has no Backlog column
+    // (spec/screens.md "Board layout") and the List view routes through
+    // `evaluateListDrop`. It runs only in `dropStory`'s server-side
+    // re-validation, when the story was unscheduled by someone else after the
+    // drag began — so the strictness is the conflict guard, not an ordering
+    // rule, and loosening it would let a stale drag silently reschedule and
+    // advance a story another user just moved back.
     const gate = computeStateGate(states, story.state_id);
     if (gate.kind === "advance" && gate.targetStateId === targetStateId) {
       const blocked = estimationGate(targetStateId);
