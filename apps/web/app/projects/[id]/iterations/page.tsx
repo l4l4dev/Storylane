@@ -33,7 +33,7 @@ export default async function IterationsPage({
 
   const { data: iterations } = await supabase
     .from("iterations")
-    .select("id, number, goal, start_date, end_date, velocity, state, skipped")
+    .select("id, number, goal, start_date, end_date, velocity, capacity, state, skipped")
     .eq("project_id", id)
     .eq("state", "done")
     .order("number", { ascending: false });
@@ -108,6 +108,14 @@ export default async function IterationsPage({
                 ) : (
                   <Badge variant="secondary" className="text-muted-foreground">
                     {iteration.velocity ?? 0} pts
+                    {/* The snapshotted person-days the points were earned
+                        over (spec/velocity.md) — without it a point total
+                        can't be compared across sprints of different size.
+                        Absent on anything finalized before the snapshot
+                        existed, and on capacity-0 catch-up rows. */}
+                    {iteration.capacity != null && iteration.capacity > 0 && (
+                      <span className="ml-1 font-normal">/ {iteration.capacity} person-days</span>
+                    )}
                   </Badge>
                 )}
               </div>

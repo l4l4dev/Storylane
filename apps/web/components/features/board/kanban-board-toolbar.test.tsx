@@ -52,7 +52,8 @@ function baseProps() {
       rejected: [],
     },
     initialBacklogItems: [],
-    velocity: 0,
+    currentBudget: 1,
+    backlogBudgets: [],
     nextVirtualIterationNumber: 1,
     iterationLength: 14,
     iterationGoals: {},
@@ -83,7 +84,7 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
     render(
       <KanbanBoard
         {...baseProps()}
-        velocity={8}
+        currentBudget={8}
         currentIteration={{
           id: "i3",
           number: 3,
@@ -91,6 +92,7 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
           start_date: "2026-07-14",
           end_date: "2026-07-27",
           velocity: null,
+          capacity: null,
           state: "current",
           skipped: false,
         }}

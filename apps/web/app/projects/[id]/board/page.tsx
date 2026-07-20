@@ -5,10 +5,15 @@ import {
   ICEBOX_COLUMN_ID,
   columnForStory,
 } from "@/lib/utils/kanban";
-import type { BacklogRowItem } from "@/lib/utils/iterations";
+import { projectedIterationDates, type BacklogRowItem } from "@/lib/utils/iterations";
 import { pointScaleValues } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
-import { calculateVelocity } from "@storylane/core";
+import {
+  forecastPoints,
+  projectCapacity,
+  velocityRate,
+  type CalendarException,
+} from "@storylane/core";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
@@ -59,7 +64,7 @@ export default async function BoardPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, velocity_window, iteration_length, point_scale, custom_points")
+    .select("id, name, velocity_window, iteration_length, point_scale, custom_points, working_weekdays")
     .eq("id", id)
     .single();
 
@@ -77,7 +82,7 @@ export default async function BoardPage({
     await Promise.all([
       supabase
         .from("iterations")
-        .select("id, number, goal, start_date, end_date, velocity, state, skipped")
+        .select("id, number, goal, start_date, end_date, velocity, capacity, state, skipped")
         .eq("project_id", id)
         .order("number", { ascending: true }),
       supabase
@@ -208,12 +213,84 @@ export default async function BoardPage({
     .sort((a, b) => a.position - b.position)
     .map((entry) => entry.item);
 
-  // Skipped iterations are done but excluded from the velocity window so
-  // their (normally 0) velocity doesn't drag the average (spec/velocity.md).
   const completed = allIterations
-    .filter((iteration) => iteration.state === "done" && !iteration.skipped)
+    .filter((iteration) => iteration.state === "done")
     .sort((a, b) => b.number - a.number);
-  const currentVelocity = calculateVelocity(completed, project.velocity_window);
+  // Points per person-day (spec/velocity.md). velocityRate applies the
+  // skipped / capacity-0 window filters itself.
+  const rate = velocityRate(completed, project.velocity_window);
+
+  // Planned capacity for the current iteration and each virtual sprint after
+  // it, so every backlog group gets its own `rate x capacity` budget rather
+  // than one flat number — a sprint straddling a holiday week holds less.
+  // Capped because the backlog can outrun any sensible planning horizon;
+  // buildBacklogRows repeats the last budget past the end of the array.
+  const MAX_PROJECTED_SPRINTS = 26;
+  const projectedSprints = currentIteration
+    ? Array.from({ length: Math.min(initialBacklogItems.length, MAX_PROJECTED_SPRINTS) }, (_, i) =>
+        projectedIterationDates(currentIteration.end_date, project.iteration_length, i + 1),
+      )
+    : [];
+  const calendarStart = currentIteration?.start_date;
+  const calendarEnd = projectedSprints[projectedSprints.length - 1]?.end_date ?? currentIteration?.end_date;
+  const capacityMembers = (members ?? []).map((m) => ({ userId: m.user_id, role: m.role }));
+
+  let calendarExceptions: CalendarException[] = [];
+  const timeOffByUser = new Map<string, string[]>();
+  // A failed calendar read must not silently become "no holidays, nobody
+  // away" — that overstates capacity and over-commits the team. Degrade to
+  // the no-history fallback (minimum 1 point per group) instead, which
+  // under-plans rather than over-plans.
+  let calendarUnavailable = false;
+  if (calendarStart && calendarEnd && capacityMembers.length > 0) {
+    const [exceptionResult, timeOffResult] = await Promise.all([
+      supabase
+        .from("project_calendar_exceptions")
+        .select("date, kind")
+        .eq("project_id", id)
+        .gte("date", calendarStart)
+        .lte("date", calendarEnd),
+      supabase
+        .from("user_time_off")
+        .select("user_id, date")
+        .in(
+          "user_id",
+          capacityMembers.map((m) => m.userId),
+        )
+        .gte("date", calendarStart)
+        .lte("date", calendarEnd),
+    ]);
+    calendarUnavailable = exceptionResult.error !== null || timeOffResult.error !== null;
+    calendarExceptions = (exceptionResult.data ?? []) as CalendarException[];
+    for (const row of timeOffResult.data ?? []) {
+      const dates = timeOffByUser.get(row.user_id);
+      if (dates) {
+        dates.push(row.date);
+      } else {
+        timeOffByUser.set(row.user_id, [row.date]);
+      }
+    }
+  }
+  const memberCalendars = capacityMembers.map((m) => ({
+    role: m.role,
+    timeOff: timeOffByUser.get(m.userId) ?? [],
+  }));
+  const budgetFor = (range: { start_date: string; end_date: string }) =>
+    calendarUnavailable
+      ? 1
+      : forecastPoints(
+          rate,
+          projectCapacity({
+            workingWeekdays: project.working_weekdays,
+            exceptions: calendarExceptions,
+            members: memberCalendars,
+            start: range.start_date,
+            end: range.end_date,
+          }),
+        );
+  const currentBudget = currentIteration ? budgetFor(currentIteration) : 1;
+  const backlogBudgets = projectedSprints.map(budgetFor);
+
   const nextVirtualIterationNumber =
     allIterations.reduce((max, iteration) => Math.max(max, iteration.number), 0) + 1;
 
@@ -265,7 +342,8 @@ export default async function BoardPage({
         states={states}
         initialContainers={initialContainers}
         initialBacklogItems={initialBacklogItems}
-        velocity={currentVelocity}
+        currentBudget={currentBudget}
+        backlogBudgets={backlogBudgets}
         nextVirtualIterationNumber={nextVirtualIterationNumber}
         iterationLength={project.iteration_length}
         iterationGoals={iterationGoals}

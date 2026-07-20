@@ -32,6 +32,36 @@ forecast(sprint) = rate × sprint.capacity      (planned capacity for a future s
 - Auto-assignment: stories are pulled from the top of the backlog to fill
   the next iteration up to `rate × planned capacity`.
 
+### Where the capacity formula lives (TASK-86)
+
+Two implementations, deliberately: `public.project_capacity` (SQL, called by
+`finalize_iteration` — the snapshot invariant has to hold for every client
+and for Edge Functions, so it cannot live in a client) and `projectCapacity`
+(`packages/core/src/capacity.ts`, for planning future sprints, which have no
+row to read a snapshot from). Both are asserted against the single golden
+fixture `spec/fixtures/capacity.json` so they cannot drift.
+
+Rules both must apply: `working_weekdays` is a **set** (the DB CHECK cannot
+reject duplicates); `holiday` removes a day, `extra_workday` adds one;
+personal time off subtracts per member; there is **no `joined_at`
+proration** — the member set at finalize time × every working day of the
+sprint.
+
+**Only `owner` and `member` roles count toward capacity.** A `viewer` cannot
+be assigned a story, so counting their days would inflate the denominator
+and under-forecast every future sprint. Both implementations spell this as
+an allowlist, not `!= 'viewer'`, so a role added later has to opt in rather
+than land in the math by default.
+
+Only the first pass of a `finalize_iteration` call writes a real capacity.
+The catch-up loop inserts a gap row and finalizes it in the same call, so
+every later pass writes `capacity = 0` — otherwise a neglected project's
+empty gap rows would enter the window with `points = 0` and crush the rate.
+
+No backfill: iterations finalized before this shipped keep `capacity = NULL`
+and are excluded from the window, so forecasting falls back to the minimum
+1 point per group until `velocity_window` new iterations have finalized.
+
 ## Automatic scheduling & rollover (updated 2026-07-02 for Pivotal Tracker parity)
 
 Replaces the manual "Generate next iteration" / "Mark as done" operations from Task 6.

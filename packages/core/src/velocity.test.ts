@@ -1,21 +1,68 @@
 import { describe, expect, it } from "vitest";
-import { acceptedPoints, calculateVelocity, clampVelocityWindow, type PointedStory } from "./velocity";
+import {
+  acceptedPoints,
+  clampVelocityWindow,
+  forecastPoints,
+  velocityRate,
+  type PointedStory,
+} from "./velocity";
 
-describe("calculateVelocity", () => {
+describe("velocityRate", () => {
   it("returns 0 when there are no completed iterations", () => {
-    expect(calculateVelocity([], 3)).toBe(0);
+    expect(velocityRate([], 3)).toBe(0);
   });
 
-  it("averages the most recent window of completed iterations", () => {
-    expect(calculateVelocity([{ velocity: 10 }, { velocity: 8 }, { velocity: 6 }], 2)).toBe(9);
+  it("divides summed points by summed capacity over the window", () => {
+    expect(velocityRate([{ velocity: 12, capacity: 10 }, { velocity: 8, capacity: 10 }], 2)).toBe(1);
+  });
+
+  it("weights by capacity rather than averaging per-iteration ratios", () => {
+    // A one-day sprint scoring 3 points must not outweigh a ten-day sprint
+    // scoring 10 — averaging ratios would give (3 + 1) / 2 = 2.
+    expect(velocityRate([{ velocity: 3, capacity: 1 }, { velocity: 10, capacity: 10 }], 2)).toBe(13 / 11);
   });
 
   it("uses all completed iterations when fewer than the window exist", () => {
-    expect(calculateVelocity([{ velocity: 10 }, { velocity: 5 }], 3)).toBe(8);
+    expect(velocityRate([{ velocity: 10, capacity: 5 }], 3)).toBe(2);
   });
 
-  it("treats a null velocity as 0", () => {
-    expect(calculateVelocity([{ velocity: null }, { velocity: 10 }], 2)).toBe(5);
+  it("excludes capacity-0 gap rows so they cannot crush the rate", () => {
+    expect(velocityRate([{ velocity: 0, capacity: 0 }, { velocity: 10, capacity: 5 }], 3)).toBe(2);
+  });
+
+  it("excludes iterations finalized before capacity was snapshotted (null)", () => {
+    expect(velocityRate([{ velocity: 20, capacity: null }, { velocity: 10, capacity: 5 }], 3)).toBe(2);
+  });
+
+  it("excludes skipped iterations", () => {
+    expect(velocityRate([{ velocity: 0, capacity: 3, skipped: true }, { velocity: 10, capacity: 5 }], 3)).toBe(2);
+  });
+
+  it("counts the window after filtering, not before", () => {
+    const iterations = [
+      { velocity: 0, capacity: 0 },
+      { velocity: 10, capacity: 5 },
+      { velocity: 10, capacity: 5 },
+    ];
+    expect(velocityRate(iterations, 2)).toBe(2);
+  });
+
+  it("treats a null velocity as 0 points", () => {
+    expect(velocityRate([{ velocity: null, capacity: 5 }], 1)).toBe(0);
+  });
+});
+
+describe("forecastPoints", () => {
+  it("scales the rate by the sprint's planned capacity", () => {
+    expect(forecastPoints(1.5, 10)).toBe(15);
+  });
+
+  it("falls back to 1 point before any capacity history exists", () => {
+    expect(forecastPoints(0, 10)).toBe(1);
+  });
+
+  it("falls back to 1 point for a sprint with no working days", () => {
+    expect(forecastPoints(2, 0)).toBe(1);
   });
 });
 

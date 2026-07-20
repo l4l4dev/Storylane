@@ -18,9 +18,20 @@ export function storyStateChangeMessage(story: SlackStory, newState: string): st
   return `#${story.number} "${escapeSlackText(story.title)}" is now *${escapeSlackText(newState)}*`;
 }
 
-/** Message for an iteration being finalized by the lazy rollover. */
-export function iterationDoneMessage(iterationNumber: number, velocity: number): string {
-  return `Iteration #${iterationNumber} is done — velocity ${velocity} pts`;
+/**
+ * Message for an iteration being finalized by the lazy rollover. Reports the
+ * raw point total alongside the person-day rate it contributes to the
+ * velocity window (spec/velocity.md) — a bare point total is not comparable
+ * across sprints of different capacity, which is the whole reason the rate
+ * exists. Capacity 0 (a catch-up gap row, or a sprint with no working days)
+ * has no rate to report.
+ */
+export function iterationDoneMessage(iterationNumber: number, velocity: number, capacity?: number): string {
+  const summary =
+    capacity !== undefined && capacity > 0
+      ? `${velocity} pts over ${capacity} person-days (${Number((velocity / capacity).toFixed(2))} pts/person-day)`
+      : `${velocity} pts`;
+  return `Iteration #${iterationNumber} is done — ${summary}`;
 }
 
 /** Message for a new iteration being created by the lazy rollover. */

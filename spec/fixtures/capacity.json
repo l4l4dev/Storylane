@@ -1,0 +1,182 @@
+{
+  "_comment": "Golden fixture for the person-day capacity formula (spec/velocity.md, doc-8 §7). Cross-checked by BOTH implementations: packages/core/src/capacity.test.ts (projectCapacity) and apps/web/lib/utils/capacity.integration.test.ts (the SQL function public.project_capacity, supabase/migrations/20260720000002_iteration_capacity.sql). Members are keyed by a fixture-local string; the DB test synthesizes real users from them. Dates: 2026-07-20 is a Monday. Swift consumption deferred (iOS work on hold).",
+  "cases": [
+    {
+      "name": "default weekdays, one member, one full week",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [{ "key": "m1", "role": "member", "time_off": [] }],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 5
+    },
+    {
+      "name": "duplicate weekday entries count once (the CHECK cannot reject them)",
+      "working_weekdays": [1, 1, 2, 2, 3, 4, 5, 5],
+      "exceptions": [],
+      "members": [{ "key": "m1", "role": "member", "time_off": [] }],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 5
+    },
+    {
+      "name": "seven working weekdays",
+      "working_weekdays": [1, 2, 3, 4, 5, 6, 7],
+      "exceptions": [],
+      "members": [{ "key": "m1", "role": "member", "time_off": [] }],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 7
+    },
+    {
+      "name": "holiday removes a working day",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [{ "date": "2026-07-22", "kind": "holiday" }],
+      "members": [{ "key": "m1", "role": "member", "time_off": [] }],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 4
+    },
+    {
+      "name": "holiday on an already non-working day changes nothing",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [{ "date": "2026-07-26", "kind": "holiday" }],
+      "members": [{ "key": "m1", "role": "member", "time_off": [] }],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 5
+    },
+    {
+      "name": "extra_workday adds a non-working day",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [{ "date": "2026-07-25", "kind": "extra_workday" }],
+      "members": [{ "key": "m1", "role": "member", "time_off": [] }],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 6
+    },
+    {
+      "name": "two members double the capacity",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [
+        { "key": "m1", "role": "member", "time_off": [] },
+        { "key": "m2", "role": "member", "time_off": [] }
+      ],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 10
+    },
+    {
+      "name": "time off subtracts only the absent member's working days",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [
+        { "key": "m1", "role": "member", "time_off": [] },
+        { "key": "m2", "role": "member", "time_off": ["2026-07-21", "2026-07-22"] }
+      ],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 8
+    },
+    {
+      "name": "time off on a non-working day subtracts nothing",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [
+        { "key": "m1", "role": "member", "time_off": [] },
+        { "key": "m2", "role": "member", "time_off": ["2026-07-25"] }
+      ],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 10
+    },
+    {
+      "name": "time off on an extra_workday does subtract",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [{ "date": "2026-07-25", "kind": "extra_workday" }],
+      "members": [{ "key": "m1", "role": "member", "time_off": ["2026-07-25"] }],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 5
+    },
+    {
+      "name": "viewers do not count toward capacity",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [
+        { "key": "m1", "role": "member", "time_off": [] },
+        { "key": "m2", "role": "viewer", "time_off": [] }
+      ],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 5
+    },
+    {
+      "name": "an owner counts, a viewer alongside them does not",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [
+        { "key": "m1", "role": "owner", "time_off": ["2026-07-20"] },
+        { "key": "m2", "role": "viewer", "time_off": [] }
+      ],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 4
+    },
+    {
+      "name": "a project of viewers only has no capacity",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [{ "key": "m1", "role": "viewer", "time_off": [] }],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 0
+    },
+    {
+      "name": "a project with no members has no capacity",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [],
+      "start": "2026-07-20",
+      "end": "2026-07-26",
+      "expected": 0
+    },
+    {
+      "name": "one-day sprint on a working day",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [{ "key": "m1", "role": "member", "time_off": [] }],
+      "start": "2026-07-20",
+      "end": "2026-07-20",
+      "expected": 1
+    },
+    {
+      "name": "one-day sprint on a weekend is capacity 0",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [{ "key": "m1", "role": "member", "time_off": [] }],
+      "start": "2026-07-25",
+      "end": "2026-07-25",
+      "expected": 0
+    },
+    {
+      "name": "cadence change: a two-week sprint",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [{ "key": "m1", "role": "member", "time_off": [] }],
+      "start": "2026-07-20",
+      "end": "2026-08-02",
+      "expected": 10
+    },
+    {
+      "name": "start after end is an empty range",
+      "working_weekdays": [1, 2, 3, 4, 5],
+      "exceptions": [],
+      "members": [{ "key": "m1", "role": "member", "time_off": [] }],
+      "start": "2026-07-27",
+      "end": "2026-07-20",
+      "expected": 0
+    }
+  ]
+}

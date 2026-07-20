@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCurrentIteration } from "@/app/projects/[id]/board/actions";
-import { calculateVelocity } from "@storylane/core";
+import { velocityRate } from "@storylane/core";
 import { InlineCreatePanel } from "@/components/features/projects/inline-create-panel";
 import { InviteFailedBanner, parseInviteFailedCount } from "@/components/features/projects/invite-failed-banner";
 import type { ProjectCardData } from "@/components/features/projects/project-card";
@@ -70,7 +70,13 @@ export default async function DashboardPage({
   // one project's rollover failure can't 500 the whole page for everyone.
   await Promise.all(projectsNeedingRollover(projects ?? []).map((p) => rolloverIterationSafely(p.id)));
 
-  type IterationRow = { number: number; velocity: number | null; state: string; skipped: boolean };
+  type IterationRow = {
+    number: number;
+    velocity: number | null;
+    capacity: number | null;
+    state: string;
+    skipped: boolean;
+  };
   type MemberRow = {
     user_id: string;
     role: string;
@@ -81,7 +87,7 @@ export default async function DashboardPage({
   async function fetchIterations(projectId: string): Promise<readonly [string, IterationRow[]]> {
     const { data } = await supabase
       .from("iterations")
-      .select("number, velocity, state, skipped")
+      .select("number, velocity, capacity, state, skipped")
       .eq("project_id", projectId)
       .order("number", { ascending: false });
     return [projectId, data ?? []] as const;
@@ -116,7 +122,8 @@ export default async function DashboardPage({
 
     const iterations = iterationsById.get(project.id) ?? [];
     const current = iterations.find((it) => it.state !== "done") ?? null;
-    const done = iterations.filter((it) => it.state === "done" && !it.skipped);
+    // velocityRate applies the skipped / capacity-0 window filters itself.
+    const done = iterations.filter((it) => it.state === "done");
     return {
       id: project.id,
       name: project.name,
@@ -128,7 +135,7 @@ export default async function DashboardPage({
       isOwner,
       isFavorite,
       currentIterationNumber: current?.number ?? null,
-      velocity: calculateVelocity(done, project.velocity_window),
+      velocityRate: velocityRate(done, project.velocity_window),
     };
   });
 

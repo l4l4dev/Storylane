@@ -27,11 +27,11 @@ describe("ProjectCard", () => {
   it("shows the Tracker badge and iteration/velocity summary", () => {
     render(
       <ProjectCard
-        project={baseProject({ currentIterationNumber: 4, velocity: 12 })}
+        project={baseProject({ currentIterationNumber: 4, velocityRate: 1.25 })}
       />,
     );
     expect(screen.getByText("Tracker")).toBeInTheDocument();
-    expect(screen.getByText("Iteration #4 · velocity 12 pts")).toBeInTheDocument();
+    expect(screen.getByText("Iteration #4 · velocity 1.25 pts/person-day")).toBeInTheDocument();
   });
 
   it("caps overlapping member avatars with a +N badge", () => {

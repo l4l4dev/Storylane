@@ -4,53 +4,8 @@ import {
   nextRealRowId,
   projectedIterationDates,
   rowInsertAnchors,
-  splitBacklogIntoVirtualIterations,
   type BacklogRowItem,
 } from "./iterations";
-
-describe("splitBacklogIntoVirtualIterations", () => {
-  it("breaks a new group once the next story would exceed capacity", () => {
-    const backlog = [
-      { points: 3, story_type: "feature" },
-      { points: 5, story_type: "feature" },
-      { points: 2, story_type: "feature" },
-    ];
-    expect(splitBacklogIntoVirtualIterations(backlog, 8)).toEqual([
-      [backlog[0], backlog[1]],
-      [backlog[2]],
-    ]);
-  });
-
-  it("gives a single oversized story its own group", () => {
-    const backlog = [
-      { points: 13, story_type: "feature" },
-      { points: 2, story_type: "feature" },
-    ];
-    expect(splitBacklogIntoVirtualIterations(backlog, 5)).toEqual([[backlog[0]], [backlog[1]]]);
-  });
-
-  it("never breaks a group on a chore/release/unestimated story since they cost 0", () => {
-    const backlog = [
-      { points: 3, story_type: "feature" },
-      { points: null, story_type: "chore" },
-      { points: null, story_type: "release" },
-      { points: 5, story_type: "feature" },
-    ];
-    expect(splitBacklogIntoVirtualIterations(backlog, 8)).toEqual([backlog]);
-  });
-
-  it("floors capacity at 1 point when velocity is 0", () => {
-    const backlog = [
-      { points: 1, story_type: "feature" },
-      { points: 1, story_type: "feature" },
-    ];
-    expect(splitBacklogIntoVirtualIterations(backlog, 0)).toEqual([[backlog[0]], [backlog[1]]]);
-  });
-
-  it("returns no groups for an empty backlog", () => {
-    expect(splitBacklogIntoVirtualIterations([], 8)).toEqual([]);
-  });
-});
 
 type Story = { id: string; points: number | null; story_type: string };
 
@@ -74,7 +29,7 @@ describe("buildBacklogRows", () => {
   it("headers every group, including the first, with its own number and point sum", () => {
     const a = { id: "a", points: 5, story_type: "feature" };
     const b = { id: "b", points: 5, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), storyItem(b)], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), storyItem(b)], [8], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 5, manualBreakDividerId: undefined },
       { kind: "story", story: a },
@@ -86,7 +41,7 @@ describe("buildBacklogRows", () => {
   it("passes a note through without affecting point accounting, when it doesn't sit on a capacity boundary", () => {
     const a = { id: "a", points: 2, story_type: "feature" };
     const b = { id: "b", points: 5, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], [8], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 7, manualBreakDividerId: undefined },
       { kind: "story", story: a },
@@ -106,7 +61,7 @@ describe("buildBacklogRows", () => {
   it("attaches a note to the group it opens, not the one it closes, when it sits right on an automatic split", () => {
     const a = { id: "a", points: 5, story_type: "feature" };
     const b = { id: "b", points: 5, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], [8], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 5, manualBreakDividerId: undefined },
       { kind: "story", story: a },
@@ -121,7 +76,7 @@ describe("buildBacklogRows", () => {
     const b = { id: "b", points: 5, story_type: "feature" };
     // a+note+b all fit in one group (capacity 20) — the note has nothing to
     // resolve toward, so it stays right where it was inserted.
-    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], 20, 3);
+    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2"), storyItem(b)], [20], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 10, manualBreakDividerId: undefined },
       { kind: "story", story: a },
@@ -140,7 +95,7 @@ describe("buildBacklogRows", () => {
     const b = { id: "b", points: 1, story_type: "feature" };
     const rows = buildBacklogRows(
       [storyItem(a), noteItem("d1", "Phase 2"), iterationBreakItem("brk"), storyItem(b)],
-      8,
+      [8],
       3,
     );
     expect(rows).toEqual([
@@ -159,7 +114,7 @@ describe("buildBacklogRows", () => {
   // this exercises the post-loop flush that catches the no-next-item case.
   it("flushes a trailing note into the final group when nothing follows it", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2")], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), noteItem("d1", "Phase 2")], [8], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 1, manualBreakDividerId: undefined },
       { kind: "story", story: a },
@@ -168,12 +123,12 @@ describe("buildBacklogRows", () => {
   });
 
   it("returns an empty list for an empty backlog", () => {
-    expect(buildBacklogRows([], 8, 3)).toEqual([]);
+    expect(buildBacklogRows([], [8], 3)).toEqual([]);
   });
 
   it("still headers a single group that never splits, numbered current+1", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([noteItem("d1", "Notes"), storyItem(a)], 8, 3);
+    const rows = buildBacklogRows([noteItem("d1", "Notes"), storyItem(a)], [8], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 1, manualBreakDividerId: undefined },
       { kind: "note", divider: { id: "d1", label: "Notes", kind: "note" } },
@@ -184,7 +139,7 @@ describe("buildBacklogRows", () => {
   it("forces a group boundary at a manual iteration break regardless of remaining capacity, and stamps the following header with the break's id", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
     const b = { id: "b", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk"), storyItem(b)], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk"), storyItem(b)], [8], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 1, manualBreakDividerId: undefined },
       { kind: "story", story: a },
@@ -200,7 +155,7 @@ describe("buildBacklogRows", () => {
     const c = { id: "c", points: 1, story_type: "feature" };
     // a+b exceed capacity 8 -> automatic split before b; then a manual break
     // right after b forces a third group for c even though b+c (=6) would fit.
-    const rows = buildBacklogRows([storyItem(a), storyItem(b), iterationBreakItem("brk"), storyItem(c)], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), storyItem(b), iterationBreakItem("brk"), storyItem(c)], [8], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 5, manualBreakDividerId: undefined },
       { kind: "story", story: a },
@@ -215,7 +170,7 @@ describe("buildBacklogRows", () => {
 
   it("a break with nothing accumulated yet still renders its own (empty) header before the break row", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([iterationBreakItem("brk"), storyItem(a)], 8, 3);
+    const rows = buildBacklogRows([iterationBreakItem("brk"), storyItem(a)], [8], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 0, manualBreakDividerId: undefined },
       { kind: "iteration-break", divider: { id: "brk", label: "", kind: "iteration_break" } },
@@ -230,7 +185,7 @@ describe("buildBacklogRows", () => {
     const c = { id: "c", points: 1, story_type: "feature" };
     const rows = buildBacklogRows(
       [storyItem(a), iterationBreakItem("brk1"), storyItem(b), iterationBreakItem("brk2"), storyItem(c)],
-      1,
+      [1],
       3,
     );
     const numbers = rows.filter((r) => r.kind === "iteration-header").map((r) => r.number);
@@ -244,7 +199,7 @@ describe("buildBacklogRows", () => {
   // under.
   it("a manual break as the very last item still renders an (empty) header for the group after it", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk")], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk")], [8], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 1, manualBreakDividerId: undefined },
       { kind: "story", story: a },
@@ -254,7 +209,7 @@ describe("buildBacklogRows", () => {
   });
 
   it("consecutive manual breaks each still get their own (empty) header, each stamped with its own break's id", () => {
-    const rows = buildBacklogRows([iterationBreakItem("brk1"), iterationBreakItem("brk2")], 8, 3);
+    const rows = buildBacklogRows([iterationBreakItem("brk1"), iterationBreakItem("brk2")], [8], 3);
     expect(rows).toEqual([
       { kind: "iteration-header", number: 3, points: 0, manualBreakDividerId: undefined },
       { kind: "iteration-break", divider: { id: "brk1", label: "", kind: "iteration_break" } },
@@ -272,14 +227,14 @@ describe("buildBacklogRows", () => {
 describe("nextRealRowId", () => {
   it("returns null when nothing real follows", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a)], 100, 3);
+    const rows = buildBacklogRows([storyItem(a)], [100], 3);
     expect(nextRealRowId(rows, 2)).toBeNull();
   });
 
   it("skips over a header row to the next real row", () => {
     const a = { id: "a", points: 5, story_type: "feature" };
     const b = { id: "b", points: 5, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), storyItem(b)], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), storyItem(b)], [8], 3);
     // rows: [header#3, story a, header#4, story b] — starting right after
     // story a (index 2, the header) must skip it and land on story b.
     expect(nextRealRowId(rows, 2)).toBe("story:b");
@@ -288,7 +243,7 @@ describe("nextRealRowId", () => {
   it("does not skip a manual break — it's the next real row itself", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
     const b = { id: "b", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk"), storyItem(b)], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk"), storyItem(b)], [8], 3);
     // rows: [header#3, story a, break, header#4, story b] — starting right
     // after story a (index 2, the break itself) must resolve to the break,
     // not skip past it into the next group.
@@ -299,14 +254,14 @@ describe("nextRealRowId", () => {
 describe("rowInsertAnchors", () => {
   it("top position: the first real row after the header anchors above to itself", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([noteItem("d1", "Notes"), storyItem(a)], 8, 3);
+    const rows = buildBacklogRows([noteItem("d1", "Notes"), storyItem(a)], [8], 3);
     // rows: [header#3, note d1, story a]
     expect(rowInsertAnchors(rows, 1)).toEqual({ aboveId: "divider:d1", belowId: "story:a" });
   });
 
   it("bottom position: the last row in the backlog anchors below to null (append at the end)", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a)], 100, 3);
+    const rows = buildBacklogRows([storyItem(a)], [100], 3);
     // rows: [header#3, story a]
     expect(rowInsertAnchors(rows, 1)).toEqual({ aboveId: "story:a", belowId: null });
   });
@@ -314,7 +269,7 @@ describe("rowInsertAnchors", () => {
   it("middle position adjacent to an automatic (capacity) split: below skips the header to the next story", () => {
     const a = { id: "a", points: 5, story_type: "feature" };
     const b = { id: "b", points: 5, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), storyItem(b)], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), storyItem(b)], [8], 3);
     // rows: [header#3, story a, header#4, story b]
     expect(rowInsertAnchors(rows, 1)).toEqual({ aboveId: "story:a", belowId: "story:b" });
   });
@@ -322,14 +277,14 @@ describe("rowInsertAnchors", () => {
   it("middle position adjacent to a manual break: below anchors to the break's own divider, not past it", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
     const b = { id: "b", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk"), storyItem(b)], 8, 3);
+    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk"), storyItem(b)], [8], 3);
     // rows: [header#3, story a, break, header#4, story b]
     expect(rowInsertAnchors(rows, 1)).toEqual({ aboveId: "story:a", belowId: "divider:brk" });
   });
 
   it("throws for a header or break row — the menu never attaches to those", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a)], 100, 3);
+    const rows = buildBacklogRows([storyItem(a)], [100], 3);
     expect(() => rowInsertAnchors(rows, 0)).toThrow();
   });
 });
@@ -354,5 +309,62 @@ describe("projectedIterationDates", () => {
       start_date: "2026-12-29",
       end_date: "2027-01-04",
     });
+  });
+});
+
+describe("buildBacklogRows budgets", () => {
+  const story = (id: string, points: number): BacklogRowItem<Story> => ({
+    kind: "story",
+    story: { id, points, story_type: "feature" },
+  });
+
+  it("gives each group its own budget, in order", () => {
+    // Sprint 3 has 5 points of capacity, sprint 4 only 2 (a holiday week).
+    const rows = buildBacklogRows([story("a", 3), story("b", 2), story("c", 2)], [5, 2], 3);
+    expect(rows.filter((r) => r.kind === "iteration-header")).toEqual([
+      { kind: "iteration-header", number: 3, points: 5, manualBreakDividerId: undefined },
+      { kind: "iteration-header", number: 4, points: 2, manualBreakDividerId: undefined },
+    ]);
+  });
+
+  it("repeats the last budget once the backlog outruns the projected sprints", () => {
+    const rows = buildBacklogRows([story("a", 2), story("b", 2), story("c", 2)], [2], 3);
+    expect(rows.filter((r) => r.kind === "iteration-header").map((r) => r.number)).toEqual([3, 4, 5]);
+  });
+
+  it("falls back to 1 point per group when no budgets exist yet", () => {
+    const rows = buildBacklogRows([story("a", 1), story("b", 1)], [], 3);
+    expect(rows.filter((r) => r.kind === "iteration-header").map((r) => r.number)).toEqual([3, 4]);
+  });
+
+  it("floors a zero budget at 1 point rather than giving every story its own group", () => {
+    const rows = buildBacklogRows([story("a", 1), story("b", 1)], [0], 3);
+    expect(rows.filter((r) => r.kind === "iteration-header").map((r) => r.number)).toEqual([3, 4]);
+  });
+
+  it("gives a single oversized story its own group", () => {
+    const rows = buildBacklogRows([story("a", 13), story("b", 2)], [5, 5], 3);
+    expect(rows.filter((r) => r.kind === "iteration-header")).toEqual([
+      { kind: "iteration-header", number: 3, points: 13, manualBreakDividerId: undefined },
+      { kind: "iteration-header", number: 4, points: 2, manualBreakDividerId: undefined },
+    ]);
+  });
+
+  it("never breaks a group on a chore/release/unestimated story since they cost 0", () => {
+    const items: BacklogRowItem<Story>[] = [
+      story("a", 3),
+      { kind: "story", story: { id: "b", points: null, story_type: "chore" } },
+      { kind: "story", story: { id: "c", points: null, story_type: "release" } },
+      story("d", 5),
+    ];
+    const rows = buildBacklogRows(items, [8], 3);
+    expect(rows.filter((r) => r.kind === "iteration-header")).toHaveLength(1);
+  });
+
+  it("advances the budget across a manual break too", () => {
+    const rows = buildBacklogRows([story("a", 1), iterationBreakItem("brk"), story("b", 2), story("c", 2)], [10, 2], 3);
+    // The break closes group 0, so `b` and `c` are budgeted against the
+    // second sprint's 2 points and cannot share a group.
+    expect(rows.filter((r) => r.kind === "iteration-header").map((r) => r.number)).toEqual([3, 4, 5]);
   });
 });

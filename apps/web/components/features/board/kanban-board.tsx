@@ -57,6 +57,10 @@ export type IterationMeta = {
   start_date: string;
   end_date: string;
   velocity: number | null;
+  // Person-days, snapshotted at finalization (spec/velocity.md). NULL while
+  // the iteration is still running, and on rows finalized before the
+  // snapshot column existed — the velocity window excludes both.
+  capacity: number | null;
   state: string;
   // Manually finished before it started (spec/velocity.md "Skipping") —
   // excluded from the velocity window.
@@ -118,7 +122,8 @@ export function KanbanBoard({
   states,
   initialContainers,
   initialBacklogItems,
-  velocity,
+  currentBudget,
+  backlogBudgets,
   nextVirtualIterationNumber,
   iterationLength,
   iterationGoals,
@@ -141,9 +146,12 @@ export function KanbanBoard({
   // Backlog stories + freeform planning dividers, pre-merged/ordered
   // server-side — List-view-only (see BoardListView).
   initialBacklogItems: BacklogRowItem<BoardStory>[];
-  // Current velocity, used to segment the Backlog column into virtual future
-  // iterations (see spec/velocity.md "Marker computation").
-  velocity: number;
+  // `rate x planned capacity` for the current iteration (spec/velocity.md) —
+  // the commitment target shown in the Current panel's header.
+  currentBudget: number;
+  // The same product for each virtual future sprint, in order, used to
+  // segment the Backlog column into groups (see BoardListView).
+  backlogBudgets: number[];
   nextVirtualIterationNumber: number;
   // List-view-only (see BoardListView): projected dates and draft goals for
   // the Backlog's virtual-iteration group headers.
@@ -250,7 +258,7 @@ export function KanbanBoard({
               {formatDate(currentIteration.start_date)} – {formatDate(currentIteration.end_date)} (auto-finishes)
             </span>
             <span className="text-xs text-muted-foreground">
-              {sumPoints(iterationStories)} / {velocity} pts committed
+              {sumPoints(iterationStories)} / {Math.round(currentBudget)} pts committed
               <span
                 className={`ml-1 inline-block w-16 ${
                   isFiltered && hiddenIterationStoryCount > 0 ? "" : "invisible"
@@ -390,7 +398,7 @@ export function KanbanBoard({
           states={states}
           initialContainers={initialContainers}
           initialBacklogItems={initialBacklogItems}
-          velocity={velocity}
+          backlogBudgets={backlogBudgets}
           nextVirtualIterationNumber={nextVirtualIterationNumber}
           iterationLength={iterationLength}
           iterationGoals={iterationGoals}

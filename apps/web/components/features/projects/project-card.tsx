@@ -17,7 +17,8 @@ export type ProjectCardData = {
   isOwner: boolean;
   archivedAt: string | null;
   currentIterationNumber?: number | null;
-  velocity?: number | null;
+  // Points per person-day (spec/velocity.md), not a per-sprint point total.
+  velocityRate?: number | null;
 };
 
 const MAX_VISIBLE_AVATARS = 4;
@@ -26,7 +27,10 @@ function summaryLine(project: ProjectCardData): string | null {
   if (project.currentIterationNumber == null) {
     return null;
   }
-  return `Iteration #${project.currentIterationNumber} · velocity ${project.velocity ?? 0} pts`;
+  // Two decimals: a rate is usually well under 1 and rounding to whole
+  // numbers would show every young project the same "velocity 0".
+  const rate = Number((project.velocityRate ?? 0).toFixed(2));
+  return `Iteration #${project.currentIterationNumber} · velocity ${rate} pts/person-day`;
 }
 
 // spec/screens.md "Projects page". Archive/favorite/search/sort controls

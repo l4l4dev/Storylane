@@ -45,7 +45,7 @@ Why not the alternatives:
 
 Read:
 - `board_summary(project_id)` — current iteration (number, dates, goal, state),
-  points by state (with category), velocity, backlog/icebox counts.
+  points by state (with category), velocity rate (points per person-day), backlog/icebox counts.
 - `list_stories(project_id, filter?)` — by state, iteration, epic, label, or text.
   Returns compact rows (id, title, type, state, points, epic, labels).
 - `get_story(story_id)` — full story: description, tasks, comments, labels,

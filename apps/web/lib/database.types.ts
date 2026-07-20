@@ -280,6 +280,7 @@ export type Database = {
       }
       iterations: {
         Row: {
+          capacity: number | null
           created_at: string
           end_date: string
           goal: string | null
@@ -292,6 +293,7 @@ export type Database = {
           velocity: number | null
         }
         Insert: {
+          capacity?: number | null
           created_at?: string
           end_date: string
           goal?: string | null
@@ -304,6 +306,7 @@ export type Database = {
           velocity?: number | null
         }
         Update: {
+          capacity?: number | null
           created_at?: string
           end_date?: string
           goal?: string | null
@@ -857,6 +860,10 @@ export type Database = {
       move_story_to_project: {
         Args: { p_story_id: string; p_target_project_id: string }
         Returns: Json
+      }
+      project_capacity: {
+        Args: { p_end: string; p_project_id: string; p_start: string }
+        Returns: number
       }
       project_role: { Args: { p_project_id: string }; Returns: string }
       promote_story_to_epic: { Args: { p_story_id: string }; Returns: Json }

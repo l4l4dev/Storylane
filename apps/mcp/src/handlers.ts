@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { calculateVelocity, shouldAssignCurrentIteration, type StateCategory } from "@storylane/core";
+import { velocityRate, shouldAssignCurrentIteration, type StateCategory } from "@storylane/core";
 
 // The MCP server talks to Supabase as an untyped client (it does not import
 // apps/web's generated Database type — that would couple the packages). Rows
@@ -182,14 +182,19 @@ export async function boardSummary(supabase: Db, args: { project_id: string }) {
     .limit(1);
   const current = iters?.[0] ?? null;
 
+  // The window filters (skipped / capacity>0, spec/velocity.md) are applied
+  // in the query rather than after it, so `limit` still returns a full
+  // window instead of a window with the excluded rows punched out of it.
   const { data: doneIters } = await supabase
     .from("iterations")
-    .select("velocity")
+    .select("velocity, capacity")
     .eq("project_id", project_id)
     .eq("state", "done")
+    .eq("skipped", false)
+    .gt("capacity", 0)
     .order("number", { ascending: false })
     .limit(project.velocity_window);
-  const velocity = calculateVelocity(doneIters ?? [], project.velocity_window);
+  const velocity_rate = velocityRate(doneIters ?? [], project.velocity_window);
 
   const pointsByStateId: Record<string, number> = {};
   const countsByStateId: Record<string, number> = {};
@@ -253,7 +258,7 @@ export async function boardSummary(supabase: Db, args: { project_id: string }) {
 
   return {
     current_iteration: current,
-    velocity,
+    velocity_rate,
     by_state: byState,
     backlog_count: backlogCount ?? 0,
     icebox_count: iceboxCount ?? 0,

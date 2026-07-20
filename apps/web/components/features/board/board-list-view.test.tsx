@@ -269,7 +269,7 @@ function boardProps(stories: BoardStory[]) {
       rejected: [],
     },
     initialBacklogItems: stories.map((story) => ({ kind: "story" as const, story })),
-    velocity: 5,
+    backlogBudgets: [5],
     nextVirtualIterationNumber: 4,
     iterationLength: 14,
     iterationGoals: {},

@@ -601,7 +601,11 @@ export async function estimateStory(formData: FormData): Promise<ActionResult> {
 }
 
 type FinalizeIterationEvent =
-  | { kind: "finalized"; number: number; velocity: number; skipped?: boolean }
+  // `capacity` is optional because parseFinalizeEvents validates only
+  // `kind`: a payload from a finalize_iteration older than the capacity
+  // snapshot has no such field, and iterationDoneMessage handles its
+  // absence rather than pretending the value is always there.
+  | { kind: "finalized"; number: number; velocity: number; capacity?: number; skipped?: boolean }
   | { kind: "started"; number: number; start_date: string; end_date: string }
   // A manual finish that changed nothing (nothing to finish, or the named
   // iteration was already finished by a racing/double call). Surfaced to the
@@ -625,7 +629,7 @@ function parseFinalizeEvents(raw: unknown): FinalizeIterationEvent[] {
 function notifyFinalizeEvents(projectId: string, events: FinalizeIterationEvent[]) {
   for (const event of events) {
     if (event.kind === "finalized") {
-      after(() => notifySlack(projectId, iterationDoneMessage(event.number, event.velocity)));
+      after(() => notifySlack(projectId, iterationDoneMessage(event.number, event.velocity, event.capacity)));
     } else if (event.kind === "started") {
       after(() => notifySlack(projectId, iterationStartedMessage(event.number, event.start_date, event.end_date)));
     }

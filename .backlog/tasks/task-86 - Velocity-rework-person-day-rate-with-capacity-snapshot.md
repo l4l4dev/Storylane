@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:04'
-updated_date: '2026-07-20 01:02'
+updated_date: '2026-07-20 03:14'
 labels:
   - web
   - db
@@ -25,10 +25,10 @@ doc-8 §7 with advisor corrections. Add iterations.capacity (person-days), writt
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Finalization writes capacity once; re-finalization or later calendar edits cannot change a done iterations capacity (test proves it)
-- [ ] #2 Rate excludes skipped and capacity-0 iterations; zero-division impossible (test with empty 1-day catch-up rows)
-- [ ] #3 Virtual groups and auto-planning use rate x planned capacity; golden fixtures shared and passing
-- [ ] #4 pnpm test passes
+- [x] #1 Finalization writes capacity once; re-finalization or later calendar edits cannot change a done iterations capacity (test proves it)
+- [x] #2 Rate excludes skipped and capacity-0 iterations; zero-division impossible (test with empty 1-day catch-up rows)
+- [x] #3 Virtual groups and auto-planning use rate x planned capacity; golden fixtures shared and passing
+- [x] #4 pnpm test passes
 <!-- AC:END -->
 
 ## Implementation Plan

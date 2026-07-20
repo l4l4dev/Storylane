@@ -18,36 +18,16 @@ function formatDateOnly(ms: number): string {
 export type BacklogStoryForMarkers = { points: number | null; story_type: string };
 
 /**
- * Segments the backlog (already ordered by position) into the virtual future
- * iterations drawn as boundary markers in the Backlog panel (see
- * spec/velocity.md "Marker computation"). Each group's points stay at or
- * under `max(velocity, 1)`; chore/release/unestimated stories consume 0 points
- * and never trigger a break by themselves. A single story bigger than the
- * whole capacity still gets its own group.
+ * Point budget for the virtual group at `groupIndex` (0-based). Each future
+ * sprint gets its own budget — `rate × that sprint's planned capacity`
+ * (spec/velocity.md) — so a sprint straddling a holiday week holds fewer
+ * points than the one after it. `budgets` runs out once the backlog outruns
+ * the sprints the caller projected; the last entry then repeats, and an
+ * empty array falls back to the minimum 1 point that keeps splitting
+ * progressing before any capacity history exists.
  */
-export function splitBacklogIntoVirtualIterations<T extends BacklogStoryForMarkers>(
-  backlog: ReadonlyArray<T>,
-  velocity: number,
-): T[][] {
-  const capacity = Math.max(velocity, 1);
-  const groups: T[][] = [];
-  let current: T[] = [];
-  let sum = 0;
-
-  for (const story of backlog) {
-    const cost = storyTypeUsesPoints(story.story_type) ? story.points ?? 0 : 0;
-    if (current.length > 0 && sum + cost > capacity) {
-      groups.push(current);
-      current = [];
-      sum = 0;
-    }
-    current.push(story);
-    sum += cost;
-  }
-  if (current.length > 0) {
-    groups.push(current);
-  }
-  return groups;
+function budgetFor(budgets: ReadonlyArray<number>, groupIndex: number): number {
+  return Math.max(budgets[Math.min(groupIndex, budgets.length - 1)] ?? 0, 1);
 }
 
 // Two kinds of freeform backlog row (`backlog_dividers`).
@@ -87,12 +67,13 @@ export type BacklogRow<T> =
  * and a final group with nothing after it — from rendering with no label
  * at all.
  *
- * Two passes: first walk the items exactly like
- * `splitBacklogIntoVirtualIterations` — an `iteration_break` unconditionally
- * closes the current group — but buffer each group's rows instead of
- * emitting them immediately, since the header needs the group's total
- * *before* its first row. Then flatten, assigning sequential numbers only
- * to groups (a break's own row carries none).
+ * Two passes: first walk the items top-down accumulating points — an
+ * `iteration_break` unconditionally closes the current group — but buffer
+ * each group's rows instead of emitting them immediately, since the header
+ * needs the group's total *before* its first row. Then flatten, assigning
+ * sequential numbers only to groups (a break's own row carries none).
+ *
+ * `budgets[i]` is the point budget for the i-th group; see `budgetFor`.
  *
  * A `note` doesn't affect the point count, but which group it lands in
  * isn't decided the moment it's seen — a note sitting right where an
@@ -109,11 +90,9 @@ export type BacklogRow<T> =
  */
 export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string }>(
   items: ReadonlyArray<BacklogRowItem<T>>,
-  velocity: number,
+  budgets: ReadonlyArray<number>,
   startingIterationNumber: number,
 ): BacklogRow<T>[] {
-  const capacity = Math.max(velocity, 1);
-
   type Segment =
     | { kind: "group"; rows: BacklogRow<T>[]; points: number }
     | { kind: "break"; divider: BacklogDivider };
@@ -123,6 +102,8 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
   let sum = 0;
   let groupHasItem = false;
   let pendingNotes: BacklogDivider[] = [];
+  let groupIndex = 0;
+  let budget = budgetFor(budgets, 0);
 
   function flushPendingNotes() {
     for (const divider of pendingNotes) {
@@ -136,6 +117,8 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
     groupRows = [];
     sum = 0;
     groupHasItem = false;
+    groupIndex += 1;
+    budget = budgetFor(budgets, groupIndex);
   }
 
   for (const item of items) {
@@ -151,7 +134,7 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
     }
 
     const cost = storyTypeUsesPoints(item.story.story_type) ? item.story.points ?? 0 : 0;
-    if (groupHasItem && sum + cost > capacity) {
+    if (groupHasItem && sum + cost > budget) {
       closeGroup();
     }
     flushPendingNotes();

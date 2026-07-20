@@ -859,7 +859,7 @@ function rowKey(row: BacklogRow<BoardStory>, index: number): string {
 // spot instead of appended-then-dragged.
 function BacklogSection({
   items,
-  velocity,
+  backlogBudgets,
   startingIterationNumber,
   projectId,
   states,
@@ -875,7 +875,9 @@ function BacklogSection({
   // groups/point sums/dates below must reflect the true backlog regardless
   // of `filter`, which only decides which *rows* get rendered.
   items: ListItem[];
-  velocity: number;
+  // Point budget per virtual group, in order (spec/velocity.md) —
+  // `rate x that sprint's planned capacity`, computed server-side.
+  backlogBudgets: number[];
   startingIterationNumber: number;
   projectId: string;
   states: ProjectState[];
@@ -894,7 +896,7 @@ function BacklogSection({
   const rowItems: BacklogRowItem<BoardStory>[] = items.map((item) =>
     item.kind === "story" ? { kind: "story", story: item.story } : { kind: "divider", divider: item.divider },
   );
-  const rows = buildBacklogRows(rowItems, velocity, startingIterationNumber);
+  const rows = buildBacklogRows(rowItems, backlogBudgets, startingIterationNumber);
   const hasHiddenStories = rowItems.some(
     (item) => item.kind === "story" && !matchesStoryFilter(item.story, filter),
   );
@@ -1096,7 +1098,7 @@ export function BoardListView({
   states,
   initialContainers,
   initialBacklogItems,
-  velocity,
+  backlogBudgets,
   nextVirtualIterationNumber,
   iterationLength,
   iterationGoals,
@@ -1113,7 +1115,7 @@ export function BoardListView({
   // server-side (see board/page.tsx) since only the server has both tables'
   // raw `position` values needed to interleave them correctly.
   initialBacklogItems: BacklogRowItem<BoardStory>[];
-  velocity: number;
+  backlogBudgets: number[];
   nextVirtualIterationNumber: number;
   // Projected dates and draft goals for the Backlog's virtual-iteration
   // group headers — `iterationGoals` is pre-scoped server-side to numbers
@@ -1309,7 +1311,7 @@ export function BoardListView({
 
           <BacklogSection
             items={backlogItems}
-            velocity={velocity}
+            backlogBudgets={backlogBudgets}
             startingIterationNumber={nextVirtualIterationNumber}
             projectId={projectId}
             states={states}
