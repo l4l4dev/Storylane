@@ -1,11 +1,11 @@
 ---
 id: TASK-88
 title: 'story_pins: per-user today pin replaces stories.focus'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:04'
-updated_date: '2026-07-20 08:23'
+updated_date: '2026-07-20 08:27'
 labels:
   - web
   - db
