@@ -115,8 +115,11 @@ describe("finishIteration Slack notifications", () => {
 
     const { after } = await import("next/server");
     vi.mocked(after).mockReset();
-    vi.mocked(after).mockImplementation((callback) => {
-      void callback();
+    vi.mocked(after).mockImplementation((task) => {
+      // `after` also accepts a bare promise; only the callback form is used here.
+      if (typeof task === "function") {
+        void task();
+      }
     });
 
     const { notifySlack } = await import("@/lib/integrations/slack");
@@ -520,7 +523,6 @@ describe("board drop actions -> move_story_board", () => {
             story_type: "feature",
             points: 3,
             iteration_id: CURRENT_ITERATION,
-            focus: null,
           },
           error: null,
         },
@@ -550,7 +552,6 @@ describe("board drop actions -> move_story_board", () => {
         p_expected: {
           state_id: "unstarted",
           iteration_id: CURRENT_ITERATION,
-          focus: null,
         },
         p_deltas: { state_id: "started" },
         p_anchor: { before: { kind: "story", id: "neighbour" } },
@@ -582,51 +583,6 @@ describe("board drop actions -> move_story_board", () => {
       const { dropStory } = await import("./actions");
 
       await expect(dropStory(formData())).rejects.toThrow("no active iteration");
-    });
-  });
-
-  describe("setStoryFocus", () => {
-    beforeEach(() => {
-      fixtures.stories = {
-        single: {
-          data: {
-            state_id: "unstarted",
-            iteration_id: CURRENT_ITERATION,
-            focus: null,
-          },
-          error: null,
-        },
-      };
-    });
-
-    it("sends only the focus delta with the focus view", async () => {
-      const { setStoryFocus } = await import("./actions");
-
-      const data = new FormData();
-      data.set("project_id", "project-1");
-      data.set("story_id", "story-3");
-      data.set("target", "today");
-      data.set("before_item_id", "story:neighbour");
-
-      await setStoryFocus(data);
-
-      const call = moveCall();
-      expect(call.p_view).toBe("focus");
-      expect(call.p_deltas).toEqual({ focus: "today" });
-      expect(call.p_anchor).toEqual({ before: { kind: "story", id: "neighbour" } });
-    });
-
-    it("clears focus (null delta) when dropped on Todo", async () => {
-      const { setStoryFocus } = await import("./actions");
-
-      const data = new FormData();
-      data.set("project_id", "project-1");
-      data.set("story_id", "story-3");
-      data.set("target", "todo");
-
-      await setStoryFocus(data);
-
-      expect(moveCall().p_deltas).toEqual({ focus: null });
     });
   });
 
@@ -676,7 +632,6 @@ describe("board drop actions -> move_story_board", () => {
             story_type: "feature",
             points: 1,
             iteration_id: null,
-            focus: null,
           },
           error: null,
         },

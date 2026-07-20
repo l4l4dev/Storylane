@@ -556,7 +556,7 @@ export async function setStoryState(supabase: Db, args: { story_id: string; stat
 export async function moveStory(supabase: Db, args: { story_id: string; destination: "current_iteration" | "backlog" | "icebox" }) {
   const { data: story, error: readErr } = await supabase
     .from("stories")
-    .select("project_id, state_id, iteration_id, focus")
+    .select("project_id, state_id, iteration_id")
     .eq("id", args.story_id)
     .maybeSingle();
   if (readErr) throw new Error(`Could not read story: ${readErr.message}`);
@@ -594,7 +594,6 @@ export async function moveStory(supabase: Db, args: { story_id: string; destinat
     p_expected: {
       state_id: story.state_id,
       iteration_id: story.iteration_id,
-      focus: story.focus,
     },
     p_deltas: { state_id: targetStateId, iteration: targetIteration },
     p_anchor: {},

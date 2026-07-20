@@ -115,7 +115,7 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
     const { data, error } = await admin
       .from("stories")
       .insert({ project_id: projectId, title, story_type: "feature", points: 2, state_id: unstartedStateId, created_by: ownerId })
-      .select("id, state_id, iteration_id, focus")
+      .select("id, state_id, iteration_id")
       .single();
     if (error || !data) throw new Error(`Failed to seed story: ${error?.message}`);
     return data;
@@ -142,7 +142,7 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
         p_project_id: projectId,
         p_item: { kind: "story", id: story.id },
         p_view: "tracker",
-        p_expected: { state_id: story.state_id, iteration_id: story.iteration_id, focus: story.focus },
+        p_expected: { state_id: story.state_id, iteration_id: story.iteration_id },
         p_deltas: {},
         p_anchor: {},
       });
@@ -171,7 +171,7 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
         p_project_id: projectId,
         p_item: { kind: "story", id: story.id },
         p_view: "tracker",
-        p_expected: { state_id: story.state_id, iteration_id: story.iteration_id, focus: story.focus },
+        p_expected: { state_id: story.state_id, iteration_id: story.iteration_id },
         p_deltas: {},
         p_anchor: {},
       });

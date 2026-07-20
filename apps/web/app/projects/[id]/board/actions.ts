@@ -23,7 +23,6 @@ import {
   type KanbanColumnId,
   type ListZoneId,
 } from "@/lib/utils/kanban";
-import { evaluateFocusDrop, type FocusDragTarget } from "@/lib/utils/focus";
 import { utcTodayKey } from "@/lib/utils/format";
 import { parsePoints, pointScaleValues } from "@/lib/utils/stories";
 
@@ -48,28 +47,23 @@ function stateName(stateId: string | null, states: ReadonlyArray<ProjectState>):
 
 // Single UTC date convention shared with the DB — see utcTodayKey.
 
-// TASK-56: the three board drop paths (dropStory / setStoryFocus /
-// dropStoryInList) are thin callers of move_story_board, the
-// single transactional move+reorder RPC (20260715000008). Each still reads the
-// story and runs the same pure evaluate* validation server-side (never trust
-// the client), then hands the RPC an intent — deltas + an expected snapshot +
-// a "before" anchor — and the RPC applies the column change and dense reorder
-// atomically under one advisory lock. Shared plumbing lives here.
+// TASK-56: the board drop paths (dropStory / dropStoryInList) are thin callers
+// of move_story_board, the single transactional move+reorder RPC
+// (20260715000008). Each still reads the story and runs the same pure
+// evaluate* validation server-side (never trust the client), then hands the
+// RPC an intent — deltas + an expected snapshot + a "before" anchor — and the
+// RPC applies the column change and dense reorder atomically under one
+// advisory lock. Shared plumbing lives here.
 
 const STALE_MOVE_MESSAGE = "This story changed on the board. Refresh and try again.";
 
 // Every zone-determining column, snapshotted from the action's trusted read.
 // The RPC re-reads these FOR UPDATE and rejects (P0001 "stale") if any moved
 // between this read and the locked write — closing that TOCTOU window.
-function moveExpected(row: {
-  state_id: string | null;
-  iteration_id: string | null;
-  focus: string | null;
-}) {
+function moveExpected(row: { state_id: string | null; iteration_id: string | null }) {
   return {
     state_id: row.state_id,
     iteration_id: row.iteration_id,
-    focus: row.focus,
   };
 }
 
@@ -188,7 +182,7 @@ export async function dropStory(formData: FormData) {
   const [{ data: story, error: fetchError }, { data: currentRows }, states] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, state_id, story_type, points, iteration_id, focus")
+      .select("number, title, state_id, story_type, points, iteration_id")
       .eq("id", storyId)
       .eq("project_id", projectId)
       .single(),
@@ -263,67 +257,6 @@ function trackerDeltas(evaluation: {
 }
 
 /**
- * Handles a Focus-view drop between Todo / Today (spec/screens.md
- * "Focus view"). Unlike `dropStory`, this only ever sets or
- * clears `focus` — state and iteration_id are never touched here; state
- * changes go through the on-card transition buttons instead.
- */
-export async function setStoryFocus(formData: FormData) {
-  const projectId = String(formData.get("project_id"));
-  const storyId = String(formData.get("story_id"));
-  const target = String(formData.get("target")) as FocusDragTarget;
-  const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
-
-  const supabase = await createClient();
-
-  const [{ data: story, error: fetchError }, { data: currentRows }, states] = await Promise.all([
-    supabase
-      .from("stories")
-      .select("state_id, iteration_id, focus")
-      .eq("id", storyId)
-      .eq("project_id", projectId)
-      .single(),
-    supabase
-      .from("iterations")
-      .select("id")
-      .eq("project_id", projectId)
-      .neq("state", "done")
-      .order("number", { ascending: false })
-      .limit(1),
-    fetchProjectStates(supabase, projectId),
-  ]);
-
-  if (fetchError || !story) {
-    throw new Error(fetchError?.message ?? "Story not found");
-  }
-
-  const currentIterationId = currentRows?.[0]?.id ?? null;
-  if (!currentIterationId || story.iteration_id !== currentIterationId) {
-    throw new Error("Story is not in the current iteration");
-  }
-
-  const category = story.state_id === null ? null : (states.find((s) => s.id === story.state_id)?.category ?? null);
-  const evaluation = evaluateFocusDrop({ category }, target);
-  if (!evaluation.ok) {
-    throw new Error(evaluation.reason);
-  }
-
-  const { error } = await supabase.rpc("move_story_board", {
-    p_project_id: projectId,
-    p_item: { kind: "story", id: storyId },
-    p_view: "focus",
-    p_expected: moveExpected(story),
-    p_deltas: { focus: evaluation.focus },
-    p_anchor: moveAnchor(beforeItemId),
-  });
-  if (error) {
-    throw new Error(moveErrorMessage(error));
-  }
-
-  revalidatePath(`/projects/${projectId}/board`);
-}
-
-/**
  * Handles a List-view drop (see spec/screens.md "Board layout: List view"),
  * the flat-list counterpart to `dropStory`. List view merges every
  * current-iteration state into one "current" zone; the RPC derives that zone
@@ -375,7 +308,7 @@ export async function dropStoryInList(formData: FormData) {
   const [{ data: story, error: fetchError }, { data: currentRows }, states] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, state_id, story_type, points, iteration_id, focus")
+      .select("number, title, state_id, story_type, points, iteration_id")
       .eq("id", itemId)
       .eq("project_id", projectId)
       .single(),

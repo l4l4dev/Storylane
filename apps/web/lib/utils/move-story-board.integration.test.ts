@@ -120,7 +120,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: c },
       p_view: "tracker",
-      p_expected: { state_id: states.Started, iteration_id: iterationId, focus: null },
+      p_expected: { state_id: states.Started, iteration_id: iterationId },
       p_deltas: {},
       p_anchor: { before: { kind: "story", id: a } },
     });
@@ -137,7 +137,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state_id: states.Started, iteration_id: iterationId, focus: null },
+      p_expected: { state_id: states.Started, iteration_id: iterationId },
       p_deltas: { state_id: states.Finished },
       p_anchor: {}, // append to the finished column
     });
@@ -152,7 +152,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state_id: states.Unstarted, iteration_id: iterationId, focus: null },
+      p_expected: { state_id: states.Unstarted, iteration_id: iterationId },
       p_deltas: { state_id: states.Finished },
       p_anchor: {},
     });
@@ -164,7 +164,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
 
   it("rejects the loser of two competing transitions (AC #4)", async () => {
     const [a] = await seedCurrentIteration([{ stateId: states.Started, position: 0 }]);
-    const expected = { state_id: states.Started, iteration_id: iterationId, focus: null };
+    const expected = { state_id: states.Started, iteration_id: iterationId };
     const first = await asOwner.rpc("move_story_board", {
       p_project_id: projectId, p_item: { kind: "story", id: a }, p_view: "tracker",
       p_expected: expected, p_deltas: { state_id: states.Finished }, p_anchor: {},
@@ -186,7 +186,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state_id: states.Unstarted, iteration_id: null, focus: null },
+      p_expected: { state_id: states.Unstarted, iteration_id: null },
       p_deltas: { state_id: states.Started, iteration: "current" },
       p_anchor: {},
     });
@@ -213,7 +213,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: s1!.id },
       p_view: "list",
-      p_expected: { state_id: states.Unstarted, iteration_id: null, focus: null },
+      p_expected: { state_id: states.Unstarted, iteration_id: null },
       p_deltas: {},
       p_anchor: { before: { kind: "divider", id: d!.id } },
     });
@@ -256,7 +256,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: sb1!.id },
       p_view: "list",
-      p_expected: { state_id: states.Unstarted, iteration_id: null, focus: null },
+      p_expected: { state_id: states.Unstarted, iteration_id: null },
       p_deltas: {},
       p_anchor: { before: { kind: "divider", id: d!.id } },
     });

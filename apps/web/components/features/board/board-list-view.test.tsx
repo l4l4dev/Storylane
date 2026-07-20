@@ -239,7 +239,6 @@ function backlogStory(id: string, points: number): BoardStory {
     assignee_id: null,
     labelIds: [],
     epic_id: null,
-    focus: null,
     completed_at: null,
   };
 }

@@ -2,11 +2,10 @@
 
 import { type ReactNode, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Crosshair, LayoutGrid, List as ListIcon, Pencil, Snowflake } from "lucide-react";
+import { LayoutGrid, List as ListIcon, Pencil, Snowflake } from "lucide-react";
 import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { sumPoints } from "@/lib/utils/board";
-import { focusColumnForStory } from "@/lib/utils/focus";
 import { ICEBOX_COLUMN_ID } from "@/lib/utils/kanban";
 import { isImeComposing } from "@/lib/utils/keyboard";
 import type { BacklogRowItem } from "@/lib/utils/iterations";
@@ -25,7 +24,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { BoardListView } from "./board-list-view";
-import { FocusBoard } from "./focus-board";
 import { KanbanColumnsBoard } from "./kanban-columns-board";
 import type { StoryCardData } from "./story-card";
 import { useInlineEdit } from "./use-inline-edit";
@@ -44,9 +42,6 @@ export type BoardStory = StoryCardData & {
   assignee_id: string | null;
   labelIds: string[];
   epic_id: string | null;
-  // Focus view only (spec/screens.md "Focus view") — ignored by
-  // the List/Kanban views.
-  focus: string | null;
   completed_at: string | null;
 };
 
@@ -67,23 +62,22 @@ export type IterationMeta = {
   skipped: boolean;
 };
 
-type BoardView = "kanban" | "list" | "focus";
-type PersistentBoardView = Exclude<BoardView, "focus">;
+type BoardView = "kanban" | "list";
 const BOARD_VIEW_CHANGE_EVENT = "storylane:board-view-change";
-const inMemoryBoardViews = new Map<string, PersistentBoardView>();
+const inMemoryBoardViews = new Map<string, BoardView>();
 
 function boardViewStorageKey(projectId: string) {
   return `storylane:board-view:${projectId}`;
 }
 
-function isPersistentBoardView(value: string | null): value is PersistentBoardView {
+function isBoardView(value: string | null): value is BoardView {
   return value === "list" || value === "kanban";
 }
 
-function readBoardView(projectId: string): PersistentBoardView {
+function readBoardView(projectId: string): BoardView {
   try {
     const stored = window.localStorage.getItem(boardViewStorageKey(projectId));
-    return isPersistentBoardView(stored)
+    return isBoardView(stored)
       ? stored
       : inMemoryBoardViews.get(projectId) ?? "list";
   } catch {
@@ -100,7 +94,7 @@ function subscribeBoardView(onStoreChange: () => void) {
   };
 }
 
-function writeBoardView(projectId: string, view: PersistentBoardView) {
+function writeBoardView(projectId: string, view: BoardView) {
   try {
     window.localStorage.setItem(boardViewStorageKey(projectId), view);
     inMemoryBoardViews.delete(projectId);
@@ -172,29 +166,18 @@ export function KanbanBoard({
   // Filters / new-story controls supplied by the server component.
   toolbar?: ReactNode;
   // The project's selectable point values (spec/features.md), threaded down
-  // to List/Focus views' TransitionButtons for the unestimated-feature
+  // to the List view's TransitionButtons for the unestimated-feature
   // estimation picker (TASK-37). The Kanban columns view never needs it —
   // state changes there are drag-only, no transition buttons render.
   pointScale: number[];
 }) {
-  const persistentView = useSyncExternalStore<PersistentBoardView>(
+  const view = useSyncExternalStore<BoardView>(
     subscribeBoardView,
     () => readBoardView(projectId),
     () => "list",
   );
-  const [focusProjectId, setFocusProjectId] = useState<string | null>(null);
-  const view: BoardView = focusProjectId === projectId ? "focus" : persistentView;
   const [showIcebox, setShowIcebox] = useState(false);
   const router = useRouter();
-
-  function selectView(next: BoardView) {
-    if (isPersistentBoardView(next)) {
-      setFocusProjectId(null);
-      writeBoardView(projectId, next);
-    } else {
-      setFocusProjectId(projectId);
-    }
-  }
 
   // Other users' story/divider changes arrive here and re-fetch the
   // board's Server Component, which flows back in as `initialContainers` /
@@ -215,20 +198,7 @@ export function KanbanBoard({
   const displayedStories =
     view === "kanban"
       ? iterationStories
-      : view === "list"
-        ? [...iterationStories, ...backlogStories, ...(showIcebox ? iceboxStories : [])]
-        : allStories.filter((story) => {
-            const category =
-              story.state_id === null
-                ? null
-                : states.find((state) => state.id === story.state_id)?.category ?? null;
-            return (
-              focusColumnForStory(
-                { category, focus: story.focus, iteration_id: story.iteration_id },
-                currentIteration?.id ?? null,
-              ) !== null
-            );
-          });
+      : [...iterationStories, ...backlogStories, ...(showIcebox ? iceboxStories : [])];
   const visibleDisplayedStoryCount = displayedStories.filter((story) =>
     matchesStoryFilter(story, filter),
   ).length;
@@ -282,7 +252,7 @@ export function KanbanBoard({
               type="button"
               variant={view === "list" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => selectView("list")}
+              onClick={() => writeBoardView(projectId, "list")}
               aria-pressed={view === "list"}
             >
               <ListIcon />
@@ -292,25 +262,15 @@ export function KanbanBoard({
               type="button"
               variant={view === "kanban" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => selectView("kanban")}
+              onClick={() => writeBoardView(projectId, "kanban")}
               aria-pressed={view === "kanban"}
             >
               <LayoutGrid />
               Kanban
             </Button>
-            <Button
-              type="button"
-              variant={view === "focus" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => selectView("focus")}
-              aria-pressed={view === "focus"}
-            >
-              <Crosshair />
-              Focus
-            </Button>
           </div>
           {/* Always mounted (TASK-35) — only List has an Icebox column to
-              toggle, but unmounting this button for Kanban/Focus shrank the
+              toggle, but unmounting this button for Kanban shrank the
               toolbar and shifted the view switcher and filters left/right on
               every switch (spec/ux-principles.md principle 3: conditional UI
               never shifts layout). `invisible` reserves its layout box
@@ -332,7 +292,7 @@ export function KanbanBoard({
             <Snowflake className="text-sky-600 dark:text-sky-400" />
             Icebox
             {/* Always rendered (TASK-59) to reserve layout space; hidden when
-                the Icebox is empty. Unlike the List/Kanban/Focus toggle's
+                the Icebox is empty. Unlike the List/Kanban toggle's
                 unmounting, the badge appearing/disappearing on the 0/1 boundary
                 nudges the view-switcher and filters (spec/ux-principles.md
                 principle 3). */}
@@ -381,15 +341,6 @@ export function KanbanBoard({
           initialContainers={initialContainers}
           filter={filter}
           canManageStates={canManageStates}
-        />
-      ) : view === "focus" ? (
-        <FocusBoard
-          projectId={projectId}
-          currentIteration={currentIteration}
-          states={states}
-          initialContainers={initialContainers}
-          filter={filter}
-          pointScale={pointScale}
         />
       ) : (
         <BoardListView

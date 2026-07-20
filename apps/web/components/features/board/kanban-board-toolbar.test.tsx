@@ -104,7 +104,7 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
     expect(screen.getAllByText(/2026\/7\/27/)).toHaveLength(1);
   });
 
-  it("keeps the Icebox button mounted (not removed) across all three views", () => {
+  it("keeps the Icebox button mounted (not removed) across both views", () => {
     render(<KanbanBoard {...baseProps()} />);
     // Queried by test id, not role+name — once aria-hidden is set, the
     // accessible-name algorithm returns "" for the element itself (that's
@@ -120,10 +120,6 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
     expect(iceboxButton()).toBeInTheDocument();
     expect(iceboxButton()).toHaveAttribute("aria-hidden", "true");
     expect(iceboxButton().className).toMatch(/\binvisible\b/);
-
-    fireEvent.click(screen.getByRole("button", { name: "Focus" }));
-    expect(iceboxButton()).toBeInTheDocument();
-    expect(iceboxButton()).toHaveAttribute("aria-hidden", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "List" }));
     expect(iceboxButton()).toBeInTheDocument();
