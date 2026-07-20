@@ -6,3 +6,5 @@ Fable-era advisor handoff (written 2026-07-18 for the Opus successor).
 - [doc-8 locked decisions](doc8-locked-decisions.md) — 2026-07-18 concept redesign: each decision's WHY; do not relitigate (Icebox=NULL, immutable category, capacity snapshot, ratio of sums, ...)
 - [Owner review preferences](owner-review-preferences.md) — usability first (rework cost not a constraint), Pivotal parity unless spec records divergence, findings hold merge, public repo
 - [Review checklists](review-checklists.md) — run for (a) migration diffs and (b) board/concurrency changes before any verdict
+- [Approved parity divergences](approved-parity-divergences.md) — TASK-80 Estimate popover & doc-8 board-level state controls are deliberate; don't re-flag
+- [TASK-91 Phase D verdicts](task91-phase-d-verdicts.md) — classic parity matches; create-at-category-end RPC landed, null action_label drag dead-end still open
