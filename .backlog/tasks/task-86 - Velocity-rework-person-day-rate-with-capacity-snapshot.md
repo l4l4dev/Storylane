@@ -1,11 +1,11 @@
 ---
 id: TASK-86
 title: 'Velocity rework: person-day rate with capacity snapshot'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:04'
-updated_date: '2026-07-20 03:14'
+updated_date: '2026-07-20 03:40'
 labels:
   - web
   - db
@@ -49,6 +49,14 @@ ADVISOR-APPROVED WITH CORRECTIONS (fable-advisor, 2026-07-20). Verdicts: (a) bot
 KNOWN TEMPORARY REGRESSION (accepted, no backfill): every already-finalized iteration has NULL capacity, so until velocity_window new iterations finalize, the rate window is empty and forecasting uses the minimum-1-point fallback.
 <!-- SECTION:PLAN:END -->
 
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+rls-security-reviewer pass 2026-07-20 on 20260720000002_iteration_capacity.sql: HIGH finding — the finalized-metric trigger only fires on OLD.state='done', so a member can set state='done' + forged velocity/capacity in ONE update (empirically reproduced); fix = revoke update (state, velocity, capacity) on iterations from authenticated (finalize_iteration is postgres-owned SECURITY DEFINER, unaffected). LOW/info: project_capacity's SECURITY INVOKER is inert (both callers bypass RLS) — needs a grant-dependency comment. Merge held per review-hold policy; awaiting owner decision.
+
+Fix applied 2026-07-20 (commit d02f751): table-level UPDATE revoked from authenticated, update(goal) granted back; one-shot forge test added. rls-security-reviewer re-pass: CLEAN — bypass empirically confirmed closed, goal path and DEFINER RPCs unaffected. Integration 49/49 serial, unit 474 passed, lint clean.
+<!-- SECTION:NOTES:END -->
+
 ## Comments
 
 <!-- COMMENTS:BEGIN -->
@@ -57,3 +65,9 @@ created: 2026-07-18 03:19
 Dep added (advisor 2nd pass): the finalize RPC and rate formula must be built on category=done from the start (TASK-91), not accepted-literals, to avoid rebuilding it twice.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Person-day velocity: iterations.capacity snapshotted once by finalize_iteration, rate = ratio of sums via packages/core with shared golden fixtures (spec/fixtures/capacity.json), planning uses rate x planned capacity. Verified by integration + unit suites and two rls-security-reviewer passes (HIGH forge finding found and fixed via column grant).
+<!-- SECTION:FINAL_SUMMARY:END -->
