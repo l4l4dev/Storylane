@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils/format";
+import { writeErrorMessage } from "@/lib/utils/write-error";
 
 export type UpdateProfileState = { error?: string; success?: string };
 
@@ -83,7 +84,7 @@ export async function addTimeOff(
     if (error.code === "23505") {
       return { error: `${formatDate(date)} is already marked as time off.` };
     }
-    return { error: error.message };
+    return { error: writeErrorMessage(error, "You can only book your own time off.") };
   }
 
   revalidatePath("/settings");

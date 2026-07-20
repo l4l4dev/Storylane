@@ -6,6 +6,7 @@ import { assertRowAffected } from "@/lib/supabase/assert";
 import { clampVelocityWindow } from "@storylane/core";
 import { formatDate } from "@/lib/utils/format";
 import { parseWorkingWeekdays } from "@/lib/utils/working-days";
+import { writeErrorMessage } from "@/lib/utils/write-error";
 import type { InviteSearchResult } from "@/lib/types";
 
 export type { InviteSearchResult } from "@/lib/types";
@@ -196,7 +197,7 @@ export async function updateWorkingWeekdays(
     .select("id");
 
   if (error) {
-    return { error: error.message };
+    return { error: writeErrorMessage(error, "Only the project owner can change working days.") };
   }
   // RLS makes a non-owner's update a silent zero-row no-op rather than an error.
   if (!data || data.length === 0) {
@@ -235,7 +236,9 @@ export async function createCalendarException(
     if (error.code === "23505") {
       return { error: `${formatDate(date)} already has an exception. Remove it first.` };
     }
-    return { error: error.message };
+    return {
+      error: writeErrorMessage(error, "Only project members can add calendar exceptions."),
+    };
   }
   revalidatePath(`/projects/${projectId}/settings`);
   return {};
@@ -246,14 +249,18 @@ export async function deleteCalendarException(formData: FormData) {
   const projectId = String(formData.get("project_id"));
 
   const supabase = await createClient();
-  await assertRowAffected(
-    await supabase
-      .from("project_calendar_exceptions")
-      .delete()
-      .eq("id", id)
-      .eq("project_id", projectId)
-      .select("id"),
-  );
+  // Not assertRowAffected: two members with the settings page open both
+  // clicking the same X is routine, and the second one finding the row gone
+  // is the outcome they asked for, not a 500. Only a real failure surfaces.
+  const { error } = await supabase
+    .from("project_calendar_exceptions")
+    .delete()
+    .eq("id", id)
+    .eq("project_id", projectId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
   revalidatePath(`/projects/${projectId}/settings`);
 }
 

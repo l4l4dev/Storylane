@@ -198,6 +198,30 @@ describe.skipIf(!RUN)("working-day calendar RLS (integration)", () => {
       await leaveProject();
     });
 
+    // Backs deleteCalendarException's choice not to assert a row count: the
+    // second of two members deleting the same row must not see an error.
+    it("reports no error when the row is already gone", async () => {
+      const { data: created } = await asOwner
+        .from("project_calendar_exceptions")
+        .insert({ project_id: projectId, date: "2026-08-16", kind: "holiday" })
+        .select("id")
+        .single();
+
+      const first = await asOwner
+        .from("project_calendar_exceptions")
+        .delete()
+        .eq("id", created!.id)
+        .eq("project_id", projectId);
+      expect(first.error).toBeNull();
+
+      const second = await asOwner
+        .from("project_calendar_exceptions")
+        .delete()
+        .eq("id", created!.id)
+        .eq("project_id", projectId);
+      expect(second.error).toBeNull();
+    });
+
     it("cannot be re-parented to another project the caller also belongs to", async () => {
       const { data: other } = await asOwner
         .from("projects")
