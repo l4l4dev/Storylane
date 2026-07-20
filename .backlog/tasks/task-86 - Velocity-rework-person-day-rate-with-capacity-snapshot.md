@@ -1,11 +1,11 @@
 ---
 id: TASK-86
 title: 'Velocity rework: person-day rate with capacity snapshot'
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:04'
-updated_date: '2026-07-19 06:29'
+updated_date: '2026-07-20 01:02'
 labels:
   - web
   - db
@@ -30,6 +30,24 @@ doc-8 §7 with advisor corrections. Add iterations.capacity (person-days), writt
 - [ ] #3 Virtual groups and auto-planning use rate x planned capacity; golden fixtures shared and passing
 - [ ] #4 pnpm test passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+ADVISOR-APPROVED WITH CORRECTIONS (fable-advisor, 2026-07-20). Verdicts: (a) both SQL and TS implementations, cross-checked against ONE shared fixture — same pattern as spec/fixtures/state-templates.json, which both packages/core/src/story-state.test.ts and a DB integration test already assert against. Passing a client-computed capacity into the RPC is rejected: finalize_iteration is the single finalization path reached by lazy rollover from any client and from Edge Functions, so the invariant must live in the DB. (b) NO backfill — fabricating past capacity from today's membership is the retroactive recomputation doc-8 §7 forbids; the empty window is absorbed by the existing 'minimum 1 point per group' fallback. (c) iterations.velocity keeps its name and its done-category point-sum meaning; the rate's numerator is the SUM OF SNAPSHOTTED velocity values, never a re-aggregation of stories (that would let editing a story's points move finished history).
+
+1. Migration: alter table iterations add column capacity numeric (nullable, no default — the capacity>0 window filter excludes NULL and 0 alike). Existing iterations RLS covers it; still run rls-security-reviewer.
+2. New SQL function project_capacity(p_project_id, p_start, p_end) returns numeric — SECURITY INVOKER, called from finalize_iteration. working_weekdays (deduped as a set) + project_calendar_exceptions - user_time_off, over ALL current project_members. NO joined_at proration: doc-8 §7 means 'the member set at finalize time x every working day of the sprint', matching the snapshot-at-that-moment philosophy. Split out as its own function so fixtures can call it directly instead of assembling a whole finalize.
+3. CRITICAL (AC#2): the catch-up loop inserts a new iteration and re-reads it as v_latest, so a neglected project generates AND finalizes a chain of empty gap rows in ONE call (verified in 20260719000010 lines 115-150). Only the v_first pass writes a real capacity; every later pass writes capacity = 0. Otherwise gap rows enter the window with capacity>0 and points 0 and crush the rate. This is what AC#2's 'empty 1-day catch-up rows' means.
+4. Capacity must be computed from v_latest.end_date AFTER the manual-finish truncation (end_date = least(end_date, today), lines 77-89) — pin this with a test.
+5. packages/core: replace calculateVelocity with ratio-of-sums rate over the last velocity_window non-skipped, capacity>0 done iterations; empty window returns 0. Keep clampVelocityWindow.
+6. New pure calendar/capacity function in packages/core + spec/fixtures/capacity.json covering weekday defaults, holiday, extra_workday, personal time off, differing member sets, capacity-0, cadence change, and a DUPLICATE weekday entry (TASK-85's CHECK cannot reject repeats, so both implementations must treat the array as a set).
+7. Update ALL consumers, not just the board: apps/web/app/dashboard/actions.ts, dashboard/page.tsx, projects/[id]/settings/actions.ts and their tests. Dashboard velocity display becomes points-per-person-day. Virtual groups use rate x planned capacity, keeping the minimum-1-point fallback.
+8. Add capacity to the 'finalized' event jsonb; update the Slack finalize wording (absorbs TASK-62).
+9. Tests cover three finalize paths: with capacity, capacity=0 gap row, and skipped. Full suite from apps/web (AC#4).
+
+KNOWN TEMPORARY REGRESSION (accepted, no backfill): every already-finalized iteration has NULL capacity, so until velocity_window new iterations finalize, the rate window is empty and forecasting uses the minimum-1-point fallback.
+<!-- SECTION:PLAN:END -->
 
 ## Comments
 
