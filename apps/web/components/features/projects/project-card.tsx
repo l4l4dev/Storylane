@@ -51,7 +51,6 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
           </CardTitle>
           <div className="flex shrink-0 items-center gap-2">
             {project.archivedAt && <Badge variant="outline">Archived</Badge>}
-            <Badge>Tracker</Badge>
             <ProjectCardMenu
               projectId={project.id}
               projectName={project.name}

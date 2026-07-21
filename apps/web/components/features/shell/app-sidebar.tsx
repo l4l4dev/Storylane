@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { signOut } from "@/app/dashboard/actions";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -117,7 +116,6 @@ export function AppSidebar({
                     <Pin data-testid="pin-icon" className="size-3.5 shrink-0 text-muted-foreground" />
                   )}
                   <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                  <Badge data-testid="mode-badge" className="shrink-0">Tracker</Badge>
                 </Link>
               </DropdownMenuItem>
             ))}

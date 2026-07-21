@@ -24,13 +24,13 @@ function baseProject(overrides: Partial<ProjectCardData> = {}): ProjectCardData 
 }
 
 describe("ProjectCard", () => {
-  it("shows the Tracker badge and iteration/velocity summary", () => {
+  it("shows the iteration/velocity summary", () => {
     render(
       <ProjectCard
         project={baseProject({ currentIterationNumber: 4, velocityRate: 1.25 })}
       />,
     );
-    expect(screen.getByText("Tracker")).toBeInTheDocument();
+    expect(screen.queryByText("Tracker")).not.toBeInTheDocument();
     expect(screen.getByText("Iteration #4 · velocity 1.25 pts/person-day")).toBeInTheDocument();
   });
 
