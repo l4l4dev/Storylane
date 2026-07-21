@@ -25,6 +25,19 @@
                           in the board's side peek — see "Board layout" below)
 ```
 
+### Onboarding (doc-8 §4, TASK-93)
+
+A fresh signup lands on `/dashboard` with one project already present: **"My
+Tasks"**, a normal 1-day-cadence, minimal-template project owned by the new
+user (`handle_new_user` trigger,
+`supabase/migrations/20260721000001_personal_project_on_signup.sql`). This
+is not a special mode or flagged project — invites are allowed on it like
+any other project; it exists purely so a solo user can start working (and
+`/my-work` isn't empty) with zero setup. Nothing distinguishes it in the UI
+beyond its own settings (name, 1-day cadence) — the same rendering rules
+that already apply to any 1-day project (date-titled iterations, My Work's
+today-by-default inclusion) apply here without special-casing.
+
 ### Projects page (`/dashboard`) — redesigned 2026-07-07
 
 Shares the project pages' design language (same tokens, card styles, and

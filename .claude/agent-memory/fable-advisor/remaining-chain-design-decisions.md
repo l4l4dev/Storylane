@@ -24,9 +24,25 @@ this file records only judgments a successor should not re-derive or contradict.
   SECURITY DEFINER RPCs.
 - **TASK-93 seeding is transactional with signup** (failure blocks signup loudly).
   Why: a user without their personal project breaks the "My Work works immediately"
-  promise (AC#1); a silent catch would hide it. `seed_project` is internal-only
-  (REVOKE from anon/authenticated), called by trigger + create_project wrapper,
-  because auth.uid() is not the new user inside handle_new_user.
+  promise (AC#1); a silent catch would hide it.
+  CORRECTED 2026-07-21 (second-opinion review): the original plan's premise —
+  extract a `seed_project()` shared by a `create_project` RPC wrapper — is wrong.
+  `create_project` was dropped entirely in `20260718000001_remove_free_mode.sql`
+  (`drop function public.create_project(...)`) and never recreated; it has zero
+  callers anywhere in the repo. The web client's own project creation
+  (`apps/web/app/dashboard/actions.ts` createProject) already does a plain
+  `.from("projects").insert(...)`, relying on the existing unconditional AFTER
+  INSERT triggers (`handle_new_project` for owner membership, reads
+  `new.created_by`; `handle_new_project_states` for state seeding, reads
+  `new.state_template`) — neither depends on auth.uid(). Correct design: extend
+  `handle_new_user` (20260627000001_profiles.sql) directly with one more INSERT
+  into `projects` (`created_by = new.id` explicit, since auth.uid() isn't the new
+  user in that context), same transaction, right after the profiles INSERT. No
+  new `seed_project` function — there is no second caller to share it with
+  (YAGNI). SECURITY DEFINER RLS-bypass and same-transaction FK-visibility
+  (profiles row visible to the projects insert's FK check within the same
+  txn) both verified against the existing handle_new_user precedent, which
+  already inserts into profiles the same way.
 - **Personal project = normal project, no flag column.** My Work accent keys off
   `iteration_length = 1`. Adding an `is_personal` flag was rejected as speculative.
 - **TASK-98 baseline comes from `supabase db dump`, never a hand-squash.** Why:

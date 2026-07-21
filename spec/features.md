@@ -135,6 +135,18 @@
 - Comments and @mentions on stories
 - Activity log (timeline of changes within a project)
 
+#### Personal project on signup (doc-8 §4, TASK-93)
+- A fresh signup auto-creates one personal project ("My Tasks", 1-day
+  cadence, minimal state template, the new user as owner) via the
+  `handle_new_user` trigger — no manual setup, `/my-work` has content from
+  the first login (see spec/screens.md "Onboarding").
+- Ordinary project: no flag column, invites allowed, no special-casing
+  anywhere in the schema or UI — My Work's accent for it comes from its
+  `iteration_length = 1`, the same signal any other 1-day project gets.
+- Seeding runs in the same transaction as the `auth.users` insert; a
+  seeding failure fails signup rather than leaving a user without their
+  personal project.
+
 #### Projects Page & Account Settings (2026-07-07)
 - Projects page (`/dashboard`): inline project creation (no overlay dialog)
   with all initial settings in one form — name, description, state template
