@@ -73,25 +73,58 @@ describe("AppSidebar project switcher", () => {
     expect(items.some((t) => t?.includes("Archived Project"))).toBe(false);
   });
 
-  it("lists My Work above the Projects list", async () => {
+  it("does not list My Work inside the Projects dropdown (it's a fixed link now)", async () => {
     render(<AppSidebar project={CURRENT_PROJECT} projects={[CURRENT_PROJECT]} username="dev" />);
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Current Project" }));
 
     const items = screen.getAllByRole("menuitem").map((el) => el.textContent);
-    const myWorkIndex = items.findIndex((t) => t?.includes("My Work"));
-    const projectIndex = items.findIndex((t) => t?.includes("Current Project"));
-    expect(myWorkIndex).toBeGreaterThanOrEqual(0);
-    expect(myWorkIndex).toBeLessThan(projectIndex);
+    expect(items.some((t) => t?.includes("My Work"))).toBe(false);
+  });
+
+  it("offers a 'New project' entry navigating to /dashboard?new=1", async () => {
+    render(<AppSidebar project={CURRENT_PROJECT} projects={[CURRENT_PROJECT]} username="dev" />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Current Project" }));
+
+    const newProjectItem = screen.getByRole("menuitem", { name: /new project/i });
+    expect(newProjectItem).toHaveAttribute("href", "/dashboard?new=1");
+  });
+
+  it("sizes the dropdown trigger as size=default (h-8), not size=sm", () => {
+    render(<AppSidebar project={CURRENT_PROJECT} projects={[CURRENT_PROJECT]} username="dev" />);
+
+    expect(screen.getByRole("button", { name: "Current Project" })).toHaveClass("h-8");
+  });
+});
+
+describe("AppSidebar — fixed My Work link", () => {
+  it("is a top-level nav link, always present", () => {
+    render(<AppSidebar project={CURRENT_PROJECT} projects={[CURRENT_PROJECT]} username="dev" />);
+
+    expect(screen.getByRole("link", { name: /my work/i })).toHaveAttribute("href", "/my-work");
+  });
+
+  it("is highlighted via aria-current when on /my-work", () => {
+    render(<AppSidebar project={null} projects={[CURRENT_PROJECT]} username="dev" />);
+
+    expect(screen.getByRole("link", { name: /my work/i })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("is not highlighted when a project is active", () => {
+    render(<AppSidebar project={CURRENT_PROJECT} projects={[CURRENT_PROJECT]} username="dev" />);
+
+    expect(screen.getByRole("link", { name: /my work/i })).not.toHaveAttribute("aria-current");
   });
 });
 
 describe("AppSidebar with no current project (My Work)", () => {
-  it("shows 'My Work' as the switcher trigger label", () => {
+  it("shows 'Projects' as the switcher trigger label", () => {
     render(<AppSidebar project={null} projects={[CURRENT_PROJECT]} username="dev" />);
 
-    expect(screen.getByRole("button", { name: "My Work" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Projects" })).toBeInTheDocument();
   });
 
   it("omits the per-project section nav", () => {

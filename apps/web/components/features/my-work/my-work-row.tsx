@@ -102,8 +102,8 @@ export function MyWorkRow({ story }: { story: MyWorkRowData }) {
           // Per-project accent on the BORDER only (doc-12 "ラベルの色も"): the
           // border tints the chip per project, but the label text stays
           // text-foreground — the raw accent hue as text fails WCAG 4.5:1 on
-          // the card for several palette slots (fable-advisor). Same rule
-          // applies wherever this accent is reused (see project-color.ts).
+          // the card for several palette slots. Same rule applies wherever
+          // this accent is reused (see project-color.ts).
           className="hidden max-w-28 shrink-0 truncate border-[color:var(--project-accent)] sm:inline-flex"
           title={story.projectName}
         >

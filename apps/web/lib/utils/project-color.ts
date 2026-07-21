@@ -15,8 +15,7 @@
 //
 // Use --project-accent for BACKGROUNDS and BORDERS only, never as text color:
 // several palette slots fall below WCAG 4.5:1 as text on the light card
-// surface (fable-advisor, TASK-108). Reuses in the sidebar/dashboard must
-// follow the same rule.
+// surface. Reuses in the sidebar/dashboard must follow the same rule.
 
 export const PROJECT_ACCENT_COUNT = 8;
 

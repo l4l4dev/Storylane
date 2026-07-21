@@ -11,6 +11,7 @@ import {
   LogOut,
   ListTodo,
   Pin,
+  Plus,
   Settings,
   SquareKanban,
   type LucideIcon,
@@ -46,6 +47,37 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Activity", segment: "activity", icon: Activity },
   { label: "Settings", segment: "settings", icon: Settings },
 ];
+
+// Shared "what an active sidebar link looks like" — used by both the fixed
+// My Work link and the per-project section nav below, so a styling tweak
+// only has one place to land.
+function SidebarNavLink({
+  href,
+  icon: Icon,
+  label,
+  active,
+}: {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+      )}
+    >
+      <Icon className="size-4 shrink-0" />
+      {label}
+    </Link>
+  );
+}
 
 // Persistent app shell sidebar (spec/screens.md "Navigation"): brand,
 // project switcher, section nav, and at the bottom the theme toggle and
@@ -90,22 +122,16 @@ export function AppSidebar({
           Storylane
         </Link>
 
+        <SidebarNavLink href="/my-work" icon={ListTodo} label="My Work" active={project === null} />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="w-full justify-between gap-1.5">
-              <span className="truncate">{project ? project.name : "My Work"}</span>
+            <Button variant="outline" size="default" className="w-full justify-between gap-1.5">
+              <span className="truncate">{project ? project.name : "Projects"}</span>
               <ChevronsUpDown className="shrink-0 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-52">
-            <DropdownMenuItem asChild>
-              <Link href="/my-work">
-                <Check className={cn("mr-1", project === null ? "opacity-100" : "opacity-0")} />
-                <ListTodo className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate">My Work</span>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuLabel>Projects</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {sortedProjects.map((p) => (
@@ -123,6 +149,12 @@ export function AppSidebar({
             <DropdownMenuItem asChild>
               <Link href="/dashboard">All projects</Link>
             </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard?new=1">
+                <Plus className="size-3.5 shrink-0 text-muted-foreground" />
+                <span>New project</span>
+              </Link>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -134,23 +166,7 @@ export function AppSidebar({
           // resolves, so the Board item doesn't flash inactive.
           const active =
             pathname.startsWith(href) || (item.segment === "board" && pathname === base);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.segment}
-              href={href}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
-                active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-              )}
-            >
-              <Icon className="size-4 shrink-0" />
-              {item.label}
-            </Link>
-          );
+          return <SidebarNavLink key={item.segment} href={href} icon={item.icon} label={item.label} active={active} />;
         })}
       </nav>
 

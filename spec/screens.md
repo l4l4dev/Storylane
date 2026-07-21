@@ -80,23 +80,33 @@ UsernameEditor is removed from this page (moved to `/settings`).
   across every write-capable table (see spec/rls.md); full enforcement is
   follow-up work.
 
-### Navigation (Web) — updated 2026-07-06
+### Navigation (Web) — updated 2026-07-21 (doc-12 Thread B)
 
 A fixed left sidebar (multica/Linear style) replaces the former top header tabs.
 It is rendered once by the project layout (and, with no current project, by
 the My Work layout — doc-8 §9) and contains, top to bottom: the Storylane
-brand (links to `/dashboard`), the project switcher, the section nav
-(**Board / Epics / Iterations / Activity / Settings**, active item
-highlighted — omitted outside a project), and at the bottom the theme
-toggle and the account menu (sign out, link to `/settings`). Pages outside
-a project or My Work (dashboard, login) keep their own minimal headers.
+brand (links to `/dashboard`), a **fixed My Work link**, the Projects
+switcher, the section nav (**Board / Epics / Iterations / Activity /
+Settings**, active item highlighted — omitted outside a project), and at
+the bottom the theme toggle and the account menu (sign out, link to
+`/settings`). Pages outside a project or My Work (dashboard, login) keep
+their own minimal headers.
 
-**Project switcher (polished 2026-07-07):** the switcher must read as a
-control, not a label — chevron affordance on the trigger. The dropdown
-lists a **My Work** entry above the Projects list (doc-8 §9 — reachable
-from any project page, not just `/my-work` itself), then favorites first
-(pin icon) among the projects, excluding archived ones; "All projects"
-links to `/dashboard`.
+**My Work link:** always visible (My Work is a cross-project dashboard,
+doc-12 Thread A), styled like a section-nav item with an icon, highlighted
+via `aria-current="page"` when on `/my-work` — no longer an entry inside
+the Projects dropdown.
+
+**Projects switcher (resized 2026-07-21):** the switcher must read as a
+control, not a label — chevron affordance on the trigger, trigger button
+`size="default"` (grown from `size="sm"` for an easier target). The
+trigger shows the current project's name, or "Projects" with no current
+project. The dropdown lists favorites first (pin icon) among the projects,
+excluding archived ones, then "All projects" (`/dashboard`) and a
+**"+ New project"** entry (`/dashboard?new=1`, opens the dashboard's
+inline create panel pre-opened) — the switcher is the sole project-creation
+entry point; My Work's own page has no New-project button (superseded
+TASK-104's).
 
 ### Board layout (Web) — List / Kanban views
 

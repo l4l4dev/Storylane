@@ -66,6 +66,13 @@ export function MyWorkSections({
     () => buildMyWorkSections(activeItems, projects, iterationMap, pinnedSet, onlyCurrentIteration),
     [activeItems, projects, iterationMap, pinnedSet, onlyCurrentIteration],
   );
+  // Unfiltered counts drive the toggle's own visibility — gating it on the
+  // filtered todo/doing would let checking the box empty both lists and hide
+  // the only control that could uncheck it again (no persistence to recover from).
+  const hasFilterableItems = useMemo(() => {
+    const unfiltered = buildMyWorkSections(activeItems, projects, iterationMap, pinnedSet, false);
+    return unfiltered.todo.length > 0 || unfiltered.doing.length > 0;
+  }, [activeItems, projects, iterationMap, pinnedSet]);
   const todayKey = utcTodayKey();
   const doneGroups = useMemo(() => groupDoneByDate(doneItems), [doneItems]);
 
@@ -74,7 +81,7 @@ export function MyWorkSections({
 
   return (
     <div>
-      {(todo.length > 0 || doing.length > 0) && (
+      {hasFilterableItems && (
         <label className="mb-4 flex w-fit items-center gap-2 text-sm text-muted-foreground">
           <input
             type="checkbox"

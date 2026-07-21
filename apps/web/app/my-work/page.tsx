@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { addDays, type StateCategory } from "@storylane/core";
 import { createClient } from "@/lib/supabase/server";
 import { rolloverIterationSafely } from "@/lib/supabase/rollover";
@@ -13,7 +12,6 @@ import {
 } from "@/components/features/my-work/my-work-sections";
 import type { MyWorkRowData } from "@/components/features/my-work/my-work-row";
 import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add";
-import { Button } from "@/components/ui/button";
 
 // How far back the Done section reaches (doc-12 Thread A) — recent completions
 // only; full history is each project's Iterations page.
@@ -45,6 +43,10 @@ export default async function MyWorkPage() {
   }));
   const projectIds = projects.map((p) => p.id);
   const personalProjects = projects.filter((p) => p.isPersonal);
+  // The common case of exactly one personal project gets its own draft card
+  // (doc-8 §10) — known up front so its data can be fetched alongside
+  // everything else below instead of as a second, sequential round trip.
+  const soloPersonalProject = personalProjects.length === 1 ? personalProjects[0] : null;
 
   // Roll over EVERY project's current iteration before reading it (doc-12:
   // the current-iteration filter + Today membership now depend on all
@@ -53,23 +55,23 @@ export default async function MyWorkPage() {
   // "Automatic scheduling & rollover").
   await Promise.all(projects.map((p) => rolloverIterationSafely(p.id)));
 
-  async function fetchCurrentIteration(projectId: string): Promise<readonly [string, string | null]> {
-    const { data } = await supabase
-      .from("iterations")
-      .select("id")
-      .eq("project_id", projectId)
-      .neq("state", "done")
-      .order("number", { ascending: false })
-      .limit(1);
-    return [projectId, data?.[0]?.id ?? null] as const;
-  }
+  // An explicit UTC timestamp (not a bare date) so the comparison below is
+  // unambiguous regardless of the DB session's timezone setting — a bare
+  // "YYYY-MM-DD" literal would be cast to timestamptz using that session
+  // timezone, not necessarily UTC. Built from imported helpers, not an
+  // inline Date.now(), which the RSC purity rule forbids during render.
+  const doneSince = `${addDays(utcTodayKey(), -DONE_WINDOW_DAYS)}T00:00:00.000Z`;
 
-  // The date 7 days back (midnight UTC); a `date` compares fine against the
-  // timestamptz completed_at. Built from imported helpers, not an inline
-  // Date.now(), which the RSC purity rule forbids during render.
-  const doneSince = addDays(utcTodayKey(), -DONE_WINDOW_DAYS);
-
-  const [{ data: statesRows }, { data: storyRows }, { data: pinRows }, currentIterationEntries] = await Promise.all([
+  const [
+    { data: statesRows },
+    { data: storyRows },
+    { data: pinRows },
+    { data: iterationRows },
+    { data: soloEpics },
+    { data: soloLabels },
+    { data: soloMembers },
+    { data: soloProject },
+  ] = await Promise.all([
     supabase
       .from("project_states")
       .select("id, project_id, name, action_label, category, position, created_at")
@@ -87,8 +89,41 @@ export default async function MyWorkPage() {
     user
       ? supabase.from("story_pins").select("story_id").eq("user_id", user.id)
       : Promise.resolve({ data: null }),
-    Promise.all(projects.map((p) => fetchCurrentIteration(p.id))),
+    // One batched query for every project's latest non-done iteration,
+    // instead of one query per project — the per-project "current" id is
+    // picked out client-side below (first row per project_id, since this
+    // is ordered project_id asc, number desc).
+    supabase
+      .from("iterations")
+      .select("id, project_id")
+      .in("project_id", projectIds)
+      .neq("state", "done")
+      .order("project_id", { ascending: true })
+      .order("number", { ascending: false }),
+    soloPersonalProject
+      ? supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position")
+      : Promise.resolve({ data: null }),
+    soloPersonalProject
+      ? supabase.from("labels").select("id, name").eq("project_id", soloPersonalProject.id).order("name")
+      : Promise.resolve({ data: null }),
+    soloPersonalProject
+      ? supabase
+          .from("project_members")
+          .select("user_id, profiles(display_name, is_agent)")
+          .eq("project_id", soloPersonalProject.id)
+      : Promise.resolve({ data: null }),
+    soloPersonalProject
+      ? supabase.from("projects").select("point_scale, custom_points").eq("id", soloPersonalProject.id).single()
+      : Promise.resolve({ data: null }),
   ]);
+
+  const iterationByProject = new Map<string, string>();
+  for (const row of iterationRows ?? []) {
+    if (!iterationByProject.has(row.project_id)) iterationByProject.set(row.project_id, row.id);
+  }
+  const currentIterationEntries: ReadonlyArray<readonly [string, string | null]> = projectIds.map(
+    (id) => [id, iterationByProject.get(id) ?? null] as const,
+  );
 
   const statesByProject = new Map<string, ProjectState[]>();
   for (const state of (statesRows ?? []) as ProjectState[]) {
@@ -99,10 +134,13 @@ export default async function MyWorkPage() {
   const categoryByStateId = new Map((statesRows ?? []).map((s) => [s.id, s.category as StateCategory]));
   const pinnedStoryIds = new Set((pinRows ?? []).map((p) => p.story_id));
   const projectIdSet = new Set(projectIds);
+  const projectById = new Map(projects.map((p) => [p.id, p]));
 
   type StoryRow = NonNullable<typeof storyRows>[number];
   function toRowData(raw: StoryRow): MyWorkRowData {
-    const project = projects.find((p) => p.id === raw.project_id);
+    // visibleStories (below) is pre-filtered to projectIdSet, which is built
+    // from this same projects array — the lookup always hits.
+    const project = projectById.get(raw.project_id)!;
     return {
       id: raw.id,
       number: raw.number,
@@ -110,7 +148,7 @@ export default async function MyWorkPage() {
       storyType: raw.story_type,
       points: raw.points,
       projectId: raw.project_id,
-      projectName: project?.name ?? "Unknown project",
+      projectName: project.name,
       stateBadge: storyStateBadge(raw.state_id, statesByProject.get(raw.project_id) ?? []),
       pinned: pinnedStoryIds.has(raw.id),
     };
@@ -131,30 +169,10 @@ export default async function MyWorkPage() {
     .filter((s) => categoryByStateId.get(s.state_id as string) === "done" && s.completed_at)
     .map((s) => ({ completedAt: s.completed_at as string, row: toRowData(s) }));
 
-  // No global quick-add shortcut (doc-8 §10) — the common case of exactly one
-  // personal project gets its own draft card here (auto-assigned to the user).
-  const soloPersonalProject = personalProjects.length === 1 ? personalProjects[0] : null;
-  const [{ data: soloEpics }, { data: soloLabels }, { data: soloMembers }, { data: soloProject }] = soloPersonalProject
-    ? await Promise.all([
-        supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position"),
-        supabase.from("labels").select("id, name").eq("project_id", soloPersonalProject.id).order("name"),
-        supabase
-          .from("project_members")
-          .select("user_id, profiles(display_name, is_agent)")
-          .eq("project_id", soloPersonalProject.id),
-        supabase.from("projects").select("point_scale, custom_points").eq("id", soloPersonalProject.id).single(),
-      ])
-    : [{ data: null }, { data: null }, { data: null }, { data: null }];
-
   return (
     <main className="mx-auto max-w-3xl p-6">
       <div className="mb-4 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">My Work</h1>
-        {/* TASK-104 (doc-11 D2). NOTE: TASK-109 moves project creation into
-            the sidebar's Projects dropdown and removes this button. */}
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/dashboard?new=1">New project</Link>
-        </Button>
       </div>
 
       {soloPersonalProject && (

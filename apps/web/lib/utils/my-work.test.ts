@@ -85,6 +85,31 @@ describe("buildMyWorkSections", () => {
     expect(todo[0].stories.map((s) => s.id)).toEqual(["first", "second"]);
   });
 
+  it("orders Today by personal-project group first, then position", () => {
+    const { today } = buildMyWorkSections(
+      [
+        story({ id: "team-pinned", projectId: "team-a", position: 0 }),
+        story({ id: "personal-second", projectId: "personal", iterationId: "iter-1", position: 2 }),
+        story({ id: "personal-first", projectId: "personal", iterationId: "iter-1", position: 1 }),
+      ],
+      [PERSONAL, TEAM_A],
+      new Map([["personal", "iter-1"]]),
+      new Set(["team-pinned"]),
+    );
+    expect(today.map((s) => s.id)).toEqual(["personal-first", "personal-second", "team-pinned"]);
+  });
+
+  it("keeps a personal project's non-current-iteration, unpinned story out of Today", () => {
+    const { today, todo } = buildMyWorkSections(
+      [story({ id: "s1", projectId: "personal", iterationId: "iter-old" })],
+      [PERSONAL],
+      new Map([["personal", "iter-1"]]),
+      new Set(),
+    );
+    expect(today).toEqual([]);
+    expect(todo[0].stories.map((s) => s.id)).toEqual(["s1"]);
+  });
+
   it("onlyCurrentIteration drops out-of-iteration stories from Doing and Todo but not Today", () => {
     const stories = [
       story({ id: "todo-current", projectId: "team-a", iterationId: "iter-a" }),

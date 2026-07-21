@@ -99,6 +99,21 @@ describe("MyWorkSections", () => {
     expect(screen.getByText("Story in-iter")).toBeInTheDocument();
   });
 
+  it("keeps the toggle visible even when checking it empties Todo and Doing", () => {
+    render(
+      <MyWorkSections
+        activeItems={[activeItem("backlog", { iterationId: null })]}
+        doneItems={[]}
+        projects={[TEAM]}
+        currentIterationByProject={[["team-a", "iter-a"]]}
+        pinnedStoryIds={[]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /only current iteration/i }));
+    expect(screen.queryByText("Story backlog")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /only current iteration/i })).toBeInTheDocument();
+  });
+
   it("shows the empty state when there is nothing at all", () => {
     render(
       <MyWorkSections
