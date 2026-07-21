@@ -75,6 +75,15 @@
   and `promote_story_to_epic`, converted to SECURITY DEFINER for this), so a
   direct client insert is denied. A composite FK `(story_id, project_id) →
   stories(id, project_id)` makes a cross-project story reference impossible
+- iterations INSERT (2026-07-21, TASK-110): the client INSERT policy was
+  **dropped** and the table-level INSERT grant revoked from `authenticated` —
+  every new iteration row is created by the `finalize_iteration` SECURITY
+  DEFINER RPC (which also owns rollover/skip), never a direct client write.
+  This closes a forged-history hole: RLS can't restrict column values, so the
+  old owner/member INSERT policy let a member insert a `state='done'` row with
+  an arbitrary `number`/`velocity`/`capacity`, derailing sprint numbering and
+  poisoning the velocity-rate window. Mirrors the `velocity`/`capacity` UPDATE
+  lockdown (TASK-86); the only remaining client write is `update (goal)`
 - Membership admin (2026-07-15, TASK-54): role changes and removals are
   **RPC-only** — `change_member_role` / `remove_member` (SECURITY DEFINER,
   per-project `membership:` advisory lock). The direct owner UPDATE/DELETE
