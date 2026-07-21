@@ -64,7 +64,9 @@ export default async function BoardPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, velocity_window, iteration_length, point_scale, custom_points, working_weekdays")
+    .select(
+      "id, name, velocity_window, iteration_length, iteration_term, point_scale, custom_points, working_weekdays",
+    )
     .eq("id", id)
     .single();
 
@@ -227,7 +229,7 @@ export default async function BoardPage({
   const MAX_PROJECTED_SPRINTS = 26;
   const projectedSprints = currentIteration
     ? Array.from({ length: Math.min(initialBacklogItems.length, MAX_PROJECTED_SPRINTS) }, (_, i) =>
-        projectedIterationDates(currentIteration.end_date, project.iteration_length, i + 1),
+        projectedIterationDates(currentIteration.end_date, project.iteration_length, i + 1, project.working_weekdays),
       )
     : [];
   const calendarStart = currentIteration?.start_date;
@@ -356,6 +358,8 @@ export default async function BoardPage({
         backlogBudgets={backlogBudgets}
         nextVirtualIterationNumber={nextVirtualIterationNumber}
         iterationLength={project.iteration_length}
+        iterationTerm={project.iteration_term}
+        workingWeekdays={project.working_weekdays}
         iterationGoals={iterationGoals}
         canFinishIteration={canFinishIteration}
         // Same predicate as canFinishIteration (owner/member) — matches

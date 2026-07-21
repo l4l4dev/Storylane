@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createProject, type NewProjectInviteResult } from "@/app/dashboard/actions";
-import { ITERATION_LENGTHS, POINT_SCALES, STATE_TEMPLATES } from "@/lib/types";
+import { ITERATION_LENGTHS, POINT_SCALES, STATE_TEMPLATES, iterationLengthLabel } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,15 +55,21 @@ export function InlineCreatePanel() {
           <Textarea id="project-description" name="description" rows={2} />
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="project-iteration-length">Iteration length (days)</Label>
-          <NativeSelect id="project-iteration-length" name="iteration_length" defaultValue={14}>
-            {ITERATION_LENGTHS.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </NativeSelect>
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Label htmlFor="project-iteration-term">What you call an iteration</Label>
+            <Input id="project-iteration-term" name="iteration_term" maxLength={30} placeholder="Iteration" />
+          </div>
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Label htmlFor="project-iteration-length">Length</Label>
+            <NativeSelect id="project-iteration-length" name="iteration_length" defaultValue={14}>
+              {ITERATION_LENGTHS.map((d) => (
+                <option key={d} value={d}>
+                  {iterationLengthLabel(d)}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="project-velocity-window">Velocity window</Label>

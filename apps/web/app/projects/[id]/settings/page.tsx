@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ITERATION_LENGTHS, POINT_SCALES } from "@/lib/types";
+import { ITERATION_LENGTHS, POINT_SCALES, iterationLengthLabel } from "@/lib/types";
 import { IntegrationSettings, type IntegrationRow } from "@/components/features/projects/integration-settings";
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
 import { MemberList } from "@/components/features/projects/member-list";
@@ -98,9 +98,20 @@ export default async function ProjectSettingsPage({
               disabled={!isOwner}
             />
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-1 flex-col gap-1.5">
-                <Label htmlFor="settings-iteration-length">Iteration length (days)</Label>
+              <Label htmlFor="settings-iteration-term">What you call an iteration</Label>
+              <Input
+                id="settings-iteration-term"
+                name="iteration_term"
+                defaultValue={project.iteration_term}
+                maxLength={30}
+                placeholder="Iteration"
+                disabled={!isOwner}
+              />
+            </div>
+            <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor="settings-iteration-length">Length</Label>
                 <NativeSelect
                   id="settings-iteration-length"
                   name="iteration_length"
@@ -109,7 +120,7 @@ export default async function ProjectSettingsPage({
                 >
                   {ITERATION_LENGTHS.map((d) => (
                     <option key={d} value={d}>
-                      {d}
+                      {iterationLengthLabel(d)}
                     </option>
                   ))}
                 </NativeSelect>

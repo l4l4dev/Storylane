@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
-import { clampVelocityWindow } from "@storylane/core";
+import { clampIterationLength, clampVelocityWindow } from "@storylane/core";
 import { formatDate } from "@/lib/utils/format";
 import { parseWorkingWeekdays } from "@/lib/utils/working-days";
 import { writeErrorMessage } from "@/lib/utils/write-error";
@@ -41,7 +41,13 @@ export async function updateProject(formData: FormData) {
   const id = String(formData.get("project_id"));
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
-  const iterationLength = Number(formData.get("iteration_length") ?? 14);
+  // Clamped rather than passed through: projects_iteration_length_range
+  // rejects anything outside 1-90, and this action has no error channel — an
+  // out-of-range post would surface as a raw exception, not a message.
+  const iterationLength = clampIterationLength(Number(formData.get("iteration_length") ?? 14));
+  // Free text (doc-8 §5), but never blank: the DB CHECK rejects an empty
+  // term and the headings that render it would have nothing to show.
+  const iterationTerm = String(formData.get("iteration_term") ?? "").trim().slice(0, 30) || "Iteration";
   const pointScale = String(formData.get("point_scale") ?? "fibonacci");
   const velocityWindow = clampVelocityWindow(Number(formData.get("velocity_window") ?? 3));
 
@@ -57,6 +63,7 @@ export async function updateProject(formData: FormData) {
         name,
         description,
         iteration_length: iterationLength,
+        iteration_term: iterationTerm,
         point_scale: pointScale,
         velocity_window: velocityWindow,
       })

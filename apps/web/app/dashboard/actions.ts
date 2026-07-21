@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import type { InviteSearchResult } from "@/lib/types";
 import { STATE_TEMPLATES } from "@/lib/types";
-import { clampVelocityWindow } from "@storylane/core";
+import { clampIterationLength, clampVelocityWindow } from "@storylane/core";
 
 export type NewProjectInviteResult = InviteSearchResult;
 
@@ -49,7 +49,11 @@ export async function searchUserForNewProject(query: string): Promise<NewProject
 export async function createProject(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
-  const iterationLength = Number(formData.get("iteration_length") ?? 14);
+  const iterationLength = clampIterationLength(Number(formData.get("iteration_length") ?? 14));
+  // Free text (doc-8 §5), never blank: the DB CHECK rejects an empty term and
+  // the headings that render it would have nothing to show. Same rule as
+  // settings/actions.ts updateProject.
+  const iterationTerm = String(formData.get("iteration_term") ?? "").trim().slice(0, 30) || "Iteration";
   const pointScale = String(formData.get("point_scale") ?? "fibonacci");
   const velocityWindow = clampVelocityWindow(Number(formData.get("velocity_window") ?? 3));
   const rawTemplate = String(formData.get("state_template") ?? "classic");
@@ -85,6 +89,7 @@ export async function createProject(formData: FormData) {
       name,
       description,
       iteration_length: iterationLength,
+      iteration_term: iterationTerm,
       point_scale: pointScale,
       velocity_window: velocityWindow,
       state_template: stateTemplate,

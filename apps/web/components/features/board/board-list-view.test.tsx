@@ -35,19 +35,19 @@ describe("IterationGoalInput", () => {
   });
 
   it("renders saved or ghost text with a persistent edit affordance by default", () => {
-    const { unmount } = render(<IterationGoalInput projectId="p1" number={4} initialGoal="Ship it" />);
+    const { unmount } = render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="Ship it" />);
     expect(screen.queryByRole("textbox", { name: "Iteration #4 goal" })).not.toBeInTheDocument();
-    const editButton = screen.getByRole("button", { name: "Edit iteration #4 goal: Ship it" });
+    const editButton = screen.getByRole("button", { name: "Edit Iteration #4 goal: Ship it" });
     expect(editButton).toHaveTextContent("Ship it");
     expect(editButton.querySelector("svg")).toHaveClass("opacity-60");
     unmount();
 
-    render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
-    expect(screen.getByRole("button", { name: "Add iteration #4 goal" })).toHaveTextContent("Add goal…");
+    render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="" />);
+    expect(screen.getByRole("button", { name: "Add Iteration #4 goal" })).toHaveTextContent("Add goal…");
   });
 
   it("opens on click, commits on Enter, and returns to text", async () => {
-    render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="" />);
     fireEvent.click(screen.getByText("Add goal…"));
     const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
     fireEvent.change(input, { target: { value: "Ship it" } });
@@ -65,7 +65,7 @@ describe("IterationGoalInput", () => {
   });
 
   it("commits on blur", async () => {
-    render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="" />);
     fireEvent.click(screen.getByText("Add goal…"));
     const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
     fireEvent.change(input, { target: { value: "Ship it" } });
@@ -78,7 +78,7 @@ describe("IterationGoalInput", () => {
   });
 
   it("discards on Escape without saving", () => {
-    render(<IterationGoalInput projectId="p1" number={4} initialGoal="Original" />);
+    render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="Original" />);
     fireEvent.click(screen.getByText("Original"));
     const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
     fireEvent.change(input, { target: { value: "Draft" } });
@@ -88,7 +88,7 @@ describe("IterationGoalInput", () => {
   });
 
   it("ignores Enter and Escape while IME composition is active", () => {
-    render(<IterationGoalInput projectId="p1" number={4} initialGoal="Original" />);
+    render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="Original" />);
     fireEvent.click(screen.getByText("Original"));
     const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
     fireEvent.change(input, { target: { value: "変換中" } });
@@ -100,7 +100,7 @@ describe("IterationGoalInput", () => {
 
   it("keeps the editor and typed value when saving fails", async () => {
     upsertIterationGoalMock.mockRejectedValueOnce(new Error("Not a member"));
-    render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="" />);
     fireEvent.click(screen.getByText("Add goal…"));
     const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
     fireEvent.change(input, { target: { value: "Ship it" } });
@@ -120,7 +120,7 @@ describe("IterationGoalInput", () => {
           rejectSave = reject;
         }),
     );
-    render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="" />);
     fireEvent.click(screen.getByText("Add goal…"));
     const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
     fireEvent.change(input, { target: { value: "Ship it" } });
@@ -138,7 +138,7 @@ describe("IterationGoalInput", () => {
   });
 
   it("restores focus after a successful save and after Escape", async () => {
-    const { unmount } = render(<IterationGoalInput projectId="p1" number={4} initialGoal="" />);
+    const { unmount } = render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="" />);
     fireEvent.click(screen.getByText("Add goal…"));
     const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
     fireEvent.change(input, { target: { value: "Ship it" } });
@@ -146,22 +146,22 @@ describe("IterationGoalInput", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(screen.getByRole("button", { name: /Edit iteration #4 goal/ })).toHaveFocus();
+    expect(screen.getByRole("button", { name: /Edit Iteration #4 goal/ })).toHaveFocus();
     unmount();
 
-    render(<IterationGoalInput projectId="p1" number={4} initialGoal="Original" />);
+    render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="Original" />);
     fireEvent.click(screen.getByText("Original"));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Iteration #4 goal" }), { key: "Escape" });
-    expect(screen.getByRole("button", { name: /Edit iteration #4 goal/ })).toHaveFocus();
+    expect(screen.getByRole("button", { name: /Edit Iteration #4 goal/ })).toHaveFocus();
   });
 
   it("preserves a draft across a prop change and uses the new server value on Escape", () => {
-    const { rerender } = render(<IterationGoalInput projectId="p1" number={4} initialGoal="Original" />);
+    const { rerender } = render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="Original" />);
     fireEvent.click(screen.getByText("Original"));
     const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
     fireEvent.change(input, { target: { value: "Local draft" } });
 
-    rerender(<IterationGoalInput projectId="p1" number={4} initialGoal="External update" />);
+    rerender(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="External update" />);
 
     expect(screen.getByRole("textbox", { name: "Iteration #4 goal" })).toHaveValue("Local draft");
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Iteration #4 goal" }), { key: "Escape" });
@@ -176,13 +176,13 @@ describe("IterationGoalInput", () => {
           resolveSave = resolve;
         }),
     );
-    const { rerender } = render(<IterationGoalInput projectId="p1" number={4} initialGoal="Original" />);
+    const { rerender } = render(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="Original" />);
     fireEvent.click(screen.getByText("Original"));
     const input = screen.getByRole("textbox", { name: "Iteration #4 goal" });
     fireEvent.change(input, { target: { value: "Local save" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    rerender(<IterationGoalInput projectId="p1" number={4} initialGoal="External update" />);
+    rerender(<IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="External update" />);
     expect(screen.getByRole("textbox", { name: "Iteration #4 goal" })).toHaveValue("Local save");
 
     await act(async () => {
@@ -203,7 +203,7 @@ describe("IterationGoalInput", () => {
     );
     render(
       <>
-        <IterationGoalInput projectId="p1" number={4} initialGoal="Original" />
+        <IterationGoalInput projectId="p1" number={4} label="Iteration #4" initialGoal="Original" />
         <button type="button">Other control</button>
       </>,
     );
@@ -271,6 +271,8 @@ function boardProps(stories: BoardStory[]) {
     backlogBudgets: [5],
     nextVirtualIterationNumber: 4,
     iterationLength: 14,
+    iterationTerm: "Iteration",
+    workingWeekdays: [1, 2, 3, 4, 5],
     iterationGoals: {},
     showIcebox: false,
     filter: {},
@@ -355,6 +357,8 @@ describe("IterationHeaderRow", () => {
       number: 4,
       points: 3,
       projectId: "p1",
+      term: "Iteration",
+      iterationLength: 14,
       goal: "",
       projectedDates: null,
       collapsed: false,

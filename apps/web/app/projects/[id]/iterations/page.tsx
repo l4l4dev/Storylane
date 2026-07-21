@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { groupStoriesByIteration } from "@/lib/utils/board";
 import { formatDate } from "@/lib/utils/format";
+import { iterationLabel } from "@/lib/utils/iterations";
 import { StoryCard, type StoryCardData } from "@/components/features/board/story-card";
 import { Badge } from "@/components/ui/badge";
 import { ensureCurrentIteration } from "../board/actions";
@@ -19,7 +20,7 @@ export default async function IterationsPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name")
+    .select("id, name, iteration_length, iteration_term")
     .eq("id", id)
     .single();
 
@@ -86,7 +87,7 @@ export default async function IterationsPage({
 
   return (
     <main className="mx-auto max-w-4xl p-6">
-      <h1 className="mb-4 text-2xl font-bold">Iterations</h1>
+      <h1 className="mb-4 text-2xl font-bold">{project.iteration_term} history</h1>
 
       {doneIterations.length === 0 && (
         <p className="text-sm text-muted-foreground">
@@ -100,7 +101,14 @@ export default async function IterationsPage({
           return (
             <section key={iteration.id} className="rounded-lg border border-border bg-muted/40 p-4">
               <div className="mb-1 flex items-center justify-between">
-                <h2 className="font-semibold">Iteration #{iteration.number}</h2>
+                <h2 className="font-semibold">
+                  {iterationLabel(
+                    project.iteration_term,
+                    iteration.number,
+                    project.iteration_length,
+                    iteration.start_date,
+                  )}
+                </h2>
                 {iteration.skipped ? (
                   <Badge variant="secondary" className="text-muted-foreground">
                     Skipped

@@ -103,3 +103,29 @@ describe("describeActivity", () => {
     expect(text).toBe("Dev User performed project.renamed");
   });
 });
+
+describe("project.cadence_changed", () => {
+  it("reads as a cadence change, not a raw action name", () => {
+    expect(
+      describeActivity({
+        action: "project.cadence_changed",
+        payload: { from: 14, to: 7 },
+        actorName: "Rin",
+        storyTitle: null,
+      }),
+    ).toBe("Rin changed the iteration length from 14 to 7 days");
+  });
+});
+
+describe("iteration.length_overridden", () => {
+  it("names the sprint and both end dates", () => {
+    expect(
+      describeActivity({
+        action: "iteration.length_overridden",
+        payload: { number: 7, from: "2026-07-17", to: "2026-07-24" },
+        actorName: "Rin",
+        storyTitle: null,
+      }),
+    ).toBe("Rin moved iteration #7's end date from 2026/7/17 to 2026/7/24");
+  });
+});

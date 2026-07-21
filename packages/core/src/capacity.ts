@@ -6,7 +6,7 @@
 // Dates are plain "YYYY-MM-DD" strings (matching the DB `date` type) so no
 // local-timezone drift can shift a day across a boundary.
 
-const MS_PER_DAY = 86_400_000;
+import { MS_PER_DAY, formatDateOnly, isoWeekday, parseDateOnly } from "./dates";
 
 export type CalendarExceptionKind = "holiday" | "extra_workday";
 export type CalendarException = { date: string; kind: CalendarExceptionKind };
@@ -30,18 +30,21 @@ export type CapacityInput = {
   end: string;
 };
 
-function parseDateOnly(dateStr: string): number {
-  const [year, month, day] = dateStr.split("-").map(Number);
-  return Date.UTC(year, month - 1, day);
-}
-
-function formatDateOnly(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
-}
-
-/** ISO weekday (1=Mon .. 7=Sun) from a UTC-midnight timestamp. */
-function isoWeekday(ms: number): number {
-  return new Date(ms).getUTCDay() || 7;
+/**
+ * Whether one day counts as a project working day: the weekday pattern, with
+ * date exceptions overriding it either way. Shared by `workingDays` and
+ * `nextWorkingDay` so the two can never disagree about what "working" means.
+ */
+function isWorkingDay(
+  weekdays: ReadonlySet<number>,
+  exceptionsByDate: ReadonlyMap<string, CalendarExceptionKind>,
+  ms: number,
+): boolean {
+  const exception = exceptionsByDate.get(formatDateOnly(ms));
+  if (exception === "holiday") {
+    return false;
+  }
+  return exception === "extra_workday" || weekdays.has(isoWeekday(ms));
 }
 
 /** The project-level working days in [start, end], calendar exceptions applied. */
@@ -56,14 +59,40 @@ export function workingDays(
   const days: string[] = [];
 
   for (let ms = parseDateOnly(start); ms <= parseDateOnly(end); ms += MS_PER_DAY) {
-    const date = formatDateOnly(ms);
-    const exception = byDate.get(date);
-    if (exception === "holiday") continue;
-    if (exception === "extra_workday" || weekdays.has(isoWeekday(ms))) {
-      days.push(date);
+    if (isWorkingDay(weekdays, byDate, ms)) {
+      days.push(formatDateOnly(ms));
     }
   }
   return days;
+}
+
+/**
+ * First project-level working day on or after `from` — the TS mirror of
+ * `public.next_working_day` (20260720000006_flexible_cadence.sql), which
+ * decides where a 1-day iteration starts. `null` when a whole year holds no
+ * working day, matching the SQL's bounded scan; callers fall back to `from`.
+ *
+ * Deliberately reads the PROJECT calendar only: one member's time off must
+ * never make an iteration exist on a different day for the rest of the team.
+ */
+export function nextWorkingDay(
+  workingWeekdays: ReadonlyArray<number>,
+  exceptions: ReadonlyArray<CalendarException>,
+  from: string,
+): string | null {
+  const weekdays = new Set(workingWeekdays);
+  const byDate = new Map(exceptions.map((e) => [e.date, e.kind]));
+
+  // Returns on the first hit — normally within 3 days. Building the whole
+  // window and taking [0] instead cost ~370 iterations and ~260 string
+  // allocations per call, on a path the board re-runs per projected sprint.
+  let ms = parseDateOnly(from);
+  for (let i = 0; i <= 366; i++, ms += MS_PER_DAY) {
+    if (isWorkingDay(weekdays, byDate, ms)) {
+      return formatDateOnly(ms);
+    }
+  }
+  return null;
 }
 
 /**

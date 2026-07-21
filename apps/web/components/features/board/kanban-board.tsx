@@ -3,12 +3,13 @@
 import { type ReactNode, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutGrid, List as ListIcon, Pencil, Snowflake } from "lucide-react";
-import { finishIteration, updateIterationGoal } from "@/app/projects/[id]/board/actions";
+import { finishIteration, overrideIterationLength, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { sumPoints } from "@/lib/utils/board";
 import { ICEBOX_COLUMN_ID } from "@/lib/utils/kanban";
 import { isImeComposing } from "@/lib/utils/keyboard";
-import type { BacklogRowItem } from "@/lib/utils/iterations";
+import { addDays } from "@storylane/core";
+import { iterationLabel, iterationSpanLabel, type BacklogRowItem } from "@/lib/utils/iterations";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
@@ -120,6 +121,8 @@ export function KanbanBoard({
   backlogBudgets,
   nextVirtualIterationNumber,
   iterationLength,
+  iterationTerm,
+  workingWeekdays,
   iterationGoals,
   canFinishIteration,
   canManageStates,
@@ -153,6 +156,13 @@ export function KanbanBoard({
   // List-view-only (see BoardListView): projected dates and draft goals for
   // the Backlog's virtual-iteration group headers.
   iterationLength: number;
+  // The project's display term for an iteration (doc-8 §5) — free text, so
+  // every heading that names one reads it rather than hardcoding "Iteration".
+  iterationTerm: string;
+  // Needed only to project the Backlog's virtual sprint dates at a 1-day
+  // cadence, where they follow the working-day calendar rather than plain
+  // arithmetic (projectedIterationDates).
+  workingWeekdays: number[];
   iterationGoals: Record<number, string>;
   // Owner/member only (spec/velocity.md "Manual finish") — the
   // finalize_iteration RPC enforces this too, this just keeps the button off
@@ -228,13 +238,23 @@ export function KanbanBoard({
       <div className="mb-4 flex flex-col gap-2">
         {currentIteration && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="text-base font-semibold">Iteration #{currentIteration.number}</span>
+            <span className="text-base font-semibold">
+              {iterationLabel(
+                iterationTerm,
+                currentIteration.number,
+                iterationLength,
+                currentIteration.start_date,
+              )}
+            </span>
             <Badge className="bg-primary/15 text-primary">
               Current
             </Badge>
-            <span className="text-xs text-muted-foreground">
-              {formatDate(currentIteration.start_date)} – {formatDate(currentIteration.end_date)} (auto-finishes)
-            </span>
+            <IterationDates
+              iterationId={currentIteration.id}
+              startDate={currentIteration.start_date}
+              endDate={currentIteration.end_date}
+              canOverride={canFinishIteration}
+            />
             <span className="text-xs text-muted-foreground">
               {sumPoints(iterationStories)} / {Math.round(currentBudget)} pts committed
               <span
@@ -318,6 +338,8 @@ export function KanbanBoard({
                 projectId={projectId}
                 iterationId={currentIteration.id}
                 iterationNumber={currentIteration.number}
+                iterationTerm={iterationTerm}
+                iterationLength={iterationLength}
                 iterationStartDate={currentIteration.start_date}
                 visible={canFinishIteration}
               />
@@ -364,6 +386,8 @@ export function KanbanBoard({
           backlogBudgets={backlogBudgets}
           nextVirtualIterationNumber={nextVirtualIterationNumber}
           iterationLength={iterationLength}
+          iterationTerm={iterationTerm}
+          workingWeekdays={workingWeekdays}
           iterationGoals={iterationGoals}
           showIcebox={showIcebox}
           filter={filter}
@@ -461,6 +485,114 @@ export function IterationGoalBar({
   );
 }
 
+// The current iteration's date range. For owner/member the end date is
+// editable in place — that IS the per-sprint length override (doc-8 §4):
+// "this one runs a week longer" is a change to when it ends, so it's made
+// where the end date is already shown rather than behind a separate dialog.
+// The project's cadence is untouched; the next iteration goes back to it.
+//
+// Click-to-edit, same contract as IterationGoalBar above (principle 5:
+// returning to text view is the success feedback). `min` is today, not the
+// start date: an end date in the past would make the next page load's lazy
+// rollover finalize the iteration — a Finish iteration with no confirmation
+// (principle 6). `override_iteration_length` enforces both bounds itself;
+// these attributes only keep the picker from offering an invalid date.
+export function IterationDates({
+  iterationId,
+  startDate,
+  endDate,
+  canOverride,
+}: {
+  iterationId: string;
+  startDate: string;
+  endDate: string;
+  canOverride: boolean;
+}) {
+  const router = useRouter();
+  const { buttonRef, editor } = useInlineEdit({
+    initialValue: endDate,
+    fallbackError: "Failed to change the end date",
+    // A cleared picker is an abandoned edit, not an error: skip the commit so
+    // blur reverts to the current end date instead of posting "" and showing
+    // the RPC's "Pick an end date".
+    shouldCommit: (value) => /^\d{4}-\d{2}-\d{2}$/.test(value),
+    async onCommit(value) {
+      const formData = new FormData();
+      formData.set("iteration_id", iterationId);
+      formData.set("end_date", value);
+      const result = await overrideIterationLength(formData);
+      if (!result.ok) {
+        throw new Error(result.message);
+      }
+      router.refresh();
+    },
+  });
+
+  const range = `${formatDate(startDate)} – ${formatDate(editor.synced)} (auto-finishes)`;
+
+  if (!canOverride) {
+    return <span className="text-xs text-muted-foreground">{range}</span>;
+  }
+
+  if (!editor.editing) {
+    return (
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={editor.startEditing}
+        aria-label={`Change when this iteration ends (currently ${formatDate(editor.synced)})`}
+        className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted"
+      >
+        {range}
+        <Pencil className="size-3 shrink-0 opacity-60" aria-hidden />
+      </button>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      {formatDate(startDate)} –
+      <input
+        autoFocus
+        type="date"
+        aria-label="Iteration end date"
+        value={editor.value}
+        min={startDate > utcTodayKey() ? startDate : utcTodayKey()}
+        max={addDays(startDate, 89)}
+        onChange={(event) => {
+          // `readOnly` is inert on type="date" (unlike the text input in
+          // IterationGoalBar), so a save in flight is guarded here — without
+          // it useInlineEdit's savingRef drops the second commit in silence.
+          if (!editor.isSaving) {
+            editor.setValue(event.target.value);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void editor.commitAndClose("keyboard");
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            editor.cancel("keyboard");
+          }
+        }}
+        onBlur={() => void editor.commitAndClose("blur")}
+        readOnly={editor.isSaving}
+        aria-busy={editor.isSaving || undefined}
+        className="rounded-md border border-border bg-transparent px-1.5 py-0.5 focus:outline-none"
+      />
+      {/* Fixed-width slot: the span and any error share it, so neither
+          appearing nor an emptied picker reflows the info row (principle 3). */}
+      <span
+        className={`min-w-32 ${editor.error ? "text-destructive" : ""}`}
+        role={editor.error ? "alert" : undefined}
+      >
+        {editor.error ?? iterationSpanLabel(startDate, editor.value)}
+      </span>
+    </span>
+  );
+}
+
 // "Finish iteration" (spec/velocity.md "Manual finish" / "Skipping a
 // not-yet-started iteration"): irreversible, so it confirms before calling
 // the shared finalize_iteration RPC. When the current iteration hasn't
@@ -472,12 +604,18 @@ export function FinishIterationButton({
   projectId,
   iterationId,
   iterationNumber,
+  iterationTerm,
+  iterationLength,
   iterationStartDate,
   visible,
 }: {
   projectId: string;
   iterationId: string;
   iterationNumber: number;
+  iterationTerm: string;
+  // Needed so a 1-day cadence titles the dialog by date, matching the board
+  // header (iterationLabel) instead of showing "#N" the header never uses.
+  iterationLength: number;
   // The current iteration's start_date (YYYY-MM-DD). When it is in the
   // future the iteration hasn't started and finishing it is a "skip".
   iterationStartDate: string;
@@ -493,6 +631,7 @@ export function FinishIterationButton({
   // comparison could label a finish "Skip" (or vice-versa) the RPC then
   // does the opposite of (fable-advisor F1, 2026-07-15).
   const notStarted = iterationStartDate > utcTodayKey();
+  const label = iterationLabel(iterationTerm, iterationNumber, iterationLength, iterationStartDate);
 
   function handleConfirm() {
     setError(null);
@@ -544,18 +683,18 @@ export function FinishIterationButton({
       >
         <DialogTrigger asChild>
           <Button type="button" variant="outline" size="sm">
-            Finish iteration
+            Finish {iterationTerm}
           </Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {notStarted ? `Skip iteration #${iterationNumber}?` : `Finish iteration #${iterationNumber}?`}
+              {notStarted ? `Skip ${label}?` : `Finish ${label}?`}
             </DialogTitle>
             <DialogDescription>
               {notStarted
-                ? `Iteration #${iterationNumber} starts ${formatDate(iterationStartDate)} and hasn't begun. Finishing it now skips it — its stories move to iteration #${iterationNumber + 1}, and it won't count toward velocity. This can't be undone.`
-                : "This closes the iteration today instead of on its scheduled end date. Unaccepted stories move to the next iteration. This can't be undone."}
+                ? `${label} starts ${formatDate(iterationStartDate)} and hasn't begun. Finishing it now skips it — its stories move to the next ${iterationTerm.toLowerCase()}, and it won't count toward velocity. This can't be undone.`
+                : "This closes it today instead of on its scheduled end date. Unaccepted stories move to the next one. This can't be undone."}
             </DialogDescription>
           </DialogHeader>
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -571,8 +710,8 @@ export function FinishIterationButton({
                     ? "Skipping…"
                     : "Finishing…"
                   : notStarted
-                    ? "Skip iteration"
-                    : "Finish iteration"}
+                    ? `Skip ${iterationTerm}`
+                    : `Finish ${iterationTerm}`}
               </Button>
             )}
           </DialogFooter>

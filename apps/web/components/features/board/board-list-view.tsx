@@ -41,6 +41,7 @@ import {
 } from "@/lib/utils/kanban";
 import {
   buildBacklogRows,
+  iterationLabel,
   projectedIterationDates,
   type BacklogDivider,
   type BacklogRow,
@@ -284,10 +285,14 @@ export function DividerRow({
 export function IterationGoalInput({
   projectId,
   number,
+  label,
   initialGoal,
 }: {
   projectId: string;
   number: number;
+  // The iteration's display heading (iterationLabel) so the goal control's
+  // screen-reader labels name it the same way the visible header does.
+  label: string;
   initialGoal: string;
 }) {
   const { buttonRef, editor } = useInlineEdit({
@@ -308,7 +313,7 @@ export function IterationGoalInput({
         ref={buttonRef}
         type="button"
         onClick={editor.startEditing}
-        aria-label={editor.synced ? `Edit iteration #${number} goal: ${editor.synced}` : `Add iteration #${number} goal`}
+        aria-label={editor.synced ? `Edit ${label} goal: ${editor.synced}` : `Add ${label} goal`}
         className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-muted"
       >
         {editor.synced ? (
@@ -341,7 +346,7 @@ export function IterationGoalInput({
         }}
         onBlur={() => void editor.commitAndClose("blur")}
         placeholder="Goal"
-        aria-label={`Iteration #${number} goal`}
+        aria-label={`${label} goal`}
         readOnly={editor.isSaving}
         aria-busy={editor.isSaving || undefined}
         className="h-6 min-w-0 flex-1 truncate rounded border border-border bg-transparent px-1 text-xs focus:outline-none"
@@ -371,6 +376,8 @@ export function IterationHeaderRow({
   number,
   points,
   projectId,
+  term,
+  iterationLength,
   goal,
   projectedDates,
   collapsed,
@@ -380,6 +387,8 @@ export function IterationHeaderRow({
   number: number;
   points: number;
   projectId: string;
+  term: string;
+  iterationLength: number;
   goal: string;
   projectedDates: { start_date: string; end_date: string } | null;
   collapsed: boolean;
@@ -389,6 +398,7 @@ export function IterationHeaderRow({
   const [isRemoving, startTransition] = useTransition();
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const label = iterationLabel(term, number, iterationLength, projectedDates?.start_date);
 
   function handleRemoveManualBreak() {
     if (!manualBreakDividerId) {
@@ -414,12 +424,12 @@ export function IterationHeaderRow({
         <button
           type="button"
           onClick={onToggle}
-          aria-label={collapsed ? `Expand iteration #${number}` : `Collapse iteration #${number}`}
+          aria-label={collapsed ? `Expand ${label}` : `Collapse ${label}`}
           className="shrink-0 text-muted-foreground hover:text-foreground"
         >
           {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
         </button>
-        <span className="shrink-0 font-medium text-foreground">Iteration #{number}</span>
+        <span className="shrink-0 font-medium text-foreground">{label}</span>
         {manualBreakDividerId && (
           <span
             className="flex shrink-0 items-center gap-1 rounded border border-dashed border-border px-1.5 py-0.5 text-[10px]"
@@ -446,7 +456,7 @@ export function IterationHeaderRow({
             {formatDate(projectedDates.start_date)} – {formatDate(projectedDates.end_date)}
           </span>
         )}
-        <IterationGoalInput projectId={projectId} number={number} initialGoal={goal} />
+        <IterationGoalInput projectId={projectId} number={number} label={label} initialGoal={goal} />
         <span className="shrink-0">{points} pts</span>
       </div>
       <Dialog
@@ -884,6 +894,8 @@ function BacklogSection({
   states,
   filter,
   iterationGoals,
+  iterationTerm,
+  iterationLength,
   projectedDatesFor,
   collapsedGroups,
   onToggleGroup,
@@ -905,6 +917,8 @@ function BacklogSection({
   states: ProjectState[];
   filter: StoryFilter;
   iterationGoals: Record<number, string>;
+  iterationTerm: string;
+  iterationLength: number;
   projectedDatesFor: (iterationNumber: number) => { start_date: string; end_date: string } | null;
   collapsedGroups: ReadonlySet<string>;
   onToggleGroup: (key: string) => void;
@@ -1004,6 +1018,8 @@ function BacklogSection({
                   number={row.number}
                   points={row.points}
                   projectId={projectId}
+                  term={iterationTerm}
+                  iterationLength={iterationLength}
                   goal={iterationGoals[row.number] ?? ""}
                   projectedDates={projectedDatesFor(row.number)}
                   collapsed={collapsedGroups.has(key)}
@@ -1120,6 +1136,8 @@ export function BoardListView({
   backlogBudgets,
   nextVirtualIterationNumber,
   iterationLength,
+  iterationTerm,
+  workingWeekdays,
   iterationGoals,
   showIcebox,
   filter,
@@ -1143,6 +1161,8 @@ export function BoardListView({
   // group headers — `iterationGoals` is pre-scoped server-side to numbers
   // above the current iteration's.
   iterationLength: number;
+  iterationTerm: string;
+  workingWeekdays: number[];
   iterationGoals: Record<number, string>;
   showIcebox: boolean;
   filter: StoryFilter;
@@ -1296,6 +1316,7 @@ export function BoardListView({
       currentIteration.end_date,
       iterationLength,
       iterationNumber - currentIteration.number,
+      workingWeekdays,
     );
   }
 
@@ -1343,6 +1364,8 @@ export function BoardListView({
             states={states}
             filter={filter}
             iterationGoals={iterationGoals}
+            iterationTerm={iterationTerm}
+            iterationLength={iterationLength}
             projectedDatesFor={projectedDatesFor}
             collapsedGroups={collapsedGroups}
             onToggleGroup={onToggleGroup}

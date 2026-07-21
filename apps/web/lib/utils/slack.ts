@@ -26,20 +26,24 @@ export function storyStateChangeMessage(story: SlackStory, newState: string): st
  * exists. Capacity 0 (a catch-up gap row, or a sprint with no working days)
  * has no rate to report.
  */
-export function iterationDoneMessage(iterationNumber: number, velocity: number, capacity?: number): string {
+// The three iteration messages take an already-composed `label` (from
+// iterationLabel) rather than term+number: at a 1-day cadence the heading is
+// the date, not "#N" (doc-8 §5), and Slack must match the board — building
+// the label in one place keeps the two from drifting.
+export function iterationDoneMessage(label: string, velocity: number, capacity?: number): string {
   const summary =
     capacity !== undefined && capacity > 0
       ? `${velocity} pts over ${capacity} person-days (${Number((velocity / capacity).toFixed(2))} pts/person-day)`
       : `${velocity} pts`;
-  return `Iteration #${iterationNumber} is done — ${summary}`;
+  return `${escapeSlackText(label)} is done — ${summary}`;
 }
 
 /** Message for an iteration intentionally skipped before it started. */
-export function iterationSkippedMessage(iterationNumber: number): string {
-  return `Iteration #${iterationNumber} skipped`;
+export function iterationSkippedMessage(label: string): string {
+  return `${escapeSlackText(label)} skipped`;
 }
 
 /** Message for a new iteration being created by the lazy rollover. */
-export function iterationStartedMessage(iterationNumber: number, startDate: string, endDate: string): string {
-  return `Iteration #${iterationNumber} started (${startDate} – ${endDate})`;
+export function iterationStartedMessage(label: string, startDate: string, endDate: string): string {
+  return `${escapeSlackText(label)} started (${startDate} – ${endDate})`;
 }

@@ -56,6 +56,8 @@ function baseProps() {
     backlogBudgets: [],
     nextVirtualIterationNumber: 1,
     iterationLength: 14,
+    iterationTerm: "Iteration",
+    workingWeekdays: [1, 2, 3, 4, 5],
     iterationGoals: {},
     canFinishIteration: false,
     canManageStates: false,

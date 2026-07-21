@@ -59,6 +59,21 @@ export function clampVelocityWindow(value: number): number {
   return Math.max(1, Math.floor(value));
 }
 
+/**
+ * Clamps a submitted iteration_length to what `projects_iteration_length_range`
+ * (1-90, supabase/migrations/20260720000006_flexible_cadence.sql) allows, so
+ * createProject/updateProject never send a value the CHECK rejects — neither
+ * action has an error channel to report the rejection through. A length below
+ * 1 would also make finalize_iteration's `end = start + (length - 1)` run
+ * backwards and generate rows without ever reaching today.
+ */
+export function clampIterationLength(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 14;
+  }
+  return Math.min(90, Math.max(1, Math.floor(value)));
+}
+
 // Matches finalize_iteration's SQL (20260719000010_reanchor_finalize_iteration.sql: `ps.category = 'done'`).
 export type PointedStory = { story_type: string; state_category: StateCategory | null; points: number | null };
 

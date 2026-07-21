@@ -502,6 +502,7 @@ export type Database = {
           description: string | null
           id: string
           iteration_length: number
+          iteration_term: string
           name: string
           point_scale: string
           state_template: string
@@ -517,6 +518,7 @@ export type Database = {
           description?: string | null
           id?: string
           iteration_length?: number
+          iteration_term?: string
           name: string
           point_scale?: string
           state_template?: string
@@ -532,6 +534,7 @@ export type Database = {
           description?: string | null
           id?: string
           iteration_length?: number
+          iteration_term?: string
           name?: string
           point_scale?: string
           state_template?: string
@@ -889,6 +892,14 @@ export type Database = {
       }
       move_story_to_project: {
         Args: { p_story_id: string; p_target_project_id: string }
+        Returns: Json
+      }
+      next_working_day: {
+        Args: { p_from: string; p_project_id: string }
+        Returns: string
+      }
+      override_iteration_length: {
+        Args: { p_end_date: string; p_iteration_id: string }
         Returns: Json
       }
       project_capacity: {

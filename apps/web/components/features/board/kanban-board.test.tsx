@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { formatDate } from "@/lib/utils/format";
-import { FinishIterationButton, IterationGoalBar } from "./kanban-board";
+import { formatDate, utcTodayKey } from "@/lib/utils/format";
+import { FinishIterationButton, IterationDates, IterationGoalBar } from "./kanban-board";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
@@ -9,7 +9,10 @@ vi.mock("next/navigation", () => ({
 
 type FinishResult = { events: Array<Record<string, unknown>> };
 
-const { updateIterationGoalMock, finishIterationMock } = vi.hoisted(() => ({
+const { updateIterationGoalMock, finishIterationMock, overrideIterationLengthMock } = vi.hoisted(() => ({
+  overrideIterationLengthMock: vi.fn<(formData: FormData) => Promise<{ ok: boolean; message?: string }>>(() =>
+    Promise.resolve({ ok: true }),
+  ),
   updateIterationGoalMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
   finishIterationMock: vi.fn<(formData: FormData) => Promise<{ events: Array<Record<string, unknown>> }>>(() =>
     Promise.resolve({ events: [{ kind: "finalized", number: 3, velocity: 5, skipped: false }] }),
@@ -19,7 +22,95 @@ const { updateIterationGoalMock, finishIterationMock } = vi.hoisted(() => ({
 vi.mock("@/app/projects/[id]/board/actions", () => ({
   updateIterationGoal: updateIterationGoalMock,
   finishIteration: finishIterationMock,
+  overrideIterationLength: overrideIterationLengthMock,
 }));
+
+// TASK-87 (doc-8 §4): the per-sprint override is the board's end-date field.
+describe("IterationDates", () => {
+  const PAST = "2020-01-01";
+  const FUTURE_END = "2099-01-14";
+
+  beforeEach(() => {
+    overrideIterationLengthMock.mockClear();
+  });
+
+  it("renders the saved range as text, not a live input (principle 5)", () => {
+    render(
+      <IterationDates
+        iterationId="i1"
+        startDate={PAST}
+        endDate={FUTURE_END}
+        canOverride={true}
+      />,
+    );
+    expect(screen.queryByLabelText("Iteration end date")).not.toBeInTheDocument();
+    expect(screen.getByText(`${formatDate(PAST)} – ${formatDate(FUTURE_END)} (auto-finishes)`)).toBeInTheDocument();
+  });
+
+  it("gives a viewer no way into the editor", () => {
+    render(
+      <IterationDates
+        iterationId="i1"
+        startDate={PAST}
+        endDate={FUTURE_END}
+        canOverride={false}
+      />,
+    );
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  // Principle 6: an end date in the past would let the next lazy rollover
+  // finalize the iteration — a Finish iteration with no confirmation.
+  it("never offers a past end date, and shows the resulting span", () => {
+    render(
+      <IterationDates
+        iterationId="i1"
+        startDate={PAST}
+        endDate={FUTURE_END}
+        canOverride={true}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+
+    const input = screen.getByLabelText("Iteration end date");
+    expect(input).toHaveAttribute("min", utcTodayKey());
+  });
+
+  it("shows the resulting span while editing, so a whole-week length is visible", () => {
+    render(
+      <IterationDates
+        iterationId="i1"
+        startDate="2099-01-01"
+        endDate="2099-01-21"
+        canOverride={true}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("21 days (3 weeks)")).toBeInTheDocument();
+  });
+
+  it("keeps the editor open with the error when the override is rejected", async () => {
+    overrideIterationLengthMock.mockResolvedValueOnce({ ok: false, message: "This iteration has already finished" });
+    render(
+      <IterationDates
+        iterationId="i1"
+        startDate={PAST}
+        endDate={FUTURE_END}
+        canOverride={true}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    const input = screen.getByLabelText("Iteration end date");
+    fireEvent.change(input, { target: { value: "2099-01-21" } });
+    fireEvent.blur(input);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("This iteration has already finished");
+    expect(screen.getByLabelText("Iteration end date")).toBeInTheDocument();
+  });
+});
 
 // TASK-45 / spec/ux-principles.md principle 5: a saved goal renders as text
 // (or "Add goal…" ghost text when empty), not a permanently-visible input —
@@ -206,6 +297,8 @@ describe("FinishIterationButton", () => {
         projectId="p1"
         iterationId="i3"
         iterationNumber={3}
+        iterationTerm="Iteration"
+        iterationLength={14}
         iterationStartDate={STARTED}
         visible={false}
       />,
@@ -225,15 +318,17 @@ describe("FinishIterationButton", () => {
         projectId="p1"
         iterationId="i3"
         iterationNumber={3}
+        iterationTerm="Iteration"
+        iterationLength={14}
         iterationStartDate={STARTED}
         visible={true}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Finish iteration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Finish Iteration" }));
     expect(finishIterationMock).not.toHaveBeenCalled();
 
-    const dialogButtons = await screen.findAllByRole("button", { name: "Finish iteration" });
+    const dialogButtons = await screen.findAllByRole("button", { name: "Finish Iteration" });
     const confirmButton = dialogButtons[dialogButtons.length - 1];
     if (!confirmButton) {
       throw new Error("Confirmation button not found");
@@ -259,13 +354,15 @@ describe("FinishIterationButton", () => {
         projectId="p1"
         iterationId="i3"
         iterationNumber={3}
+        iterationTerm="Iteration"
+        iterationLength={14}
         iterationStartDate={STARTED}
         visible={true}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Finish iteration" }));
-    const dialogButtons = await screen.findAllByRole("button", { name: "Finish iteration" });
+    fireEvent.click(screen.getByRole("button", { name: "Finish Iteration" }));
+    const dialogButtons = await screen.findAllByRole("button", { name: "Finish Iteration" });
     const confirmButton = dialogButtons[dialogButtons.length - 1];
     if (!confirmButton) {
       throw new Error("Confirmation button not found");
@@ -286,22 +383,24 @@ describe("FinishIterationButton", () => {
         projectId="p1"
         iterationId="i3"
         iterationNumber={3}
+        iterationTerm="Iteration"
+        iterationLength={14}
         iterationStartDate={FUTURE}
         visible={true}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Finish iteration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Finish Iteration" }));
 
-    expect(await screen.findByText("Skip iteration #3?")).toBeInTheDocument();
+    expect(await screen.findByText("Skip Iteration #3?")).toBeInTheDocument();
     // The dialog names the start date (fable-advisor F2) and the skip
     // consequences. Expected date is computed via the same formatter so the
     // assertion is timezone-independent.
     expect(
       screen.getByText(new RegExp(`starts ${formatDate(FUTURE).replace(/\//g, "\\/")} and hasn't begun`)),
     ).toBeInTheDocument();
-    expect(screen.getByText(/its stories move to iteration #4/)).toBeInTheDocument();
-    const confirmButton = screen.getByRole("button", { name: "Skip iteration" });
+    expect(screen.getByText(/its stories move to the next iteration/)).toBeInTheDocument();
+    const confirmButton = screen.getByRole("button", { name: "Skip Iteration" });
     fireEvent.click(confirmButton);
 
     await act(async () => {
@@ -309,6 +408,45 @@ describe("FinishIterationButton", () => {
     });
     expect(finishIterationMock).toHaveBeenCalledTimes(1);
     expect(finishIterationMock.mock.calls[0]?.[0]?.get("iteration_id")).toBe("i3");
+  });
+
+  // TASK-87 (doc-8 §5): a project that calls its iterations something else
+  // must not see "iteration" anywhere in the confirmation.
+  it("names the iteration by the project's own term", async () => {
+    render(
+      <FinishIterationButton
+        projectId="p1"
+        iterationId="i3"
+        iterationNumber={3}
+        iterationTerm="Sprint"
+        iterationLength={14}
+        iterationStartDate={STARTED}
+        visible={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish Sprint" }));
+    expect(await screen.findByText("Finish Sprint #3?")).toBeInTheDocument();
+  });
+
+  // TASK-87 (doc-8 §5): at a 1-day cadence the heading is the date, not "#N" —
+  // the dialog must match the board header, which titles it by date.
+  it("titles the dialog by date at a 1-day cadence instead of a number", async () => {
+    render(
+      <FinishIterationButton
+        projectId="p1"
+        iterationId="i3"
+        iterationNumber={3}
+        iterationTerm="Iteration"
+        iterationLength={1}
+        iterationStartDate={STARTED}
+        visible={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish Iteration" }));
+    expect(await screen.findByText("Finish 2020/1/1?")).toBeInTheDocument();
+    expect(screen.queryByText(/Iteration #3/)).not.toBeInTheDocument();
   });
 
   // TASK-38 AC #1/#2: a zero-change finish never ends in silence — the
@@ -322,13 +460,15 @@ describe("FinishIterationButton", () => {
         projectId="p1"
         iterationId="i3"
         iterationNumber={3}
+        iterationTerm="Iteration"
+        iterationLength={14}
         iterationStartDate={STARTED}
         visible={true}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Finish iteration" }));
-    const dialogButtons = await screen.findAllByRole("button", { name: "Finish iteration" });
+    fireEvent.click(screen.getByRole("button", { name: "Finish Iteration" }));
+    const dialogButtons = await screen.findAllByRole("button", { name: "Finish Iteration" });
     fireEvent.click(dialogButtons[dialogButtons.length - 1]!);
 
     await act(async () => {
@@ -339,6 +479,6 @@ describe("FinishIterationButton", () => {
     // (the trigger outside the modal is aria-hidden while it's open, so no
     // "Finish iteration" button is reachable).
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Finish iteration" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Finish Iteration" })).not.toBeInTheDocument();
   });
 });

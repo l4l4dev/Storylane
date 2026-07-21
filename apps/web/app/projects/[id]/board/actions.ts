@@ -25,6 +25,7 @@ import {
   type ListZoneId,
 } from "@/lib/utils/kanban";
 import { utcTodayKey } from "@/lib/utils/format";
+import { iterationLabel } from "@/lib/utils/iterations";
 import { parsePoints, pointScaleValues } from "@/lib/utils/stories";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -669,7 +670,9 @@ type FinalizeIterationEvent =
   // `kind`: a payload from a finalize_iteration older than the capacity
   // snapshot has no such field, and iterationDoneMessage handles its
   // absence rather than pretending the value is always there.
-  | { kind: "finalized"; number: number; velocity: number; capacity?: number; skipped?: boolean }
+  // `start_date` lets the 1-day cadence title the message by date (iterationLabel);
+  // optional so a payload from a finalize_iteration older than TASK-87 still parses.
+  | { kind: "finalized"; number: number; velocity: number; capacity?: number; skipped?: boolean; start_date?: string }
   | { kind: "started"; number: number; start_date: string; end_date: string }
   // A manual finish that changed nothing (nothing to finish, or the named
   // iteration was already finished by a racing/double call). Surfaced to the
@@ -690,17 +693,39 @@ function parseFinalizeEvents(raw: unknown): FinalizeIterationEvent[] {
 // notifications — one per finalized/started iteration, in order, so a
 // multi-sprint catch-up doesn't lose the intermediate ones the way just
 // diffing before/after iteration numbers would.
-function notifyFinalizeEvents(projectId: string, events: FinalizeIterationEvent[]) {
-  for (const event of events) {
+async function notifyFinalizeEvents(
+  supabase: SupabaseServerClient,
+  projectId: string,
+  events: FinalizeIterationEvent[],
+) {
+  const notifiable = events.filter((event) => event.kind === "finalized" || event.kind === "started");
+  if (notifiable.length === 0) {
+    // 'noop' events carry no state change — nothing to notify, and no reason
+    // to spend a query on the display term.
+    return;
+  }
+
+  // Reuses the caller's client: the dashboard and My Work roll over every
+  // project in one Promise.all, so a client per project would be N extra
+  // connections on the render path.
+  const { data: project } = await supabase
+    .from("projects")
+    .select("iteration_term, iteration_length")
+    .eq("id", projectId)
+    .maybeSingle();
+  const term = project?.iteration_term ?? "Iteration";
+  const length = project?.iteration_length ?? 14;
+
+  for (const event of notifiable) {
+    const label = iterationLabel(term, event.number, length, event.start_date);
     if (event.kind === "finalized") {
       const message = event.skipped
-        ? iterationSkippedMessage(event.number)
-        : iterationDoneMessage(event.number, event.velocity, event.capacity);
+        ? iterationSkippedMessage(label)
+        : iterationDoneMessage(label, event.velocity, event.capacity);
       after(() => notifySlack(projectId, message));
     } else if (event.kind === "started") {
-      after(() => notifySlack(projectId, iterationStartedMessage(event.number, event.start_date, event.end_date)));
+      after(() => notifySlack(projectId, iterationStartedMessage(label, event.start_date, event.end_date)));
     }
-    // 'noop' events carry no state change — nothing to notify.
   }
 }
 
@@ -742,7 +767,7 @@ export async function ensureCurrentIteration(projectId: string) {
     throw new Error(error.message);
   }
 
-  notifyFinalizeEvents(projectId, parseFinalizeEvents(data));
+  await notifyFinalizeEvents(supabase, projectId, parseFinalizeEvents(data));
 }
 
 /**
@@ -771,12 +796,57 @@ export async function finishIteration(formData: FormData): Promise<{ events: Fin
   }
 
   const events = parseFinalizeEvents(data);
-  notifyFinalizeEvents(projectId, events);
+  await notifyFinalizeEvents(supabase, projectId, events);
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);
 
   return { events };
+}
+
+/**
+ * Per-sprint length override (doc-8 §4): moves only the open iteration's end
+ * date, leaving the project's cadence — and every other iteration — alone.
+ * The `override_iteration_length` RPC owns the rules (owner/member, not
+ * already finished, not in the past, at most 90 days) and takes the same
+ * advisory lock as finalization, so a rollover racing this call can't
+ * interleave. It also reports which project it touched, so the cache
+ * invalidation below never trusts the form's copy.
+ */
+export async function overrideIterationLength(formData: FormData): Promise<ActionResult> {
+  const iterationId = String(formData.get("iteration_id"));
+  const endDate = String(formData.get("end_date") ?? "");
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    return { ok: false, message: "Pick an end date" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("override_iteration_length", {
+    p_iteration_id: iterationId,
+    p_end_date: endDate,
+  });
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+  const result = (data ?? {}) as { kind?: string; project_id?: string };
+  // The RPC reports a lost race as a noop rather than an error — the caller
+  // asked to move an iteration that a rollover has since finished.
+  if (result.kind === "noop") {
+    return { ok: false, message: "This iteration has already finished" };
+  }
+
+  // The project comes from the RPC, which derives it from the iteration row —
+  // the form's own project_id would be client-supplied. Its absence means the
+  // deployed RPC is not the one this build expects; reporting success would
+  // leave the write done but every cache stale, so the edit would appear to
+  // revert on the next render.
+  if (!result.project_id) {
+    return { ok: false, message: "Could not confirm the change — reload the board." };
+  }
+  revalidatePath(`/projects/${result.project_id}/board`);
+  revalidatePath(`/projects/${result.project_id}`);
+  return { ok: true };
 }
 
 export async function updateIterationGoal(formData: FormData) {

@@ -1,6 +1,8 @@
 // Pure, framework-free helpers for the activity log timeline. Kept
 // side-effect free so they can be unit-tested without a Supabase client.
 
+import { formatDate } from "./format";
+
 export type ActivityLog = {
   action: string;
   payload: unknown;
@@ -42,6 +44,10 @@ export function describeActivity(log: ActivityLog): string {
       const title = payload.title ? `"${String(payload.title)}"` : story;
       return `${log.actorName} copied ${title} here from another project`;
     }
+    case "iteration.length_overridden":
+      return `${log.actorName} moved iteration #${String(payload.number)}'s end date from ${formatDate(String(payload.from))} to ${formatDate(String(payload.to))}`;
+    case "project.cadence_changed":
+      return `${log.actorName} changed the iteration length from ${String(payload.from)} to ${String(payload.to)} days`;
     default:
       return log.storyTitle
         ? `${log.actorName} performed ${log.action} on ${story}`

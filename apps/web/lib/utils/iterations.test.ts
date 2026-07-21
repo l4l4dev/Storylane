@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBacklogRows,
+  iterationLabel,
+  iterationSpanLabel,
   nextRealRowId,
   projectedIterationDates,
   rowInsertAnchors,
@@ -366,5 +368,62 @@ describe("buildBacklogRows budgets", () => {
     // The break closes group 0, so `b` and `c` are budgeted against the
     // second sprint's 2 points and cannot share a group.
     expect(rows.filter((r) => r.kind === "iteration-header").map((r) => r.number)).toEqual([3, 4, 5]);
+  });
+});
+
+describe("iterationLabel", () => {
+  it("uses the project's own term instead of \"Iteration\"", () => {
+    expect(iterationLabel("Sprint", 7, 14, "2026-07-20")).toBe("Sprint #7");
+  });
+
+  it("titles a 1-day iteration by its date, where the number says nothing", () => {
+    expect(iterationLabel("Sprint", 137, 1, "2026-07-20")).toBe("2026/7/20");
+  });
+
+  it("falls back to the number when a 1-day iteration has no date yet", () => {
+    expect(iterationLabel("Sprint", 137, 1)).toBe("Sprint #137");
+  });
+});
+
+describe("iterationSpanLabel", () => {
+  it("names the week count when the span lands on a whole number of weeks", () => {
+    expect(iterationSpanLabel("2026-07-06", "2026-07-26")).toBe("21 days (3 weeks)");
+    expect(iterationSpanLabel("2026-07-06", "2026-07-12")).toBe("7 days (1 week)");
+  });
+
+  it("reports plain days otherwise", () => {
+    expect(iterationSpanLabel("2026-07-06", "2026-07-22")).toBe("17 days");
+    expect(iterationSpanLabel("2026-07-06", "2026-07-06")).toBe("1 day");
+  });
+
+  it("is empty for a backwards range, which the picker never commits", () => {
+    expect(iterationSpanLabel("2026-07-06", "2026-07-01")).toBe("");
+  });
+});
+
+describe("projectedIterationDates at a 1-day cadence", () => {
+  // Mon-Fri project. Without the working-day rule these projections land on
+  // Sat/Sun, which no real iteration ever occupies — and IterationHeaderRow
+  // titles 1-day groups by exactly this date.
+  const MON_FRI = [1, 2, 3, 4, 5];
+
+  it("skips the weekend and covers it from Friday", () => {
+    // Current iteration ends Thu 2026-07-16 → next is Fri 17th, spanning Fri-Sun.
+    expect(projectedIterationDates("2026-07-16", 1, 1, MON_FRI)).toEqual({
+      start_date: "2026-07-17",
+      end_date: "2026-07-19",
+    });
+    // The one after it is Mon 20th, a single day.
+    expect(projectedIterationDates("2026-07-16", 1, 2, MON_FRI)).toEqual({
+      start_date: "2026-07-20",
+      end_date: "2026-07-20",
+    });
+  });
+
+  it("leaves longer cadences on plain arithmetic", () => {
+    expect(projectedIterationDates("2026-07-16", 14, 1, MON_FRI)).toEqual({
+      start_date: "2026-07-17",
+      end_date: "2026-07-30",
+    });
   });
 });

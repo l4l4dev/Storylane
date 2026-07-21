@@ -2,17 +2,46 @@
 // Dates are handled as plain "YYYY-MM-DD" strings (matching the DB `date`
 // type) to avoid local-timezone drift when comparing against "today".
 
+import { MS_PER_DAY, addDays, daysBetween, formatDateOnly, nextWorkingDay, parseDateOnly } from "@storylane/core";
 import { storyTypeUsesPoints } from "./stories";
+import { formatDate } from "./format";
 
-const MS_PER_DAY = 86_400_000;
-
-function parseDateOnly(dateStr: string): number {
-  const [year, month, day] = dateStr.split("-").map(Number);
-  return Date.UTC(year, month - 1, day);
+/**
+ * How long an inclusive date range runs, shown while the end date is being
+ * edited so a whole-week span is visible as such (doc-8 §4 talks about
+ * lengthening a sprint in whole weeks) without a separate week control.
+ */
+export function iterationSpanLabel(startDate: string, endDate: string): string {
+  const days = daysBetween(startDate, endDate) + 1;
+  // NaN when the picker has been cleared — `< 1` alone lets it through and
+  // renders the string "NaN days".
+  if (!Number.isFinite(days) || days < 1) {
+    return "";
+  }
+  const unit = days === 1 ? "day" : "days";
+  if (days % 7 !== 0) {
+    return `${days} ${unit}`;
+  }
+  const weeks = days / 7;
+  return `${days} ${unit} (${weeks} ${weeks === 1 ? "week" : "weeks"})`;
 }
 
-function formatDateOnly(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
+/**
+ * How an iteration is titled (doc-8 §5). The term is per-project free text
+ * ("Sprint", "Cycle", ...). At a 1-day cadence the number is title noise —
+ * "#137" says nothing a team can hold on to — so the date takes its place;
+ * `startDate` is the iteration's own start, not today.
+ */
+export function iterationLabel(
+  term: string,
+  number: number,
+  iterationLengthDays: number,
+  startDate?: string,
+): string {
+  if (iterationLengthDays === 1 && startDate) {
+    return formatDate(startDate);
+  }
+  return `${term} #${number}`;
 }
 
 export type BacklogStoryForMarkers = { points: number | null; story_type: string };
@@ -225,12 +254,38 @@ export function rowInsertAnchors<T extends BacklogStoryForMarkers & { id: string
  * from the current iteration's `end_date` the same way `nextIterationDates`
  * computes the next real row, stacking full `iterationLengthDays` blocks for
  * later offsets.
+ *
+ * At a 1-day cadence plain arithmetic is wrong: `finalize_iteration` starts
+ * each row on a working day and runs it to the day before the next one, so a
+ * naive projection lands on weekends no real iteration will ever occupy —
+ * and the header would then be *titled* by that impossible date
+ * (`iterationLabel`). `workingWeekdays` applies the same rule here.
+ *
+ * ponytail: weekday pattern only, no project_calendar_exceptions — a holiday
+ * inside the horizon shifts a forecast by a day. Threading the exceptions in
+ * means fetching them before the projection that currently bounds their own
+ * query range (board/page.tsx), so it waits until a forecast that precise is
+ * asked for.
  */
 export function projectedIterationDates(
   currentEndDate: string,
   iterationLengthDays: number,
   offset: number,
+  workingWeekdays?: ReadonlyArray<number>,
 ): { start_date: string; end_date: string } {
+  if (iterationLengthDays === 1 && workingWeekdays && workingWeekdays.length > 0) {
+    let start = addDays(currentEndDate, 1);
+    let end = start;
+    for (let i = 0; i < offset; i++) {
+      start = i === 0 ? start : addDays(end, 1);
+      start = nextWorkingDay(workingWeekdays, [], start) ?? start;
+      // The row covers every day up to the next working one, so a Friday
+      // spans Fri-Sun and nothing falls between iterations.
+      end = addDays(nextWorkingDay(workingWeekdays, [], addDays(start, 1)) ?? addDays(start, 1), -1);
+    }
+    return { start_date: start, end_date: end };
+  }
+
   const startMs = parseDateOnly(currentEndDate) + MS_PER_DAY + (offset - 1) * iterationLengthDays * MS_PER_DAY;
   const endMs = startMs + (iterationLengthDays - 1) * MS_PER_DAY;
   return { start_date: formatDateOnly(startMs), end_date: formatDateOnly(endMs) };

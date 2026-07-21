@@ -27,7 +27,19 @@ export type ActionResult =
 
 export type PointScale = "fibonacci" | "linear" | "custom";
 
-export const ITERATION_LENGTHS = [7, 14, 21, 28] as const;
+// 1 is a real cadence (doc-8 §3): a one-day iteration lands on a working day
+// and covers the non-working days after it, so nothing falls between sprints.
+export const ITERATION_LENGTHS = [1, 7, 14, 21, 28] as const;
+
+/** Cadence option label (spec/screens.md "1 day / 1w / 2w / 3w / 4w"). */
+export function iterationLengthLabel(days: number): string {
+  if (days === 1) {
+    return "1 day";
+  }
+  const weeks = days / 7;
+  return Number.isInteger(weeks) ? `${weeks} week${weeks === 1 ? "" : "s"}` : `${days} days`;
+}
+
 export const POINT_SCALES: PointScale[] = ["fibonacci", "linear", "custom"];
 export const STATE_TEMPLATES = ["classic", "minimal"] as const;
 export type StateTemplate = (typeof STATE_TEMPLATES)[number];

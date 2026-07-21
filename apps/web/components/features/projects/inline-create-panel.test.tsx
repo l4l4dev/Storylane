@@ -17,10 +17,11 @@ describe("InlineCreatePanel", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("shows Tracker fields (iteration length, point scale, velocity window) by default", () => {
+  it("shows Tracker fields (display term, length, point scale, velocity window) by default", () => {
     render(<InlineCreatePanel />);
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
-    expect(screen.getByLabelText("Iteration length (days)")).toBeInTheDocument();
+    expect(screen.getByLabelText("What you call an iteration")).toBeInTheDocument();
+    expect(screen.getByLabelText("Length")).toBeInTheDocument();
     expect(screen.getByLabelText("Point scale")).toBeInTheDocument();
     expect(screen.getByLabelText("Velocity window")).toBeInTheDocument();
     expect(screen.queryByText("Column template")).not.toBeInTheDocument();
