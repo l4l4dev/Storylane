@@ -8,12 +8,18 @@ import { DraftStoryCard, DraftStoryTrigger } from "@/components/features/board/d
 // scheduled straight into its current iteration.
 export function MyWorkQuickAdd({
   projectId,
+  currentUserId,
   pointScale,
   epics,
   members,
   labels,
 }: {
   projectId: string;
+  // Defaults the draft card's assignee to the signed-in user — a personal
+  // task otherwise defaults unassigned (Pivotal parity) and would never
+  // satisfy My Work's own assignee_id = viewer query, so it'd never show up
+  // anywhere the user could find it again.
+  currentUserId: string;
   pointScale: number[];
   epics: { id: string; name: string }[];
   members: { id: string; name: string; isAgent?: boolean }[];
@@ -35,6 +41,7 @@ export function MyWorkQuickAdd({
       epics={epics}
       members={members}
       labels={labels}
+      defaultAssigneeId={currentUserId}
       onClose={() => setOpen(false)}
     />
   );

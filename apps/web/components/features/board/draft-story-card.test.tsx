@@ -73,6 +73,20 @@ describe("DraftStoryCard", () => {
     expect(screen.getByText("Urgent")).toBeInTheDocument();
   });
 
+  // My Work's quick-add passes this (TASK-93 follow-up): a personal task left
+  // unassigned would never satisfy My Work's own assignee_id = viewer query,
+  // so it'd never show up anywhere the user could find it again. Board panels
+  // never pass it — Pivotal parity (unassigned by default) is unaffected.
+  it("defaults the assignee to defaultAssigneeId when given (My Work's quick-add)", () => {
+    renderCard({ members: [{ id: "user-1", name: "Mary Evans" }], defaultAssigneeId: "user-1" });
+    expect(screen.getByLabelText("Assignee")).toHaveValue("user-1");
+  });
+
+  it("defaults the assignee to unassigned when defaultAssigneeId is omitted (board panels)", () => {
+    renderCard();
+    expect(screen.getByLabelText("Assignee")).toHaveValue("");
+  });
+
   it("only requires the title — Save is disabled until one is typed", () => {
     renderCard();
 

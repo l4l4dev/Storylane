@@ -147,6 +147,7 @@ export default async function MyWorkPage() {
         <div className="mb-6">
           <MyWorkQuickAdd
             projectId={soloPersonalProject.id}
+            currentUserId={user!.id}
             pointScale={pointScaleValues(soloProject?.point_scale ?? "fibonacci", soloProject?.custom_points)}
             epics={(soloEpics ?? []).map((e) => ({ id: e.id, name: e.name }))}
             labels={(soloLabels ?? []).map((l) => ({ id: l.id, name: l.name }))}

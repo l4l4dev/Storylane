@@ -45,6 +45,7 @@ export function DraftStoryCard({
   epics,
   members,
   labels,
+  defaultAssigneeId,
   onClose,
 }: {
   projectId: string;
@@ -57,9 +58,17 @@ export function DraftStoryCard({
   epics: { id: string; name: string }[];
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
+  // Board panels leave this unset (Pivotal parity: unassigned by default).
+  // My Work's quick-add passes the signed-in user's own id — a personal task
+  // added there and left unassigned would never satisfy My Work's own
+  // assignee_id = viewer query, effectively vanishing (the bug this fixes).
+  defaultAssigneeId?: string;
   onClose: () => void;
 }) {
-  const [value, setValue] = useState<StoryFieldsValue>(EMPTY_VALUE);
+  const [value, setValue] = useState<StoryFieldsValue>(() => ({
+    ...EMPTY_VALUE,
+    assigneeId: defaultAssigneeId ?? "",
+  }));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
