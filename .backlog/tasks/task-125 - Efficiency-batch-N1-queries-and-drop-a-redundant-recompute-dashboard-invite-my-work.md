@@ -7,6 +7,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 11:00'
+updated_date: '2026-07-21 12:34'
 labels: []
 dependencies: []
 priority: low
@@ -24,7 +25,15 @@ doc-13 low-severity bundle (efficiency).
 <!-- AC:BEGIN -->
 - [ ] #1 Dashboard's per-project fetchIterations/fetchMembers loop (apps/web/app/dashboard/page.tsx) replaced with batched .in("project_id", ...) queries
 - [ ] #2 Project-creation's sequential invite_member RPC loop (apps/web/app/dashboard/actions.ts) runs concurrently via Promise.all
-- [ ] #3 My Work's story query (apps/web/app/my-work/page.tsx) adds a .in("project_id", projectIds) filter instead of over-fetching then discarding in JS
-- [ ] #4 MyWorkSections' hasFilterableItems (apps/web/components/features/my-work/my-work-sections.tsx) no longer recomputes buildMyWorkSections a second time
-- [ ] #5 pnpm test + lint green
+- [ ] #3 pnpm test + lint green
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-sonnet-5
+created: 2026-07-21 12:34
+---
+Descoped: AC #3 (my-work story query .in filter) and #4 (hasFilterableItems double-recompute) removed — doc-14 (My Work Kanban rework) replaces my-work/page.tsx's queries and my-work-sections.tsx wholesale, making both moot. Kept #1/#2 (dashboard N+1, sequential invite RPC), unrelated to My Work.
+---
+<!-- COMMENTS:END -->
