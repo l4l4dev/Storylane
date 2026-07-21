@@ -501,6 +501,7 @@ export type Database = {
           custom_points: number[] | null
           description: string | null
           id: string
+          is_personal: boolean
           iteration_length: number
           iteration_term: string
           name: string
@@ -517,6 +518,7 @@ export type Database = {
           custom_points?: number[] | null
           description?: string | null
           id?: string
+          is_personal?: boolean
           iteration_length?: number
           iteration_term?: string
           name: string
@@ -533,6 +535,7 @@ export type Database = {
           custom_points?: number[] | null
           description?: string | null
           id?: string
+          is_personal?: boolean
           iteration_length?: number
           iteration_term?: string
           name?: string
@@ -548,6 +551,38 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      slack_notifications: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          project_id: string
+          ref_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          project_id: string
+          ref_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          project_id?: string
+          ref_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "slack_notifications_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -897,6 +932,10 @@ export type Database = {
       next_working_day: {
         Args: { p_from: string; p_project_id: string }
         Returns: string
+      }
+      notify_slack_event: {
+        Args: { p_project_id: string; p_ref_id: string; p_type: string }
+        Returns: undefined
       }
       override_iteration_length: {
         Args: { p_end_date: string; p_iteration_id: string }

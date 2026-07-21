@@ -27,16 +27,17 @@
 
 ### Onboarding (doc-8 §4, TASK-93)
 
-A fresh signup lands on `/dashboard` with one project already present: **"My
-Tasks"**, a normal 1-day-cadence, minimal-template project owned by the new
-user (`handle_new_user` trigger,
-`supabase/migrations/20260721000001_personal_project_on_signup.sql`). This
-is not a special mode or flagged project — invites are allowed on it like
-any other project; it exists purely so a solo user can start working (and
-`/my-work` isn't empty) with zero setup. Nothing distinguishes it in the UI
-beyond its own settings (name, 1-day cadence) — the same rendering rules
-that already apply to any 1-day project (date-titled iterations, My Work's
-today-by-default inclusion) apply here without special-casing.
+A fresh signup lands on **`/my-work`** (TASK-104) with one personal project
+already present: **"My Tasks"**, a 1-day-cadence, minimal-template project
+owned by the new user (`handle_new_user` trigger). It is flagged
+`projects.is_personal = true` (TASK-103, doc-11 D1) and is **hidden from the
+owner's own projects list (`/dashboard`) and sidebar switcher** — the owner
+works with it through My Work, so personal tasks and team projects don't mix
+in the list. Invites are still allowed on it, and it stays a move/copy
+target; only the owner's own list hides it (the filter is viewer-scoped,
+`is_personal AND created_by = me`, so an *invited* member still sees it).
+It exists so a solo user can start working (and `/my-work` isn't empty) with
+zero setup; its iterations render date-titled like any 1-day project.
 
 ### Projects page (`/dashboard`) — redesigned 2026-07-07
 

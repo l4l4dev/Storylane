@@ -56,13 +56,22 @@ describe.skipIf(!RUN)("personal project on signup (integration)", () => {
 
     const { data: projects } = await admin
       .from("projects")
-      .select("id, name, iteration_length, state_template, created_by")
+      .select("id, name, iteration_length, state_template, created_by, is_personal")
       .eq("created_by", userId);
     expect(projects).toHaveLength(1);
     const project = projects![0];
     expect(project.name).toBe("My Tasks");
     expect(project.iteration_length).toBe(1);
     expect(project.state_template).toBe("minimal");
+    expect(project.is_personal).toBe(true); // TASK-103
+
+    // TASK-103: the partial unique index enforces one personal project per
+    // owner — a second is_personal insert for the same creator is rejected.
+    const { error: dupError } = await admin
+      .from("projects")
+      .insert({ name: "Second personal", iteration_length: 1, is_personal: true, created_by: userId });
+    expect(dupError).not.toBeNull();
+    expect(dupError?.code).toBe("23505"); // unique_violation
 
     const { data: membership } = await admin
       .from("project_members")

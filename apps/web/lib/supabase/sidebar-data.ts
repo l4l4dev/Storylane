@@ -10,8 +10,17 @@ export async function fetchSidebarData(
   supabase: SupabaseServerClient,
   userId: string | undefined,
 ): Promise<{ projects: ProjectRef[]; username: string | null }> {
+  // Same personal-project exclusion as the projects list (TASK-103 / doc-11
+  // D1): hide the viewer's own "My Tasks" from the switcher, but keep a
+  // personal project they were invited to (created_by someone else).
+  const personalFilter = userId ? `is_personal.eq.false,created_by.neq.${userId}` : "is_personal.eq.false";
   const [{ data: projectRows }, { data: myMemberships }, { data: profile }] = await Promise.all([
-    supabase.from("projects").select("id, name").is("archived_at", null).order("updated_at", { ascending: false }),
+    supabase
+      .from("projects")
+      .select("id, name")
+      .is("archived_at", null)
+      .or(personalFilter)
+      .order("updated_at", { ascending: false }),
     userId
       ? supabase.from("project_members").select("project_id, is_favorite").eq("user_id", userId)
       : Promise.resolve({ data: null }),

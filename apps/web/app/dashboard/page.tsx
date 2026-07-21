@@ -24,9 +24,15 @@ export default async function DashboardPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  // Hide the viewer's OWN personal project ("My Tasks", TASK-103): it lives
+  // in My Work, not the projects list. Scoped to `created_by = me` so a
+  // personal project the viewer was invited to (someone else's) still shows
+  // for them — see doc-11 D1.
+  const personalFilter = user ? `is_personal.eq.false,created_by.neq.${user.id}` : "is_personal.eq.false";
   const { data: projects } = await supabase
     .from("projects")
     .select("id, name, description, created_at, updated_at, archived_at, velocity_window")
+    .or(personalFilter)
     .order("updated_at", { ascending: false });
 
   // Lazily rolls over each tracker project's current iteration before

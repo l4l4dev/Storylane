@@ -26,11 +26,14 @@ projects (
   description       text,
   velocity_window   int  DEFAULT 3,       -- number of recent iterations used for velocity calculation
   iteration_length  int  DEFAULT 14,      -- cadence: sprint length in days (1 / 7 / 14 / 21 / 28).
-                                          -- 1 = a 1-day-cadence project (no special "personal mode";
-                                          -- doc-8 §4). Changeable at any time; the change applies only
-                                          -- to the NEXT iteration row that gets created — no
-                                          -- effective-date scheduling (doc-8 §3, see spec/velocity.md
-                                          -- "Cadence change"). Each change logs an activity_logs row
+                                          -- 1 = a 1-day-cadence project (doc-8 §4). A 1-day project is
+                                          -- NOT necessarily the user's personal project — that is a
+                                          -- separate flag, is_personal (see below). Changeable at any
+                                          -- time; the change applies only to the NEXT iteration row
+                                          -- created — no effective-date scheduling (doc-8 §3, see
+                                          -- spec/velocity.md "Cadence change"), unless the owner opts
+                                          -- into reshaping the current one (TASK-105). Each change
+                                          -- logs an activity_logs row
   iteration_term    text NOT NULL DEFAULT 'Iteration', -- doc-8 §5: user-facing display term
                                           -- ("Sprint", "Iteration", free text). Data layer stays
                                           -- `iterations`. 1-day projects display the date as the title
@@ -40,6 +43,13 @@ projects (
                                           -- boundary selection (see calendar tables below)
   point_scale       text DEFAULT 'fibonacci', -- 'fibonacci' | 'linear' | 'custom'
   custom_points     int[],                -- array used when point_scale='custom'
+  is_personal       boolean NOT NULL DEFAULT false, -- TASK-103 (doc-11 D1): the auto-created
+                                          -- "My Tasks" personal project (set true by handle_new_user).
+                                          -- Hidden from the owner's own projects list + switcher (My
+                                          -- Work is its home); one per owner (partial unique index on
+                                          -- created_by WHERE is_personal). Reverses doc-8's "no flag"
+                                          -- call — iteration_length=1 can't distinguish personal from a
+                                          -- 1-day team project
   archived_at       timestamptz,          -- 2026-07-07: set = archived (owner only), NULL = active.
                                           -- Archived projects are hidden behind an "Archived"
                                           -- filter on the Projects page; unarchive sets NULL

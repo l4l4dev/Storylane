@@ -19,12 +19,17 @@ export default async function MyWorkPage() {
   // RLS already scopes this to the signed-in user's memberships.
   const { data: projectRows } = await supabase
     .from("projects")
-    .select("id, name, iteration_length")
+    .select("id, name, is_personal, created_by")
     .is("archived_at", null);
   const projects = (projectRows ?? []).map((p) => ({
     id: p.id,
     name: p.name,
-    isPersonal: p.iteration_length === 1,
+    // TASK-103: the real flag, not iteration_length === 1 (a 1-day team
+    // project is legitimate and is NOT the user's personal project). Scoped
+    // to the viewer's OWN personal project (created_by) — an invited member of
+    // someone else's personal project must not have it treated as their own
+    // Today project / rolled over (rls-security-reviewer, TASK-103).
+    isPersonal: p.is_personal && p.created_by === user?.id,
   }));
   const projectIds = new Set(projects.map((p) => p.id));
   const personalProjects = projects.filter((p) => p.isPersonal);
@@ -145,7 +150,9 @@ export default async function MyWorkPage() {
 
       {isEmpty && (
         <p className="text-sm text-muted-foreground">
-          Nothing assigned to you yet. Stories assigned to you across your projects will show up here.
+          {soloPersonalProject
+            ? "Add a personal task above to plan your day. Stories assigned to you across your team projects show up here too."
+            : "Nothing assigned to you yet. Stories assigned to you across your projects will show up here."}
         </p>
       )}
 

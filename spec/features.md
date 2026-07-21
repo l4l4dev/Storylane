@@ -140,9 +140,17 @@
   cadence, minimal state template, the new user as owner) via the
   `handle_new_user` trigger — no manual setup, `/my-work` has content from
   the first login (see spec/screens.md "Onboarding").
-- Ordinary project: no flag column, invites allowed, no special-casing
-  anywhere in the schema or UI — My Work's accent for it comes from its
-  `iteration_length = 1`, the same signal any other 1-day project gets.
+- Marked with `projects.is_personal = true` (TASK-103, doc-11 D1 — reversing
+  doc-8's original "no flag" call). Rationale: a 1-day cadence is a legitimate
+  team project too, so `iteration_length = 1` can't tell "the user's personal
+  project" apart from "a 1-day team project" — and hiding the personal one from
+  the projects list needs exactly that distinction. One personal project per
+  owner (partial unique index). Otherwise an ordinary project: invites allowed;
+  it stays a valid move/copy target.
+- Hidden from the owner's own projects list (`/dashboard`) and sidebar switcher
+  — it lives in My Work instead. The filter is viewer-scoped
+  (`is_personal AND created_by = me`), so a personal project someone was
+  *invited* to still shows in their list.
 - Seeding runs in the same transaction as the `auth.users` insert; a
   seeding failure fails signup rather than leaving a user without their
   personal project.

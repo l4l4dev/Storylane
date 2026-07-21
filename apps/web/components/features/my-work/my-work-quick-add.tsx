@@ -22,7 +22,7 @@ export function MyWorkQuickAdd({
   const [open, setOpen] = useState(false);
 
   if (!open) {
-    return <DraftStoryTrigger label="Add story" onClick={() => setOpen(true)} />;
+    return <DraftStoryTrigger label="Add a personal task" onClick={() => setOpen(true)} />;
   }
 
   return (
