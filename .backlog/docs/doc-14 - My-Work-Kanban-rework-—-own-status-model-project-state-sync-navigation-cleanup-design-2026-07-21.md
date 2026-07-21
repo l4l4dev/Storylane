@@ -5,7 +5,7 @@ title: >-
   cleanup design 2026-07-21
 type: specification
 created_date: '2026-07-21 12:07'
-updated_date: '2026-07-21 12:23'
+updated_date: '2026-07-21 12:32'
 ---
 # My Work Kanban rework — own status model, project state sync, navigation cleanup
 
@@ -157,12 +157,16 @@ implementation.**
 
 ```
 user_id       uuid references profiles(id)
-story_id      uuid references stories(id)
+story_id      uuid references stories(id) on delete cascade
 is_today      boolean not null default false   -- the personal "today" marker
 local_status  text check (local_status in ('todo','doing','done')) null
 updated_at    timestamptz not null default now()
 primary key (user_id, story_id)
 ```
+(plus an index on `story_id` alone, matching `story_pins`' existing shape —
+`supabase/migrations/20260720000004_story_pins.sql:16-24` — for the reverse
+lookup "who has this story customized," used by cascade-adjacent cleanup and
+by any future admin/debug view.)
 
 - Replaces `story_pins` outright: the old boolean pin *was* already "is this
   in my Today," so folding it into this table's `is_today` column is a
@@ -190,7 +194,7 @@ primary key (user_id, story_id)
 ### `project_my_work_mapping` (new table)
 
 ```
-project_id      uuid references projects(id) primary key
+project_id      uuid references projects(id) on delete cascade primary key
 doing_state_id  uuid references project_states(id) null  -- on delete set null
 done_state_id   uuid references project_states(id) null  -- on delete set null
 configured_by   uuid references profiles(id) null
@@ -211,6 +215,12 @@ updated_at      timestamptz not null default now()
   effectively unmapped (recommended: the latter — simpler, no trigger, and
   the Settings UI can still show "mapping configured but no longer valid"
   by comparing live).
+- **RLS (fable-advisor, round 3): follows the `integrations` table's exact
+  pattern** (`supabase/migrations/20260627000007_integrations.sql` — same
+  shape of "a project-level config row, owner sets it, members can read
+  it") rather than `project_states`' member-writable pattern, which doesn't
+  fit here: `select` gated by `is_project_member(project_id)`; `insert`/
+  `update`/`delete` gated by `project_role(project_id) = 'owner'`.
 
 ### `story_completions` (new table — append-only, never updated or deleted)
 
@@ -220,6 +230,8 @@ story_id     uuid not null references stories(id) on delete cascade
 user_id      uuid not null references profiles(id)
 completed_at timestamptz not null default now()
 ```
+(plus an index on `(user_id, completed_at desc)` — the Done log's actual
+query shape, per fable-advisor round 3.)
 
 - One **new row inserted** every time a story transitions into a `done`
   category from a non-done one — `user_id = new.assignee_id` (credit goes
@@ -230,7 +242,24 @@ completed_at timestamptz not null default now()
   reuse that column). Added to the same `maintain_story_completed_at`
   trigger's "entering done" branch as an additional `insert`, alongside its
   existing `completed_at := now()` on `stories` — one trigger, two effects,
-  same migration.
+  same migration. **Guarded by `new.assignee_id is not null`** (fable-advisor
+  round 3): a story can be created directly into a done-category state with
+  no assignee (copy/API/seed path) — without the guard, `story_completions.
+  user_id not null` would reject the insert and the story creation itself
+  would fail.
+- **The trigger must be redeclared `security definer`** (fable-advisor round
+  3, a real bug the doc's first draft assumed away): the current
+  `maintain_story_completed_at` (`supabase/migrations/20260719000008_
+  reanchor_board_mechanics.sql:286-320`) is SECURITY INVOKER. Since
+  `story_completions` intentionally has **no client INSERT policy at all**
+  (matching the TASK-110 "only a trigger writes it" precedent), adding the
+  insert to an invoker-rights trigger would make **every** transition into a
+  done category — on My Work *and* on a project's own Board — fail with a
+  permission error the instant this migration lands, not just a My Work
+  edge case. The migration must `create or replace function
+  public.maintain_story_completed_at() ... security definer ...` (the whole
+  function body, following this function's own established precedent of
+  full replacement across its four prior redefinitions — no partial patch).
 - **Nothing here is ever updated or deleted.** Reopening a story (leaving
   `done`) does not touch this table at all — `stories.completed_at` still
   clears per the existing trigger (that's the CURRENT-state column, used by
@@ -251,12 +280,33 @@ completed_at timestamptz not null default now()
   would mean re-resolving names against `project_states` at query time
   (fragile across renames). A dedicated table sidesteps both problems and
   gives a direct, indexed `where user_id = viewer` filter for the Done log.
-- RLS: `select` scoped to `user_id = auth.uid()` (own rows only, matching
-  `story_pins`'s existing pattern); no client-side `insert`/`update`/
-  `delete` policy at all — the trigger is SECURITY DEFINER, and there is no
-  legitimate direct-write path (mirrors the `iterations` INSERT lockdown
-  reasoning from TASK-110: if only a trigger ever writes it, only a trigger
-  should be allowed to).
+- RLS on `story_completions`: `select` scoped to `user_id = auth.uid()` (own
+  rows only, matching `story_pins`'s existing pattern); no client-side
+  `insert`/`update`/`delete` policy at all — the trigger is SECURITY
+  DEFINER, and there is no legitimate direct-write path (mirrors the
+  `iterations` INSERT lockdown reasoning from TASK-110: if only a trigger
+  ever writes it, only a trigger should be allowed to).
+- **This migration must also extend `stories`' own SELECT RLS** (fable-
+  advisor round 3, the sharpest edge case in this doc, confirmed real): the
+  current policy (`supabase/migrations/20260627000005_stories_tasks.sql:
+  53-55`) is `using (is_project_member(project_id))` only. Since a story's
+  assignee can leave the project after completing it (`remove_member` RPC,
+  `20260715000004_membership_admin_rpcs.sql`) while doc-14's whole premise
+  is that their Done log entry — live-joined to the story's current data —
+  must keep working, the policy needs an OR clause:
+  ```sql
+  using (
+    public.is_project_member(project_id)
+    or exists (
+      select 1 from public.story_completions sc
+      where sc.story_id = stories.id and sc.user_id = auth.uid()
+    )
+  )
+  ```
+  Without this, `story_completions`' own RLS (scoped to the viewer's own
+  rows) is not enough — the *joined* `stories` row becomes unreadable the
+  moment the viewer stops being a project member, silently breaking the
+  "never disappears" guarantee this whole design exists to provide.
 
 ### Classification (replaces `buildMyWorkSections`)
 
@@ -283,13 +333,24 @@ independent of current assignment.
 
 - **To Today / out of Today**: upsert `my_work_story_state.is_today`. No
   project write, ever.
-- **To Doing/Done, project mapped**: call the existing `set_story_state` /
-  `move_story_board` machinery (reuse, do not fork a new write path) with
-  the mapped state id — same authorization (owner/member), same triggers
-  (activity log, Slack notification, `completed_at` maintenance and now
-  also the `story_completions` insert on entering done), same advisory
-  locks. This is a normal board state transition, sourced from My Work
-  instead of a project's own Board.
+- **To Doing/Done, project mapped**: call **`set_story_state(p_story_id,
+  p_state_id)` only** with the mapped state id (fable-advisor round 3:
+  `move_story_board` was over-scoped for this — it carries board-position/
+  optimistic-concurrency machinery (`p_view`/`p_anchor`/`p_expected`) that
+  My Work has no equivalent of, since there's no reordering inside My Work;
+  `set_story_state` alone is sufficient and its authorization — stories'
+  UPDATE RLS, owner or `assignee_id = auth.uid()` — already matches My
+  Work's own Todo/Today/Doing base scope exactly). Reuses `set_story_state`'s
+  existing rules unmodified: the not-yet-estimated feature gate, and
+  automatic current-iteration assignment on entering `in_progress`
+  (`supabase/migrations/20260719000007_set_story_state.sql:74-93`).
+  - **Known consequence, not a blocker**: that auto-iteration-assignment
+    branch raises `'No active iteration'` if the target project has none —
+    reintroducing an iteration dependency through this one path, even
+    though doc-14's whole point elsewhere is decoupling Today from
+    iterations. My Work's drag UI must catch this specific RPC error and
+    show it as a visible banner (ux-principles.md principle 2 — never a
+    silent failed drag), since My Work's UI is otherwise iteration-unaware.
 - **To Doing/Done, project unmapped**: upsert `my_work_story_state.
   local_status`. No project write.
 - **To Todo (from Today, Doing, or Done)**: always a `my_work_story_state`
@@ -326,7 +387,25 @@ independent of current assignment.
 
 Per repo CLAUDE.md: new tables + an algorithm rewrite this size requires a
 fable-advisor review before implementation, in addition to the usual
-rls-security-reviewer pass once migrations are drafted and the fable-advisor
-design review against `spec/ux-principles.md` before manual verification.
-This doc is the input to the advisor review — not yet run as of this
-writing (owner asked to review this written doc first).
+rls-security-reviewer pass once migrations are drafted and a fable-advisor
+UI design review against `spec/ux-principles.md` before manual verification.
+
+**fable-advisor design review: approve-with-changes (2026-07-21).**
+Classification logic (Done > Today > Doing/Todo precedence, Done's
+completion-history scope vs. Todo/Today/Doing's current-assignee scope) had
+no internal contradictions. Six corrections required, all now folded into
+the sections above: (1) `stories`' SELECT RLS needed an OR clause for
+`story_completions` owners — without it, a story's own row becomes
+unreadable the moment its completer leaves the project, breaking the
+"never disappears" guarantee; (2) `maintain_story_completed_at` must be
+redeclared `security definer` — otherwise this migration breaks *every*
+done-category transition project-wide (not just My Work) since
+`story_completions` has no client INSERT policy; (3) `project_my_work_
+mapping` had no RLS at all in the first draft — now specified, matching the
+`integrations` table's owner-writes/members-read pattern; (4) the write
+path uses `set_story_state` only, not `move_story_board` (over-scoped for
+this — no board-position/optimistic-concurrency need here); (5) mapped
+Doing/Done drags can surface `set_story_state`'s existing `'No active
+iteration'` error — needs a visible banner, not a silent failure; (6) minor
+indexing/cascade gaps (`my_work_story_state.story_id`, `story_completions
+(user_id, completed_at)`, `project_my_work_mapping`'s `on delete cascade`).
