@@ -3,10 +3,11 @@ id: TASK-108
 title: >-
   My Work: Todo/Doing/Today/Done sections + per-project color +
   current-iteration filter
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 08:05'
+updated_date: '2026-07-21 10:02'
 labels:
   - web
 dependencies: []
@@ -30,3 +31,9 @@ doc-12 Thread A (+ advisor corrections). Replace My Work's Today/Assigned two-se
 - [ ] #6 Per-project row color is a shared utility (e.g. apps/web/lib/utils/project-color.ts, deterministic hash from project id), not inline in my-work-row.tsx, so a later task can reuse it in the sidebar
 - [ ] #7 spec/screens.md 'My Work' section rewritten to match; fable-advisor design review passes; pnpm test + lint green
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+My Work is now a 4-section daily-planning surface: Todo (personal backlog, grouped by project) / Today (personal-project current iteration + pinned) / Doing (in_progress) / Done (last 7 days, date-grouped). Classification precedence Done>Today>Doing>Todo; render order Todo->Today->Doing->Done (Done last, principle 9). buildMyWorkSections is a 4-way split + groupDoneByDate; a client MyWorkSections component holds the 'Only current iteration' toggle (client-side, narrows Todo+Doing). The page rolls over ALL the user's projects and resolves each current iteration (reusing the dashboard pattern) and fetches the last 7 days of done. Per-project accent via project-color.ts (deterministic id-hash over the dataviz-validated 8-hue palette, light/dark in globals.css) on the row left-border + chip border only (never text — WCAG). Carryover is automatic (pins + 1-day rollover), documented not enforced. Verified: fable-advisor design review approve-with-fixes -> chip text-color contrast fixed to border-only; new unit tests (my-work 8, sections 4, project-color 4) + updated row test; full web suite (549) + tsc + lint green. Not visually browser-verified this session (Claude-in-Chrome disconnected).
+<!-- SECTION:FINAL_SUMMARY:END -->
