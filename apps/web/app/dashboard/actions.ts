@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
-import type { InviteSearchResult } from "@/lib/types";
+import type { ActionResult, InviteSearchResult } from "@/lib/types";
 import { STATE_TEMPLATES } from "@/lib/types";
 import { clampIterationLength, clampVelocityWindow } from "@storylane/core";
 
@@ -46,7 +46,7 @@ export async function searchUserForNewProject(query: string): Promise<NewProject
   };
 }
 
-export async function createProject(formData: FormData) {
+export async function createProject(formData: FormData): Promise<ActionResult | void> {
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
   const iterationLength = clampIterationLength(Number(formData.get("iteration_length") ?? 14));
@@ -98,7 +98,7 @@ export async function createProject(formData: FormData) {
     .single();
 
   if (error) {
-    throw new Error(error.message);
+    return { ok: false, message: error.message };
   }
 
   // Invitations stay outside the transaction: a failed lookup must not undo the

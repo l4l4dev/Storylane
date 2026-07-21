@@ -25,9 +25,19 @@ const TEMPLATE_LABELS: Record<(typeof STATE_TEMPLATES)[number], string> = {
 export function InlineCreatePanel({ defaultOpen = false }: { defaultOpen?: boolean } = {}) {
   const [open, setOpen] = useState(defaultOpen);
   const [invitees, setInvitees] = useState<NewProjectInviteResult[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
+  // Not a try/catch: createProject's success path ends in redirect(), which
+  // works by throwing a signal Next.js's action transport intercepts before
+  // it reaches here — a catch block would risk swallowing that instead of
+  // just the DB error it returns as a value.
   async function handleCreate(formData: FormData) {
-    await createProject(formData);
+    setError(null);
+    const result = await createProject(formData);
+    if (result?.ok === false) {
+      setError(result.message);
+      return;
+    }
     setOpen(false);
     setInvitees([]);
   }
@@ -108,8 +118,17 @@ export function InlineCreatePanel({ defaultOpen = false }: { defaultOpen?: boole
           <NewProjectInvitePicker selected={invitees} onChange={setInvitees} />
         </div>
 
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setOpen(false);
+              setError(null);
+            }}
+          >
             Cancel
           </Button>
           <Button type="submit">Create</Button>

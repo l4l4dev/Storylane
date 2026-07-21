@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const createProjectMock = vi.fn();
 const inviteMemberMock = vi.fn();
 const getUserMock = vi.fn();
+let insertResult = { data: { id: "project-1" }, error: null as { message: string } | null };
 
 const rpcMock = vi.fn((fn: string, args: unknown) => {
   if (fn === "invite_member") return inviteMemberMock(args);
@@ -18,7 +19,7 @@ vi.mock("@/lib/supabase/server", () => ({
         createProjectMock(values);
         return {
           select: () => ({
-            single: () => Promise.resolve({ data: { id: "project-1" }, error: null }),
+            single: () => Promise.resolve(insertResult),
           }),
         };
       },
@@ -41,6 +42,7 @@ describe("createProject", () => {
     getUserMock.mockReset();
     getUserMock.mockResolvedValue({ data: { user: { id: "creator-1" } } });
     inviteMemberMock.mockResolvedValue({ error: null });
+    insertResult = { data: { id: "project-1" }, error: null };
   });
 
   it("invites each unique, non-self id and redirects without invite_failed on success", async () => {
@@ -101,6 +103,20 @@ describe("createProject", () => {
 
     await expect(createProject(formData)).rejects.toThrow("REDIRECT:/projects/project-1/board");
     expect(createProjectMock).toHaveBeenCalledWith(expect.objectContaining({ velocity_window: 1 }));
+  });
+
+  // TASK-118: a DB error must be returned, not thrown, so the calling
+  // client component can show it inline instead of hitting an uncaught
+  // exception / the nearest error.tsx boundary.
+  it("returns an ok:false result instead of throwing on a DB insert error", async () => {
+    insertResult = { data: null as unknown as { id: string }, error: { message: "duplicate key value" } };
+    const { createProject } = await import("./actions");
+
+    const formData = new FormData();
+    formData.set("name", "My Project");
+
+    await expect(createProject(formData)).resolves.toEqual({ ok: false, message: "duplicate key value" });
+    expect(inviteMemberMock).not.toHaveBeenCalled();
   });
 
 });

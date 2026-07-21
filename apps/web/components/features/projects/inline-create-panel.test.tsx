@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { InlineCreatePanel } from "./inline-create-panel";
 
@@ -32,6 +32,24 @@ describe("InlineCreatePanel", () => {
   // defaultOpen so the panel lands pre-expanded.
   it("renders pre-expanded when defaultOpen is true", () => {
     render(<InlineCreatePanel defaultOpen={true} />);
+    expect(screen.getByLabelText("Name")).toBeInTheDocument();
+  });
+
+  // TASK-118: a DB error must surface inline instead of propagating as an
+  // uncaught exception, and the panel/form state must be preserved so the
+  // user can retry rather than losing their input.
+  it("shows an inline error and keeps the panel open when creation fails", async () => {
+    createProjectMock.mockResolvedValueOnce({ ok: false, message: "duplicate key value" });
+    render(<InlineCreatePanel />);
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "My Project" } });
+    fireEvent.submit(screen.getByLabelText("Name").closest("form")!);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("duplicate key value")).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toBeInTheDocument();
   });
 
