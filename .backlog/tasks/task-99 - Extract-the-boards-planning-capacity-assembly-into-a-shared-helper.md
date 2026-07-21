@@ -1,10 +1,11 @@
 ---
 id: TASK-99
 title: Extract the board's planning-capacity assembly into a shared helper
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-20 03:13'
+updated_date: '2026-07-21 01:12'
 labels:
   - web
 milestone: m-5
