@@ -30,11 +30,18 @@ export function InviteMemberForm({ projectId }: { projectId: string }) {
     if (query.trim().length < 2) {
       return;
     }
+    // A slower earlier query can resolve after a faster later one; `cancelled`
+    // is set by this effect's own cleanup (fired on the next keystroke) so a
+    // stale response can never overwrite a fresher one.
+    let cancelled = false;
     debounceRef.current = setTimeout(async () => {
       const found = await searchUsersForInvite(projectId, query);
-      setResults(found);
+      if (!cancelled) setResults(found);
     }, 300);
-    return () => clearTimeout(debounceRef.current);
+    return () => {
+      cancelled = true;
+      clearTimeout(debounceRef.current);
+    };
   }, [query, projectId]);
 
   // Derived rather than reset via setState in the effect above: avoids a
