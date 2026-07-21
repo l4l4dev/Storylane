@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-08 07:45'
-updated_date: '2026-07-21 05:06'
+updated_date: '2026-07-21 05:08'
 labels:
   - db
   - ios
@@ -31,18 +31,18 @@ Per decision-1: Slack notifications currently fire only from Web server actions 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-Advisor-reviewed 2026-07-21 (fable-advisor, Opus fallback): 修正付き承認。骨格(trigger + pg_net -> Edge Function、メッセージ整形は Edge Function 内複製)は妥当。以下の修正込みで実装:
+Advisor-reviewed 2026-07-21 (fable-advisor, Opus fallback), then re-reviewed for the outbox addition. As-built:
 
-1. iteration finalized/started/skipped は activity_logs に載せない(spec/screens.md 22行の feed 定義「story/comment changes」と衝突・無断拡張になる)。iterations テーブルへの直接トリガー: AFTER UPDATE OF state WHEN (NEW.state='done' AND OLD.state IS DISTINCT FROM NEW.state) と AFTER INSERT。NEW.number/velocity/capacity/skipped/start_date/end_date を読む(finalize_iteration の jsonb 再パース不要)。
-2. story 側は既存 log_story_activity が作る activity_logs 行に AFTER INSERT WHEN (NEW.action='story.state_changed') の通知トリガーを足す(story.state_changed は元々 feed に出る action なので矛盾なし)。
-3. メッセージ整形は Edge Function 内に複製(packages/core 移動は却下 — Deno workspace import の前例ゼロ)。複製対象: apps/web/lib/utils/slack.ts の4関数 + iterationLabel(iterations.ts) + stateName ヘルパー(null->"Icebox", 不明id->"Unknown")。slack.ts の既存テストと同じ入出力ペア数件を Deno test 側にも置いて両方 assert(golden の軽量版)。
-4. pg_net 新規インフラ: create extension pg_net。認証は Vault(vault.decrypted_secrets)に共有シークレット、trigger 関数が読み出して Authorization/カスタムヘッダに載せ、Edge Function(verify_jwt=false)が git-webhook 流で自前検証。migration にシークレット直書き禁止(CLAUDE.md Do Not + public repo)。
-5. slack-notify Edge Function 新規(config.toml に verify_jwt=false 追加)。integrations 行(config.webhook_url, is_active)を service_role で読む。失敗は握りつぶし(pg_net 非同期なので元 write に影響なし)。
-6. AC#1 テスト: 直接 DB 書き込み -> net.http_request_queue に正しい url/body で1行 enqueue を assert(既存 *.integration.test.ts の RUN フラグ方式)。実配送は host.docker.internal 制約 + 非同期のため自動スイートに含めない(手動/ローカル1回のみ)。
-7. AC#2 二重発火: board/actions.ts の5箇所 notifySlack 削除 + lib/integrations/slack.ts 削除を、上記 trigger migration と同一デプロイでまとめる。デプロイ順序(migration -> app)を手順化。
-8. spec/integrations.md 43-48行を decision-1 §3(iOS 直書きが server action を経由しない)根拠明記で書き換え。
-9. migration 一式は rls-security-reviewer 追加パス必須。
-10. 着手は TASK-87 コミット後 -> 既に完了済み(今セッション 9cabf9b/fc55266)。
+1. Story state changes ride the activity_logs row log_story_activity already writes: an AFTER INSERT trigger on activity_logs WHEN (action='story.state_changed'). Iteration finalize/start are NOT put in activity_logs (spec/screens.md defines that feed as story/comment changes only) — they ride triggers on the iterations table: AFTER UPDATE OF state WHEN (new.state='done' AND old.state IS DISTINCT FROM new.state) and AFTER INSERT.
+2. All three triggers call trg_slack_notify(tg_argv), which perform-calls notify_slack_event(type, project_id, ref_id) (SECURITY DEFINER, owned by postgres).
+3. Outbox: notify_slack_event, gated on an active slack integration, records a public.slack_notifications row (id, project_id, event_type, ref_id, created_at) and fires an async net.http_post (pg_net) to the slack-notify Edge Function. The outbox exists because pg_net's queue drains in ~1-2s and PostgREST doesn't expose the net schema, so the queue can't be asserted from the integration harness (and adding a raw pg dep was rejected) — the durable public row is what makes AC#1 testable race-free. RLS: owner-only SELECT; no INSERT/UPDATE/DELETE policies (deny-by-absence, same as activity_logs), so only the SECURITY DEFINER trigger and service_role write.
+4. Message formatting is duplicated into the Edge Function (Deno cannot import the web workspace — no import map precedent): slack.ts's four functions + iterationLabel + a null->"Icebox" resolve. The vitest and Deno tests assert the same input/output pairs to catch drift.
+5. slack-notify Edge Function (config.toml verify_jwt=false): reads the referenced row + integrations (config.webhook_url, is_active) with the service role, re-checks is_active at send time, posts to Slack, and always 200s on Slack-side failure (fire-and-forget; pg_net is async so the originating write is untouched).
+6. Auth for the pg_net call: a shared secret in the x-slack-notify-secret header, compared timing-safe against SLACK_NOTIFY_SECRET in the Edge Function. The Edge URL + secret live in Vault (slack_notify_url / slack_notify_secret), never in source; local dev seeds them in seed.sql. A DB with no secrets records the outbox row and skips the POST (no error).
+7. AC#1 test: a DIRECT table write (service role, no web action) produces a slack_notifications row — proving the client-agnostic path. Also covers the no-integration gate and post-deactivation stop. Real pg_net delivery is not in the automated suite (host.docker.internal + async); it's a one-off manual/local check.
+8. AC#2 (no double-fire): the Web notifySlack calls (board/actions.ts x5 + notifyFinalizeEvents) and lib/integrations/slack.ts / lib/utils/slack.ts / the now-unused admin client are removed in the SAME change as the trigger migration. Production must apply the migration and the app deploy together.
+9. spec/integrations.md rewritten (decision-1 §3: iOS direct writes don't run the server action) and an ARCHITECTURE.md relation row added. Migration passed rls-security-reviewer.
+10. Prerequisite TASK-87 already committed this session (9cabf9b/fc55266).
 <!-- SECTION:PLAN:END -->
 
 ## Comments
