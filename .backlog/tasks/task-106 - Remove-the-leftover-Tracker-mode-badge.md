@@ -9,7 +9,7 @@ labels:
   - web
 dependencies: []
 priority: low
-ordinal: 21000
+ordinal: 9500
 ---
 
 ## Description

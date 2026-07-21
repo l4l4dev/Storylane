@@ -12,7 +12,7 @@ labels:
   - db
 dependencies: []
 priority: medium
-ordinal: 18000
+ordinal: 8000
 ---
 
 ## Description
