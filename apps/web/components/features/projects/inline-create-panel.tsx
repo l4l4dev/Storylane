@@ -19,9 +19,11 @@ const TEMPLATE_LABELS: Record<(typeof STATE_TEMPLATES)[number], string> = {
 };
 
 // Inline panel (spec/screens.md "Projects page") that expands in place
-// above the card grid — no route change, no dialog role.
-export function InlineCreatePanel() {
-  const [open, setOpen] = useState(false);
+// above the card grid — no route change, no dialog role. `defaultOpen`
+// (TASK-104) lets My Work's "New project" entry land here pre-expanded via
+// ?new=1, instead of duplicating this form on My Work itself.
+export function InlineCreatePanel({ defaultOpen = false }: { defaultOpen?: boolean } = {}) {
+  const [open, setOpen] = useState(defaultOpen);
   const [invitees, setInvitees] = useState<NewProjectInviteResult[]>([]);
 
   async function handleCreate(formData: FormData) {

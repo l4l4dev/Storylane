@@ -12,9 +12,9 @@ import { signOut } from "./actions";
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invite_failed?: string }>;
+  searchParams: Promise<{ invite_failed?: string; new?: string }>;
 }) {
-  const { invite_failed } = await searchParams;
+  const { invite_failed, new: openCreate } = await searchParams;
   // Only render the banner for a genuine positive integer — a
   // crafted/garbled query param renders nothing instead of a
   // nonsensical message (React already escapes it, so this is a validity
@@ -130,7 +130,7 @@ export default async function DashboardPage({
       {inviteFailedCount !== null && <InviteFailedBanner count={inviteFailedCount} />}
 
       <div className="mb-6">
-        <InlineCreatePanel />
+        <InlineCreatePanel defaultOpen={openCreate === "1"} />
       </div>
 
       <ProjectGrid projects={cards} />

@@ -3,10 +3,11 @@ id: TASK-103
 title: >-
   My Work personal tasks: add projects.is_personal and hide the personal project
   from lists
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 05:59'
+updated_date: '2026-07-21 06:26'
 labels:
   - web
   - db
@@ -30,3 +31,9 @@ doc-11 D1 (+ advisor corrections). Make My Work a personal-todo + cross-project 
 - [ ] #5 The 'no flag' wording in spec/data-model.md, spec/features.md, spec/screens.md is updated with the reversal rationale; TASK-93 gets a comment noting doc-11 reversed it
 - [ ] #6 Migration passes rls-security-reviewer; UI passes fable-advisor design review; pnpm test + lint green
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added projects.is_personal (+ partial unique index one-per-owner + BEFORE UPDATE pin trigger so it's settable only at signup INSERT); handle_new_user amended (new migration, 20260721000001 untouched). Dashboard + sidebar hide the viewer's own personal project via viewer-scoped filter (is_personal AND created_by=me); invited members still see it. My Work personal detection = is_personal AND created_by=viewer; empty-state + quick-add copy reframed as personal tasks. spec (data-model/features/screens) + TASK-93 updated. Verified: fable-advisor design review approved; rls-security-reviewer flagged the missing write-lock (co-owner cross-user rollover risk) -> fixed with the recommended pin trigger; 4 integration tests (flag/unique-index/viewer-scoped-hide/pin) + full web suite (523) + tsc + lint green.
+<!-- SECTION:FINAL_SUMMARY:END -->

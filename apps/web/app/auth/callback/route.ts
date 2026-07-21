@@ -8,7 +8,10 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  // TASK-104 (doc-11 D2): default landing is My Work, not the home page's own
+  // redirect chain. An explicit `next` (deep link) still wins — that branch
+  // is unchanged.
+  const next = searchParams.get("next") ?? "/my-work";
 
   if (code) {
     const supabase = await createClient();

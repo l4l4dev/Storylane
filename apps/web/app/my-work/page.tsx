@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { rolloverIterationSafely } from "@/lib/supabase/rollover";
 import { buildMyWorkSections, type MyWorkStory } from "@/lib/utils/my-work";
@@ -5,6 +6,7 @@ import { pointScaleValues, storyStateBadge } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
 import { MyWorkRow, type MyWorkRowData } from "@/components/features/my-work/my-work-row";
 import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add";
+import { Button } from "@/components/ui/button";
 
 // Cross-project personal view (spec/screens.md "My Work", doc-8 §9): the
 // signed-in user's assigned, non-Icebox, non-done stories, split into Today
@@ -128,9 +130,21 @@ export default async function MyWorkPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-      <div className="mb-6 flex items-center justify-between gap-4">
+      <div className="mb-4 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">My Work</h1>
-        {soloPersonalProject && (
+        {/* TASK-104 (doc-11 D2): the projects list stays the dedicated
+            index — this reuses its inline create panel (?new=1) rather
+            than duplicating a creation form here. Kept on its own fixed
+            spot on the h1 row (not sharing a row with the quick-add below)
+            so expanding the quick-add's draft card never pushes or
+            squashes it (spec/ux-principles.md principle 3). */}
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/dashboard?new=1">New project</Link>
+        </Button>
+      </div>
+
+      {soloPersonalProject && (
+        <div className="mb-6">
           <MyWorkQuickAdd
             projectId={soloPersonalProject.id}
             pointScale={pointScaleValues(soloProject?.point_scale ?? "fibonacci", soloProject?.custom_points)}
@@ -145,8 +159,8 @@ export default async function MyWorkPage() {
               };
             })}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {isEmpty && (
         <p className="text-sm text-muted-foreground">

@@ -45,7 +45,8 @@ export default function LoginPage() {
       setLoading(null);
       return;
     }
-    window.location.href = "/dashboard";
+    // TASK-104 (doc-11 D2): land on My Work, not the projects list.
+    window.location.href = "/my-work";
   }
 
   return (

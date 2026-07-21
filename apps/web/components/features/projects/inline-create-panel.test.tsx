@@ -27,4 +27,12 @@ describe("InlineCreatePanel", () => {
     expect(screen.queryByText("Column template")).not.toBeInTheDocument();
   });
 
+  // TASK-104: My Work's "New project" entry links to /dashboard?new=1 rather
+  // than duplicating this form — the dashboard page reads that param into
+  // defaultOpen so the panel lands pre-expanded.
+  it("renders pre-expanded when defaultOpen is true", () => {
+    render(<InlineCreatePanel defaultOpen={true} />);
+    expect(screen.getByLabelText("Name")).toBeInTheDocument();
+  });
+
 });
