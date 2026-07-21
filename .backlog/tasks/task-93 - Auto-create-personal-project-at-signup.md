@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 13:04'
-updated_date: '2026-07-21 01:28'
+updated_date: '2026-07-21 06:15'
 labels:
   - web
   - db
@@ -60,5 +60,10 @@ Since both triggers already work off NEW's columns (not auth.uid()), no new seed
 created: 2026-07-21 01:21
 ---
 Advisor re-review 2026-07-20: original plan's premise (reuse create_project RPC's seeding via a new seed_project() extraction) was based on a stale read of the schema — create_project was already dropped by 20260718000001_remove_free_mode.sql and the web client never called it. Revised plan above drops the seed_project() extraction entirely and adds one INSERT directly inside handle_new_user, relying on the two existing AFTER INSERT triggers (owner enrollment + state seeding) which already key off NEW's own columns, not auth.uid(). Advisor confirmed no new RLS/FK/concurrency risk.
+---
+
+created: 2026-07-21 06:15
+---
+TASK-103 (doc-11 D1) reversed the 'no is_personal flag' decision recorded here: a 1-day cadence can't distinguish the personal project from a 1-day team project, and hiding the personal one from the projects list needs that distinction. The personal project is now flagged projects.is_personal=true (handle_new_user amended in 20260721000004; this migration left untouched).
 ---
 <!-- COMMENTS:END -->
