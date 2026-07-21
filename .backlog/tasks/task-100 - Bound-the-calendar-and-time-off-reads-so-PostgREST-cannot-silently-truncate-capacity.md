@@ -3,10 +3,11 @@ id: TASK-100
 title: >-
   Bound the calendar and time-off reads so PostgREST cannot silently truncate
   capacity
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-20 03:13'
+updated_date: '2026-07-21 00:50'
 labels:
   - web
 milestone: m-5
