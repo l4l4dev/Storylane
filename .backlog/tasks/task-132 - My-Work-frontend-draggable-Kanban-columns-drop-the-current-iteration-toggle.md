@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 12:35'
+updated_date: '2026-07-21 13:14'
 labels: []
 dependencies:
   - TASK-131
@@ -30,3 +31,13 @@ doc-14 (My Work Kanban rework). Replaces MyWorkSections' static vertically-stack
 - [ ] #7 spec/screens.md 'My Work' section rewritten to match doc-14
 - [ ] #8 pnpm test + lint green
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-sonnet-5
+created: 2026-07-21 13:14
+---
+Code review (2026-07-21) on the current my-work-sections.tsx found the Todo and Done sections hand-roll the same outer <section>/<h2> shell that the file's own Section component already provides and that Today/Doing already use -- a reuse gap, not a bug. Since AC #1 of this task replaces the whole static-sections layout with draggable Kanban columns, this is expected to be moot once implemented; flagging only so the same duplication doesn't get carried into the new column components.
+---
+<!-- COMMENTS:END -->

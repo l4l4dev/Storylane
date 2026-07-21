@@ -7,6 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 12:35'
+updated_date: '2026-07-21 13:14'
 labels: []
 dependencies:
   - TASK-130
@@ -32,3 +33,13 @@ doc-14 (My Work Kanban rework). Replaces buildMyWorkSections with the new 4-colu
 - [ ] #7 Unit tests for the new classification function (precedence, mapped vs unmapped Doing/Done, Done showing a reassigned-away story, a story completed twice appearing as two Done entries)
 - [ ] #8 pnpm test + lint green
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-sonnet-5
+created: 2026-07-21 13:14
+---
+Code review (2026-07-21) on the current my-work/page.tsx + my-work-sections.tsx found: (1) buildMyWorkSections is invoked twice per render just to derive a boolean (hasFilterableItems) -- duplicated classify/sort/group pass; (2) my-work/page.tsx's current-iteration query duplicates the same selection rule already hand-rolled in dashboard/page.tsx and board/page.tsx. AC #1/#2 of this task already replace buildMyWorkSections and drop all current-iteration fetching from my-work/page.tsx, so both are expected to be resolved as a side effect -- flagging so they're not silently reintroduced in the rewrite, not asking for separate tracking. (dashboard/page.tsx and board/page.tsx will still independently duplicate the current-iteration selection rule between just the two of them after this lands -- judged too small to warrant its own task, mentioning for awareness only.)
+---
+<!-- COMMENTS:END -->
