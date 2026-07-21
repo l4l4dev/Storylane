@@ -6,6 +6,7 @@ import {
   columnForStory,
 } from "@/lib/utils/kanban";
 import { projectedIterationDates, type BacklogRowItem } from "@/lib/utils/iterations";
+import { readWasTruncated } from "@/lib/utils/capacity-guard";
 import { pointScaleValues } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
 import {
@@ -238,22 +239,24 @@ export default async function BoardPage({
 
   let calendarExceptions: CalendarException[] = [];
   const timeOffByUser = new Map<string, string[]>();
-  // A failed calendar read must not silently become "no holidays, nobody
-  // away" — that overstates capacity and over-commits the team. Degrade to
-  // the no-history fallback (minimum 1 point per group) instead, which
-  // under-plans rather than over-plans.
+  // A failed OR truncated calendar read must not silently become "no
+  // holidays, nobody away" — that overstates capacity and over-commits the
+  // team. Degrade to the no-history fallback (minimum 1 point per group)
+  // instead, which under-plans rather than over-plans. `count: "exact"`
+  // reports the true match count even when PostgREST's row cap truncates
+  // `data` with no error (TASK-100) — readWasTruncated compares the two.
   let calendarUnavailable = false;
   if (calendarStart && calendarEnd && capacityMembers.length > 0) {
     const [exceptionResult, timeOffResult] = await Promise.all([
       supabase
         .from("project_calendar_exceptions")
-        .select("date, kind")
+        .select("date, kind", { count: "exact" })
         .eq("project_id", id)
         .gte("date", calendarStart)
         .lte("date", calendarEnd),
       supabase
         .from("user_time_off")
-        .select("user_id, date")
+        .select("user_id, date", { count: "exact" })
         .in(
           "user_id",
           capacityMembers.map((m) => m.userId),
@@ -261,7 +264,11 @@ export default async function BoardPage({
         .gte("date", calendarStart)
         .lte("date", calendarEnd),
     ]);
-    calendarUnavailable = exceptionResult.error !== null || timeOffResult.error !== null;
+    calendarUnavailable =
+      exceptionResult.error !== null ||
+      timeOffResult.error !== null ||
+      readWasTruncated(exceptionResult.count, exceptionResult.data?.length ?? 0) ||
+      readWasTruncated(timeOffResult.count, timeOffResult.data?.length ?? 0);
     calendarExceptions = (exceptionResult.data ?? []) as CalendarException[];
     for (const row of timeOffResult.data ?? []) {
       const dates = timeOffByUser.get(row.user_id);
