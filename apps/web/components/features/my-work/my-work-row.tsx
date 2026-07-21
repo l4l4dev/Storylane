@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bug, Pin, Star, Wrench, type LucideIcon } from "lucide-react";
 import { togglePin } from "@/app/stories/[id]/actions";
 import { formatPoints, STORY_TYPE_META, type StoryType } from "@/lib/utils/stories";
+import { projectAccentClass } from "@/lib/utils/project-color";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,9 +24,6 @@ export type MyWorkRowData = {
   points: number | null;
   projectId: string;
   projectName: string;
-  // A 1-day-cadence project — plan item 4's "personal-project accent"
-  // (spec/screens.md "My Work").
-  isPersonal: boolean;
   stateBadge: { label: string; className: string };
   pinned: boolean;
 };
@@ -64,9 +62,13 @@ export function MyWorkRow({ story }: { story: MyWorkRowData }) {
     <div className="flex flex-col gap-1">
       <div
         data-testid="my-work-row"
+        // Per-project accent (TASK-108, doc-12): the left border is coloured
+        // per project (projectAccentClass sets --project-accent) so rows from
+        // different projects read apart at a glance, not just personal-vs-team.
         className={cn(
           "flex w-full min-w-0 max-w-full items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-xs",
-          story.isPersonal && "border-l-2 border-l-primary",
+          "border-l-2 border-l-[color:var(--project-accent)]",
+          projectAccentClass(story.projectId),
         )}
       >
         <Button
@@ -96,8 +98,13 @@ export function MyWorkRow({ story }: { story: MyWorkRowData }) {
         </Link>
 
         <Badge
-          variant={story.isPersonal ? "secondary" : "outline"}
-          className="hidden max-w-28 shrink-0 truncate sm:inline-flex"
+          variant="outline"
+          // Per-project accent on the BORDER only (doc-12 "ラベルの色も"): the
+          // border tints the chip per project, but the label text stays
+          // text-foreground — the raw accent hue as text fails WCAG 4.5:1 on
+          // the card for several palette slots (fable-advisor). Same rule
+          // applies wherever this accent is reused (see project-color.ts).
+          className="hidden max-w-28 shrink-0 truncate border-[color:var(--project-accent)] sm:inline-flex"
           title={story.projectName}
         >
           {story.projectName}

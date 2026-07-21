@@ -16,7 +16,6 @@ const baseStory: MyWorkRowData = {
   points: 3,
   projectId: "p1",
   projectName: "Storylane",
-  isPersonal: false,
   stateBadge: { label: "In progress", className: "bg-blue-100" },
   pinned: false,
 };
@@ -38,12 +37,12 @@ describe("MyWorkRow", () => {
     expect(screen.getByText("In progress")).toBeInTheDocument();
   });
 
-  it("applies the personal-project accent border only when isPersonal", () => {
-    const { rerender } = render(<MyWorkRow story={baseStory} />);
-    expect(screen.getByTestId("my-work-row")).not.toHaveClass("border-l-primary");
-
-    rerender(<MyWorkRow story={{ ...baseStory, isPersonal: true }} />);
-    expect(screen.getByTestId("my-work-row")).toHaveClass("border-l-primary");
+  it("applies a per-project accent class (TASK-108) so each project reads apart", () => {
+    render(<MyWorkRow story={baseStory} />);
+    const row = screen.getByTestId("my-work-row");
+    // Deterministic accent from the project id + the var-based border class.
+    expect(row.className).toMatch(/project-accent-[1-8]/);
+    expect(row).toHaveClass("border-l-[color:var(--project-accent)]");
   });
 
   it("pins an unpinned story and calls togglePin with the target state", async () => {

@@ -1,17 +1,29 @@
 import Link from "next/link";
+import { addDays, type StateCategory } from "@storylane/core";
 import { createClient } from "@/lib/supabase/server";
 import { rolloverIterationSafely } from "@/lib/supabase/rollover";
-import { buildMyWorkSections, type MyWorkStory } from "@/lib/utils/my-work";
+import { utcTodayKey } from "@/lib/utils/format";
+import type { MyWorkProject } from "@/lib/utils/my-work";
 import { pointScaleValues, storyStateBadge } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
-import { MyWorkRow, type MyWorkRowData } from "@/components/features/my-work/my-work-row";
+import {
+  MyWorkSections,
+  type MyWorkActiveItem,
+  type MyWorkDoneItem,
+} from "@/components/features/my-work/my-work-sections";
+import type { MyWorkRowData } from "@/components/features/my-work/my-work-row";
 import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add";
 import { Button } from "@/components/ui/button";
 
-// Cross-project personal view (spec/screens.md "My Work", doc-8 §9): the
-// signed-in user's assigned, non-Icebox, non-done stories, split into Today
-// (a personal project's current iteration + anything pinned) and Assigned
-// (everything else, grouped by project).
+// How far back the Done section reaches (doc-12 Thread A) — recent completions
+// only; full history is each project's Iterations page.
+const DONE_WINDOW_DAYS = 7;
+
+// Cross-project personal view (spec/screens.md "My Work"): the signed-in
+// user's assigned, non-Icebox stories, split into Todo / Doing / Today /
+// Done (doc-12 Thread A). This server component fetches and shapes the rows;
+// MyWorkSections (client) holds the "only current iteration" toggle and does
+// the section split + render.
 export default async function MyWorkPage() {
   const supabase = await createClient();
   const {
@@ -23,24 +35,23 @@ export default async function MyWorkPage() {
     .from("projects")
     .select("id, name, is_personal, created_by")
     .is("archived_at", null);
-  const projects = (projectRows ?? []).map((p) => ({
+  const projects: MyWorkProject[] = (projectRows ?? []).map((p) => ({
     id: p.id,
     name: p.name,
-    // TASK-103: the real flag, not iteration_length === 1 (a 1-day team
-    // project is legitimate and is NOT the user's personal project). Scoped
-    // to the viewer's OWN personal project (created_by) — an invited member of
-    // someone else's personal project must not have it treated as their own
-    // Today project / rolled over (rls-security-reviewer, TASK-103).
+    // TASK-103: the real flag, scoped to the viewer's own personal project —
+    // an invited member of someone else's personal project must not have it
+    // treated as their own.
     isPersonal: p.is_personal && p.created_by === user?.id,
   }));
-  const projectIds = new Set(projects.map((p) => p.id));
+  const projectIds = projects.map((p) => p.id);
   const personalProjects = projects.filter((p) => p.isPersonal);
 
-  // Roll over personal projects before reading their current iteration —
-  // only cadence that matters for "today" membership (spec/velocity.md
-  // "Automatic scheduling & rollover"); other projects' Today membership
-  // depends only on pins, not on their current iteration being fresh.
-  await Promise.all(personalProjects.map((p) => rolloverIterationSafely(p.id)));
+  // Roll over EVERY project's current iteration before reading it (doc-12:
+  // the current-iteration filter + Today membership now depend on all
+  // projects being fresh, not just personal ones) — same idempotent,
+  // failure-swallowing pattern the dashboard uses (spec/velocity.md
+  // "Automatic scheduling & rollover").
+  await Promise.all(projects.map((p) => rolloverIterationSafely(p.id)));
 
   async function fetchCurrentIteration(projectId: string): Promise<readonly [string, string | null]> {
     const { data } = await supabase
@@ -53,22 +64,30 @@ export default async function MyWorkPage() {
     return [projectId, data?.[0]?.id ?? null] as const;
   }
 
+  // The date 7 days back (midnight UTC); a `date` compares fine against the
+  // timestamptz completed_at. Built from imported helpers, not an inline
+  // Date.now(), which the RSC purity rule forbids during render.
+  const doneSince = addDays(utcTodayKey(), -DONE_WINDOW_DAYS);
+
   const [{ data: statesRows }, { data: storyRows }, { data: pinRows }, currentIterationEntries] = await Promise.all([
     supabase
       .from("project_states")
       .select("id, project_id, name, action_label, category, position, created_at")
-      .in("project_id", [...projectIds]),
+      .in("project_id", projectIds),
     user
       ? supabase
           .from("stories")
-          .select("id, project_id, number, title, story_type, state_id, points, iteration_id, position")
+          .select("id, project_id, number, title, story_type, state_id, points, iteration_id, position, completed_at")
           .eq("assignee_id", user.id)
           .not("state_id", "is", null)
+          // Active stories (completed_at null) + recent completions only —
+          // old done work is the Iterations page's job, not this list's.
+          .or(`completed_at.is.null,completed_at.gte.${doneSince}`)
       : Promise.resolve({ data: null }),
     user
       ? supabase.from("story_pins").select("story_id").eq("user_id", user.id)
       : Promise.resolve({ data: null }),
-    Promise.all(personalProjects.map((p) => fetchCurrentIteration(p.id))),
+    Promise.all(projects.map((p) => fetchCurrentIteration(p.id))),
   ]);
 
   const statesByProject = new Map<string, ProjectState[]>();
@@ -77,44 +96,43 @@ export default async function MyWorkPage() {
     if (bucket) bucket.push(state);
     else statesByProject.set(state.project_id, [state]);
   }
-  const categoryByStateId = new Map((statesRows ?? []).map((s) => [s.id, s.category]));
-  const currentIterationByProject = new Map(currentIterationEntries);
+  const categoryByStateId = new Map((statesRows ?? []).map((s) => [s.id, s.category as StateCategory]));
   const pinnedStoryIds = new Set((pinRows ?? []).map((p) => p.story_id));
+  const projectIdSet = new Set(projectIds);
 
-  // projectIds already excludes archived projects; state_id IS NOT NULL
-  // (Icebox) is filtered in the query above.
-  const activeStories: MyWorkStory[] = (storyRows ?? [])
-    .filter((s) => projectIds.has(s.project_id) && categoryByStateId.get(s.state_id as string) !== "done")
-    .map((s) => ({ id: s.id, projectId: s.project_id, iterationId: s.iteration_id, position: s.position }));
-
-  const { today, assigned } = buildMyWorkSections(activeStories, projects, currentIterationByProject, pinnedStoryIds);
-
-  const storyById = new Map((storyRows ?? []).map((s) => [s.id, s]));
-  const projectById = new Map(projects.map((p) => [p.id, p]));
-
-  function toRowData(story: MyWorkStory): MyWorkRowData {
-    const raw = storyById.get(story.id)!;
-    const project = projectById.get(story.projectId)!;
-    const states = statesByProject.get(story.projectId) ?? [];
+  type StoryRow = NonNullable<typeof storyRows>[number];
+  function toRowData(raw: StoryRow): MyWorkRowData {
+    const project = projects.find((p) => p.id === raw.project_id);
     return {
       id: raw.id,
       number: raw.number,
       title: raw.title,
       storyType: raw.story_type,
       points: raw.points,
-      projectId: project.id,
-      projectName: project.name,
-      isPersonal: project.isPersonal,
-      stateBadge: storyStateBadge(raw.state_id, states),
+      projectId: raw.project_id,
+      projectName: project?.name ?? "Unknown project",
+      stateBadge: storyStateBadge(raw.state_id, statesByProject.get(raw.project_id) ?? []),
       pinned: pinnedStoryIds.has(raw.id),
     };
   }
 
-  const isEmpty = today.length === 0 && assigned.length === 0;
-  // No global quick-add shortcut (doc-8 §10) — instead, the common case of
-  // exactly one personal project gets its own draft card right here (TASK-82
-  // Pivotal-parity form, reused). Zero or multiple personal projects:
-  // ambiguous which one, so none renders.
+  const visibleStories = (storyRows ?? []).filter((s) => projectIdSet.has(s.project_id));
+  const activeItems: MyWorkActiveItem[] = visibleStories
+    .filter((s) => categoryByStateId.get(s.state_id as string) !== "done")
+    .map((s) => ({
+      id: s.id,
+      projectId: s.project_id,
+      iterationId: s.iteration_id,
+      position: s.position,
+      category: categoryByStateId.get(s.state_id as string) ?? null,
+      row: toRowData(s),
+    }));
+  const doneItems: MyWorkDoneItem[] = visibleStories
+    .filter((s) => categoryByStateId.get(s.state_id as string) === "done" && s.completed_at)
+    .map((s) => ({ completedAt: s.completed_at as string, row: toRowData(s) }));
+
+  // No global quick-add shortcut (doc-8 §10) — the common case of exactly one
+  // personal project gets its own draft card here (auto-assigned to the user).
   const soloPersonalProject = personalProjects.length === 1 ? personalProjects[0] : null;
   const [{ data: soloEpics }, { data: soloLabels }, { data: soloMembers }, { data: soloProject }] = soloPersonalProject
     ? await Promise.all([
@@ -132,12 +150,8 @@ export default async function MyWorkPage() {
     <main className="mx-auto max-w-3xl p-6">
       <div className="mb-4 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">My Work</h1>
-        {/* TASK-104 (doc-11 D2): the projects list stays the dedicated
-            index — this reuses its inline create panel (?new=1) rather
-            than duplicating a creation form here. Kept on its own fixed
-            spot on the h1 row (not sharing a row with the quick-add below)
-            so expanding the quick-add's draft card never pushes or
-            squashes it (spec/ux-principles.md principle 3). */}
+        {/* TASK-104 (doc-11 D2). NOTE: TASK-109 moves project creation into
+            the sidebar's Projects dropdown and removes this button. */}
         <Button variant="outline" size="sm" asChild>
           <Link href="/dashboard?new=1">New project</Link>
         </Button>
@@ -163,40 +177,13 @@ export default async function MyWorkPage() {
         </div>
       )}
 
-      {isEmpty && (
-        <p className="text-sm text-muted-foreground">
-          {soloPersonalProject
-            ? "Add a personal task above to plan your day. Stories assigned to you across your team projects show up here too."
-            : "Nothing assigned to you yet. Stories assigned to you across your projects will show up here."}
-        </p>
-      )}
-
-      {today.length > 0 && (
-        <section className="mb-8">
-          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Today</h2>
-          <div className="flex flex-col gap-1.5">
-            {today.map((story) => (
-              <MyWorkRow key={story.id} story={toRowData(story)} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {assigned.length > 0 && (
-        <section>
-          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Assigned</h2>
-          {assigned.map((group) => (
-            <div key={group.projectId} className="mb-6">
-              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.projectName}</h3>
-              <div className="flex flex-col gap-1.5">
-                {group.stories.map((story) => (
-                  <MyWorkRow key={story.id} story={toRowData(story)} />
-                ))}
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
+      <MyWorkSections
+        activeItems={activeItems}
+        doneItems={doneItems}
+        projects={projects}
+        currentIterationByProject={[...currentIterationEntries]}
+        pinnedStoryIds={[...pinnedStoryIds]}
+      />
     </main>
   );
 }

@@ -351,24 +351,44 @@ Conflict & failure rules (2026-07-08):
 
 A cross-project personal view: the signed-in user's stories assigned to
 them, across every project they belong to (archived projects excluded).
-Scoped to **assigned, non-Icebox, non-done** stories — Icebox stories
-haven't entered a board yet, and accepted stories' history belongs to each
-project's own Iterations page, not a growing personal list. Two sections,
-top to bottom:
+Scoped to **assigned, non-Icebox** stories — Icebox stories haven't entered
+a board yet. It's a **personal daily-planning** surface: Todo is your
+backlog, you move things into Today to plan the day, and Doing/Done show live
+status. Four sections (doc-12 Thread A), rendered top to bottom **Todo →
+Today → Doing → Done** (backlog → planned → live → done last, ux-principles.md
+principle 9), even though a story is *classified* into the first section it
+qualifies for in the precedence **Done > Today > Doing > Todo** (never in two):
 
-- **Today** — a **1-day (personal) project's current-iteration** stories
-  (today's plan by definition, no pin needed) plus any story the user has
-  personally **pinned** (`story_pins`, spec/data-model.md), regardless of
-  which project it's in.
-- **Assigned** — everything else, grouped by project: personal (1-day)
-  projects first, then project name; within a group, board position order.
+- **Todo** — assigned work not in any section below (your personal backlog),
+  grouped by project (personal project first, then project name; board
+  position order within a group).
+- **Today** — a **personal project's current-iteration** stories (today's
+  plan by definition, no pin needed) plus any story the user has personally
+  **pinned** (`story_pins`), regardless of project. Unchanged from doc-8 §9.
+- **Doing** — stories whose state category is `in_progress` (and not already
+  in Today), flat and cross-project.
+- **Done** — stories completed within the **last 7 days** (`completed_at`),
+  grouped by date (Today / Yesterday / date, newest first). Older completions
+  are the project's own Iterations page's job, not a growing personal list.
+
+**Carryover is automatic, not enforced by My Work**: pins persist across
+days, and a 1-day personal project's unaccepted stories roll into the next
+day's iteration on rollover — so work planned into Today but not finished
+carries to the next day rather than being auto-cleared.
+
+A **"Only current iteration"** toggle (client-side, resets on reload)
+narrows **Todo + Doing** to stories in their own project's current iteration
+— hiding backlog/unscheduled assigned work. Today and Done are unaffected.
 
 Every row shows a pin toggle, the story's type icon/title (linking to the
 standalone `/stories/[id]` page — My Work has no side peek of its own),
-its project as a chip, its state badge, and its points. A 1-day project's
-rows carry a left-border accent distinguishing personal from team work.
-No reordering inside My Work (parity: it is a read view; priority lives on
-each project's own board).
+its project as a chip, its state badge, and its points. Each row carries a
+**per-project accent color** (left border + project chip) so rows from
+different projects read apart at a glance — a deterministic project-identity
+color (`lib/utils/project-color.ts`, the dataviz-validated categorical
+palette) meant to be reused by the sidebar/dashboard later. No reordering
+inside My Work (parity: it is a read view; priority lives on each project's
+own board).
 
 **Pinning** is a plain per-user table write (`story_pins`, no RPC — TASK-88)
 available from three places: the row's pin toggle in My Work itself, and

@@ -133,3 +133,25 @@
     @apply font-sans;
   }
 }
+/* Per-project accent colors (TASK-108, doc-12 Thread A) — the dataviz skill's
+   validated categorical palette (references/palette.md), light + dark steps.
+   projectAccentClass() (lib/utils/project-color.ts) maps a project id to one
+   of these; components read the --project-accent custom property (e.g.
+   border-l-[color:var(--project-accent)]). A project-identity accent, reused
+   by the sidebar/dashboard later. */
+.project-accent-1 { --project-accent: #2a78d6; }
+.project-accent-2 { --project-accent: #008300; }
+.project-accent-3 { --project-accent: #e87ba4; }
+.project-accent-4 { --project-accent: #eda100; }
+.project-accent-5 { --project-accent: #1baf7a; }
+.project-accent-6 { --project-accent: #eb6834; }
+.project-accent-7 { --project-accent: #4a3aa7; }
+.project-accent-8 { --project-accent: #e34948; }
+.dark .project-accent-1 { --project-accent: #3987e5; }
+.dark .project-accent-2 { --project-accent: #008300; }
+.dark .project-accent-3 { --project-accent: #d55181; }
+.dark .project-accent-4 { --project-accent: #c98500; }
+.dark .project-accent-5 { --project-accent: #199e70; }
+.dark .project-accent-6 { --project-accent: #d95926; }
+.dark .project-accent-7 { --project-accent: #9085e9; }
+.dark .project-accent-8 { --project-accent: #e66767; }
