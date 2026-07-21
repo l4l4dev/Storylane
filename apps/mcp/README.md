@@ -54,7 +54,7 @@ than Node type-stripping — see TASK-68.)
 
 | Tool | Kind | Notes |
 |---|---|---|
-| `board_summary` | read | current iteration, velocity rate (points per person-day), backlog/icebox counts, and every project state (id, name, category, action_label) with its points/counts — the source of valid `state_id` values for `set_story_state` |
+| `board_summary` | read | current iteration, `velocity_points_per_person_day` (points earned per person-day of capacity, averaged over the velocity window — a rate, typically well below 1, e.g. `0.8`; **not** a per-sprint point total), backlog/icebox counts, and every project state (id, name, category, action_label) with its points/counts — the source of valid `state_id` values for `set_story_state` |
 | `list_stories` | read | filter by `state_id` (nullable, for the Icebox), iteration, epic, label, text, or zone |
 | `get_story` | read | description, tasks, comments, labels, recent activity |
 | `create_story` | write | lands at the bottom of `backlog_bottom` \| `icebox` \| `current_iteration` |

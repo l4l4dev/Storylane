@@ -115,12 +115,12 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
   it("board_summary bootstraps and reads the current iteration, and lists valid states", async () => {
     const summary = (await tools.boardSummary(bot, { project_id: projectId })) as {
       current_iteration: { number: number } | null;
-      velocity_rate: number;
+      velocity_points_per_person_day: number;
       backlog_count: number;
       by_state: { state_id: string; name: string; category: string }[];
     };
     expect(summary.current_iteration?.number).toBe(1);
-    expect(summary.velocity_rate).toBe(0);
+    expect(summary.velocity_points_per_person_day).toBe(0);
     expect(summary.by_state.map((s) => s.name)).toEqual([
       "Unstarted",
       "Started",

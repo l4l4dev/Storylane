@@ -45,7 +45,13 @@ Why not the alternatives:
 
 Read:
 - `board_summary(project_id)` — current iteration (number, dates, goal, state),
-  points by state (with category), velocity rate (points per person-day), backlog/icebox counts.
+  points by state (with category), `velocity_points_per_person_day` (TASK-101:
+  points earned per person-day of capacity, averaged over the velocity window
+  — a rate, typically well below 1, e.g. `0.8`; NOT a per-sprint point total —
+  the old field, named `velocity` then renamed to `velocity_rate` with no
+  transition period by TASK-86, carried exactly this ambiguity, which is why
+  the field is named for its unit now instead of shipping a compatibility key
+  a stale reader could only ever misinterpret), backlog/icebox counts.
 - `list_stories(project_id, filter?)` — by state, iteration, epic, label, or text.
   Returns compact rows (id, title, type, state, points, epic, labels).
 - `get_story(story_id)` — full story: description, tasks, comments, labels,

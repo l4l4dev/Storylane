@@ -189,7 +189,12 @@ export async function boardSummary(supabase: Db, args: { project_id: string }) {
     .gt("capacity", 0)
     .order("number", { ascending: false })
     .limit(project.velocity_window);
-  const velocity_rate = velocityRate(doneIters ?? [], project.velocity_window);
+  // TASK-101: named for its unit, not just renamed off the old per-sprint
+  // 'velocity' point total this replaced (TASK-86) — a fraction usually
+  // below 1 misreads badly under the old field's name/wording, and no
+  // compatibility key is worth shipping for a value a stale reader could
+  // only ever misinterpret, never correctly reuse.
+  const velocity_points_per_person_day = velocityRate(doneIters ?? [], project.velocity_window);
 
   const pointsByStateId: Record<string, number> = {};
   const countsByStateId: Record<string, number> = {};
@@ -253,7 +258,7 @@ export async function boardSummary(supabase: Db, args: { project_id: string }) {
 
   return {
     current_iteration: current,
-    velocity_rate,
+    velocity_points_per_person_day,
     by_state: byState,
     backlog_count: backlogCount ?? 0,
     icebox_count: iceboxCount ?? 0,

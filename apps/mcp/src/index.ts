@@ -37,7 +37,7 @@ async function main() {
     "board_summary",
     {
       title: "Board summary",
-      description: "Current iteration (dates, goal, state), points/counts by lifecycle state, velocity rate (points per person-day), and backlog/icebox counts.",
+      description: "Current iteration (dates, goal, state), points/counts by lifecycle state, velocity_points_per_person_day (points earned per person-day of capacity over the velocity window — a rate, typically well below 1, NOT a per-sprint point total), and backlog/icebox counts.",
       inputSchema: { project_id: z.string().uuid() },
     },
     wrap((a: { project_id: string }) => tools.boardSummary(supabase, a)),
