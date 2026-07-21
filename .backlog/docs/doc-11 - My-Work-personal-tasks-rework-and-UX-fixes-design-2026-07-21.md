@@ -3,6 +3,7 @@ id: doc-11
 title: My Work personal-tasks rework and UX fixes design 2026-07-21
 type: specification
 created_date: '2026-07-21 05:46'
+updated_date: '2026-07-21 05:57'
 ---
 
 
@@ -159,3 +160,20 @@ cadence path) must pass an `/advisor` (fable-advisor) review before implementati
 and each migration needs an `rls-security-reviewer` pass. This doc is the input to
 that review; after it, decompose into the Backlog tasks above and implement each
 with its own review + tests.
+
+## Advisor corrections (2026-07-21, fable-advisor — approve-with-fixes)
+
+- **D1 exclusion filter must be `is_personal AND created_by = auth.uid()`**, NOT bare
+  `is_personal`. `projects` SELECT RLS is member-scoped, so if "My Tasks" ever gets an
+  invited member (features.md currently allows invites), a bare filter would hide it from
+  that member's own `/dashboard` + switcher too. Hide only the viewer's own personal project.
+- **D1 add a partial unique index** `create unique index ... on public.projects(created_by) where is_personal` to enforce one-personal-project-per-user at the DB (decision-1), not just trust the signup trigger.
+- **D1 Move/Copy picker:** `getMoveTargetProjects` (`apps/web/app/stories/[id]/actions.ts`) queries `project_members` directly and is independent of the list filter — "My Tasks" stays a move/copy target. Decided **intentional**; note it in the task's acceptance criteria so it isn't re-flagged.
+- **D1 migration:** new migration `create or replace`s `handle_new_user` to add `is_personal = true`; do NOT edit `20260721000001_personal_project_on_signup.sql`. Leave a comment on TASK-93 that doc-11 reversed the no-flag decision. Update the "no flag" wording in `spec/data-model.md`, `spec/features.md` (§ Personal project), `spec/screens.md` (Onboarding) with the reversal rationale.
+- **D2 also fix `apps/web/app/page.tsx`** (signed-in `/` → `/my-work`) and the dev-login line in `auth/login/page.tsx` (`window.location.href`). `auth/callback/route.ts`: change only the default fallback (`?? "/"`), keep the `next`-priority branch. The `next` deep-link path is currently dead (OAuth start / middleware don't set `next`); reviving it is out of scope.
+- **D3 is a NEW RPC `reshape_current_iteration(p_iteration_id)`, not an extension of `override_iteration_length`.** It reads `iteration_length` from `projects` itself (closes TOCTOU); for 1-day it re-derives via DB-side `next_working_day` (reuse finalize_iteration's branch — no client re-implementation of calendar logic); it takes the same `hashtext('iteration_finalize:'||project_id)` advisory lock + re-read-after-lock pattern and reuses override_iteration_length's guards (not-past / ≤90d / no-op-if-unchanged). **Add an explicit error when the project has no current iteration** (`v_latest IS NULL`) — Settings/layout don't run `ensureCurrentIteration`, so a direct Settings deep-link on a brand-new project can reach this with no iteration row.
+- **D3 no renumber/retitle needed:** `iterationLabel()` already derives the title from the project's current `iteration_length` at render (TASK-87 behavior), so switching to 1-day flips all titles to date form automatically. Add a spec note that the default ("from next") path leaves the running iteration as "date-titled but multi-day span" until it ends — expected, not a bug.
+- **D3 no conflict** with the capacity snapshot (only set at finalize) or iteration_goals (keyed by next number) — confirmed, no guard needed there.
+- **D4:** when removing the `mode-badge` in `app-sidebar.tsx`, do NOT touch `ModeToggle` (that's the light/dark theme toggle — unrelated name).
+- **D5 signal mechanism:** reuse the existing `invite_failed` query-param + client-read pattern (redirect with a success param a client component reads and fires the toast on) rather than new plumbing; the toast itself is the shared UI.
+- **Ordering:** D1 (incl. the handle_new_user change) MUST land before TASK-98 (its baseline expects the final personal-project trigger). D2 only *soft*-depends on D1 (My Work's `iteration_length===1` detection already works since TASK-93 is Done) — parallelizable. D3/D4/D5 are independent of TASK-98 and need not ship pre-reset.
