@@ -3,10 +3,11 @@ id: TASK-105
 title: >-
   Cadence change: choose apply-to-current vs next, via reshape_current_iteration
   RPC
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 05:59'
+updated_date: '2026-07-21 07:05'
 labels:
   - web
   - db
@@ -29,3 +30,9 @@ doc-11 D3 (+ advisor corrections). When iteration_length changes in Project Sett
 - [ ] #4 Spec note added (spec/velocity.md §3): the default 'from next' path leaves the running iteration date-titled-but-multi-day-span until it ends (expected, from TASK-87's title-derivation); the reshape path realigns it
 - [ ] #5 Migration/RPC passes rls-security-reviewer; UI passes fable-advisor design review; concurrency test (reshape vs finalize/override under the lock); pnpm test + lint green
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added reshape_current_iteration(p_project_id) RPC (SECURITY DEFINER; same iteration_finalize advisory lock + re-read as override/finalize; reads iteration_length from projects itself for TOCTOU safety; 1-day via next_working_day; no-ops on no-current/done/would-end-in-past/too-long/unchanged so updateProject never 500s). Settings gets an owner-only 'apply to current' checkbox (default off = from-next, TASK-87). updateProject calls the RPC when checked and throws on a genuine RPC error. describeActivity handles iteration.reshaped. Also fixed a grant-lockdown gap the test caught: protect_projects_is_personal (TASK-103 pin trigger) was missing its EXECUTE revoke. Verified: rls-security-reviewer clean (7 points + the revoke, vs local reset); fable-advisor approve-with-fixes (swallowed RPC error now thrown); 5 reshape integration tests + grant-lockdown + activity + full web suite (525) + tsc + lint green.
+<!-- SECTION:FINAL_SUMMARY:END -->
