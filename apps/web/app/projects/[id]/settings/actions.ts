@@ -147,22 +147,33 @@ export async function removeMember(
   return {};
 }
 
-export async function createLabel(formData: FormData) {
+export type LabelActionState = { error?: string };
+
+/**
+ * A duplicate name (labels_project_id_name_key, TASK-97) is a routine
+ * outcome of typing a name that already exists, not a bug — surfaced
+ * inline (the deleteProjectState precedent) instead of a thrown 500.
+ */
+export async function createLabel(_prev: LabelActionState, formData: FormData): Promise<LabelActionState> {
   const projectId = String(formData.get("project_id"));
   const name = String(formData.get("name") ?? "").trim();
   const color = String(formData.get("color") ?? "#6b7280");
 
   if (!name) {
-    return;
+    return {};
   }
 
   const supabase = await createClient();
   const { error } = await supabase.from("labels").insert({ project_id: projectId, name, color });
 
   if (error) {
-    throw new Error(error.message);
+    if (error.code === "23505") {
+      return { error: `A label named "${name}" already exists.` };
+    }
+    return { error: error.message };
   }
   revalidatePath(`/projects/${projectId}/settings`);
+  return {};
 }
 
 export async function deleteLabel(formData: FormData) {

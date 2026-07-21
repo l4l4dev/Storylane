@@ -373,6 +373,43 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     expect(full.labels).toHaveLength(0);
   });
 
+  it("resolves the same new label name to one row under concurrent creation (TASK-97)", async () => {
+    const name = `race-label-${Date.now()}`;
+    // Two stories racing to create the SAME new label name — the pre-TASK-97
+    // select-then-insert would let both miss the select and insert a
+    // duplicate; labels_project_id_name_key + upsert makes the second
+    // resolve to the first's row instead.
+    const [a, b] = await Promise.all([
+      tools.createStory(bot, { project_id: projectId, title: "race a", labels: [name] }) as Promise<{ id: string }>,
+      tools.createStory(bot, { project_id: projectId, title: "race b", labels: [name] }) as Promise<{ id: string }>,
+    ]);
+
+    const { data: rows } = await bot.from("labels").select("id").eq("project_id", projectId).eq("name", name);
+    expect(rows).toHaveLength(1);
+
+    const storyA = (await tools.getStory(bot, { story_id: a.id })) as { labels: { id: string }[] };
+    const storyB = (await tools.getStory(bot, { story_id: b.id })) as { labels: { id: string }[] };
+    expect(storyA.labels[0]?.id).toBe(storyB.labels[0]?.id);
+  });
+
+  it("re-resolving an existing label name leaves its color untouched", async () => {
+    const { data: existing } = await owner
+      .from("labels")
+      .insert({ project_id: projectId, name: "kept-color", color: "#123456" })
+      .select("id")
+      .single();
+
+    const story = (await tools.createStory(bot, {
+      project_id: projectId,
+      title: "reuse label story",
+      labels: ["kept-color"],
+    })) as { id: string };
+
+    const full = (await tools.getStory(bot, { story_id: story.id })) as { labels: { id: string; color: string }[] };
+    expect(full.labels[0]?.id).toBe((existing as { id: string }).id);
+    expect(full.labels[0]?.color).toBe("#123456");
+  });
+
   it("set_story_tasks on a non-member project errors even with an empty payload", async () => {
     const { data: outsideStory } = await owner
       .from("stories")

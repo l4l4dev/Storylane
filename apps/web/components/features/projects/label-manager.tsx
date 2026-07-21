@@ -1,7 +1,8 @@
 "use client";
 
+import { useActionState } from "react";
 import { X } from "lucide-react";
-import { createLabel, deleteLabel } from "@/app/projects/[id]/settings/actions";
+import { createLabel, deleteLabel, type LabelActionState } from "@/app/projects/[id]/settings/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,7 @@ export function LabelManager({
   canCreate: boolean;
   canDelete: boolean;
 }) {
+  const [state, formAction] = useActionState<LabelActionState, FormData>(createLabel, {});
   return (
     <div className="flex flex-col gap-3">
       <ul className="flex flex-wrap gap-2">
@@ -51,25 +53,28 @@ export function LabelManager({
       </ul>
 
       {canCreate && (
-        <form action={createLabel} className="flex items-end gap-2">
-          <input type="hidden" name="project_id" value={projectId} />
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Label htmlFor="new-label-name">New label</Label>
-            <Input id="new-label-name" name="name" required />
+        <form action={formAction} className="flex flex-col gap-1.5">
+          <div className="flex items-end gap-2">
+            <input type="hidden" name="project_id" value={projectId} />
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor="new-label-name">New label</Label>
+              <Input id="new-label-name" name="name" required />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-label-color">Color</Label>
+              <input
+                id="new-label-color"
+                name="color"
+                type="color"
+                defaultValue="#6b7280"
+                className="h-9 w-14 cursor-pointer rounded-md border border-input bg-transparent"
+              />
+            </div>
+            <Button type="submit" variant="outline">
+              Add
+            </Button>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="new-label-color">Color</Label>
-            <input
-              id="new-label-color"
-              name="color"
-              type="color"
-              defaultValue="#6b7280"
-              className="h-9 w-14 cursor-pointer rounded-md border border-input bg-transparent"
-            />
-          </div>
-          <Button type="submit" variant="outline">
-            Add
-          </Button>
+          {state.error && <span className="text-xs text-destructive">{state.error}</span>}
         </form>
       )}
     </div>

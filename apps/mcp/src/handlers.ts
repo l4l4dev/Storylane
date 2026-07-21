@@ -112,31 +112,26 @@ function storyNoLongerWritable(): Error {
   return new Error("Not allowed: this story no longer exists or the agent can no longer write to it.");
 }
 
-/** Resolves label names to ids within a project, creating any that don't exist. */
+/**
+ * Resolves label names to ids within a project, creating any that don't
+ * exist. One upsert per name against labels_project_id_name_key
+ * (TASK-97) rather than a select-then-insert: two concurrent calls
+ * resolving the same new name both land on the same row (the second's
+ * INSERT becomes a same-value UPDATE under the conflict, so an existing
+ * label's color is never touched) instead of racing to create duplicates.
+ */
 async function resolveLabelIds(supabase: Db, projectId: string, names: string[]): Promise<string[]> {
   const ids: string[] = [];
   for (const rawName of names) {
     const name = rawName.trim();
     if (!name) continue;
-    const { data: existing } = await supabase
+    const { data, error } = await supabase
       .from("labels")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("name", name)
-      .order("id")
-      .limit(1);
-    const existingId = existing?.[0]?.id as string | undefined;
-    if (existingId) {
-      ids.push(existingId);
-      continue;
-    }
-    const { data: created, error } = await supabase
-      .from("labels")
-      .insert({ project_id: projectId, name })
+      .upsert({ project_id: projectId, name }, { onConflict: "project_id,name" })
       .select("id")
       .single();
     if (error) throw Object.assign(new Error(`Could not create label "${name}": ${error.message}`), { code: error.code });
-    ids.push((created as { id: string }).id);
+    ids.push((data as { id: string }).id);
   }
   return ids;
 }
