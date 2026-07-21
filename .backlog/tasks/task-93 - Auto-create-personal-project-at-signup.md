@@ -1,11 +1,11 @@
 ---
 id: TASK-93
 title: Auto-create personal project at signup
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 13:04'
-updated_date: '2026-07-21 01:21'
+updated_date: '2026-07-21 01:28'
 labels:
   - web
   - db
