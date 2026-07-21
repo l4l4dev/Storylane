@@ -5,7 +5,7 @@ title: >-
   2026-07-21
 type: specification
 created_date: '2026-07-21 07:56'
-updated_date: '2026-07-21 07:56'
+updated_date: '2026-07-21 08:04'
 ---
 
 
@@ -171,3 +171,29 @@ is the input to that review for both threads (and, since Thread A likely
 touches only existing tables/columns, may not need an additional
 rls-security-reviewer pass — confirm at planning time whether the Done query
 needs anything beyond `completed_at`, which already exists).
+
+## Advisor corrections (2026-07-21, fable-advisor — Thread A approve-with-fixes, Thread B approved)
+
+- **Render order vs. classification priority (Thread A, required fix — ux-principles.md principle 9):** doc-12 conflated "which section a story is classified into" (Done > Today > Doing > Todo, no story in two sections — this stays exactly as designed) with "top-to-bottom render order" (wrongly implied Done first). Principle 9: "Archived or done things group in their own clearly-labelled section below active ones — never interleaved or sorted first." **Default render order is Todo → Doing → Today → Done (Done LAST)**, not Done-first. If Done-first is ever wanted for a specific reason, that needs explicit owner approval + a recorded spec deviation — not the default.
+- **"completed_at already indexed" claim was wrong (Thread A, correction, no migration needed):** the only story indexes are `stories_project_id_idx` / `stories_iteration_id_idx` / `stories_epic_id_idx` — no index on `completed_at` or `assignee_id`. At current dogfooding scale this is fine (RLS narrows by project_id first); the design note should say "no index needed now — add `stories (assignee_id, completed_at)` later if the Done query is measurably slow," not claim one already exists.
+- **"Does rollover need to run for team projects too" is already answered by existing code (Thread A, no new design needed):** `apps/web/app/dashboard/page.tsx` already calls `projectsNeedingRollover` + `rolloverIterationSafely` (`apps/web/lib/supabase/rollover.ts`) across ALL of a user's projects, not just personal ones — idempotent (early-return if `end_date >= today`) and already reviewed for the advisory-lock/concurrency angle (spec/velocity.md "Finalization concurrency & permissions"). My Work's current-iteration resolution should reuse this exact pattern (swap `personalProjects.map(...)` for `projectsNeedingRollover(projects)`), not re-derive a new one.
+- **Precedence walkthrough confirmed correct, no edge case found:** `project_states.category` is one of `unstarted/in_progress/done/rejected` — `rejected` is neither done nor in_progress, so it always falls to Todo, matching doc-12's "rejected stays visible" note. Pinned + in_progress + iteration-ends-today all resolve unambiguously through Done > Today > Doing > Todo.
+- **Per-project row color scope must be decided before task breakdown (Thread A, open point to close, not a blocker):** the sidebar's project switcher currently has no per-project color, and no color-hash utility exists in the repo. Decide explicitly: is this color LOCAL to My Work only, or a project-identity color meant to eventually also appear in the sidebar/dashboard cards? Record the answer in the task, don't leave it implicit.
+- **iOS / packages/core:** no `/my-work`-equivalent screen exists in `apps/ios` yet, so decision-1's shared-golden-fixture constraint doesn't apply to the new 4-way split function yet — keep it in `apps/web/lib/utils/my-work.ts` (YAGNI, matches the existing 2-way function's location).
+- **Thread B approved as designed, no changes.** Confirmed: no dead code/test from removing TASK-104's My-Work-page button (that page has no test file; `InlineCreatePanel`'s `defaultOpen`/`?new=1` mechanism is reused, not duplicated, by the new sidebar entry). The asymmetric fixed-link-vs-dropdown treatment doesn't violate any ux-principles.md principle (no principle requires nav-item symmetry). Implementer note: `apps/web/components/features/shell/app-sidebar.test.tsx` needs updating for the fixed link + removed dropdown entry + trigger resize; TASK-104 needs an explicit `backlog` comment recording the supersede (already planned in this doc, don't skip it).
+
+
+## Per-project color scope decision (owner, 2026-07-21)
+
+Project-common color, not My-Work-local: the color is a project-identity
+concept meant to eventually also appear in the sidebar's project switcher
+and any future dashboard cards — not something private to My Work's row
+rendering. Implementation implication: a shared, deterministic utility
+(project id -> color, hash-based) lives in a shared location
+(`apps/web/lib/utils/`), not inline in `my-work-row.tsx` — so the sidebar
+switcher can call the same function later without duplicating the mapping.
+No new `projects.color` DB column for now (YAGNI — a deterministic hash from
+the existing project id is enough; revisit only if per-project color needs
+to become owner-customizable). Thread A's task should build this utility
+even though only My Work consumes it today; Thread B / a later task can
+apply it to the sidebar without redesigning the color scheme.
