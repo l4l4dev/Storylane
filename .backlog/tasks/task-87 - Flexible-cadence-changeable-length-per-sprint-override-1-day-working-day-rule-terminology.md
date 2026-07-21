@@ -3,11 +3,11 @@ id: TASK-87
 title: >-
   Flexible cadence: changeable length, per-sprint override, 1-day working-day
   rule, terminology
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-18 03:04'
-updated_date: '2026-07-20 03:40'
+updated_date: '2026-07-21 00:41'
 labels:
   - web
   - db
@@ -44,3 +44,12 @@ Design fixed by Fable advisor 2026-07-20 (consistent with doc8-locked-decisions)
 <!-- SECTION:NOTES:BEGIN -->
 Constraint from TASK-86 RLS fix (d02f751): authenticated no longer holds UPDATE on iterations (only update(goal)), so the override_iteration_length RPC MUST be postgres-owned SECURITY DEFINER like finalize_iteration/skip_iteration — a SECURITY INVOKER RPC would get permission denied writing end_date.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-20 08:08
+---
+Fable unavailable — implementation and review (rls-security-reviewer + fable-advisor design review) both fall to @claude-opus-4-8 per CLAUDE.md fallback policy (advisor runs with model: opus).
+---
+<!-- COMMENTS:END -->
