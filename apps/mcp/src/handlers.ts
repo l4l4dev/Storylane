@@ -644,7 +644,8 @@ export async function toggleStoryTask(supabase: Db, args: { task_id: string; don
   if (readErr) throw new Error(`Could not read task: ${readErr.message}`);
   if (!task) throw new Error("Task not found, or the agent is not a member of its project.");
   const projectId = (task.stories as unknown as { project_id: string } | null)?.project_id;
-  if (projectId) await assertWritableProject(supabase, projectId);
+  if (!projectId) throw new Error(NOT_MEMBER);
+  await assertWritableProject(supabase, projectId);
 
   const { data, error } = await supabase
     .from("tasks")
