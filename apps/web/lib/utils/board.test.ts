@@ -3,6 +3,7 @@ import {
   beforeAnchorId,
   findContainer,
   groupStoriesByIteration,
+  restoreItemPosition,
   storyById,
   sumPoints,
 } from "./board";
@@ -112,5 +113,44 @@ describe("beforeAnchorId", () => {
       { id: "d1", kind: "divider" },
     ];
     expect(beforeAnchorId(reordered, "moved")).toBe("divider:d1");
+  });
+});
+
+describe("restoreItemPosition", () => {
+  const ids = (items: { id: string }[]) => items.map((i) => i.id);
+
+  // TASK-113 finding #4: a failed async drop must move only the dragged item
+  // back to its pre-drag slot, leaving every other item where it currently is
+  // (a sibling drag that landed while this one was in flight must survive).
+  it("moves the item back to its snapshot container/index without touching others", () => {
+    const snapshot = { a: [{ id: "x" }, { id: "y" }], b: [{ id: "z" }] };
+    // x was optimistically dragged a→b; meanwhile a sibling reordered b.
+    const current = { a: [{ id: "y" }], b: [{ id: "z-moved" }, { id: "x" }] };
+
+    const result = restoreItemPosition(current, snapshot, "x");
+
+    expect(ids(result.a)).toEqual(["x", "y"]); // x restored to a[0]
+    expect(ids(result.b)).toEqual(["z-moved"]); // sibling's move preserved
+  });
+
+  it("restores an item that was reordered within the same container", () => {
+    const snapshot = { a: [{ id: "x" }, { id: "y" }, { id: "z" }] };
+    const current = { a: [{ id: "y" }, { id: "z" }, { id: "x" }] }; // x dragged to end
+
+    expect(ids(restoreItemPosition(current, snapshot, "x").a)).toEqual(["x", "y", "z"]);
+  });
+
+  it("clamps the insert index when later items are gone from the target", () => {
+    const snapshot = { a: [{ id: "p" }, { id: "q" }, { id: "x" }] }; // x at index 2
+    const current = { a: [{ id: "x" }] }; // p, q removed concurrently
+
+    expect(ids(restoreItemPosition(current, snapshot, "x").a)).toEqual(["x"]);
+  });
+
+  it("leaves current unchanged when the id is not in the snapshot", () => {
+    const snapshot = { a: [{ id: "x" }] };
+    const current = { a: [{ id: "x" }], b: [{ id: "new" }] };
+
+    expect(restoreItemPosition(current, snapshot, "new")).toBe(current);
   });
 });

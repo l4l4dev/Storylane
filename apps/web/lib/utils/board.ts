@@ -97,6 +97,37 @@ export function moveBetweenContainers<T extends { id: string }>(
 }
 
 /**
+ * Reverts a single item to the container and index it held in `snapshot`
+ * (the board as it was before this drag), without disturbing where any other
+ * item currently sits. Used by a failed async drop (TASK-113 finding #4): a
+ * whole-board revert to the last server snapshot would also undo a sibling
+ * drag whose own save is still in flight, so only the one item is moved back.
+ * The index is clamped since concurrent moves may have shortened the target.
+ */
+export function restoreItemPosition<T extends { id: string }>(
+  current: Record<string, T[]>,
+  snapshot: Record<string, T[]>,
+  id: string,
+): Record<string, T[]> {
+  const homeContainer = findContainer(snapshot, id);
+  if (!homeContainer) {
+    return current;
+  }
+  const snapshotItems = snapshot[homeContainer];
+  const snapshotIndex = snapshotItems.findIndex((item) => item.id === id);
+  const item = snapshotItems[snapshotIndex];
+
+  const cleared: Record<string, T[]> = {};
+  for (const [key, items] of Object.entries(current)) {
+    cleared[key] = items.filter((it) => it.id !== id);
+  }
+  const target = cleared[homeContainer] ?? [];
+  const insertAt = Math.min(snapshotIndex, target.length);
+  cleared[homeContainer] = [...target.slice(0, insertAt), item, ...target.slice(insertAt)];
+  return cleared;
+}
+
+/**
  * The "before" anchor for the intent-based board move RPC (move_story_board,
  * TASK-56): given a container's post-move order and the moved item's id,
  * returns `"<kind>:<id>"` for the item the moved one now sits directly before,

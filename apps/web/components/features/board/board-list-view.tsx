@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -28,6 +28,7 @@ import {
 } from "@/app/projects/[id]/board/actions";
 import { beforeAnchorId, findContainer, moveBetweenContainers, storyById, sumPoints } from "@/lib/utils/board";
 import { reorderContainer } from "@/lib/utils/board-dnd";
+import { useOptimisticBoardOrder } from "./use-optimistic-board-order";
 import { formatDate } from "@/lib/utils/format";
 import { isImeComposing } from "@/lib/utils/keyboard";
 import {
@@ -1175,30 +1176,32 @@ export function BoardListView({
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
 }) {
-  const [containers, setContainers] = useState(() => toListItemContainers(initialContainers, initialBacklogItems, states));
-  const [synced, setSynced] = useState(initialContainers);
-  const [syncedBacklogItems, setSyncedBacklogItems] = useState(initialBacklogItems);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // The rendered ListItem order is derived from three props (state/icebox
+  // containers + backlog rows + states). Memoized so its reference changes iff
+  // one of those changes — which is exactly the hook's reconcile trigger, so
+  // it doubles as the change token. Optimistic order, realtime-safe reconcile,
+  // and per-drag reverts all live in the hook (TASK-113).
+  const serverContainers = useMemo(
+    () => toListItemContainers(initialContainers, initialBacklogItems, states),
+    [initialContainers, initialBacklogItems, states],
+  );
+  const { containers, setContainers, activeId, beginDrag, endDrag, revertToSnapshot, runDrop } =
+    useOptimisticBoardOrder(serverContainers);
   // Shared by drag failures and each row's insert-menu failures (TASK-42) —
   // one error slot for the whole List view, not "drag" specifically.
   const [mutationError, setMutationError] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
   const { collapsed: collapsedGroups, toggle: onToggleGroup } = useCollapsedGroups(projectId);
-
-  if (synced !== initialContainers || syncedBacklogItems !== initialBacklogItems) {
-    setSynced(initialContainers);
-    setSyncedBacklogItems(initialBacklogItems);
-    setContainers(toListItemContainers(initialContainers, initialBacklogItems, states));
-  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // Derived from the item's own data (via the server-confirmed `synced`
-  // snapshot), not the visual zone. A divider can only ever reorder within
-  // the Backlog zone — it never has a story's state/iteration to validate.
+  // Derived from the item's own data, not the visual zone. A divider can only
+  // ever reorder within the Backlog zone — it never has a story's state/
+  // iteration to validate. The story's state/iteration data (what zoneForStory
+  // reads) is unchanged by an optimistic reorder, so reading it off the
+  // in-container ListItem stays the server-confirmed source zone mid-drag.
   function isAllowedMove(itemId: string, targetZone: string): boolean {
     const item = storyById(containers, itemId);
     if (!item) {
@@ -1207,16 +1210,12 @@ export function BoardListView({
     if (item.kind === "divider") {
       return targetZone === BACKLOG_COLUMN_ID;
     }
-    const story = storyById(synced, itemId);
-    if (!story) {
-      return false;
-    }
-    const from = zoneForStory(story, currentIteration?.id ?? null);
-    return evaluateListDrop(story, from, targetZone as ListZoneId, toGateStates(states)).ok;
+    const from = zoneForStory(item.story, currentIteration?.id ?? null);
+    return evaluateListDrop(item.story, from, targetZone as ListZoneId, toGateStates(states)).ok;
   }
 
   function handleDragStart(event: DragStartEvent) {
-    setActiveId(String(event.active.id));
+    beginDrag(String(event.active.id));
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -1234,18 +1233,17 @@ export function BoardListView({
   }
 
   function handleDragEnd(event: DragEndEvent) {
-    setActiveId(null);
+    endDrag();
     const { active, over } = event;
-    const fallback = () => setContainers(toListItemContainers(synced, syncedBacklogItems, states));
 
     if (!over) {
-      fallback();
+      revertToSnapshot();
       return;
     }
 
     const overContainer = findContainer(containers, String(over.id));
     if (!overContainer || !isAllowedMove(String(active.id), overContainer)) {
-      fallback();
+      revertToSnapshot();
       return;
     }
 
@@ -1273,19 +1271,12 @@ export function BoardListView({
     if (beforeId) {
       formData.set("before_item_id", beforeId);
     }
-    // Awaited and caught — the server re-derives the move from the
-    // story's *current* row (see dropStoryInList), so a stale client (e.g.
-    // another user already accepted this story) gets a rejection here even
-    // though the client-side isAllowedMove check above passed. Un-caught,
-    // this optimistic update above would never be reverted.
-    startTransition(async () => {
-      try {
-        await dropStoryInList(formData);
-      } catch (err) {
-        fallback();
-        setMutationError(err instanceof Error ? err.message : "Failed to move the story");
-      }
-    });
+    // runDrop re-derives the move server-side from the story's *current* row
+    // (see dropStoryInList), so a stale client (e.g. another user already
+    // accepted this story) is rejected there even though isAllowedMove passed;
+    // on failure it reverts only this item, preserving a sibling drag still in
+    // flight (TASK-113).
+    runDrop(String(active.id), () => dropStoryInList(formData), setMutationError);
   }
 
   const iceboxItems = containers[ICEBOX_COLUMN_ID] ?? [];
@@ -1328,7 +1319,12 @@ export function BoardListView({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveId(null)}
+      onDragCancel={() => {
+        // A cancelled drag (Esc / dropped nowhere) already floated the row
+        // via onDragOver — restore the pre-drag board, not just clear activeId.
+        endDrag();
+        revertToSnapshot();
+      }}
     >
       <div className="flex gap-4">
         <div className="flex max-w-3xl flex-1 flex-col gap-6">

@@ -32,6 +32,7 @@ import { dropStory } from "@/app/projects/[id]/board/actions";
 import { createProjectState, renameProjectState } from "@/app/projects/[id]/settings/actions";
 import { beforeAnchorId, findContainer, moveBetweenContainers, storyById, sumPoints } from "@/lib/utils/board";
 import { reorderContainer } from "@/lib/utils/board-dnd";
+import { useOptimisticBoardOrder } from "./use-optimistic-board-order";
 import { columnForStory, evaluateDrop, lowestUnstartedStateId, toGateStates, type KanbanColumnId } from "@/lib/utils/kanban";
 import { categoryRank, matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import { isImeComposing } from "@/lib/utils/keyboard";
@@ -403,19 +404,12 @@ export function KanbanColumnsBoard({
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
 }) {
-  // Local order so drops/reorders reflect instantly; server revalidation
-  // re-syncs via props afterwards. Reset during render when the prop changes
-  // (React's "adjust state on prop change" pattern) rather than via an effect.
-  const [containers, setContainers] = useState(initialContainers);
-  const [synced, setSynced] = useState(initialContainers);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // Optimistic order + realtime-safe reconcile + per-drag revert all live in
+  // the shared hook (TASK-113). initialContainers is a reference-stable prop,
+  // so it doubles as the reconcile change token.
+  const { containers, setContainers, activeId, beginDrag, endDrag, revertToSnapshot, runDrop } =
+    useOptimisticBoardOrder(initialContainers);
   const [dragError, setDragError] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
-
-  if (synced !== initialContainers) {
-    setSynced(initialContainers);
-    setContainers(initialContainers);
-  }
 
   // Rendered (visible) view only — `containers` itself stays the full,
   // unfiltered set so drag math (below) and the top bar's committed points
@@ -438,7 +432,10 @@ export function KanbanColumnsBoard({
   // derived from the story's own data, not the visual container, so it stays
   // correct even while onDragOver has the card floating in another column.
   function isAllowedMove(storyId: string, targetContainer: string): boolean {
-    const story = storyById(synced, storyId);
+    // From `containers`, not the drop's visual container: a story's state/
+    // iteration data (what columnForStory reads) is unchanged by an optimistic
+    // reorder, so this stays the server-confirmed source column mid-drag.
+    const story = storyById(containers, storyId);
     if (!story) {
       return false;
     }
@@ -447,7 +444,7 @@ export function KanbanColumnsBoard({
   }
 
   function handleDragStart(event: DragStartEvent) {
-    setActiveId(String(event.active.id));
+    beginDrag(String(event.active.id));
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -465,17 +462,17 @@ export function KanbanColumnsBoard({
   }
 
   function handleDragEnd(event: DragEndEvent) {
-    setActiveId(null);
+    endDrag();
     const { active, over } = event;
     if (!over) {
-      setContainers(synced);
+      revertToSnapshot();
       return;
     }
 
     const overContainer = findContainer(containers, String(over.id));
     if (!overContainer || !isAllowedMove(String(active.id), overContainer)) {
-      // Snap back: restore the last server-confirmed layout.
-      setContainers(synced);
+      // Snap back the whole pre-drag board: nothing was sent to the server.
+      revertToSnapshot();
       return;
     }
 
@@ -500,19 +497,12 @@ export function KanbanColumnsBoard({
     if (beforeId) {
       formData.set("before_item_id", beforeId);
     }
-    // Awaited and caught — the server re-derives the transition from the
-    // story's *current* state (see dropStory), so a stale client
-    // (e.g. another user already accepted this story) gets a rejection
-    // here even though the client-side isAllowedMove check above passed.
-    // Un-caught, the optimistic reorder above would never be reverted.
-    startTransition(async () => {
-      try {
-        await dropStory(formData);
-      } catch (err) {
-        setContainers(synced);
-        setDragError(err instanceof Error ? err.message : "Failed to move the story");
-      }
-    });
+    // runDrop re-derives the transition server-side from the story's *current*
+    // state (see dropStory), so a stale client (e.g. another user already
+    // accepted this story) is rejected there even though isAllowedMove passed;
+    // on failure it reverts only this story, preserving a sibling drag still
+    // in flight (TASK-113).
+    runDrop(String(active.id), () => dropStory(formData), setDragError);
   }
 
   const sortedStates = [...states].sort((a, b) => a.position - b.position);
@@ -533,7 +523,12 @@ export function KanbanColumnsBoard({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveId(null)}
+      onDragCancel={() => {
+        // A cancelled drag (Esc / dropped nowhere) already floated the card
+        // via onDragOver — restore the pre-drag board, not just clear activeId.
+        endDrag();
+        revertToSnapshot();
+      }}
     >
       {dragError && (
         <div className="sticky top-0 z-20">
