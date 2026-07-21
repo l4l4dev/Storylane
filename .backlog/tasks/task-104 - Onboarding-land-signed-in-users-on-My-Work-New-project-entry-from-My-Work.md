@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 05:59'
-updated_date: '2026-07-21 06:47'
+updated_date: '2026-07-21 08:05'
 labels:
   - web
 dependencies: []
@@ -26,6 +26,15 @@ doc-11 D2 (+ advisor corrections). Signed-in users land on /my-work instead of /
 - [ ] #3 Projects list (/dashboard) unchanged as the project index; My Work <-> Projects navigation stays available in the sidebar
 - [ ] #4 UI passes fable-advisor design review; pnpm test + lint green
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-21 08:05
+---
+doc-12 (2026-07-21) supersedes this task's 'New project' button placement: it moves from my-work/page.tsx into the sidebar's Projects dropdown (TASK-109). TASK-109 removes the button this task added.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 
