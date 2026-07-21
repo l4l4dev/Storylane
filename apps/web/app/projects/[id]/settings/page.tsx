@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { updateProject } from "./actions";
+import { SettingsSaveToast } from "@/components/features/projects/settings-save-toast";
 
 export default async function ProjectSettingsPage({
   params,
@@ -75,6 +76,7 @@ export default async function ProjectSettingsPage({
 
   return (
     <main className="mx-auto max-w-2xl p-6">
+      <SettingsSaveToast />
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Settings</h1>
       </div>

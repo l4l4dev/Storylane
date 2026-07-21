@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import { clampIterationLength, clampVelocityWindow } from "@storylane/core";
@@ -77,17 +78,38 @@ export async function updateProject(formData: FormData) {
       .eq("id", id)
       .select("id"),
   );
+  // Surfaced in the success toast (TASK-107) when the owner opted into
+  // reshaping but nothing actually changed — "Project updated" alone would
+  // read as if the checkbox had no effect, rather than explaining why.
+  let reshapeNote: "already_finished" | "would_end_in_past" | "too_long" | null = null;
   if (applyToCurrent) {
     // Runs after the length UPDATE above so the RPC reads the new length. Its
-    // no-op outcomes (no current iteration / would end in past / unchanged)
-    // come back as data, not errors; a genuine error (e.g. the membership
-    // gate) is surfaced the same way this action's other writes are, rather
-    // than silently succeeding the save.
-    const { error } = await supabase.rpc("reshape_current_iteration", { p_project_id: id });
+    // no-op outcomes (no current iteration / would end in past / too long /
+    // unchanged) come back as data, not errors; a genuine error (e.g. the
+    // membership gate) is surfaced the same way this action's other writes
+    // are, rather than silently succeeding the save.
+    const { data, error } = await supabase.rpc("reshape_current_iteration", { p_project_id: id });
     if (error) throw new Error(error.message);
+    const result = data as { kind?: string; reason?: string } | null;
+    if (
+      result?.kind === "noop" &&
+      (result.reason === "already_finished" || result.reason === "would_end_in_past" || result.reason === "too_long")
+    ) {
+      reshapeNote = result.reason;
+    }
   }
   revalidatePath(`/projects/${id}/settings`);
   revalidatePath(`/projects/${id}/board`);
+
+  // A redirect (rather than just revalidatePath) is what lets the settings
+  // page's client-side toast reader see a fresh "did this request just
+  // succeed" signal — the same query-param-then-client-reads-it shape as
+  // invite_failed (board/page.tsx), adapted for a toast: a toast is
+  // inherently client-only/ephemeral, so nothing can render it from the
+  // server the way InviteFailedBanner renders straight from searchParams.
+  const params = new URLSearchParams({ updated: "1" });
+  if (reshapeNote) params.set("reshape_note", reshapeNote);
+  redirect(`/projects/${id}/settings?${params.toString()}`);
 }
 
 export async function inviteMember(

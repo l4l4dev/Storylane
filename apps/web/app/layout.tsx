@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { NotificationListener } from "@/components/features/shell/notification-listener";
+import { Toaster } from "@/components/ui/toast";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -34,6 +35,7 @@ export default function RootLayout({
         <NextThemesProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <NotificationListener />
           {children}
+          <Toaster />
         </NextThemesProvider>
       </body>
     </html>
