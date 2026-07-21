@@ -1,18 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
-import { notifySlack } from "@/lib/integrations/slack";
 import { updateStory } from "@/app/stories/[id]/actions";
 import type { ActionResult, ProjectState } from "@/lib/types";
-import {
-  iterationDoneMessage,
-  iterationSkippedMessage,
-  iterationStartedMessage,
-  storyStateChangeMessage,
-} from "@/lib/utils/slack";
 import {
   BACKLOG_COLUMN_ID,
   columnForStory,
@@ -25,7 +17,6 @@ import {
   type ListZoneId,
 } from "@/lib/utils/kanban";
 import { utcTodayKey } from "@/lib/utils/format";
-import { iterationLabel } from "@/lib/utils/iterations";
 import { parsePoints, pointScaleValues } from "@/lib/utils/stories";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -39,12 +30,6 @@ async function fetchProjectStates(supabase: SupabaseServerClient, projectId: str
     .order("position");
   if (error) throw new Error(`Could not read project states: ${error.message}`);
   return (data ?? []) as ProjectState[];
-}
-
-/** A state_id's display name for Slack messages ("Icebox" for null, "Unknown" for a stale/foreign id). */
-function stateName(stateId: string | null, states: ReadonlyArray<ProjectState>): string {
-  if (stateId === null) return "Icebox";
-  return states.find((s) => s.id === stateId)?.name ?? "Unknown";
 }
 
 // Single UTC date convention shared with the DB — see utcTodayKey.
@@ -353,11 +338,6 @@ export async function dropStory(formData: FormData) {
     throw new Error(moveErrorMessage(error));
   }
 
-  if ("state_id" in evaluation) {
-    const newName = stateName(evaluation.state_id ?? null, states);
-    after(() => notifySlack(projectId, storyStateChangeMessage(story, newName)));
-  }
-
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/stories/${storyId}`);
 }
@@ -477,11 +457,6 @@ export async function dropStoryInList(formData: FormData) {
     throw new Error(moveErrorMessage(error));
   }
 
-  if ("state_id" in evaluation) {
-    const newName = stateName(evaluation.state_id ?? null, states);
-    after(() => notifySlack(projectId, storyStateChangeMessage(story, newName)));
-  }
-
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/stories/${itemId}`);
 }
@@ -566,7 +541,7 @@ export async function setStoryState(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient();
   const { data: story, error: fetchError } = await supabase
     .from("stories")
-    .select("number, title")
+    .select("id")
     .eq("id", storyId)
     .eq("project_id", projectId)
     .single();
@@ -577,17 +552,13 @@ export async function setStoryState(formData: FormData): Promise<ActionResult> {
   // The generated RPC Args type marks p_state_id non-null — a known codegen
   // gap (see app/stories/[id]/actions.ts's update_story call for the same
   // pattern) even though set_story_state's SQL body accepts null (Icebox).
-  const { data, error } = await supabase.rpc("set_story_state", {
+  const { error } = await supabase.rpc("set_story_state", {
     p_story_id: storyId,
     p_state_id: stateId as string,
   });
   if (error) {
     return { ok: false, message: error.message };
   }
-  const newStateId = (data as { state_id: string | null }).state_id;
-
-  const states = await fetchProjectStates(supabase, projectId);
-  after(() => notifySlack(projectId, storyStateChangeMessage(story, stateName(newStateId, states))));
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);
@@ -666,12 +637,12 @@ export async function estimateStory(formData: FormData): Promise<ActionResult> {
 }
 
 type FinalizeIterationEvent =
-  // `capacity` is optional because parseFinalizeEvents validates only
-  // `kind`: a payload from a finalize_iteration older than the capacity
-  // snapshot has no such field, and iterationDoneMessage handles its
-  // absence rather than pretending the value is always there.
-  // `start_date` lets the 1-day cadence title the message by date (iterationLabel);
-  // optional so a payload from a finalize_iteration older than TASK-87 still parses.
+  // Mirrors finalize_iteration's jsonb events. The Web now reads only `kind`
+  // /`reason` (FinishIterationButton's no-op feedback, below); the richer
+  // fields are the RPC's payload and are left typed for accuracy but no
+  // longer consumed here — Slack notifications moved to the DB trigger that
+  // reads the iterations table directly (TASK-24). `capacity`/`start_date`
+  // stay optional so a payload from an older finalize_iteration still parses.
   | { kind: "finalized"; number: number; velocity: number; capacity?: number; skipped?: boolean; start_date?: string }
   | { kind: "started"; number: number; start_date: string; end_date: string }
   // A manual finish that changed nothing (nothing to finish, or the named
@@ -687,46 +658,6 @@ function parseFinalizeEvents(raw: unknown): FinalizeIterationEvent[] {
     (event): event is FinalizeIterationEvent =>
       typeof event === "object" && event !== null && "kind" in event,
   );
-}
-
-// Replays the ordered events a finalize_iteration call reports as Slack
-// notifications — one per finalized/started iteration, in order, so a
-// multi-sprint catch-up doesn't lose the intermediate ones the way just
-// diffing before/after iteration numbers would.
-async function notifyFinalizeEvents(
-  supabase: SupabaseServerClient,
-  projectId: string,
-  events: FinalizeIterationEvent[],
-) {
-  const notifiable = events.filter((event) => event.kind === "finalized" || event.kind === "started");
-  if (notifiable.length === 0) {
-    // 'noop' events carry no state change — nothing to notify, and no reason
-    // to spend a query on the display term.
-    return;
-  }
-
-  // Reuses the caller's client: the dashboard and My Work roll over every
-  // project in one Promise.all, so a client per project would be N extra
-  // connections on the render path.
-  const { data: project } = await supabase
-    .from("projects")
-    .select("iteration_term, iteration_length")
-    .eq("id", projectId)
-    .maybeSingle();
-  const term = project?.iteration_term ?? "Iteration";
-  const length = project?.iteration_length ?? 14;
-
-  for (const event of notifiable) {
-    const label = iterationLabel(term, event.number, length, event.start_date);
-    if (event.kind === "finalized") {
-      const message = event.skipped
-        ? iterationSkippedMessage(label)
-        : iterationDoneMessage(label, event.velocity, event.capacity);
-      after(() => notifySlack(projectId, message));
-    } else if (event.kind === "started") {
-      after(() => notifySlack(projectId, iterationStartedMessage(label, event.start_date, event.end_date)));
-    }
-  }
 }
 
 /**
@@ -759,15 +690,16 @@ export async function ensureCurrentIteration(projectId: string) {
     return;
   }
 
-  const { data, error } = await supabase.rpc("finalize_iteration", {
+  // Ran for its rollover side effects; the slack-notify trigger fires from
+  // the iterations writes this makes (TASK-24), so nothing to do with the
+  // returned events here.
+  const { error } = await supabase.rpc("finalize_iteration", {
     p_project_id: projectId,
     p_manual: false,
   });
   if (error) {
     throw new Error(error.message);
   }
-
-  await notifyFinalizeEvents(supabase, projectId, parseFinalizeEvents(data));
 }
 
 /**
@@ -796,7 +728,6 @@ export async function finishIteration(formData: FormData): Promise<{ events: Fin
   }
 
   const events = parseFinalizeEvents(data);
-  await notifyFinalizeEvents(supabase, projectId, events);
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/projects/${projectId}`);

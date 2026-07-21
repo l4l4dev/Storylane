@@ -43,3 +43,22 @@ insert into auth.identities (
   now(), now(), now()
 )
 on conflict (provider, provider_id) do nothing;
+
+-- ============================================================
+-- TASK-24: local Vault secrets for the slack-notify Edge Function pipeline.
+-- Local-only (this file never runs against a deployed project); production
+-- sets these two secrets manually. The URL points at the local edge runtime
+-- reached from inside the Postgres container (host.docker.internal), and the
+-- secret is a throwaway matching the local functions env — neither is
+-- sensitive. Without these, notify_slack_event still records the outbox row
+-- and just skips the POST, so the automated tests don't depend on them; they
+-- exist so a manual local end-to-end delivery check can work.
+-- ============================================================
+select vault.create_secret(
+  'http://host.docker.internal:54321/functions/v1/slack-notify',
+  'slack_notify_url'
+);
+select vault.create_secret(
+  'local-dev-slack-notify-secret',
+  'slack_notify_secret'
+);

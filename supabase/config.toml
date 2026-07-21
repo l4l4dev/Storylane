@@ -431,3 +431,8 @@ enabled = true
 # Supabase JWT — auth is the per-project HMAC signature instead.
 [functions.git-webhook]
 verify_jwt = false
+
+# Called by the notify_slack_event DB trigger via pg_net (no JWT) — auth is
+# the shared secret in the x-slack-notify-secret header (TASK-24).
+[functions.slack-notify]
+verify_jwt = false

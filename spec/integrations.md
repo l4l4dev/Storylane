@@ -42,12 +42,24 @@
 
 ### Slack Notifications
 - Register an Incoming Webhook URL in project settings（`integrations.config.webhook_url`）
-- **送信経路（2026-07-07 オーナー決定・旧「Edge Function から POST」を置き換え）**:
-  Next.js の server action から共有ヘルパー（`apps/web/lib/integrations/slack.ts`）経由で
-  Slack Incoming Webhook に直接 POST する。Edge Function は使わない
-  （Webhook 受信と違い公開エンドポイントが不要なため）。
-- 通知タイミング: story の状態遷移（transition ボタン / ドラッグ）、iteration の完了
-  （lazy ロールオーバー時）。送信は fire-and-forget — Slack 障害で操作を失敗させない。
+- **送信経路（TASK-24, 2026-07-21・decision-1 §3 に基づき 2026-07-07 の「server action から直接 POST」決定を差し戻し）**:
+  DB トリガーが通知を発火する。story の状態遷移は `log_story_activity` が書く
+  `activity_logs`（`action='story.state_changed'`）の AFTER INSERT トリガー、iteration の
+  finalize/start は `iterations` テーブルへの AFTER UPDATE(state→done)/AFTER INSERT トリガーで
+  拾い、いずれも `notify_slack_event`（SECURITY DEFINER）が `public.slack_notifications`
+  アウトボックス行を記録しつつ pg_net で `slack-notify` Edge Function を非同期に呼ぶ。Edge
+  Function は service role で対象行と `integrations` を読み、メッセージを組んで Slack へ POST する。
+  - **なぜ差し戻したか**: 2026-07-07 の server-action 直 POST は Web のみを想定した経路で、
+    iOS の直接書き込みはこの action を通らず通知が飛ばない。DB トリガー駆動なら
+    どのクライアント（Web / iOS / Edge / MCP）の書き込みでも同じ経路で発火する。
+  - 認証: `net.http_post` に JWT は乗らないので、Vault の共有シークレット
+    （`slack_notify_secret`）を `x-slack-notify-secret` ヘッダで送り、Edge Function
+    （`verify_jwt=false`）が突き合わせる。Edge Function の URL も Vault（`slack_notify_url`）。
+  - gate: active な slack integration が無いプロジェクトはアウトボックス行も HTTP 呼び出しも
+    作らない（トリガー内の事前チェック）。Edge Function は送信直前に `is_active` を再確認する。
+- 通知タイミング: story の状態遷移（transition ボタン / ドラッグ / どのクライアントでも）、
+  iteration の finalize・skip・start（lazy ロールオーバー / 手動 finish 時）。送信は
+  fire-and-forget — pg_net が非同期に配送し、Slack 障害は元の書き込みをブロックしない。
 
 ### integrations.config の中身（provider 別）
 | provider | config keys |
