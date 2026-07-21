@@ -297,14 +297,23 @@ export type MoveCopyTargetProject = { id: string; name: string };
 /**
  * Projects the caller can Move/Copy a story into: owner/member of, excluding
  * the current one (spec/features.md "Move / Copy to another project" —
- * viewer isn't enough, matching the RPCs' own re-check). RLS on
- * `project_members` already scopes this to rows the caller owns.
+ * viewer isn't enough, matching the RPCs' own re-check). `project_members`
+ * RLS scopes reads to any member of a project, not just the caller's own
+ * row, so the caller's user id must be filtered explicitly here.
  */
 export async function getMoveTargetProjects(currentProjectId: string): Promise<MoveCopyTargetProject[]> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return [];
+  }
+
   const { data } = await supabase
     .from("project_members")
     .select("role, projects(id, name)")
+    .eq("user_id", user.id)
     .in("role", ["owner", "member"])
     .neq("project_id", currentProjectId);
 

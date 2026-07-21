@@ -5,6 +5,8 @@ const writeResults: Record<
   string,
   { data: ReadonlyArray<unknown> | null; error: { message: string } | null }
 > = {};
+const selectRows: Record<string, ReadonlyArray<Record<string, unknown>>> = {};
+let authUser: { id: string } | null = { id: "user-1" };
 
 function writeChain(table: string) {
   const result = () => writeResults[table] ?? { data: [{ id: "row-1" }], error: null };
@@ -15,12 +17,33 @@ function writeChain(table: string) {
   return node;
 }
 
+function selectChain(table: string) {
+  let rows = selectRows[table] ?? [];
+  const node = {
+    eq: (col: string, val: unknown) => {
+      rows = rows.filter((row) => row[col] === val);
+      return node;
+    },
+    in: (col: string, vals: unknown[]) => {
+      rows = rows.filter((row) => vals.includes(row[col]));
+      return node;
+    },
+    neq: (col: string, val: unknown) => {
+      rows = rows.filter((row) => row[col] !== val);
+      return Promise.resolve({ data: rows, error: null });
+    },
+  };
+  return node;
+}
+
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
+    auth: { getUser: async () => ({ data: { user: authUser } }) },
     from: (table: string) => ({
       insert: () => Promise.resolve(insertResults[table] ?? { error: null }),
       update: () => writeChain(table),
       delete: () => writeChain(table),
+      select: () => selectChain(table),
     }),
   }),
 }));
@@ -36,6 +59,10 @@ describe("story mutation action results", () => {
     for (const key of Object.keys(writeResults)) {
       delete writeResults[key];
     }
+    for (const key of Object.keys(selectRows)) {
+      delete selectRows[key];
+    }
+    authUser = { id: "user-1" };
   });
 
   it("returns an add-comment insert error as a failure result", async () => {
@@ -90,5 +117,20 @@ describe("story mutation action results", () => {
       ok: false,
       message: "Task not found",
     });
+  });
+
+  it("excludes a project where the caller is only a viewer, even if another member owns it", async () => {
+    selectRows.project_members = [
+      // caller is viewer-only in project-2 — must not appear as a target
+      { user_id: "user-1", role: "viewer", project_id: "project-2", projects: { id: "project-2", name: "Project Two" } },
+      { user_id: "user-2", role: "owner", project_id: "project-2", projects: { id: "project-2", name: "Project Two" } },
+      // caller owns project-3 — must appear
+      { user_id: "user-1", role: "owner", project_id: "project-3", projects: { id: "project-3", name: "Project Three" } },
+    ];
+    const { getMoveTargetProjects } = await import("./actions");
+
+    await expect(getMoveTargetProjects("project-1")).resolves.toEqual([
+      { id: "project-3", name: "Project Three" },
+    ]);
   });
 });
