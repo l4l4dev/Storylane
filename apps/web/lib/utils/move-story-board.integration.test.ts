@@ -302,4 +302,56 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
 
     await asService.from("projects").delete().eq("id", other!.id);
   });
+
+  // TASK-111 (doc-13 #2): a Kanban within-column reorder must keep positions as
+  // ONE iteration-wide sequence so the List view (flat, position-ordered) never
+  // interleaves columns wrongly. The old tracker branch re-densified only the
+  // moved story's own state column, colliding with other columns' positions.
+  it("keeps a single iteration-wide sequence after a Kanban within-column reorder (AC #2)", async () => {
+    // Interleaved global layout: Started at 0/2, Finished at 1/3.
+    const [sA0, sF0, sA1, sF1] = await seedCurrentIteration([
+      { stateId: states.Started, position: 0 },
+      { stateId: states.Finished, position: 1 },
+      { stateId: states.Started, position: 2 },
+      { stateId: states.Finished, position: 3 },
+    ]);
+    // Kanban-reorder within Started: move sA1 before sA0.
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: sA1 },
+      p_view: "tracker",
+      p_expected: { state_id: states.Started, iteration_id: iterationId },
+      p_deltas: {},
+      p_anchor: { before: { kind: "story", id: sA0 } },
+    });
+    expect(error).toBeNull();
+    // One dense 0..3 sequence, no cross-column collision: Started column
+    // subsequence is [sA1, sA0] (reordered), Finished [sF0, sF1] (untouched).
+    // The old per-column densify would have produced position 1 twice.
+    expect(await positionsOf([sA1, sA0, sF0, sF1])).toEqual([0, 1, 2, 3]);
+  });
+
+  it("drops a Kanban card at a column's end right after that column's tail, not the iteration's (AC #2)", async () => {
+    // Started 0/1, Finished 2/3 — Finished sits after Started's tail globally.
+    const [sA0, sA1, sF0, sF1] = await seedCurrentIteration([
+      { stateId: states.Started, position: 0 },
+      { stateId: states.Started, position: 1 },
+      { stateId: states.Finished, position: 2 },
+      { stateId: states.Finished, position: 3 },
+    ]);
+    // Move sF0 into the Started column, dropped at its end (no anchor).
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: sF0 },
+      p_view: "tracker",
+      p_expected: { state_id: states.Finished, iteration_id: iterationId },
+      p_deltas: { state_id: states.Started },
+      p_anchor: {},
+    });
+    expect(error).toBeNull();
+    // sF0 lands right after Started's tail (sA1), i.e. before sF1 in List order
+    // — NOT appended to the iteration's absolute bottom (which would put it
+    // after sF1). Result: sA0, sA1, sF0, sF1.
+    expect(await positionsOf([sA0, sA1, sF0, sF1])).toEqual([0, 1, 2, 3]);
+  });
 });

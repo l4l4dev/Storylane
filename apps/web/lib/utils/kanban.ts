@@ -250,6 +250,11 @@ export function evaluateListDrop(
  * view". Concatenating the buckets in an arbitrary object-key order instead
  * produces a state-bucketed order, wrongly rendering e.g. an in-progress
  * story below an unstarted one at a lower position.
+ *
+ * The final position sort assumes `position` is ONE iteration-wide sequence,
+ * not per-column — guaranteed by move_story_board writing a single
+ * iteration-scoped sequence for both views (TASK-111). Column-local positions
+ * would interleave columns wrongly here; the migration is what keeps them out.
  */
 export function flattenCurrentZone<T extends { position: number }>(
   containers: Record<string, ReadonlyArray<T>>,

@@ -263,6 +263,41 @@ describe("flattenCurrentZone", () => {
     expect(flattenCurrentZone(containers, projectStates).map((s) => s.id)).toEqual(["a", "b", "c"]);
   });
 
+  it("interleaves columns by one iteration-wide position sequence (TASK-111)", () => {
+    // With a single iteration-scoped sequence (what move_story_board now
+    // writes), a column's stories carry non-contiguous global positions and
+    // must interleave with other columns by position — Started 0/2/4 and
+    // Finished 1/3 flatten to a strict 0..4 order, not column-grouped.
+    const containers = {
+      Unstarted: [] as { id: string; position: number }[],
+      Started: [
+        { id: "s0", position: 0 },
+        { id: "s2", position: 2 },
+        { id: "s4", position: 4 },
+      ],
+      Finished: [
+        { id: "f1", position: 1 },
+        { id: "f3", position: 3 },
+      ],
+    };
+    const projectStates: ProjectState[] = stateTemplates.classic.states.map((s) => ({
+      id: s.name,
+      name: s.name,
+      category: s.category as ProjectState["category"],
+      action_label: s.actionLabel,
+      position: s.position,
+      project_id: "p1",
+      created_at: "",
+    }));
+    expect(flattenCurrentZone(containers, projectStates).map((s) => s.id)).toEqual([
+      "s0",
+      "f1",
+      "s2",
+      "f3",
+      "s4",
+    ]);
+  });
+
   it("returns an empty list when every bucket is empty", () => {
     expect(flattenCurrentZone({}, [])).toEqual([]);
   });
