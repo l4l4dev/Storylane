@@ -153,6 +153,25 @@ export default async function ProjectSettingsPage({
             </div>
           </div>
           {isOwner && (
+            <label className="flex items-start gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                name="apply_to_current"
+                className="mt-0.5 size-4 shrink-0 rounded border-input"
+              />
+              {/* TASK-105 (doc-11 D3): default (unchecked) applies a length
+                  change only to the next iteration (TASK-87). Checked also
+                  reshapes the current one now — a no-op if it has no current
+                  iteration or the new length would end in the past. */}
+              <span>
+                Apply a length change to the current iteration now
+                <span className="block text-xs">
+                  Off: the new length takes effect from the next iteration.
+                </span>
+              </span>
+            </label>
+          )}
+          {isOwner && (
             <div>
               <Button type="submit">Save changes</Button>
             </div>

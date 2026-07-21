@@ -959,6 +959,10 @@ export type Database = {
         Args: { p_project_id: string; p_roles: string[] }
         Returns: undefined
       }
+      reshape_current_iteration: {
+        Args: { p_project_id: string }
+        Returns: Json
+      }
       search_users_for_invite: {
         Args: { p_project_id: string; p_query: string }
         Returns: {

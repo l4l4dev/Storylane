@@ -46,6 +46,8 @@ export function describeActivity(log: ActivityLog): string {
     }
     case "iteration.length_overridden":
       return `${log.actorName} moved iteration #${String(payload.number)}'s end date from ${formatDate(String(payload.from))} to ${formatDate(String(payload.to))}`;
+    case "iteration.reshaped":
+      return `${log.actorName} reshaped iteration #${String(payload.number)} to the new cadence (ends ${formatDate(String(payload.to))})`;
     case "project.cadence_changed":
       return `${log.actorName} changed the iteration length from ${String(payload.from)} to ${String(payload.to)} days`;
     default:

@@ -43,6 +43,11 @@ begin
 end;
 $$;
 
+-- Trigger-body function: never called directly, so EXECUTE is revoked from
+-- every client role (the function_grant_lockdown convention — a trigger fires
+-- regardless of the invoker's EXECUTE grant).
+revoke execute on function public.protect_projects_is_personal() from public, anon, authenticated;
+
 create trigger projects_protect_is_personal
   before update on public.projects
   for each row execute function public.protect_projects_is_personal();

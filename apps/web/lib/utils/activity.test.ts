@@ -129,3 +129,16 @@ describe("iteration.length_overridden", () => {
     ).toBe("Rin moved iteration #7's end date from 2026/7/17 to 2026/7/24");
   });
 });
+
+describe("iteration.reshaped", () => {
+  it("names the sprint and its new end date", () => {
+    expect(
+      describeActivity({
+        action: "iteration.reshaped",
+        payload: { number: 3, from: "2026-07-27", to: "2026-07-21", length: 1 },
+        actorName: "Rin",
+        storyTitle: null,
+      }),
+    ).toBe("Rin reshaped iteration #3 to the new cadence (ends 2026/7/21)");
+  });
+});

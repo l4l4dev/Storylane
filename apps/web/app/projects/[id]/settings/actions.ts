@@ -55,6 +55,13 @@ export async function updateProject(formData: FormData) {
     return;
   }
 
+  // TASK-105 (doc-11 D3): opt-in to reshaping the current iteration to the new
+  // cadence now. Default (unchecked) keeps TASK-87's "applies from the next
+  // iteration". The RPC no-ops safely when there's no current iteration / the
+  // reshape would land in the past, so this never turns the plain save into an
+  // error (updateProject has no error channel).
+  const applyToCurrent = formData.get("apply_to_current") === "on";
+
   const supabase = await createClient();
   await assertRowAffected(
     await supabase
@@ -70,7 +77,17 @@ export async function updateProject(formData: FormData) {
       .eq("id", id)
       .select("id"),
   );
+  if (applyToCurrent) {
+    // Runs after the length UPDATE above so the RPC reads the new length. Its
+    // no-op outcomes (no current iteration / would end in past / unchanged)
+    // come back as data, not errors; a genuine error (e.g. the membership
+    // gate) is surfaced the same way this action's other writes are, rather
+    // than silently succeeding the save.
+    const { error } = await supabase.rpc("reshape_current_iteration", { p_project_id: id });
+    if (error) throw new Error(error.message);
+  }
   revalidatePath(`/projects/${id}/settings`);
+  revalidatePath(`/projects/${id}/board`);
 }
 
 export async function inviteMember(
