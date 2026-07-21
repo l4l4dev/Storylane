@@ -6,15 +6,15 @@ import {
   columnForStory,
 } from "@/lib/utils/kanban";
 import { projectedIterationDates, type BacklogRowItem } from "@/lib/utils/iterations";
-import { readWasTruncated } from "@/lib/utils/capacity-guard";
+import { utcTodayKey } from "@/lib/utils/format";
+import {
+  MAX_PROJECTED_SPRINTS,
+  resolvePlanningCapacity,
+  startPlanningCapacityFetch,
+} from "@/lib/utils/planning-capacity";
 import { pointScaleValues } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
-import {
-  forecastPoints,
-  projectCapacity,
-  velocityRate,
-  type CalendarException,
-} from "@storylane/core";
+import { velocityRate } from "@storylane/core";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
@@ -76,12 +76,30 @@ export default async function BoardPage({
   }
 
 
-  // Lazily creates/rolls over the current iteration before reading it (see
-  // spec/velocity.md "Automatic scheduling & rollover") — must run before the
-  // iterations query below.
-  await ensureCurrentIteration(project.id);
+  // `members` doesn't depend on ensureCurrentIteration and is needed early to
+  // scope the planning-capacity fetch below (TASK-99) — run it alongside
+  // instead of inside the later batch, so it doesn't add its own round trip.
+  const [, { data: members }] = await Promise.all([
+    // Lazily creates/rolls over the current iteration before reading it (see
+    // spec/velocity.md "Automatic scheduling & rollover") — must run before
+    // the iterations query below.
+    ensureCurrentIteration(project.id),
+    supabase.from("project_members").select("user_id, role, profiles(display_name, is_agent)").eq("project_id", id),
+  ]);
 
-  const [{ data: iterations }, { data: stories }, { data: labels }, { data: epics }, { data: members }, { data: dividers }, { data: pendingGoals }, { data: statesData }] =
+  const capacityMembers = (members ?? []).map((m) => ({ userId: m.user_id, role: m.role }));
+  // Fired now, on an estimated range (project.iteration_length + today are
+  // both already known), not awaited until after the main batch below — so
+  // it runs concurrently with it instead of serially after it.
+  const capacityFetch = startPlanningCapacityFetch(
+    supabase,
+    id,
+    capacityMembers.map((m) => m.userId),
+    utcTodayKey(),
+    project.iteration_length,
+  );
+
+  const [{ data: iterations }, { data: stories }, { data: labels }, { data: epics }, { data: dividers }, { data: pendingGoals }, { data: statesData }] =
     await Promise.all([
       supabase
         .from("iterations")
@@ -97,10 +115,6 @@ export default async function BoardPage({
         .order("position", { ascending: true }),
       supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
       supabase.from("epics").select("id, name, color").eq("project_id", id).order("position", { ascending: true }),
-      supabase
-        .from("project_members")
-        .select("user_id, role, profiles(display_name, is_agent)")
-        .eq("project_id", id),
       // List view only (see components/features/board/board-list-view.tsx) —
       // freeform planning dividers for the Backlog section.
       supabase.from("backlog_dividers").select("id, label, kind, position").eq("project_id", id),
@@ -227,77 +241,18 @@ export default async function BoardPage({
   // than one flat number — a sprint straddling a holiday week holds less.
   // Capped because the backlog can outrun any sensible planning horizon;
   // buildBacklogRows repeats the last budget past the end of the array.
-  const MAX_PROJECTED_SPRINTS = 26;
   const projectedSprints = currentIteration
     ? Array.from({ length: Math.min(initialBacklogItems.length, MAX_PROJECTED_SPRINTS) }, (_, i) =>
         projectedIterationDates(currentIteration.end_date, project.iteration_length, i + 1, project.working_weekdays),
       )
     : [];
-  const calendarStart = currentIteration?.start_date;
-  const calendarEnd = projectedSprints[projectedSprints.length - 1]?.end_date ?? currentIteration?.end_date;
-  const capacityMembers = (members ?? []).map((m) => ({ userId: m.user_id, role: m.role }));
-
-  let calendarExceptions: CalendarException[] = [];
-  const timeOffByUser = new Map<string, string[]>();
-  // A failed OR truncated calendar read must not silently become "no
-  // holidays, nobody away" — that overstates capacity and over-commits the
-  // team. Degrade to the no-history fallback (minimum 1 point per group)
-  // instead, which under-plans rather than over-plans. `count: "exact"`
-  // reports the true match count even when PostgREST's row cap truncates
-  // `data` with no error (TASK-100) — readWasTruncated compares the two.
-  let calendarUnavailable = false;
-  if (calendarStart && calendarEnd && capacityMembers.length > 0) {
-    const [exceptionResult, timeOffResult] = await Promise.all([
-      supabase
-        .from("project_calendar_exceptions")
-        .select("date, kind", { count: "exact" })
-        .eq("project_id", id)
-        .gte("date", calendarStart)
-        .lte("date", calendarEnd),
-      supabase
-        .from("user_time_off")
-        .select("user_id, date", { count: "exact" })
-        .in(
-          "user_id",
-          capacityMembers.map((m) => m.userId),
-        )
-        .gte("date", calendarStart)
-        .lte("date", calendarEnd),
-    ]);
-    calendarUnavailable =
-      exceptionResult.error !== null ||
-      timeOffResult.error !== null ||
-      readWasTruncated(exceptionResult.count, exceptionResult.data?.length ?? 0) ||
-      readWasTruncated(timeOffResult.count, timeOffResult.data?.length ?? 0);
-    calendarExceptions = (exceptionResult.data ?? []) as CalendarException[];
-    for (const row of timeOffResult.data ?? []) {
-      const dates = timeOffByUser.get(row.user_id);
-      if (dates) {
-        dates.push(row.date);
-      } else {
-        timeOffByUser.set(row.user_id, [row.date]);
-      }
-    }
-  }
-  const memberCalendars = capacityMembers.map((m) => ({
-    role: m.role,
-    timeOff: timeOffByUser.get(m.userId) ?? [],
-  }));
-  const budgetFor = (range: { start_date: string; end_date: string }) =>
-    calendarUnavailable
-      ? 1
-      : forecastPoints(
-          rate,
-          projectCapacity({
-            workingWeekdays: project.working_weekdays,
-            exceptions: calendarExceptions,
-            members: memberCalendars,
-            start: range.start_date,
-            end: range.end_date,
-          }),
-        );
-  const currentBudget = currentIteration ? budgetFor(currentIteration) : 1;
-  const backlogBudgets = projectedSprints.map(budgetFor);
+  const { currentBudget, backlogBudgets } = await resolvePlanningCapacity(supabase, id, capacityFetch, {
+    rate,
+    workingWeekdays: project.working_weekdays,
+    capacityMembers,
+    currentIteration: currentIteration && { start: currentIteration.start_date, end: currentIteration.end_date },
+    projectedSprints: projectedSprints.map((s) => ({ start: s.start_date, end: s.end_date })),
+  });
 
   const nextVirtualIterationNumber =
     allIterations.reduce((max, iteration) => Math.max(max, iteration.number), 0) + 1;
