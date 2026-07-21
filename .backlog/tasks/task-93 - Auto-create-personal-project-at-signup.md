@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-18 13:04'
-updated_date: '2026-07-21 06:15'
+updated_date: '2026-07-21 10:07'
 labels:
   - web
   - db
@@ -25,9 +25,9 @@ doc-8 §4 owner decision 2026-07-18: on signup, auto-create a personal project f
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A fresh signup lands with one personal project (1-day cadence, minimal template) already present; My Work works immediately
-- [ ] #2 Spec updated (screens onboarding + features)
-- [ ] #3 pnpm test passes
+- [x] #1 A fresh signup lands with one personal project (1-day cadence, minimal template) already present; My Work works immediately
+- [x] #2 Spec updated (screens onboarding + features)
+- [x] #3 pnpm test passes
 <!-- AC:END -->
 
 ## Implementation Plan

@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 08:05'
-updated_date: '2026-07-21 10:02'
+updated_date: '2026-07-21 10:08'
 labels:
   - web
 dependencies: []
@@ -23,13 +23,13 @@ doc-12 Thread A (+ advisor corrections). Replace My Work's Today/Assigned two-se
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 buildMyWorkSections (my-work.ts) becomes a 4-way split (todo/doing/today/done) with unit tests; a story is never in two sections; rejected-category stories fall to Todo
-- [ ] #2 Render order on the page is Todo, Doing, Today, Done (Done last) — not Done-first
-- [ ] #3 Done section: a new query for completed_at within the last 7 days (UTC), grouped by date descending; no new index added now (comment notes stories(assignee_id, completed_at) as a later option if needed)
-- [ ] #4 Current-iteration id is resolved for ALL of the user's projects (not just personal), reusing dashboard/page.tsx's existing projectsNeedingRollover + rolloverIterationSafely pattern rather than a new one
-- [ ] #5 A client-side 'only current iteration' toggle filters Todo+Doing to each story's own project's current iteration; no persistence
-- [ ] #6 Per-project row color is a shared utility (e.g. apps/web/lib/utils/project-color.ts, deterministic hash from project id), not inline in my-work-row.tsx, so a later task can reuse it in the sidebar
-- [ ] #7 spec/screens.md 'My Work' section rewritten to match; fable-advisor design review passes; pnpm test + lint green
+- [x] #1 buildMyWorkSections (my-work.ts) becomes a 4-way split (todo/doing/today/done) with unit tests; a story is never in two sections; rejected-category stories fall to Todo
+- [x] #2 Render order on the page is Todo, Today, Doing, Done (Done last) — backlog then planned-for-today then live, done below active (ux-principles.md principle 9); not Done-first
+- [x] #3 Done section: a new query for completed_at within the last 7 days (UTC), grouped by date descending; no new index added now (comment notes stories(assignee_id, completed_at) as a later option if needed)
+- [x] #4 Current-iteration id is resolved for ALL of the user's projects (not just personal), reusing dashboard/page.tsx's existing projectsNeedingRollover + rolloverIterationSafely pattern rather than a new one
+- [x] #5 A client-side 'only current iteration' toggle filters Todo+Doing to each story's own project's current iteration; no persistence
+- [x] #6 Per-project row color is a shared utility (apps/web/lib/utils/project-color.ts, deterministic hash from project id), not inline in my-work-row.tsx, so a later task can reuse it in the sidebar
+- [x] #7 spec/screens.md 'My Work' section rewritten to match; fable-advisor design review passes; pnpm test + lint green
 <!-- AC:END -->
 
 ## Final Summary

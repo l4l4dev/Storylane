@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-20 03:13'
-updated_date: '2026-07-21 00:50'
+updated_date: '2026-07-21 10:07'
 labels:
   - web
 milestone: m-5
@@ -29,7 +29,7 @@ Decide the fix: request an exact count and detect truncation, page the reads, or
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A truncated calendar or time-off read is detected rather than silently treated as complete data
-- [ ] #2 On detection, planning capacity degrades conservatively (never overstates) — matching the existing calendarUnavailable fallback
-- [ ] #3 A test proves the truncation path does not inflate capacity
+- [x] #1 A truncated calendar or time-off read is detected rather than silently treated as complete data
+- [x] #2 On detection, planning capacity degrades conservatively (never overstates) — matching the existing calendarUnavailable fallback
+- [x] #3 A test proves the truncation path does not inflate capacity
 <!-- AC:END -->

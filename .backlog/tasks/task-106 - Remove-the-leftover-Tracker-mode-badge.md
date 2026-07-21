@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-haiku-4-5'
 created_date: '2026-07-21 06:00'
-updated_date: '2026-07-21 07:09'
+updated_date: '2026-07-21 10:07'
 labels:
   - web
 dependencies: []
@@ -21,8 +21,8 @@ doc-11 D4. The <Badge>Tracker</Badge> in project-card.tsx and the sidebar mode-b
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The Tracker <Badge> is removed from project-card.tsx and the mode-badge from app-sidebar.tsx; the light/dark ModeToggle in app-sidebar (unrelated, same 'mode' word) is NOT touched
-- [ ] #2 project-card.test.tsx and any app-sidebar test asserting the Tracker badge are updated; pnpm test + lint green
+- [x] #1 The Tracker <Badge> is removed from project-card.tsx and the mode-badge from app-sidebar.tsx; the light/dark ModeToggle in app-sidebar (unrelated, same 'mode' word) is NOT touched
+- [x] #2 project-card.test.tsx and any app-sidebar test asserting the Tracker badge are updated; pnpm test + lint green
 <!-- AC:END -->
 
 ## Final Summary

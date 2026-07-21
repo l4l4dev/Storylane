@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 05:59'
-updated_date: '2026-07-21 06:26'
+updated_date: '2026-07-21 10:07'
 labels:
   - web
   - db
@@ -24,12 +24,12 @@ doc-11 D1 (+ advisor corrections). Make My Work a personal-todo + cross-project 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 New migration adds projects.is_personal boolean NOT NULL DEFAULT false + a partial unique index on (created_by) WHERE is_personal (one personal project per user, DB-enforced); handle_new_user is create-or-replace'd to set is_personal=true (the existing 20260721000001 migration is NOT edited)
-- [ ] #2 The /dashboard project query and the sidebar switcher exclude the VIEWER'S OWN personal project via (is_personal AND created_by = auth.uid()) — not a bare is_personal filter (an invited member of a personal project must still see it)
-- [ ] #3 My Work's isPersonal / solo-personal-project detection reads the is_personal flag, not iteration_length===1; empty My Work shows copy that frames the quick-add as adding a personal task
-- [ ] #4 Move/Copy target picker (getMoveTargetProjects) still lists the personal project — intentional, left unchanged
-- [ ] #5 The 'no flag' wording in spec/data-model.md, spec/features.md, spec/screens.md is updated with the reversal rationale; TASK-93 gets a comment noting doc-11 reversed it
-- [ ] #6 Migration passes rls-security-reviewer; UI passes fable-advisor design review; pnpm test + lint green
+- [x] #1 New migration adds projects.is_personal boolean NOT NULL DEFAULT false + a partial unique index on (created_by) WHERE is_personal (one personal project per user, DB-enforced); handle_new_user is create-or-replace'd to set is_personal=true (the existing 20260721000001 migration is NOT edited)
+- [x] #2 The /dashboard project query and the sidebar switcher exclude the VIEWER'S OWN personal project via (is_personal AND created_by = auth.uid()) — not a bare is_personal filter (an invited member of a personal project must still see it)
+- [x] #3 My Work's isPersonal / solo-personal-project detection reads the is_personal flag, not iteration_length===1; empty My Work shows copy that frames the quick-add as adding a personal task
+- [x] #4 Move/Copy target picker (getMoveTargetProjects) still lists the personal project — intentional, left unchanged
+- [x] #5 The 'no flag' wording in spec/data-model.md, spec/features.md, spec/screens.md is updated with the reversal rationale; TASK-93 gets a comment noting doc-11 reversed it
+- [x] #6 Migration passes rls-security-reviewer; UI passes fable-advisor design review; pnpm test + lint green
 <!-- AC:END -->
 
 ## Final Summary

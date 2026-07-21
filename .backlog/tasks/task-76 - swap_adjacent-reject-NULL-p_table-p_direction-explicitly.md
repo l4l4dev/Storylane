@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-17 13:16'
-updated_date: '2026-07-21 02:54'
+updated_date: '2026-07-21 10:07'
 labels:
   - db
 milestone: m-2
@@ -22,7 +22,7 @@ Codex review 2026-07-17: in 20260716000002_swap_adjacent.sql the validation uses
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 swap_adjacent(p_table=>NULL) and (p_direction=>NULL) raise the invalid-input error; integration test covers both
+- [x] #1 swap_adjacent(p_table=>NULL) and (p_direction=>NULL) raise the invalid-input error; integration test covers both
 <!-- AC:END -->
 
 ## Implementation Notes

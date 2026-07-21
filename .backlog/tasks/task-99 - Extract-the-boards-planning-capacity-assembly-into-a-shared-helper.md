@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-20 03:13'
-updated_date: '2026-07-21 01:12'
+updated_date: '2026-07-21 10:07'
 labels:
   - web
 milestone: m-5
@@ -29,8 +29,8 @@ Two smaller findings from the same review belong with this work:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The board page no longer contains calendar-fetching or budget-mapping logic; it calls one helper
-- [ ] #2 The helper is covered by tests that do not require rendering the board page
-- [ ] #3 Board planning capacity is fetched without adding a serial round trip after the main query batch
-- [ ] #4 parseDateOnly/formatDateOnly exist in exactly one place and both packages use it
+- [x] #1 The board page no longer contains calendar-fetching or budget-mapping logic; it calls one helper
+- [x] #2 The helper is covered by tests that do not require rendering the board page
+- [x] #3 Board planning capacity is fetched without adding a serial round trip after the main query batch
+- [x] #4 parseDateOnly/formatDateOnly exist in exactly one place and both packages use it
 <!-- AC:END -->

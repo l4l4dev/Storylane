@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 06:00'
-updated_date: '2026-07-21 07:29'
+updated_date: '2026-07-21 10:07'
 labels:
   - web
 dependencies: []
@@ -21,10 +21,10 @@ doc-11 D5. Add a lightweight shared toast (Radix Toast; radix-ui is already a de
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A <Toaster> is mounted once in the app shell and a small toast() helper exists, built on Radix Toast (no new dependency)
-- [ ] #2 Saving Project Settings shows a success toast; the success signal reuses the existing invite_failed query-param + client-read pattern (redirect with a success param a client component reads) rather than new plumbing
-- [ ] #3 The toast helper is reusable by other forms (labels/working-days/states/invites) without per-form bespoke wiring
-- [ ] #4 UI passes fable-advisor design review; pnpm test + lint green
+- [x] #1 A <Toaster> is mounted once in the app shell and a small toast() helper exists, built on Radix Toast (no new dependency)
+- [x] #2 Saving Project Settings shows a success toast; the success signal reuses the existing invite_failed query-param + client-read pattern (redirect with a success param a client component reads) rather than new plumbing
+- [x] #3 The toast helper is reusable by other forms (labels/working-days/states/invites) without per-form bespoke wiring
+- [x] #4 UI passes fable-advisor design review; pnpm test + lint green
 <!-- AC:END -->
 
 ## Comments

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 05:59'
-updated_date: '2026-07-21 08:05'
+updated_date: '2026-07-21 10:07'
 labels:
   - web
 dependencies: []
@@ -21,10 +21,10 @@ doc-11 D2 (+ advisor corrections). Signed-in users land on /my-work instead of /
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Post-login home is /my-work: app/page.tsx (signed-in / -> /my-work), auth/login dev-login line, and auth/callback DEFAULT fallback (?? change only) all point at /my-work; the callback's next-priority branch is left intact (deep-link next is out of scope/currently dead)
-- [ ] #2 My Work has a New-project entry that navigates to /dashboard with the inline create panel opened (e.g. ?new=1), reusing the panel rather than duplicating a form
-- [ ] #3 Projects list (/dashboard) unchanged as the project index; My Work <-> Projects navigation stays available in the sidebar
-- [ ] #4 UI passes fable-advisor design review; pnpm test + lint green
+- [x] #1 Post-login home is /my-work: app/page.tsx (signed-in / -> /my-work), auth/login dev-login line, and auth/callback DEFAULT fallback (?? change only) all point at /my-work; the callback's next-priority branch is left intact (deep-link next is out of scope/currently dead)
+- [x] #2 My Work has a New-project entry that navigates to /dashboard with the inline create panel opened (e.g. ?new=1), reusing the panel rather than duplicating a form
+- [x] #3 Projects list (/dashboard) unchanged as the project index; My Work <-> Projects navigation stays available in the sidebar
+- [x] #4 UI passes fable-advisor design review; pnpm test + lint green
 <!-- AC:END -->
 
 ## Comments

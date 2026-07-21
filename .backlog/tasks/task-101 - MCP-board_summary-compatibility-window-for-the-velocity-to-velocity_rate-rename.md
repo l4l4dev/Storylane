@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-20 03:14'
-updated_date: '2026-07-21 03:18'
+updated_date: '2026-07-21 10:07'
 labels:
   - web
 milestone: m-5
@@ -29,8 +29,8 @@ Options to weigh: emit both keys for one release with the old one documented as 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A stale consumer of the old field either keeps working or fails loudly — never silently produces NaN
-- [ ] #2 spec/mcp.md and apps/mcp/README.md describe the field's units unambiguously
+- [x] #1 A stale consumer of the old field either keeps working or fails loudly — never silently produces NaN
+- [x] #2 spec/mcp.md and apps/mcp/README.md describe the field's units unambiguously
 <!-- AC:END -->
 
 ## Final Summary

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-08 07:45'
-updated_date: '2026-07-21 05:08'
+updated_date: '2026-07-21 10:07'
 labels:
   - db
   - ios
@@ -23,9 +23,9 @@ Per decision-1: Slack notifications currently fire only from Web server actions 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Slack notifications fire on state changes and iteration start/done regardless of which client performed the write (verified by direct DB write in a test)
-- [ ] #2 Web server actions no longer call notifySlack; single notification per event (no double-fire during migration)
-- [ ] #3 Edge Function reads integrations config server-side; secrets never reach clients; failures don't block the originating write
+- [x] #1 Slack notifications fire on state changes and iteration start/done regardless of which client performed the write (verified by direct DB write in a test)
+- [x] #2 Web server actions no longer call notifySlack; single notification per event (no double-fire during migration)
+- [x] #3 Edge Function reads integrations config server-side; secrets never reach clients; failures don't block the originating write
 <!-- AC:END -->
 
 ## Implementation Plan
