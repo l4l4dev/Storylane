@@ -1,10 +1,11 @@
 ---
 id: TASK-104
 title: 'Onboarding: land signed-in users on My Work + New-project entry from My Work'
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 05:59'
+updated_date: '2026-07-21 06:47'
 labels:
   - web
 dependencies: []
@@ -25,3 +26,9 @@ doc-11 D2 (+ advisor corrections). Signed-in users land on /my-work instead of /
 - [ ] #3 Projects list (/dashboard) unchanged as the project index; My Work <-> Projects navigation stays available in the sidebar
 - [ ] #4 UI passes fable-advisor design review; pnpm test + lint green
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Signed-in home moved to /my-work (app/page.tsx, dev-login, auth/callback default fallback); next-priority branch in callback unchanged. My Work gets a New-project button linking to /dashboard?new=1; InlineCreatePanel gained a defaultOpen prop so the existing form pre-expands there rather than duplicating it. fable-advisor design review found a layout risk (New project sharing a flex row with the quick-add's expandable draft card could get squashed) -> fixed by giving New project a fixed spot on the h1 row and moving quick-add to its own row below. Verified: 3 inline-create-panel tests (incl. new defaultOpen case) + full web suite (524) + tsc + lint green.
+<!-- SECTION:FINAL_SUMMARY:END -->
