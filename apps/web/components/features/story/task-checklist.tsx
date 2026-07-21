@@ -26,14 +26,17 @@ export function TaskChecklist({
   onMutated?: () => Promise<void> | void;
 }) {
   const doneCount = tasks.filter((task) => task.is_done).length;
-  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  // A Set, not a single key: each task's controls disable only themselves,
+  // so a second task's action can't re-enable a different task's in-flight
+  // control (TASK-119).
+  const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [newTitle, setNewTitle] = useState("");
 
   function run(key: string, action: () => Promise<ActionResult>) {
     setError(null);
-    setPendingKey(key);
+    setPendingKeys((prev) => new Set(prev).add(key));
     startTransition(async () => {
       try {
         const result = await action();
@@ -45,7 +48,11 @@ export function TaskChecklist({
       } catch {
         setError("Failed to update tasks");
       } finally {
-        setPendingKey(null);
+        setPendingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
       }
     });
   }
@@ -114,7 +121,7 @@ export function TaskChecklist({
                     : `Mark "${task.title}" as done`
                 }
                 className={task.is_done ? "text-primary" : "text-muted-foreground"}
-                disabled={isPending && pendingKey === `toggle:${task.id}`}
+                disabled={pendingKeys.has(`toggle:${task.id}`)}
                 onClick={() => handleToggle(task)}
               >
                 {task.is_done ? <SquareCheck /> : <Square />}
@@ -130,7 +137,7 @@ export function TaskChecklist({
                 size="icon-xs"
                 aria-label={`Delete task "${task.title}"`}
                 className="text-muted-foreground hover:text-destructive"
-                disabled={isPending && pendingKey === `delete:${task.id}`}
+                disabled={pendingKeys.has(`delete:${task.id}`)}
                 onClick={() => handleDelete(task)}
               >
                 <X />
@@ -149,9 +156,9 @@ export function TaskChecklist({
           required
           placeholder="Add a task…"
           className="flex-1"
-          disabled={isPending && pendingKey === "add"}
+          disabled={pendingKeys.has("add")}
         />
-        <Button type="submit" disabled={isPending && pendingKey === "add"}>
+        <Button type="submit" disabled={pendingKeys.has("add")}>
           Add
         </Button>
       </form>

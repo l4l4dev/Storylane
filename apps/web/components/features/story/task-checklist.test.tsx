@@ -86,6 +86,46 @@ describe("TaskChecklist", () => {
     expect(toggle).toBeEnabled();
   });
 
+  // TASK-119: pendingKeys must be scoped per-task — a shared single key let
+  // starting an action on task B re-enable task A's still-in-flight control.
+  it("keeps task A's Delete disabled while pending, even after starting an action on task B", async () => {
+    let resolveDeleteA!: (result: ActionResult) => void;
+    deleteTaskMock.mockReturnValueOnce(
+      new Promise<ActionResult>((resolve) => {
+        resolveDeleteA = resolve;
+      }),
+    );
+    render(
+      <TaskChecklist
+        storyId="s1"
+        tasks={[
+          { id: "a", title: "Task A", is_done: false },
+          { id: "b", title: "Task B", is_done: false },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Delete task "Task A"'));
+    expect(screen.getByLabelText('Delete task "Task A"')).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText('Mark "Task B" as done'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText('Delete task "Task A"')).toBeDisabled();
+    expect(deleteTaskMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByLabelText('Delete task "Task A"'));
+    expect(deleteTaskMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveDeleteA({ ok: true });
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText('Delete task "Task A"')).toBeEnabled();
+  });
+
   // TASK-74: a rejected mutation used to throw into the route error
   // boundary instead of staying inline.
   it("shows a failed toggle result inline instead of throwing", async () => {
