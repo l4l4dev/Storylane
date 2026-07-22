@@ -28,6 +28,14 @@ export function localTodayKey(): string {
 // A bare YYYY-MM-DD, as every `date` column reaches the client.
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+// Shared by formatDate/formatDateTime's non-date-only path: the y/m/d parts
+// (1-based month) of a Date-or-string, plus the resolved Date itself for
+// callers (formatDateTime) that also need the time.
+function dateParts(date: Date | string): { d: Date; year: number; month: number; day: number } {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return { d, year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+}
+
 export function formatDate(date: Date | string): string {
   if (typeof date === "string") {
     const parts = DATE_ONLY.exec(date);
@@ -39,18 +47,12 @@ export function formatDate(date: Date | string): string {
       return `${Number(parts[1])}/${Number(parts[2])}/${Number(parts[3])}`;
     }
   }
-  const d = typeof date === "string" ? new Date(date) : date;
-  const year = d.getFullYear();
-  const month = d.getMonth() + 1;
-  const day = d.getDate();
+  const { year, month, day } = dateParts(date);
   return `${year}/${month}/${day}`;
 }
 
 export function formatDateTime(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  const year = d.getFullYear();
-  const month = d.getMonth() + 1;
-  const day = d.getDate();
+  const { d, year, month, day } = dateParts(date);
   const hours = String(d.getHours()).padStart(2, "0");
   const minutes = String(d.getMinutes()).padStart(2, "0");
   return `${year}/${month}/${day} ${hours}:${minutes}`;

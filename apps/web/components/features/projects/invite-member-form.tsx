@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   inviteMember,
   searchUsersForInvite,
   type InviteSearchResult,
   type InviteState,
 } from "@/app/projects/[id]/settings/actions";
+import { useDebouncedCallback } from "@/lib/utils/use-debounced-callback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -23,10 +24,10 @@ export function InviteMemberForm({ projectId }: { projectId: string }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<InviteSearchResult[]>([]);
   const [selected, setSelected] = useState<InviteSearchResult | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const debounce = useDebouncedCallback(300);
 
   useEffect(() => {
-    clearTimeout(debounceRef.current);
+    debounce.cancel();
     if (query.trim().length < 2) {
       return;
     }
@@ -34,15 +35,15 @@ export function InviteMemberForm({ projectId }: { projectId: string }) {
     // is set by this effect's own cleanup (fired on the next keystroke) so a
     // stale response can never overwrite a fresher one.
     let cancelled = false;
-    debounceRef.current = setTimeout(async () => {
+    debounce.trigger(async () => {
       const found = await searchUsersForInvite(projectId, query);
       if (!cancelled) setResults(found);
-    }, 300);
+    });
     return () => {
       cancelled = true;
-      clearTimeout(debounceRef.current);
+      debounce.cancel();
     };
-  }, [query, projectId]);
+  }, [query, projectId, debounce]);
 
   // Derived rather than reset via setState in the effect above: avoids a
   // cascading-render lint violation and means a query shortened back below

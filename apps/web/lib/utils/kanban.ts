@@ -70,6 +70,46 @@ export type DropEvaluation =
   | { ok: false; reason: string };
 
 /**
+ * Shared by evaluateDrop/evaluateListDrop's Icebox-demotion branch: only an
+ * unstarted-category story may move to the Icebox, checked on the story's
+ * ACTUAL state (not its origin column/zone) — a story stuck mid-iteration
+ * with no iteration_id still shows up in the Backlog column/zone
+ * (columnForStory/zoneForStory fall through to it whenever iteration_id
+ * doesn't match current), so checking the origin alone would demote it
+ * unconditionally, silently discarding its in-progress state.
+ */
+function demoteToIcebox(story: KanbanStory, states: ReadonlyArray<GateState>): DropEvaluation {
+  if (categoryOf(story.state_id, states) === "unstarted") {
+    return { ok: true, state_id: null, iteration: "none" };
+  }
+  return { ok: false, reason: "Only unstarted stories can move to the icebox" };
+}
+
+/**
+ * Shared by evaluateDrop/evaluateListDrop's return-to-Backlog branch. By the
+ * time either caller reaches here, `from` is always the Icebox or a
+ * current-iteration state column/zone (a same-column/zone drop already
+ * short-circuited above) — scheduling out of the Icebox goes through the
+ * project's lowest unstarted state, and unscheduling a state-column story
+ * only ever applies to unstarted-category work.
+ */
+function returnToBacklog(
+  story: KanbanStory,
+  fromIcebox: boolean,
+  states: ReadonlyArray<GateState>,
+): DropEvaluation {
+  if (fromIcebox) {
+    const target = lowestUnstartedStateId(states);
+    if (!target) return { ok: false, reason: "This project has no unstarted state to schedule into" };
+    return { ok: true, state_id: target, iteration: "none" };
+  }
+  if (categoryOf(story.state_id, states) === "unstarted") {
+    return { ok: true, iteration: "none" };
+  }
+  return { ok: false, reason: "Only unstarted stories can move back to the backlog" };
+}
+
+/**
  * Validates dropping `story` (currently in `from`) onto column `to`.
  * State-column-to-state-column drops accept any target state (spec/
  * screens.md "Drag = set state" — ordering discipline lives in the UI
@@ -97,30 +137,11 @@ export function evaluateDrop(
   }
 
   if (to === ICEBOX_COLUMN_ID) {
-    // Demoting to the Icebox is only meaningful for not-yet-started work —
-    // checked on the story's actual state, not its origin column: a story
-    // stuck mid-iteration with no iteration_id still shows up in the
-    // Backlog column (columnForStory falls through to it whenever
-    // iteration_id doesn't match current), so checking `from ===
-    // BACKLOG_COLUMN_ID` alone would demote it to the Icebox
-    // unconditionally, silently discarding its in-progress state.
-    if (categoryOf(story.state_id, states) === "unstarted") {
-      return { ok: true, state_id: null, iteration: "none" };
-    }
-    return { ok: false, reason: "Only unstarted stories can move to the icebox" };
+    return demoteToIcebox(story, states);
   }
 
   if (to === BACKLOG_COLUMN_ID) {
-    if (from === ICEBOX_COLUMN_ID) {
-      const target = lowestUnstartedStateId(states);
-      if (!target) return { ok: false, reason: "This project has no unstarted state to schedule into" };
-      return { ok: true, state_id: target, iteration: "none" };
-    }
-    if (categoryOf(story.state_id, states) === "unstarted") {
-      // Un-schedule from the current iteration; the state stays unchanged.
-      return { ok: true, iteration: "none" };
-    }
-    return { ok: false, reason: "Only unstarted stories can move back to the backlog" };
+    return returnToBacklog(story, from === ICEBOX_COLUMN_ID, states);
   }
 
   const targetStateId = to;
@@ -209,27 +230,11 @@ export function evaluateListDrop(
   }
 
   if (to === ICEBOX_COLUMN_ID) {
-    // Checked on state alone, regardless of origin zone — a story stuck
-    // mid-iteration with no iteration_id still shows up in the Backlog zone
-    // (zoneForStory falls through to it whenever iteration_id doesn't
-    // match current), so checking `from === BACKLOG_COLUMN_ID` alone would
-    // demote it to the Icebox unconditionally, discarding its progress.
-    if (categoryOf(story.state_id, states) === "unstarted") {
-      return { ok: true, state_id: null, iteration: "none" };
-    }
-    return { ok: false, reason: "Only unstarted stories can move to the icebox" };
+    return demoteToIcebox(story, states);
   }
 
   if (to === BACKLOG_COLUMN_ID) {
-    if (from === ICEBOX_COLUMN_ID) {
-      const target = lowestUnstartedStateId(states);
-      if (!target) return { ok: false, reason: "This project has no unstarted state to schedule into" };
-      return { ok: true, state_id: target, iteration: "none" };
-    }
-    if (from === "current" && categoryOf(story.state_id, states) === "unstarted") {
-      return { ok: true, iteration: "none" };
-    }
-    return { ok: false, reason: "Only unstarted stories can move back to the backlog" };
+    return returnToBacklog(story, from === ICEBOX_COLUMN_ID, states);
   }
 
   // to === "current"

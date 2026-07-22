@@ -6,6 +6,7 @@ import { useStoryRealtime, type StoryRealtimeRow } from "@/lib/supabase/realtime
 import { describeActivity } from "@/lib/utils/activity";
 import { formatDateTime } from "@/lib/utils/format";
 import { isImeComposing } from "@/lib/utils/keyboard";
+import { useDebouncedCallback } from "@/lib/utils/use-debounced-callback";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CommentThread } from "./comment-thread";
@@ -88,7 +89,7 @@ export function StoryDetailPanel({
   const focusedRef = useRef<Set<LockableField>>(new Set());
   const savingRef = useRef(false);
   const needsTrailingSaveRef = useRef(false);
-  const textDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const textDebounce = useDebouncedCallback(800);
   const prevDetailRef = useRef(detail);
 
   const [status, setStatus] = useState<SaveStatus>("saved");
@@ -195,8 +196,7 @@ export function StoryDetailPanel({
     setLocal({ [field]: value } as Partial<EditableFields>);
     dirtyRef.current.add(field);
     setStatus("saving");
-    clearTimeout(textDebounceRef.current);
-    textDebounceRef.current = setTimeout(() => void runSave(), 800);
+    textDebounce.trigger(() => void runSave());
   }
 
   function handleTextBlur(field: "title" | "description") {
@@ -208,7 +208,7 @@ export function StoryDetailPanel({
       return;
     }
     if (dirtyRef.current.has(field)) {
-      clearTimeout(textDebounceRef.current);
+      textDebounce.cancel();
       void runSave();
     }
   }
@@ -221,7 +221,7 @@ export function StoryDetailPanel({
     }
     event.preventDefault();
     event.stopPropagation();
-    clearTimeout(textDebounceRef.current);
+    textDebounce.cancel();
     dirtyRef.current.delete(field);
     setLocal({ [field]: syncedRef.current[field] } as Partial<EditableFields>);
     event.currentTarget.blur();
@@ -268,7 +268,7 @@ export function StoryDetailPanel({
   // fails) — an accepted Phase 1 gap.
   useEffect(() => {
     return () => {
-      clearTimeout(textDebounceRef.current);
+      textDebounce.cancel();
       // Deliberately reads the ref's value *at cleanup time* (not a stale
       // closure over its value when the effect was set up) — this isn't the
       // "ref may have changed by cleanup time" DOM-node footgun the lint
