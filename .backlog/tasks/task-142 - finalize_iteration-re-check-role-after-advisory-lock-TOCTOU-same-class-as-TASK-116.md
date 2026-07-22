@@ -3,7 +3,7 @@ id: TASK-142
 title: >-
   finalize_iteration: re-check role after advisory lock (TOCTOU, same class as
   TASK-116)
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 09:04'

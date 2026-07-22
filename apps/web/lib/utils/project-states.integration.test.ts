@@ -285,6 +285,102 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
     });
   });
 
+  // TASK-143: project_states.position is writable ONLY through
+  // reorder_project_state's advisory-lock-protected value-swap. A member's
+  // direct UPDATE of `position` is blocked at the column-privilege layer
+  // (20260722000011 revoked table UPDATE, re-granted only name/action_label/
+  // category/project_id) — the reorder-verb twin of TASK-115's INSERT lockdown.
+  describe("position column lockdown", () => {
+    async function positionsByName(projectId: string): Promise<Record<string, number>> {
+      const { data } = await admin.from("project_states").select("name, position").eq("project_id", projectId);
+      return Object.fromEntries((data ?? []).map((s) => [s.name, s.position]));
+    }
+
+    it("rejects a member's direct UPDATE of position, leaving the order untouched", async () => {
+      const pid = await freshProject("position lockdown test");
+      const before = await positionsByName(pid);
+      const startedId = await stateId(pid, "Started");
+
+      const { data, error } = await owner
+        .from("project_states")
+        .update({ position: 999 })
+        .eq("id", startedId)
+        .select("id");
+
+      // Column-privilege denial surfaces as 42501 (no UPDATE(position) grant),
+      // never a silent RLS-filtered no-op.
+      expect(error?.code).toBe("42501");
+      expect(data ?? []).toHaveLength(0);
+      expect(await positionsByName(pid)).toEqual(before);
+
+      await admin.from("projects").delete().eq("id", pid);
+    });
+
+    it("still lets reorder_project_state change position (the sanctioned path is unaffected)", async () => {
+      const pid = await freshProject("position lockdown reorder-still-works test");
+      const before = await positionsByName(pid);
+      const startedId = await stateId(pid, "Started");
+
+      const { error } = await owner.rpc("reorder_project_state", {
+        p_project_id: pid,
+        p_state_id: startedId,
+        p_direction: "down",
+      });
+      expect(error).toBeNull();
+
+      const after = await positionsByName(pid);
+      expect(after.Started).toBe(before.Finished);
+      expect(after.Finished).toBe(before.Started);
+
+      await admin.from("projects").delete().eq("id", pid);
+    });
+
+    it("still lets a member update name and action_label directly", async () => {
+      const pid = await freshProject("position lockdown legit-edit test");
+      const startedId = await stateId(pid, "Started");
+
+      const rename = await owner
+        .from("project_states")
+        .update({ name: "In Progress" })
+        .eq("id", startedId)
+        .select("id");
+      expect(rename.error).toBeNull();
+      expect(rename.data ?? []).toHaveLength(1);
+
+      const relabel = await owner
+        .from("project_states")
+        .update({ action_label: "Kick off" })
+        .eq("id", startedId)
+        .select("id");
+      expect(relabel.error).toBeNull();
+      expect(relabel.data ?? []).toHaveLength(1);
+
+      await admin.from("projects").delete().eq("id", pid);
+    });
+
+    // A mixed UPDATE that sneaks position in alongside a legit column must be
+    // rejected wholesale — Postgres checks column privileges before the row is
+    // touched, so name doesn't get through either.
+    it("rejects a mixed UPDATE that includes position, not just position-only", async () => {
+      const pid = await freshProject("position lockdown mixed-update test");
+      const before = await positionsByName(pid);
+      const startedId = await stateId(pid, "Started");
+
+      const { error } = await owner
+        .from("project_states")
+        .update({ name: "Sneaky", position: 999 })
+        .eq("id", startedId)
+        .select("id");
+
+      expect(error?.code).toBe("42501");
+      const { data: row } = await admin.from("project_states").select("name").eq("id", startedId).single();
+      expect(row!.name).toBe("Started"); // name change didn't leak through
+      expect(await positionsByName(pid)).toEqual(before);
+
+      await admin.from("projects").delete().eq("id", pid);
+    });
+  });
+
   // create_project_state (20260719000014): the original client-side insert
   // appended every new state at the end of the whole project's position
   // sequence instead of its own category's block, which broke
