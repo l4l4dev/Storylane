@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { addDays } from "@storylane/core";
 import { createClient } from "@/lib/supabase/server";
 import { utcTodayKey } from "@/lib/utils/format";
@@ -188,6 +189,14 @@ export default async function MyWorkPage() {
     <main className="p-6">
       <div className="mx-auto mb-4 flex max-w-3xl items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">My Work</h1>
+        {/* TASK-147 AC#6: dev-only inspection of the hidden personal
+            project's raw data — /dev/my-tasks 404s in production regardless,
+            this just keeps the link itself out of a production build too. */}
+        {process.env.NODE_ENV !== "production" && (
+          <Link href="/dev/my-tasks" className="text-xs text-muted-foreground underline">
+            Debug: My Tasks
+          </Link>
+        )}
       </div>
 
       {soloPersonalProject && (

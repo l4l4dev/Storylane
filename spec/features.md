@@ -145,8 +145,8 @@
   team project too, so `iteration_length = 1` can't tell "the user's personal
   project" apart from "a 1-day team project" — and hiding the personal one from
   the projects list needs exactly that distinction. One personal project per
-  owner (partial unique index). Otherwise an ordinary project: invites allowed;
-  it stays a valid move/copy target.
+  owner (partial unique index). **Invites blocked** (TASK-147 reverses this —
+  see spec/screens.md Onboarding); it stays a valid move/copy target.
 - Hidden from the owner's own projects list (`/dashboard`) and sidebar switcher
   — it lives in My Work instead. The filter is viewer-scoped
   (`is_personal AND created_by = me`), so a personal project someone was

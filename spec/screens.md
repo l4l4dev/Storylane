@@ -33,9 +33,14 @@ owned by the new user (`handle_new_user` trigger). It is flagged
 `projects.is_personal = true` (TASK-103, doc-11 D1) and is **hidden from the
 owner's own projects list (`/dashboard`) and sidebar switcher** — the owner
 works with it through My Work, so personal tasks and team projects don't mix
-in the list. Invites are still allowed on it, and it stays a move/copy
-target; only the owner's own list hides it (the filter is viewer-scoped,
-`is_personal AND created_by = me`, so an *invited* member still sees it).
+in the list. **Invites are blocked** (`invite_member` rejects `is_personal`
+projects — TASK-147 reverses this half of doc-11 D1; a Promote-to-Epic
+data-loss incident showed the hidden project needs to stay single-user
+forever, since My Work's whole model assumes it). It still **stays a move/copy
+target** (unchanged, doc-11 D1). Every `/projects/[id]/*` page (board,
+iterations, epics, activity, settings) redirects the owner to `/my-work`
+instead of rendering (TASK-147) — a dev-only `/dev/my-tasks` debug view is
+the only way to inspect its raw data outside of production.
 It exists so a solo user can start working (and `/my-work` isn't empty) with
 zero setup; its iterations render date-titled like any 1-day project.
 

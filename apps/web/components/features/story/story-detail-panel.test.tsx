@@ -68,6 +68,21 @@ describe("StoryDetailPanel", () => {
     expect(screen.getByLabelText("Description")).toHaveValue("Let users sign in");
   });
 
+  // TASK-147: isPersonalProject must reach StoryFields (hides Points/Epic —
+  // doc-8 §10) and TransitionButtons (skips the needless Estimate gate,
+  // matching set_story_state's server-side is_personal exemption, TASK-139).
+  it("hides Points/Epic and the Estimate gate for a personal-project story", () => {
+    render(
+      <StoryDetailPanel
+        detail={{ ...baseDetail, isPersonalProject: true, points: null, stateId: "Unstarted" }}
+      />,
+    );
+    expect(screen.queryByLabelText("Points")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Epic")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Estimate" })).not.toBeInTheDocument();
+  });
+
   it("marks agent members in the assignee picker", () => {
     render(
       <StoryDetailPanel

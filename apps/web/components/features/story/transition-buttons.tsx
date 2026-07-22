@@ -32,6 +32,7 @@ export function TransitionButtons({
   storyType,
   points,
   pointScale,
+  isPersonal,
 }: {
   storyId: string;
   projectId: string;
@@ -40,6 +41,12 @@ export function TransitionButtons({
   storyType: string;
   points: number | null;
   pointScale: number[];
+  // TASK-147: set_story_state already skips the estimation gate server-side
+  // for the hidden personal project (TASK-139) — this client-side gate must
+  // match, or a personal task (always story_type='feature', unpointed by
+  // default) would show a needless "Estimate" popover blocking a one-click
+  // Start the server would have allowed anyway.
+  isPersonal?: boolean;
 }) {
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +99,7 @@ export function TransitionButtons({
   // that). Estimating never auto-advances the story — the normal button
   // appears as the next click once `points` is set.
   const needsEstimate =
+    !isPersonal &&
     isUnestimatedFeature(storyType, points) &&
     buttons.every((button) => {
       const category = categoryOf(button.targetStateId);

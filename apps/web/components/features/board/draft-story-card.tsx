@@ -46,6 +46,7 @@ export function DraftStoryCard({
   members,
   labels,
   defaultAssigneeId,
+  hidePointsAndEpic,
   onClose,
 }: {
   projectId: string;
@@ -63,6 +64,10 @@ export function DraftStoryCard({
   // added there and left unassigned would never satisfy My Work's own
   // assignee_id = viewer query, effectively vanishing (the bug this fixes).
   defaultAssigneeId?: string;
+  // TASK-147: My Work's quick-add (the personal project's only creation
+  // surface) passes this — doc-8 §10 "title only, defaults for everything
+  // else". Board panel callers leave it unset.
+  hidePointsAndEpic?: boolean;
   onClose: () => void;
 }) {
   const [value, setValue] = useState<StoryFieldsValue>(() => ({
@@ -162,6 +167,7 @@ export function DraftStoryCard({
           labels={labels}
           idPrefix="draft"
           titleAutoFocus
+          hidePointsAndEpic={hidePointsAndEpic}
         />
         <div className="mt-3 flex items-center gap-2">
           <Button type="submit" size="xs" disabled={pending || !value.title.trim()}>

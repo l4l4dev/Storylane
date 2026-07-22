@@ -38,6 +38,7 @@ export function StoryFields({
   labels,
   idPrefix,
   titleAutoFocus,
+  hidePointsAndEpic,
 }: {
   value: StoryFieldsValue;
   onTextChange: (field: TextField, value: string) => void;
@@ -53,6 +54,12 @@ export function StoryFields({
   // both be mounted at once (e.g. a draft open while the peek is too).
   idPrefix: string;
   titleAutoFocus?: boolean;
+  // TASK-147: the hidden personal project has no epics and never estimates
+  // (doc-8 §10 "title only, defaults for everything else"; set_story_state
+  // also skips the estimation gate for it server-side, TASK-139) — omitted
+  // entirely rather than shown-disabled (ux-principles principle 1: no dead
+  // controls).
+  hidePointsAndEpic?: boolean;
 }) {
   const id = (field: string) => `${idPrefix}-${field}`;
 
@@ -102,41 +109,45 @@ export function StoryFields({
           </NativeSelect>
         </div>
 
-        <div className="flex w-32 flex-col gap-1.5">
-          <Label htmlFor={id("points")}>Points</Label>
-          {/* Points come from the project's point scale — no free numeric
-              input (see spec/features.md). */}
-          <NativeSelect
-            id={id("points")}
-            value={value.points ?? ""}
-            onChange={(e) => onDiscreteChange("points", e.target.value === "" ? null : Number(e.target.value))}
-          >
-            <option value="">Unestimated</option>
-            {pointScale.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
+        {!hidePointsAndEpic && (
+          <div className="flex w-32 flex-col gap-1.5">
+            <Label htmlFor={id("points")}>Points</Label>
+            {/* Points come from the project's point scale — no free numeric
+                input (see spec/features.md). */}
+            <NativeSelect
+              id={id("points")}
+              value={value.points ?? ""}
+              onChange={(e) => onDiscreteChange("points", e.target.value === "" ? null : Number(e.target.value))}
+            >
+              <option value="">Unestimated</option>
+              {pointScale.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-4">
-        <div className="flex flex-1 flex-col gap-1.5">
-          <Label htmlFor={id("epic")}>Epic</Label>
-          <NativeSelect
-            id={id("epic")}
-            value={value.epicId}
-            onChange={(e) => onDiscreteChange("epicId", e.target.value)}
-          >
-            <option value="">None</option>
-            {epics.map((epic) => (
-              <option key={epic.id} value={epic.id}>
-                {epic.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
+        {!hidePointsAndEpic && (
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Label htmlFor={id("epic")}>Epic</Label>
+            <NativeSelect
+              id={id("epic")}
+              value={value.epicId}
+              onChange={(e) => onDiscreteChange("epicId", e.target.value)}
+            >
+              <option value="">None</option>
+              {epics.map((epic) => (
+                <option key={epic.id} value={epic.id}>
+                  {epic.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+        )}
 
         <div className="flex flex-1 flex-col gap-1.5">
           <Label htmlFor={id("assignee")}>Assignee</Label>

@@ -101,6 +101,20 @@ describe("StoryPeekMenu", () => {
     expect(screen.queryByText("Promotion failed")).not.toBeInTheDocument();
   });
 
+  // TASK-147: promote_story_to_epic DELETEs the story, cascading
+  // my_work_story_state + story_completions — permanent Done-log loss for a
+  // personal task. The server rejects it too; this just keeps the menu from
+  // ever offering an action guaranteed to fail with data-loss framing.
+  it("hides Promote to Epic for a personal-project story", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={{ ...baseDetail, isPersonalProject: true }} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Promote to Epic" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Move to project…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete story" })).toBeInTheDocument();
+  });
+
   it("mentions the task count and that task completion isn't carried over", async () => {
     render(
       <StoryPeekMenu

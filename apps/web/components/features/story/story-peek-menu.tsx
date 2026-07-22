@@ -65,14 +65,19 @@ export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
           >
             Copy to project…
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={(event) => {
-              event.preventDefault();
-              setPromoteOpen(true);
-            }}
-          >
-            Promote to Epic
-          </DropdownMenuItem>
+          {/* TASK-147: hidden for the hidden personal project — promote_story_to_epic
+              itself also rejects is_personal server-side (the DELETE it does
+              would cascade-lose my_work_story_state + story_completions). */}
+          {!detail.isPersonalProject && (
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                setPromoteOpen(true);
+              }}
+            >
+              Promote to Epic
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             variant="destructive"
             onSelect={(event) => {

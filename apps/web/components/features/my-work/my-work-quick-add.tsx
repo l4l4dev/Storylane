@@ -44,6 +44,7 @@ export function MyWorkQuickAdd({
       members={members}
       labels={labels}
       defaultAssigneeId={currentUserId}
+      hidePointsAndEpic
       onClose={() => setOpen(false)}
     />
   );

@@ -73,6 +73,19 @@ describe("DraftStoryCard", () => {
     expect(screen.getByText("Urgent")).toBeInTheDocument();
   });
 
+  // TASK-147: My Work's quick-add passes hidePointsAndEpic (doc-8 §10 "title
+  // only, defaults for everything else") — the personal project has no epics
+  // and never estimates.
+  it("hides Points and Epic when hidePointsAndEpic is set, keeping the rest", () => {
+    renderCard({ hidePointsAndEpic: true });
+
+    expect(screen.getByLabelText("Title")).toBeInTheDocument();
+    expect(screen.getByLabelText("Type")).toBeInTheDocument();
+    expect(screen.getByLabelText("Assignee")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Points")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Epic")).not.toBeInTheDocument();
+  });
+
   // My Work's quick-add passes this (TASK-93 follow-up): a personal task left
   // unassigned would never satisfy My Work's own assignee_id = viewer query,
   // so it'd never show up anywhere the user could find it again. Board panels

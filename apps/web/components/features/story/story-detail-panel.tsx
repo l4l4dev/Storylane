@@ -316,6 +316,7 @@ export function StoryDetailPanel({
           storyType={detail.storyType}
           points={detail.points}
           pointScale={detail.pointScale}
+          isPersonal={detail.isPersonalProject}
         />
         <span
           className={`text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}
@@ -346,6 +347,7 @@ export function StoryDetailPanel({
         members={detail.members}
         labels={detail.labels}
         idPrefix="detail"
+        hidePointsAndEpic={detail.isPersonalProject}
       />
 
       <TaskChecklist storyId={detail.id} tasks={detail.tasks} onMutated={onMutated} />

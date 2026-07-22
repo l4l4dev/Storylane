@@ -110,6 +110,27 @@ describe("TransitionButtons", () => {
     }
   });
 
+  // TASK-147: set_story_state already skips the estimation gate server-side
+  // for the hidden personal project (TASK-139) — the client gate must match,
+  // or a personal task (always unpointed feature by default) would show a
+  // needless Estimate popover blocking a one-click Start the server allows.
+  it("skips the Estimate gate for a personal project's unestimated feature", () => {
+    render(
+      <TransitionButtons
+        storyId="s1"
+        projectId="p1"
+        stateId="Unstarted"
+        states={CLASSIC_STATES}
+        storyType="feature"
+        points={null}
+        pointScale={fibonacci}
+        isPersonal
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Estimate" })).not.toBeInTheDocument();
+  });
+
   it("shows estimation buttons instead of Restart for an unestimated rejected feature", () => {
     render(
       <TransitionButtons
