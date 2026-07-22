@@ -28,3 +28,17 @@ export function reorderContainer<T extends { id: string }>(
   }
   return arrayMove([...items], oldIndex, newIndex);
 }
+
+/**
+ * Same relocation as `reorderContainer`, for a plain array of ids — My
+ * Work's column display order (TASK-148) isn't `{id}[]`-shaped, it's the bare
+ * slot-id sequence itself.
+ */
+export function reorderIds(ids: ReadonlyArray<string>, activeId: string, overId: string): string[] {
+  const oldIndex = ids.indexOf(activeId);
+  const newIndex = ids.indexOf(overId);
+  if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
+    return [...ids];
+  }
+  return arrayMove([...ids], oldIndex, newIndex);
+}

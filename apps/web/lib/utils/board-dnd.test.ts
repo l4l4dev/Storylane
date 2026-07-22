@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reorderContainer } from "./board-dnd";
+import { reorderContainer, reorderIds } from "./board-dnd";
 
 describe("reorderContainer", () => {
   // TASK-20: a filtered view only ever renders a subset of a zone's items,
@@ -53,5 +53,26 @@ describe("reorderContainer", () => {
     ];
     const reordered = reorderContainer(backlog, "story:s3", "story:s1");
     expect(reordered.map((i) => i.id)).toEqual(["story:s3", "story:s1", "story:s2-hidden", "divider:d1"]);
+  });
+});
+
+describe("reorderIds", () => {
+  // TASK-148: My Work's column display order is a bare string[] of slot ids
+  // (not `{id}[]`), so it needs its own relocation helper alongside reorderContainer.
+  it("moves the active id next to the over id", () => {
+    expect(reorderIds(["todo", "today", "doing", "done"], "done", "today")).toEqual([
+      "todo",
+      "done",
+      "today",
+      "doing",
+    ]);
+  });
+
+  it("is a no-op when active and over are the same id", () => {
+    expect(reorderIds(["a", "b"], "a", "a")).toEqual(["a", "b"]);
+  });
+
+  it("returns the list unchanged when either id is missing", () => {
+    expect(reorderIds(["a", "b"], "missing", "b")).toEqual(["a", "b"]);
   });
 });

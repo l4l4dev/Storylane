@@ -124,4 +124,17 @@ describe("MyWorkSections", () => {
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
     expect(headings).toEqual(["Todo", "Today", "Done"]);
   });
+
+  // TASK-148: every column exposes its own focusable drag-handle button
+  // (rather than making the whole header/section draggable) — this is also
+  // what keeps keyboard reordering (dnd-kit's KeyboardSensor) working, since
+  // dnd-kit attaches its listeners/tabIndex to whichever element gets
+  // {...attributes} {...listeners}.
+  it("gives each column its own focusable drag handle, separate from the card list", () => {
+    renderSections({});
+    ["Todo", "Today", "Doing", "Done"].forEach((title) => {
+      const handle = screen.getByRole("button", { name: `Reorder ${title} column` });
+      expect(handle.tagName).toBe("BUTTON");
+    });
+  });
 });

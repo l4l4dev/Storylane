@@ -1,22 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ChevronDown, ChevronUp, X } from "lucide-react";
-import {
-  createMyWorkColumn,
-  deleteMyWorkColumn,
-  renameMyWorkColumn,
-  saveMyWorkColumnOrder,
-} from "@/app/my-work/actions";
+import { X } from "lucide-react";
+import { createMyWorkColumn, deleteMyWorkColumn, renameMyWorkColumn } from "@/app/my-work/actions";
 import type { MyWorkFreeColumn } from "@/lib/utils/my-work";
 import { isImeComposing } from "@/lib/utils/keyboard";
 import { useInlineEdit } from "@/components/features/board/use-inline-edit";
-import { MutationErrorBanner } from "@/components/features/board/mutation-error-banner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-const FIXED_LABELS: Record<string, string> = { todo: "Todo", today: "Today", done: "Done" };
 
 // Click-to-edit rename field for a free column — same pattern as project
 // Settings' StateManager InlineTextField (useInlineEdit is state-model-
@@ -101,49 +93,17 @@ function DeleteColumnButton({ columnId, name }: { columnId: string; name: string
 
 /**
  * My Work's column management panel (TASK-141, doc-15): add/rename/delete
- * free columns, and reorder ALL slots — Todo/Today/Done included, per doc-15
- * ("the order covers the three fixed slots too"). Mirrors project Settings'
- * StateManager (up/down arrows, inline rename, X-button delete, add form) —
- * the same low-risk, no-drag reorder pattern, since this is a small,
- * infrequently-touched list, not the board's story drag surface.
- *
- * `order` is the fully resolved slot-id sequence (lib/utils/my-work.ts
- * resolveColumnOrder) computed server-side from `profiles.my_work_column_order`
- * merged against the live free-column set — this component only ever swaps two
- * ADJACENT entries and persists the whole array; it never needs to know which
- * ids are "new" or "stale" (the next server round-trip re-resolves that).
+ * free columns. Reordering (including the fixed Todo/Today/Done slots) now
+ * happens by dragging a column's own header directly on the board (TASK-148,
+ * replacing this panel's former up/down arrows) — this panel's job shrinks
+ * to just the free columns themselves, since the board is now the single
+ * place display order lives and is edited.
  */
-export function MyWorkColumnManager({ order, freeColumns }: { order: string[]; freeColumns: MyWorkFreeColumn[] }) {
+export function MyWorkColumnManager({ freeColumns }: { freeColumns: MyWorkFreeColumn[] }) {
   const [open, setOpen] = useState(false);
-  const [reorderError, setReorderError] = useState<string | null>(null);
-  // Disables EVERY row's arrows while a reorder is saving — not just the
-  // clicked row's: move() computes `next` from the `order` prop, which stays
-  // stale until the save's revalidate lands, so a second click on a DIFFERENT
-  // row during that window would compute from the same stale array and
-  // silently clobber the first move on save (fable-advisor, TASK-141).
-  const [isReordering, setIsReordering] = useState(false);
-  const [, startReorder] = useTransition();
   const [addError, setAddError] = useState<string | null>(null);
   const [isAdding, startAdd] = useTransition();
   const [newName, setNewName] = useState("");
-
-  const columnById = new Map(freeColumns.map((c) => [c.id, c]));
-
-  function move(slotId: string, direction: "up" | "down") {
-    const index = order.indexOf(slotId);
-    const swapWith = direction === "up" ? index - 1 : index + 1;
-    if (index < 0 || swapWith < 0 || swapWith >= order.length) return;
-    const next = [...order];
-    [next[index], next[swapWith]] = [next[swapWith], next[index]];
-
-    setReorderError(null);
-    setIsReordering(true);
-    startReorder(async () => {
-      const result = await saveMyWorkColumnOrder(next);
-      if (!result.ok) setReorderError(result.message);
-      setIsReordering(false);
-    });
-  }
 
   function handleAdd(event: React.FormEvent) {
     event.preventDefault();
@@ -169,52 +129,18 @@ export function MyWorkColumnManager({ order, freeColumns }: { order: string[]; f
 
       {open && (
         <div className="mt-2 flex flex-col gap-3 rounded-lg border border-border p-3">
-          {reorderError && <MutationErrorBanner message={reorderError} onDismiss={() => setReorderError(null)} />}
-          <ul className="flex flex-col gap-1.5">
-            {order.map((slotId, index) => {
-              const isFixed = slotId in FIXED_LABELS;
-              const column = columnById.get(slotId);
-              const name = isFixed ? FIXED_LABELS[slotId] : (column?.name ?? slotId);
-              return (
-                <li key={slotId} className="flex items-center gap-2 rounded-lg border border-border p-2">
-                  <div className="flex shrink-0 flex-col">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      disabled={index === 0 || isReordering}
-                      aria-label={`Move ${name} up`}
-                      onClick={() => move(slotId, "up")}
-                    >
-                      <ChevronUp className="size-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      disabled={index === order.length - 1 || isReordering}
-                      aria-label={`Move ${name} down`}
-                      onClick={() => move(slotId, "down")}
-                    >
-                      <ChevronDown className="size-3.5" />
-                    </Button>
-                  </div>
-
+          {freeColumns.length > 0 && (
+            <ul className="flex flex-col gap-1.5">
+              {freeColumns.map((column) => (
+                <li key={column.id} className="flex items-center gap-2 rounded-lg border border-border p-2">
                   <div className="min-w-0 flex-1">
-                    {isFixed ? (
-                      <span className="block truncate px-1.5 py-1 text-sm text-muted-foreground">{name}</span>
-                    ) : column ? (
-                      <ColumnNameField column={column} />
-                    ) : (
-                      <span className="block truncate px-1.5 py-1 text-sm text-muted-foreground italic">Unknown</span>
-                    )}
+                    <ColumnNameField column={column} />
                   </div>
-
-                  {!isFixed && column && <DeleteColumnButton columnId={column.id} name={column.name} />}
+                  <DeleteColumnButton columnId={column.id} name={column.name} />
                 </li>
-              );
-            })}
-          </ul>
+              ))}
+            </ul>
+          )}
 
           <form onSubmit={handleAdd} className="flex items-end gap-2">
             <div className="flex flex-1 flex-col gap-1.5">

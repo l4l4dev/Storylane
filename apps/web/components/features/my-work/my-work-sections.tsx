@@ -14,11 +14,20 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { addDays } from "@storylane/core";
-import { carryOverToday, dismissCarryOver, reorderMyWorkToday, setMyWorkColumn } from "@/app/my-work/actions";
+import { carryOverToday, dismissCarryOver, reorderMyWorkToday, saveMyWorkColumnOrder, setMyWorkColumn } from "@/app/my-work/actions";
 import { findContainer, moveBetweenContainers, storyById } from "@/lib/utils/board";
-import { reorderContainer } from "@/lib/utils/board-dnd";
+import { reorderContainer, reorderIds } from "@/lib/utils/board-dnd";
 import { formatDate, localTodayKey } from "@/lib/utils/format";
 import {
   classifyMyWork,
@@ -55,11 +64,57 @@ function doneDateLabel(dateKey: string, todayKey: string): string {
 
 // One My Work Kanban column shell (doc-14, TASK-132) — mirrors
 // kanban-columns-board.tsx's KanbanColumn (tinted header, independently
-// scrollable body) but without its state-management chrome.
-function MyWorkColumnShell({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+// scrollable body) but without its state-management chrome. TASK-148: the
+// whole column is ALSO a horizontal sortable item (dragging it reorders
+// Todo/Today/Done/free columns alike) — but only the small grip handle in
+// the header carries the drag listeners, never the header/section itself,
+// so grabbing a card inside a column never moves the column and vice versa
+// (the same shared DndContext disambiguates the two via each draggable's
+// `data.type`, set here to "column" and on SortableItem to "card").
+// The column-level sortable id is namespaced ("col:xxx") because the SAME
+// bare id ("today", a free column's uuid, ...) is already registered as a
+// card-container droppable by FlatColumn/the fixed-slot blocks below — dnd-kit
+// keys its droppable registry by id alone, so reusing it here would silently
+// overwrite that registration's rect with this section's. `columnId` in
+// `data` carries the unprefixed id back out to the drag handlers.
+function columnSortableId(id: string): string {
+  return `col:${id}`;
+}
+
+function MyWorkColumnShell({
+  id,
+  title,
+  count,
+  children,
+}: {
+  id: string;
+  title: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: columnSortableId(id),
+    data: { type: "column", columnId: id },
+  });
+
   return (
-    <section className={`flex w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/20 ${BOARD_COLUMN_HEIGHT_CLASS}`}>
+    <section
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/20 ${BOARD_COLUMN_HEIGHT_CLASS} ${isDragging ? "opacity-60" : ""}`}
+    >
       <header className="flex items-center gap-2 px-3 pt-3 pb-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Reorder ${title} column`}
+          className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical />
+        </Button>
         <h2 className="text-sm font-semibold">{title}</h2>
         <span className="text-xs text-muted-foreground">{count}</span>
       </header>
@@ -75,7 +130,7 @@ function MyWorkColumnShell({ title, count, children }: { title: string; count: n
 function FlatColumn({ id, title, items }: { id: MyWorkColumnId; title: string; items: MyWorkDragItem<MyWorkRowData>[] }) {
   const { setNodeRef } = useDroppable({ id });
   return (
-    <MyWorkColumnShell title={title} count={items.length}>
+    <MyWorkColumnShell id={id} title={title} count={items.length}>
       <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-2">
           {items.map((item) => (
@@ -97,11 +152,22 @@ function FlatColumn({ id, title, items }: { id: MyWorkColumnId; title: string; i
 // midnight — doc-15's 09:00 JST boundary note). Reuses this repo's board drag
 // machinery (dnd-kit + useOptimisticBoardOrder + board.ts container helpers).
 //
-// A My Work drag mostly changes column MEMBERSHIP — onDragEnd calls
+// A card drag mostly changes column MEMBERSHIP — onDragEnd calls
 // setMyWorkColumn(storyId, targetColumn) once the container changes. Today is
 // the one column with its own persisted card order (doc-15 decision 4): a
 // same-container drop THERE reorders and writes today_position (TASK-145),
 // handled as a separate branch (isTodayReorder) before the cross-column path.
+//
+// The COLUMNS themselves are also sortable (TASK-148, drag the header to
+// reorder — replaces the old up/down buttons). One shared DndContext hosts
+// both card drags and column drags; every handler checks
+// `event.active.data.current?.type` first ("column" vs "card", tagged by
+// MyWorkColumnShell/SortableItem's own useSortable calls) and branches to the
+// column-reorder path before falling through to the existing card logic
+// unchanged. Column order is tracked as separate local state (`displayOrder`)
+// from the card `containers` state, since it persists via its own action
+// (saveMyWorkColumnOrder, TASK-141) and needs no per-item revert machinery —
+// a failed save just restores the whole array.
 export function MyWorkSections({
   assigned,
   completions,
@@ -129,6 +195,21 @@ export function MyWorkSections({
   const { containers, setContainers, activeId, beginDrag, endDrag, revertToSnapshot, runDrop } =
     useOptimisticBoardOrder(initialContainers);
   const [dragError, setDragError] = useState<string | null>(null);
+
+  // TASK-148: the column display order, tracked separately from `containers`
+  // (card placement). Synced from the `order` prop whenever it changes AND no
+  // column drag is in flight — mirrors useOptimisticBoardOrder's own
+  // idle-sync-on-reference-change rule; `order` is reference-stable between
+  // server refreshes (computed once per server render in page.tsx), so this
+  // never fires mid-drag or while a save is pending.
+  const [displayOrder, setDisplayOrder] = useState(order);
+  const [syncedOrder, setSyncedOrder] = useState(order);
+  const [isDraggingColumn, setIsDraggingColumn] = useState(false);
+  const [, startColumnReorder] = useTransition();
+  if (!isDraggingColumn && syncedOrder !== order) {
+    setSyncedOrder(order);
+    setDisplayOrder(order);
+  }
 
   const { setNodeRef: setTodoRef } = useDroppable({ id: "todo" });
   const { setNodeRef: setDoneRef } = useDroppable({ id: "done" });
@@ -173,13 +254,37 @@ export function MyWorkSections({
   // and would never persist the move — see resolveDragEndTarget's doc comment).
   const dragStartContainer = useRef<MyWorkColumnId | null>(null);
 
+  function isColumnDrag(event: { active: { data: { current?: { type?: string } } } }): boolean {
+    return event.active.data.current?.type === "column";
+  }
+
+  // Pulls the unprefixed slot id back out of a column drag's `active`/`over`
+  // — their dnd-kit id is the namespaced `columnSortableId` form, not the
+  // bare id `displayOrder`/`saveMyWorkColumnOrder` deal in.
+  function columnIdFrom(entity: { data: { current?: { type?: string; columnId?: string } } } | null | undefined): string | null {
+    if (!entity || entity.data.current?.type !== "column") return null;
+    return entity.data.current.columnId ?? null;
+  }
+
   function handleDragStart(event: DragStartEvent) {
+    if (isColumnDrag(event)) {
+      setIsDraggingColumn(true);
+      return;
+    }
     const id = String(event.active.id);
     dragStartContainer.current = (findContainer(containers, id) as MyWorkColumnId | undefined) ?? null;
     beginDrag(id);
   }
 
   function handleDragOver(event: DragOverEvent) {
+    if (isColumnDrag(event)) {
+      // dnd-kit's own horizontalListSortingStrategy already animates the
+      // sibling-shift live from the SortableContext's `items` order — no
+      // manual state mutation needed until drop (unlike cards, which cross
+      // between DIFFERENT arrays/containers and need moveBetweenContainers
+      // to move the actual data during the drag itself).
+      return;
+    }
     const { active, over } = event;
     if (!over) return;
     const overContainer = findContainer(containers, String(over.id));
@@ -190,6 +295,29 @@ export function MyWorkSections({
   }
 
   function handleDragEnd(event: DragEndEvent) {
+    if (isColumnDrag(event)) {
+      setIsDraggingColumn(false);
+      const { active, over } = event;
+      const activeColumnId = columnIdFrom(active);
+      // Dropped on something that isn't a column (e.g. a card, mid-drag) —
+      // no valid target, don't persist a no-op save.
+      const overColumnId = over ? columnIdFrom(over) : null;
+      if (!activeColumnId || !overColumnId || activeColumnId === overColumnId) return;
+      // reorderIds no-ops (returns an equivalent copy) if either id can't be
+      // found or the index didn't change — safe to always attempt.
+      const reordered = reorderIds(displayOrder, activeColumnId, overColumnId);
+      setDisplayOrder(reordered);
+      setDragError(null);
+      startColumnReorder(async () => {
+        const result = await saveMyWorkColumnOrder(reordered);
+        if (!result.ok) {
+          setDisplayOrder(syncedOrder); // revert the whole array — no per-item semantics needed for a flat reorder
+          setDragError(result.message);
+        }
+      });
+      return;
+    }
+
     endDrag();
     const { active, over } = event;
     const startContainer = dragStartContainer.current;
@@ -245,11 +373,11 @@ export function MyWorkSections({
   const freeColumnById = new Map(freeColumns.map((c) => [c.id, c]));
 
   // Todo/Done keep their specialized grouped rendering (per-project / per-date
-  // headers); Today and every free column are plain FlatColumns. `order`
-  // (TASK-141) decides only the LEFT-TO-RIGHT sequence — the droppable hooks
-  // for todo/done stay unconditional above regardless of where they render.
+  // headers); Today and every free column are plain FlatColumns. `displayOrder`
+  // (TASK-141/148) decides only the LEFT-TO-RIGHT sequence — the droppable
+  // hooks for todo/done stay unconditional above regardless of where they render.
   const todoColumn = (
-    <MyWorkColumnShell key="todo" title="Todo" count={(containers.todo ?? []).length}>
+    <MyWorkColumnShell key="todo" id="todo" title="Todo" count={(containers.todo ?? []).length}>
       <SortableContext items={(containers.todo ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <div ref={setTodoRef} className="flex min-h-10 flex-1 flex-col gap-3">
           {todoGroups.map((group) => (
@@ -270,7 +398,7 @@ export function MyWorkSections({
   );
 
   const doneColumn = (
-    <MyWorkColumnShell key="done" title="Done" count={(containers.done ?? []).length}>
+    <MyWorkColumnShell key="done" id="done" title="Done" count={(containers.done ?? []).length}>
       <SortableContext items={(containers.done ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <div ref={setDoneRef} className="flex min-h-10 flex-1 flex-col gap-3">
           {doneGroups.map((group) => (
@@ -298,7 +426,12 @@ export function MyWorkSections({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => {
+      onDragCancel={(event) => {
+        if (isColumnDrag(event)) {
+          setIsDraggingColumn(false);
+          setDisplayOrder(syncedOrder);
+          return;
+        }
         endDrag();
         revertToSnapshot();
       }}
@@ -353,16 +486,18 @@ export function MyWorkSections({
         </p>
       )}
 
-      <div className="flex gap-3 overflow-x-auto pb-2">
-        {order.map((slotId) => {
-          if (slotId === "todo") return todoColumn;
-          if (slotId === "today") return <FlatColumn key="today" id="today" title="Today" items={containers.today ?? []} />;
-          if (slotId === "done") return doneColumn;
-          const column = freeColumnById.get(slotId);
-          if (!column) return null; // stale id — resolveColumnOrder already drops these server-side
-          return <FlatColumn key={column.id} id={column.id} title={column.name} items={containers[column.id] ?? []} />;
-        })}
-      </div>
+      <SortableContext items={displayOrder.map(columnSortableId)} strategy={horizontalListSortingStrategy}>
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {displayOrder.map((slotId) => {
+            if (slotId === "todo") return todoColumn;
+            if (slotId === "today") return <FlatColumn key="today" id="today" title="Today" items={containers.today ?? []} />;
+            if (slotId === "done") return doneColumn;
+            const column = freeColumnById.get(slotId);
+            if (!column) return null; // stale id — resolveColumnOrder already drops these server-side
+            return <FlatColumn key={column.id} id={column.id} title={column.name} items={containers[column.id] ?? []} />;
+          })}
+        </div>
+      </SortableContext>
 
       {/* Portal-rendered so the dragged card floats above every column instead
           of being clipped by their overflow-y-auto bodies. */}

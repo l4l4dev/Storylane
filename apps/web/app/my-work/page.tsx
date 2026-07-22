@@ -219,7 +219,7 @@ export default async function MyWorkPage() {
         </div>
       )}
 
-      {user && <MyWorkColumnManager order={columnOrder} freeColumns={freeColumns} />}
+      {user && <MyWorkColumnManager freeColumns={freeColumns} />}
 
       <MyWorkSections
         assigned={assigned}
