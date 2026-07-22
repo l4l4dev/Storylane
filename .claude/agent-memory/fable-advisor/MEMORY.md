@@ -16,3 +16,4 @@ Fable-era advisor handoff (written 2026-07-18 for the Opus successor).
 - [Additive/log-style lists need per-card dormant markers](learnings-additive-log-lists-need-markers.md) — when the same entity can appear in both a live column and a log/history column, column position alone isn't enough for principle 9
 - [My Work column management (TASK-141)](project-my-work-column-management.md) — doc-15 free-column panel, mirrors state-manager.tsx, approved-with-changes 2026-07-22
 - [Full-array reorder race check](learnings-full-array-reorder-race.md) — check button-reorder panels: does a pending save block ALL rows, or just the one moving? Full-array-overwrite patterns can silently lose concurrent edits
+- [TASK-147 personal-project seal verdict](task147-personal-project-seal-verdict.md) — approve-with-changes; move/copy-target exclusion reopens doc-11 D1's locked "don't re-flag" decision, needs owner sign-off + RPC-level guard not just UI hide
