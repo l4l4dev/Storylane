@@ -53,12 +53,29 @@ on conflict (provider, provider_id) do nothing;
 -- sensitive. Without these, notify_slack_event still records the outbox row
 -- and just skips the POST, so the automated tests don't depend on them; they
 -- exist so a manual local end-to-end delivery check can work.
+--
+-- TASK-128: vault.create_secret has no ON CONFLICT of its own and errors on
+-- a duplicate `name` (secrets_name_idx) — and the Vault extension's own
+-- storage isn't touched by `supabase db reset`'s schema reset, so a second
+-- reset re-runs this seed against secrets that already exist from the first.
+-- `supabase db reset` runs this whole file as one transaction, so that error
+-- previously rolled back the entire seed, including the auth.users insert
+-- above (despite its own ON CONFLICT succeeding) — leaving no dev user at
+-- all. Guarded with an existence check instead of assuming a fresh vault.
 -- ============================================================
-select vault.create_secret(
-  'http://host.docker.internal:54321/functions/v1/slack-notify',
-  'slack_notify_url'
-);
-select vault.create_secret(
-  'local-dev-slack-notify-secret',
-  'slack_notify_secret'
-);
+do $$
+begin
+  if not exists (select 1 from vault.secrets where name = 'slack_notify_url') then
+    perform vault.create_secret(
+      'http://host.docker.internal:54321/functions/v1/slack-notify',
+      'slack_notify_url'
+    );
+  end if;
+
+  if not exists (select 1 from vault.secrets where name = 'slack_notify_secret') then
+    perform vault.create_secret(
+      'local-dev-slack-notify-secret',
+      'slack_notify_secret'
+    );
+  end if;
+end $$;

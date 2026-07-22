@@ -3,10 +3,11 @@ id: TASK-128
 title: >-
   seed.sql is not idempotent — db reset leaves no dev user, breaking integration
   tests
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 11:18'
+updated_date: '2026-07-22 07:06'
 labels: []
 dependencies: []
 priority: medium
@@ -22,7 +23,13 @@ Found during TASK-110 verification. 'supabase db reset' runs seed.sql, but the v
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 supabase db reset (clean) completes seeding without error and creates dev@storylane.local
-- [ ] #2 The vault.create_secret calls for slack_notify_url/slack_notify_secret no longer abort on a re-seed (idempotent via existence check, on-conflict, or delete-first)
-- [ ] #3 A SUPABASE_INTEGRATION=1 test (e.g. iterations-insert-lockdown) passes immediately after a bare 'supabase db reset' with no manual seed step
+- [x] #1 supabase db reset (clean) completes seeding without error and creates dev@storylane.local
+- [x] #2 The vault.create_secret calls for slack_notify_url/slack_notify_secret no longer abort on a re-seed (idempotent via existence check, on-conflict, or delete-first)
+- [x] #3 A SUPABASE_INTEGRATION=1 test (e.g. iterations-insert-lockdown) passes immediately after a bare 'supabase db reset' with no manual seed step
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Guarded seed.sql's two vault.create_secret calls (slack_notify_url/slack_notify_secret) with an existence check (do block, if not exists against vault.secrets) instead of calling them unconditionally. Root cause: supabase db reset runs the whole seed.sql as one transaction, so the vault duplicate-key error on a re-seed previously rolled back the entire seed including the already-succeeded auth.users insert, leaving no dev user at all. Verified: ran supabase db reset twice in a row -- both succeeded with no error, dev@storylane.local present both times, vault secrets present exactly once each (no duplication). SUPABASE_INTEGRATION=1 lib/utils/iterations-insert-lockdown.integration.test.ts (2 tests) passed immediately after the bare second reset, no manual seed step. tsc/lint green, full suite 601 passed.
+<!-- SECTION:FINAL_SUMMARY:END -->
