@@ -110,6 +110,21 @@ function PromoteToEpicDialog({
   const taskCount = detail.tasks.length;
   const commentCount = detail.comments.length;
 
+  // Resets stale state on reopen (TASK-121, doc-13 finding #13) — otherwise a
+  // failed attempt's error stayed visible the next time this dialog opened,
+  // even for an unrelated later attempt. React's "adjusting state when a prop
+  // changes" pattern (during render, not a useEffect — this dialog's `open`
+  // is flipped from outside, not via its own trigger, so there's no local
+  // event handler to hook the transition into either).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setError(null);
+      setPending(false);
+    }
+  }
+
   async function handlePromote() {
     setPending(true);
     setError(null);

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StoryDetail } from "@/app/stories/[id]/actions";
@@ -71,6 +71,33 @@ describe("StoryPeekMenu", () => {
     await openPromoteDialog();
 
     expect(screen.getByText(/it has no tasks, so the epic starts empty/i)).toBeInTheDocument();
+  });
+
+  // TASK-121 (doc-13 finding #13): the dialog's error/pending state used to
+  // persist across a close+reopen, so a failed attempt's error kept showing
+  // even for an unrelated later attempt.
+  it("does not show a stale error from a previous failed attempt on reopen", async () => {
+    promoteStoryToEpicMock.mockResolvedValueOnce({ ok: false, message: "Promotion failed" });
+    render(<StoryPeekMenu detail={baseDetail} />);
+    const user = userEvent.setup();
+
+    await openPromoteDialog();
+    await user.click(screen.getByRole("button", { name: "Promote to epic" }));
+    expect(await screen.findByText("Promotion failed")).toBeInTheDocument();
+
+    // Each DropdownMenuItem's onSelect calls preventDefault() so the menu
+    // itself never auto-closes (story-peek-menu.tsx's own top comment: each
+    // dialog's open state is owned outside the DropdownMenu tree) — so
+    // "Promote to Epic" stays clickable directly, without re-opening "Story
+    // actions" first. Radix unmounts the dialog's own content on Cancel, so
+    // the error is trivially gone right after Cancel regardless of this fix
+    // — the real assertion is that reopening doesn't bring the old error
+    // back (it would if `error` state had never been reset).
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("menuitem", { name: "Promote to Epic" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByText("Promotion failed")).not.toBeInTheDocument();
   });
 
   it("mentions the task count and that task completion isn't carried over", async () => {
