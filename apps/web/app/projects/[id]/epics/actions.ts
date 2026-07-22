@@ -3,15 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
+import type { ActionResult } from "@/lib/types";
 
-export async function createEpic(formData: FormData) {
+export async function createEpic(formData: FormData): Promise<ActionResult> {
   const projectId = String(formData.get("project_id"));
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
   const color = String(formData.get("color") ?? "#6366f1");
 
   if (!name) {
-    return;
+    return { ok: false, message: "Name is required" };
   }
 
   const supabase = await createClient();
@@ -24,13 +25,14 @@ export async function createEpic(formData: FormData) {
   });
 
   if (error) {
-    throw new Error(error.message);
+    return { ok: false, message: error.message };
   }
 
   revalidatePath(`/projects/${projectId}/epics`);
+  return { ok: true };
 }
 
-export async function updateEpic(formData: FormData) {
+export async function updateEpic(formData: FormData): Promise<ActionResult> {
   const id = String(formData.get("epic_id"));
   const projectId = String(formData.get("project_id"));
   const name = String(formData.get("name") ?? "").trim();
@@ -38,15 +40,20 @@ export async function updateEpic(formData: FormData) {
   const color = String(formData.get("color") ?? "#6366f1");
 
   if (!name) {
-    return;
+    return { ok: false, message: "Name is required" };
   }
 
   const supabase = await createClient();
-  await assertRowAffected(
-    await supabase.from("epics").update({ name, description, color }).eq("id", id).select("id"),
-  );
+  try {
+    await assertRowAffected(
+      await supabase.from("epics").update({ name, description, color }).eq("id", id).select("id"),
+    );
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Failed to update epic" };
+  }
 
   revalidatePath(`/projects/${projectId}/epics`);
+  return { ok: true };
 }
 
 export async function deleteEpic(
