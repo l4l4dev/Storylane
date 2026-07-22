@@ -447,7 +447,7 @@ integrations (
 are an **ordering** key, not a dense index. Readers sort by it; no
 one reads it as an array index, and gaps are legal.
 
-Two rules keep it consistent (TASK-58, migrations `20260716000004`–`000005`):
+Two rules keep it consistent (TASK-58's position-sequence + splice RPCs):
 
 1. **Every INSERT into a positioned table takes `position` from that table's
    sequence default — never an explicit value.** The one exception is
@@ -475,7 +475,6 @@ share one backlog order space, so no single-column UNIQUE expresses it.
 A story belongs to the **backlog zone** when `iteration_id is null and
 state_id is not null` (doc-8 §2 advisor: NULL-safe, and deleting states can
 never strand a story out of the Icebox). The canonical definition lives in
-the DB, in `_splice_backlog`
-(`20260716000001`); `move_story_board`, the board's `buildBacklogRows`, and
+the DB, in `_splice_backlog` (TASK-51); `move_story_board`, the board's `buildBacklogRows`, and
 `lib/utils/kanban.ts` `zoneForStory` all mirror it and must be changed together
 with it. (decision-1: invariants are authoritative server-side.)

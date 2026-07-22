@@ -88,7 +88,12 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
     }
     projectId = project.id;
 
-    const { data: iteration, error: iterationError } = await asUser
+    // Setup shortcut via service_role: authenticated clients can no longer
+    // INSERT iterations directly (TASK-110 lockdown, 20260721000006) — that
+    // path is RPC-only now. This test just needs an iteration row to attach
+    // the story to, with specific dates the finalize_iteration RPC wouldn't
+    // let us pick, so it seeds one as service_role (bypasses the grant).
+    const { data: iteration, error: iterationError } = await asService
       .from("iterations")
       .insert({ project_id: projectId, number: 1, start_date: "2026-07-15", end_date: "2026-07-28" })
       .select("id")

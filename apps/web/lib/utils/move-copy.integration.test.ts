@@ -220,22 +220,27 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
     await admin.auth.admin.deleteUser(created.user.id);
   });
 
-  it("recreates labels by name in the target, deduping when two source labels share a name", async () => {
+  // Reuses an existing target label by name instead of creating a duplicate.
+  // (The old "two source labels share a name" case is impossible since the
+  // labels UNIQUE (project_id, name) constraint — 20260721000002 — so the
+  // still-live dedup path is: a source label whose name already exists in the
+  // TARGET must be reused, not recreated, which would violate that same
+  // constraint.)
+  it("reuses an existing same-named target label rather than duplicating it", async () => {
     const story = await createStory(projectAId, { title: "Dup label story" });
-    const { data: labelA } = await supabase
+    const { data: sourceLabel } = await supabase
       .from("labels")
       .insert({ project_id: projectAId, name: "dup-name", color: "#111111" })
       .select("id")
       .single();
-    const { data: labelB } = await supabase
+    await supabase.from("story_labels").insert({ story_id: story.id, label_id: sourceLabel!.id });
+
+    // The target already has a label with the same name (different color).
+    const { data: existingTargetLabel } = await supabase
       .from("labels")
-      .insert({ project_id: projectAId, name: "dup-name", color: "#222222" })
+      .insert({ project_id: projectBId, name: "dup-name", color: "#222222" })
       .select("id")
       .single();
-    await supabase.from("story_labels").insert([
-      { story_id: story.id, label_id: labelA!.id },
-      { story_id: story.id, label_id: labelB!.id },
-    ]);
 
     const { data, error } = await supabase.rpc("move_story_to_project", {
       p_story_id: story.id,
@@ -243,11 +248,23 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
     });
     expect(error).toBeNull();
 
+    const movedStoryId = (data as { story_id: string }).story_id;
     const { data: targetLabels } = await supabase
       .from("story_labels")
       .select("label_id")
-      .eq("story_id", (data as { story_id: string }).story_id);
+      .eq("story_id", movedStoryId);
+    // Exactly one link, pointing at the target's PRE-EXISTING label — not a
+    // freshly-created duplicate.
     expect(targetLabels).toHaveLength(1);
+    expect(targetLabels![0].label_id).toBe(existingTargetLabel!.id);
+
+    // And the target still has just the one "dup-name" label.
+    const { data: targetNamed } = await supabase
+      .from("labels")
+      .select("id")
+      .eq("project_id", projectBId)
+      .eq("name", "dup-name");
+    expect(targetNamed).toHaveLength(1);
   });
 
   it("rejects a viewer-role caller (as a generic 'not found' — the source-membership filter folds viewer-of-source into the same case as a non-member, so it can't be used to probe story existence)", async () => {

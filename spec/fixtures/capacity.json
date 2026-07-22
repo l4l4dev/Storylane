@@ -1,5 +1,5 @@
 {
-  "_comment": "Golden fixture for the person-day capacity formula (spec/velocity.md, doc-8 §7). Cross-checked by BOTH implementations: packages/core/src/capacity.test.ts (projectCapacity) and apps/web/lib/utils/capacity.integration.test.ts (the SQL function public.project_capacity, supabase/migrations/20260720000002_iteration_capacity.sql). Members are keyed by a fixture-local string; the DB test synthesizes real users from them. Dates: 2026-07-20 is a Monday. Swift consumption deferred (iOS work on hold).",
+  "_comment": "Golden fixture for the person-day capacity formula (spec/velocity.md, doc-8 §7). Cross-checked by BOTH implementations: packages/core/src/capacity.test.ts (projectCapacity) and apps/web/lib/utils/capacity.integration.test.ts (the SQL function public.project_capacity). Members are keyed by a fixture-local string; the DB test synthesizes real users from them. Dates: 2026-07-20 is a Monday. Swift consumption deferred (iOS work on hold).",
   "cases": [
     {
       "name": "default weekdays, one member, one full week",

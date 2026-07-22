@@ -12,8 +12,7 @@
 - **Board write model — TASK-70 owner decision (a), landed 2026-07-19:**
   **Pivotal-style — any project member may operate any story** on the board
   (move, reorder, transition, estimate) — not just their own/assigned. The
-  `stories` UPDATE policy (`members can update stories`,
-  `20260719000002_relax_stories_write_rls.sql`) is now a single unconditional
+  `stories` UPDATE policy (`members can update stories`, TASK-70) is now a single unconditional
   `project_role(project_id) in ('owner','member')` check (USING = WITH CHECK),
   replacing the old `owner OR (member AND (created_by OR assignee_id))` rule.
   This is what `update_story` and `transition_story` (both SECURITY INVOKER,
@@ -79,7 +78,7 @@
   columns: id / username / display_name / avatar_url), and story Move/Copy
   between projects (caller must be a member of **both** projects)
 - Function EXECUTE (2026-07-15, TASK-55): `authenticated`/`anon` no longer have
-  a blanket EXECUTE grant on public functions (the old `20260630000002` grant +
+  a blanket EXECUTE grant on public functions (the old schema-wide EXECUTE grant +
   the built-in PUBLIC default were the real remote-call surface). EXECUTE is
   granted explicitly to `authenticated` only for the policy-referenced helpers
   (`project_role`, `is_project_member`, `shares_project_with`) and the web

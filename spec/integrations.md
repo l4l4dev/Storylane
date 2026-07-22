@@ -9,8 +9,8 @@
    - Webhook URL はプロジェクトをクエリで識別する: `/functions/v1/git-webhook?project=<project_id>`
    - 署名検証の secret は `integrations.config.webhook_secret`（プロジェクト設定で登録）
    - 署名検証・イベント種別判定・story 番号抽出まで済んだら、抽出した番号ごとに
-     **`finish_story_from_git(project_id, number)` RPC を1回ずつ呼ぶ**（TASK-53,
-     `20260715000003_finish_story_from_git.sql`）。state 更新と iteration アサインを
+     **`finish_story_from_git(project_id, number)` RPC を1回ずつ呼ぶ**（TASK-53）。
+     state 更新と iteration アサインを
      このRPCが1トランザクションで行う（下記3）。
 3. Finish + assign は単一のトランザクショナル RPC（`finish_story_from_git`）
    - **単一ワークフロー**（doc-8 §1 で free モード撤去）: モード判定は不要になった。

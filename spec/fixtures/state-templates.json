@@ -1,5 +1,5 @@
 {
-  "_comment": "Golden fixture: the classic/minimal project_states templates (must stay byte-identical to seed_project_states, supabase/migrations/20260719000006_stories_state_id.sql) plus the expected one-click button graph for every state, cross-checked by both packages/core/src/story-state.test.ts (computeStateGate) and a DB integration test asserting the project-creation seed matches `states` exactly. States are keyed by name here (not id) since ids are runtime UUIDs; consumers synthesize stable ids from the name for the pure-function test. Swift consumption deferred (iOS work on hold).",
+  "_comment": "Golden fixture: the classic/minimal project_states templates (must stay byte-identical to the DB's seed_project_states) plus the expected one-click button graph for every state, cross-checked by both packages/core/src/story-state.test.ts (computeStateGate) and a DB integration test asserting the project-creation seed matches `states` exactly. States are keyed by name here (not id) since ids are runtime UUIDs; consumers synthesize stable ids from the name for the pure-function test. Swift consumption deferred (iOS work on hold).",
   "classic": {
     "states": [
       { "name": "Unstarted", "category": "unstarted", "position": 0, "actionLabel": "Start" },

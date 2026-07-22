@@ -287,7 +287,11 @@ describe.skipIf(!RUN)("promote_story_to_epic RPC (integration)", () => {
     // *already*-done iteration, which isn't how this happens in practice:
     // finalize_iteration finishes the iteration (a plain UPDATE) after
     // stories are already pointing at it, never re-inserting them.
-    const { data: iteration, error: iterationError } = await supabase
+    // Seeded as service_role: authenticated clients can no longer INSERT
+    // iterations directly (TASK-110 lockdown, 20260721000006) — RPC-only now.
+    // This test needs an active iteration with specific past dates the
+    // finalize_iteration RPC wouldn't produce, so it bypasses the grant.
+    const { data: iteration, error: iterationError } = await admin
       .from("iterations")
       .insert({
         project_id: projectId,
