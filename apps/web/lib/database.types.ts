@@ -845,39 +845,6 @@ export type Database = {
           },
         ]
       }
-      story_pins: {
-        Row: {
-          created_at: string
-          story_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          story_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          story_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "story_pins_story_id_fkey"
-            columns: ["story_id"]
-            isOneToOne: false
-            referencedRelation: "stories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "story_pins_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       tasks: {
         Row: {
           created_at: string
