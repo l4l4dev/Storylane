@@ -3,11 +3,11 @@ id: TASK-131
 title: >-
   My Work backend: classification rework + drag write-path (set_story_state,
   mapped/unmapped)
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-22 02:49'
+updated_date: '2026-07-22 05:52'
 labels: []
 dependencies:
   - TASK-130
@@ -86,3 +86,9 @@ Verification: tsc + lint green; non-integration suite 567 passed (1 comment-thre
 Pending before merge: owner runs /code-review high (user-triggered). fable-advisor UI design review deferred to TASK-132 (the draggable-column UI); this task's only UI change is the doc-14-mandated pin-affordance removal.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Classification rework (classifyMyWork/assignedColumn, additive Done axis), drag write-path server action (setMyWorkColumn), and story_pins teardown. Verified: 42+ unit tests, rls-security-reviewer clean, tsc/lint green. Merged to main.
+<!-- SECTION:FINAL_SUMMARY:END -->

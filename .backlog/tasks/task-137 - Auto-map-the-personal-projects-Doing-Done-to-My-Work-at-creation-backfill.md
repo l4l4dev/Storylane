@@ -1,10 +1,11 @@
 ---
 id: TASK-137
 title: Auto-map the personal project's Doing/Done to My Work at creation + backfill
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-22 05:24'
+updated_date: '2026-07-22 06:01'
 labels: []
 dependencies:
   - TASK-131
@@ -21,9 +22,21 @@ doc-14 round-5 addendum (owner decision 2026-07-22). The auto-created personal p
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A new migration redefines the personal-project signup function so project creation also inserts a project_my_work_mapping row: doing_state_id = the project's in_progress-category state, done_state_id = its done-category state (first by position if several), configured_by = the new user
-- [ ] #2 The same migration (or a sibling) backfills project_my_work_mapping for existing is_personal projects lacking a row, using the same selection rule; personal projects lacking a matching-category state are skipped, not errored
-- [ ] #3 No personal-specific broken-mapping code: a drifted personal mapping behaves exactly like any broken mapping (unmapped classification + My Work banner) -- verify by test or existing coverage, do not add a new mechanism
-- [ ] #4 rls-security-reviewer pass on the new migration(s)
-- [ ] #5 supabase db reset green; pnpm test + lint green (from apps/web/)
+- [x] #1 A new migration redefines the personal-project signup function so project creation also inserts a project_my_work_mapping row: doing_state_id = the project's in_progress-category state, done_state_id = its done-category state (first by position if several), configured_by = the new user
+- [x] #2 The same migration (or a sibling) backfills project_my_work_mapping for existing is_personal projects lacking a row, using the same selection rule; personal projects lacking a matching-category state are skipped, not errored
+- [x] #3 No personal-specific broken-mapping code: a drifted personal mapping behaves exactly like any broken mapping (unmapped classification + My Work banner) -- verify by test or existing coverage, do not add a new mechanism
+- [x] #4 rls-security-reviewer pass on the new migration(s)
+- [x] #5 supabase db reset green; pnpm test + lint green (from apps/web/)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Migration 20260722000004 implemented: handle_new_user() (based on the CURRENT 20260721000004 definition, not the superseded 20260721000001) now also inserts project_my_work_mapping for the new personal project (doing/done state ids picked by lowest position within category), plus a backfill INSERT for existing is_personal projects lacking a row. Verified via supabase db reset: fresh dev-user signup auto-mapped correctly (Doing/Done state ids match). Backfill logic independently verified by stripping the mapping and re-running the exact backfill query -- repopulated identically. AC #3 (no personal-specific special-casing) verified by code inspection (brokenMappingProjectIds has no isPersonal parameter at all) plus a new explicit test. tsc/lint green, full suite 596 passed. rls-security-reviewer pass in progress.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+New migration 20260722000004: handle_new_user() (redefined from the current 20260721000004 base) now also inserts project_my_work_mapping for a new personal project at signup (doing/done state ids by lowest position within category), plus a one-time backfill for existing is_personal projects lacking a row (same rule, skips rather than errors when a matching-category state is missing). No personal-specific broken-mapping mechanism added -- brokenMappingProjectIds handles a drifted personal mapping identically to any project's (verified by code inspection + new test, since the function has no isPersonal parameter at all). Verified: supabase db reset applies cleanly; fresh dev-user signup auto-mapped correctly (confirmed via db query); backfill logic independently verified by stripping and re-running the exact query; rls-security-reviewer pass clean (SECURITY DEFINER bypass matches the sibling handle_new_project_states trigger's established pattern, configured_by correctly credits the project's own creator); tsc/lint green; full suite 596 passed.
+<!-- SECTION:FINAL_SUMMARY:END -->

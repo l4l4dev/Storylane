@@ -1,11 +1,11 @@
 ---
 id: TASK-132
 title: 'My Work frontend: draggable Kanban columns, drop the current-iteration toggle'
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-22 04:43'
+updated_date: '2026-07-22 05:52'
 labels: []
 dependencies:
   - TASK-131
@@ -65,3 +65,9 @@ Drag confirmed working by owner (2026-07-22): cards do move columns within My Wo
 AC #4 (the 'No active iteration' banner) remains unchecked: it only fires for a MAPPED project's Doing/Done drag, and no project can be mapped yet (TASK-133's Settings UI doesn't exist). The code path itself is implemented and unit-tested (actions.test.ts's 'surfaces No active iteration' case), but end-to-end verification needs TASK-133 to land first. Owner has asked to proceed to TASK-133 next; will close out this AC once a mapped project makes the scenario reachable.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Draggable 4-column Kanban (Todo/Today/Doing/Done) reusing kanban-columns-board.tsx's dnd-kit pattern. Fixed a real drag-end regression found via owner testing (handleDragEnd compared already-optimistically-moved state instead of the drag-start snapshot, so cross-column drops never persisted). fable-advisor design review passed after 2 fixes (silent-no-op guard for already-done stories, Done-card completion marker for the additive-log dual-appearance case). Verified hands-on in browser + owner's manual drag test confirming local column movement. Merged to main.
+<!-- SECTION:FINAL_SUMMARY:END -->

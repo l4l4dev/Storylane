@@ -332,4 +332,19 @@ describe("brokenMappingProjectIds", () => {
     );
     expect(broken.has("p1")).toBe(false);
   });
+
+  // TASK-137 AC #3: a personal project's auto-configured mapping drifting is
+  // detected through this SAME function, with no personal-specific branch —
+  // the function's own signature carries no isPersonal input at all, so a
+  // personal project's drifted mapping (owner-viewable, since the personal
+  // project's own creator is always its owner) behaves identically to any
+  // other project's.
+  it("treats a personal project's drifted auto-mapping exactly like any other project's (no special-casing)", () => {
+    const broken = brokenMappingProjectIds(
+      [mapping({ projectId: "personal-project", doingStateId: "recategorized-state" })],
+      CATEGORIES,
+      new Set(["personal-project"]), // its creator, viewing as owner
+    );
+    expect(broken.has("personal-project")).toBe(true);
+  });
 });

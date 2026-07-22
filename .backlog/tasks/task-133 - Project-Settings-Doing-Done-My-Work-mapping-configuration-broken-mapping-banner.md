@@ -3,11 +3,11 @@ id: TASK-133
 title: >-
   Project Settings: Doing/Done -> My Work mapping configuration + broken-mapping
   banner
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-22 05:23'
+updated_date: '2026-07-22 05:52'
 labels: []
 dependencies:
   - TASK-130
@@ -52,3 +52,9 @@ Verification: hands-on in browser -- mapped My Tasks project's Doing/Done to its
 Not yet verified: an actual end-to-end drag with a mapped project syncing to the real board (browser automation for drag-and-drop proved unreliable throughout this session, both for this feature and the pre-existing project board -- see TASK-132's notes). The underlying set_story_state call path is unit-tested (actions.test.ts) and unchanged from TASK-132. Owner to confirm with a manual drag test.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added owner-only 'My Work sync' section to Project Settings (Doing/Done selectors writing project_my_work_mapping) + a My Work banner for category-drifted mappings, scoped to project owners only. Verified: mapped My Tasks project's Doing/Done via Settings UI, confirmed persisted in project_my_work_mapping; tsc/lint green; full suite 595 passed; fable-advisor design review passed after 2 rounds of fixes (owner-scoping bug, misleading drift-warning copy). Merged to main in ef69153/d8f6fe4.
+<!-- SECTION:FINAL_SUMMARY:END -->
