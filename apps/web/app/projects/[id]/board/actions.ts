@@ -71,86 +71,6 @@ function moveErrorMessage(error: { code?: string; message: string }): string {
   return error.code === "P0001" && error.message.includes("stale") ? STALE_MOVE_MESSAGE : error.message;
 }
 
-/**
- * Creates a story from a column's inline quick-add composer (see
- * spec/screens.md "Board layout": title only, defaults for everything else —
- * type `feature`, unestimated, unassigned). `target` decides where it lands:
- * `backlog` (unstarted, no iteration), `icebox` (unscheduled), or
- * `unstarted` (scheduled into the current iteration).
- *
- * `backlog` additionally accepts `before_item_id` (TASK-36, same
- * `"story:<id>"` / `"divider:<id>"` convention as `createBacklogDivider`) so
- * the List view's per-virtual-iteration-group composer can land the new
- * story at that group's bottom instead of always the whole backlog's. The
- * insert + reposition run atomically in the `insert_board_item` RPC (TASK-51),
- * shared with `createBacklogDivider`.
- */
-export async function quickCreateStory(formData: FormData): Promise<ActionResult> {
-  const projectId = String(formData.get("project_id"));
-  const title = String(formData.get("title") ?? "").trim();
-  const target = String(formData.get("target"));
-
-  if (!title) {
-    return { ok: true };
-  }
-
-  const supabase = await createClient();
-
-  if (target === "backlog") {
-    const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
-
-    const { error } = await supabase.rpc("insert_board_item", {
-      p_project_id: projectId,
-      p_kind: "story",
-      p_payload: { title },
-      p_anchor: moveAnchor(beforeItemId),
-    });
-    if (error) {
-      return { ok: false, message: error.message };
-    }
-
-    revalidatePath(`/projects/${projectId}/board`);
-    return { ok: true };
-  }
-
-  let iterationId: string | null = null;
-  let stateId: string | null = null;
-  if (target === "unstarted") {
-    const { data: currentRows } = await supabase
-      .from("iterations")
-      .select("id")
-      .eq("project_id", projectId)
-      .neq("state", "done")
-      .order("number", { ascending: false })
-      .limit(1);
-    iterationId = currentRows?.[0]?.id ?? null;
-    if (!iterationId) {
-      return { ok: false, message: "No active iteration" };
-    }
-    const states = await fetchProjectStates(supabase, projectId);
-    stateId = lowestUnstartedStateId(toGateStates(states));
-    if (!stateId) {
-      return { ok: false, message: "This project has no unstarted state to create stories in" };
-    }
-  }
-  // target === "icebox" (or anything else): stateId/iterationId stay null.
-
-  const { error } = await supabase.from("stories").insert({
-    project_id: projectId,
-    title,
-    story_type: "feature",
-    state_id: stateId,
-    iteration_id: iterationId,
-  });
-
-  if (error) {
-    return { ok: false, message: error.message };
-  }
-
-  revalidatePath(`/projects/${projectId}/board`);
-  return { ok: true };
-}
-
 export type DraftStoryInput = {
   projectId: string;
   target: "backlog" | "icebox" | "unstarted";
@@ -471,8 +391,8 @@ export async function dropStoryInList(formData: FormData) {
  * `lib/utils/iterations.ts` "buildBacklogRows"; no label required).
  *
  * The insert + reposition run atomically in the `insert_board_item` RPC
- * (TASK-51), shared with `quickCreateStory`'s backlog branch — stories and
- * dividers share one dense position sequence, so the RPC interleaves them.
+ * (TASK-51), shared with the draft-story backlog path — stories and dividers
+ * share one dense position sequence, so the RPC interleaves them.
  */
 export async function createBacklogDivider(formData: FormData) {
   const projectId = String(formData.get("project_id"));

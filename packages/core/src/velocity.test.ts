@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  acceptedPoints,
   clampVelocityWindow,
   forecastPoints,
   velocityRate,
-  type PointedStory,
 } from "./velocity";
 
 describe("velocityRate", () => {
@@ -89,41 +87,5 @@ describe("clampVelocityWindow", () => {
 
   it("rounds a non-integer down to the nearest whole number", () => {
     expect(clampVelocityWindow(3.7)).toBe(3);
-  });
-});
-
-describe("acceptedPoints", () => {
-  it("sums points for done-category feature/bug stories only", () => {
-    const stories: PointedStory[] = [
-      { story_type: "feature", state_category: "done", points: 3 },
-      { story_type: "bug", state_category: "done", points: 2 },
-      { story_type: "feature", state_category: "in_progress", points: 5 },
-      { story_type: "chore", state_category: "done", points: null },
-      { story_type: "release", state_category: "done", points: null },
-    ];
-    expect(acceptedPoints(stories)).toBe(5);
-  });
-
-  it("returns 0 for an empty iteration", () => {
-    expect(acceptedPoints([])).toBe(0);
-  });
-
-  it("treats a null category (Icebox) as not done", () => {
-    expect(acceptedPoints([{ story_type: "feature", state_category: null, points: 5 }])).toBe(0);
-  });
-
-  // finalize_iteration (20260719000010_reanchor_finalize_iteration.sql)
-  // computes velocity in SQL instead of calling this function — this
-  // fixture is cross-checked against the RPC's "sum(points) where
-  // category='done' and story_type in ('feature','bug')", confirming both
-  // give 5 for the same rows.
-  it("matches the finalize_iteration RPC's SQL computation for a mixed-category iteration", () => {
-    const stories: PointedStory[] = [
-      { story_type: "feature", state_category: "done", points: 5 },
-      { story_type: "chore", state_category: "done", points: 3 },
-      { story_type: "feature", state_category: "unstarted", points: 2 },
-      { story_type: "bug", state_category: "rejected", points: 1 },
-    ];
-    expect(acceptedPoints(stories)).toBe(5);
   });
 });

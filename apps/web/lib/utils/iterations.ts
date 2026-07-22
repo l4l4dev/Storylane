@@ -205,8 +205,8 @@ export function buildBacklogRows<T extends BacklogStoryForMarkers & { id: string
  * or after `fromIndex` — skipping over header rows, which aren't stored
  * rows and so have nothing to anchor an insertion to. `null` means "insert
  * at the end" (no real row follows). Shared by the hover insert-between
- * affordance and each row's own insert menu (TASK-42, `rowInsertAnchors`
- * below) — both need the same "what comes after this point" answer.
+ * insert-between affordance — it needs the same "what comes after this
+ * point" answer while skipping generated headers.
  */
 export function nextRealRowId<T extends BacklogStoryForMarkers & { id: string }>(
   rows: ReadonlyArray<BacklogRow<T>>,
@@ -222,29 +222,6 @@ export function nextRealRowId<T extends BacklogStoryForMarkers & { id: string }>
     }
   }
   return null;
-}
-
-/**
- * The "insert above"/"insert below" anchors for a row's own insert menu
- * (TASK-42), given its index in `buildBacklogRows`' output. `rows[index]`
- * must be a `"story"` or `"note"` row (the only kinds a row-level menu ever
- * attaches to). "Above" is the row's own id — always real, never null,
- * since the row itself is the anchor. "Below" reuses `nextRealRowId`
- * starting just past this row, the same anchor the hover-line's insert
- * affordance immediately after it already resolves to — including skipping
- * past a header to the next real row, or landing on a manual break's own
- * divider id when one immediately follows.
- */
-export function rowInsertAnchors<T extends BacklogStoryForMarkers & { id: string }>(
-  rows: ReadonlyArray<BacklogRow<T>>,
-  index: number,
-): { aboveId: string; belowId: string | null } {
-  const row = rows[index];
-  if (row.kind !== "story" && row.kind !== "note") {
-    throw new Error(`rowInsertAnchors: row at index ${index} is a "${row.kind}", not "story" or "note"`);
-  }
-  const aboveId = row.kind === "story" ? `story:${row.story.id}` : `divider:${row.divider.id}`;
-  return { aboveId, belowId: nextRealRowId(rows, index + 1) };
 }
 
 /**

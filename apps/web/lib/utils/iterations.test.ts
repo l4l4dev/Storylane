@@ -5,7 +5,6 @@ import {
   iterationSpanLabel,
   nextRealRowId,
   projectedIterationDates,
-  rowInsertAnchors,
   type BacklogRowItem,
 } from "./iterations";
 
@@ -222,10 +221,6 @@ describe("buildBacklogRows", () => {
   });
 });
 
-// TASK-42: the row-level insert menu's "above"/"below" anchors, and the
-// hover-line's own anchor, both come from these — a bug here would send an
-// insert to the wrong spot regardless of how correct the menu/hover-line
-// components themselves are.
 describe("nextRealRowId", () => {
   it("returns null when nothing real follows", () => {
     const a = { id: "a", points: 1, story_type: "feature" };
@@ -250,44 +245,6 @@ describe("nextRealRowId", () => {
     // after story a (index 2, the break itself) must resolve to the break,
     // not skip past it into the next group.
     expect(nextRealRowId(rows, 2)).toBe("divider:brk");
-  });
-});
-
-describe("rowInsertAnchors", () => {
-  it("top position: the first real row after the header anchors above to itself", () => {
-    const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([noteItem("d1", "Notes"), storyItem(a)], [8], 3);
-    // rows: [header#3, note d1, story a]
-    expect(rowInsertAnchors(rows, 1)).toEqual({ aboveId: "divider:d1", belowId: "story:a" });
-  });
-
-  it("bottom position: the last row in the backlog anchors below to null (append at the end)", () => {
-    const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a)], [100], 3);
-    // rows: [header#3, story a]
-    expect(rowInsertAnchors(rows, 1)).toEqual({ aboveId: "story:a", belowId: null });
-  });
-
-  it("middle position adjacent to an automatic (capacity) split: below skips the header to the next story", () => {
-    const a = { id: "a", points: 5, story_type: "feature" };
-    const b = { id: "b", points: 5, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), storyItem(b)], [8], 3);
-    // rows: [header#3, story a, header#4, story b]
-    expect(rowInsertAnchors(rows, 1)).toEqual({ aboveId: "story:a", belowId: "story:b" });
-  });
-
-  it("middle position adjacent to a manual break: below anchors to the break's own divider, not past it", () => {
-    const a = { id: "a", points: 1, story_type: "feature" };
-    const b = { id: "b", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a), iterationBreakItem("brk"), storyItem(b)], [8], 3);
-    // rows: [header#3, story a, break, header#4, story b]
-    expect(rowInsertAnchors(rows, 1)).toEqual({ aboveId: "story:a", belowId: "divider:brk" });
-  });
-
-  it("throws for a header or break row — the menu never attaches to those", () => {
-    const a = { id: "a", points: 1, story_type: "feature" };
-    const rows = buildBacklogRows([storyItem(a)], [100], 3);
-    expect(() => rowInsertAnchors(rows, 0)).toThrow();
   });
 });
 

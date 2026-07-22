@@ -330,62 +330,6 @@ describe("backlog insert actions -> insert_board_item", () => {
     };
   }
 
-  describe("quickCreateStory (backlog target, per-group insertion — TASK-36)", () => {
-    function formData(beforeItemId?: string) {
-      const data = new FormData();
-      data.set("project_id", "project-1");
-      data.set("title", "New backlog story");
-      data.set("target", "backlog");
-      if (beforeItemId) {
-        data.set("before_item_id", beforeItemId);
-      }
-      return data;
-    }
-
-    it("forwards a story insert with the title payload and no anchor when none is given", async () => {
-      const { quickCreateStory } = await import("./actions");
-
-      await quickCreateStory(formData());
-
-      expect(insertCall()).toEqual({
-        p_project_id: "project-1",
-        p_kind: "story",
-        p_payload: { title: "New backlog story" },
-        p_anchor: {},
-      });
-    });
-
-    it("passes the before_item_id as the anchor so it lands at that group's bottom", async () => {
-      const { quickCreateStory } = await import("./actions");
-
-      await quickCreateStory(formData("divider:d1"));
-
-      expect(insertCall().p_anchor).toEqual({ before: { kind: "divider", id: "d1" } });
-    });
-
-    it("does not call the RPC for a blank title", async () => {
-      const { quickCreateStory } = await import("./actions");
-      const data = new FormData();
-      data.set("project_id", "project-1");
-      data.set("title", "   ");
-      data.set("target", "backlog");
-
-      await quickCreateStory(data);
-
-      expect(rpcMock).not.toHaveBeenCalled();
-    });
-
-    it("returns the RPC error message instead of throwing it", async () => {
-      rpcResults.insert_board_item = { data: null, error: { message: "Backlog insert failed" } };
-      const { quickCreateStory } = await import("./actions");
-
-      await expect(quickCreateStory(formData())).resolves.toEqual({
-        ok: false,
-        message: "Backlog insert failed",
-      });
-    });
-  });
-
   describe("createBacklogDivider", () => {
     function formData(kind: string, opts?: { label?: string; beforeItemId?: string }) {
       const data = new FormData();
