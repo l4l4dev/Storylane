@@ -3,11 +3,11 @@ id: TASK-147
 title: >-
   Personal project: seal every seam (hide tracker features, block leak paths) +
   dev-only My Tasks debug view
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-22 11:22'
-updated_date: '2026-07-22 12:32'
+updated_date: '2026-07-22 12:33'
 labels: []
 dependencies: []
 priority: high
