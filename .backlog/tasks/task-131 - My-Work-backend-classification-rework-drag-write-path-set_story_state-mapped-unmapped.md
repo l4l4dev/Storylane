@@ -3,7 +3,7 @@ id: TASK-131
 title: >-
   My Work backend: classification rework + drag write-path (set_story_state,
   mapped/unmapped)
-status: In Progress
+status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 12:35'
