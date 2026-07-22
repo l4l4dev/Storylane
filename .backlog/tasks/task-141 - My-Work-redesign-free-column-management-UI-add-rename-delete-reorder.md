@@ -1,11 +1,11 @@
 ---
 id: TASK-141
 title: 'My Work redesign: free-column management UI (add/rename/delete/reorder)'
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-22 08:53'
-updated_date: '2026-07-22 10:04'
+updated_date: '2026-07-22 10:05'
 labels: []
 dependencies:
   - TASK-140
