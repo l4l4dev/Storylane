@@ -8,19 +8,22 @@ import { resolveColumnOrder, type DoneEntry, type MyWorkFreeColumn, type MyWorkP
 
 const saveMyWorkColumnOrder = vi.fn<(order: string[]) => Promise<ActionResult>>(async () => ({ ok: true }));
 const renameMyWorkFixedColumn = vi.fn<(slot: string, name: string) => Promise<ActionResult>>(async () => ({ ok: true }));
+const carryOverToday = vi.fn<(ids: string[], today: string) => Promise<ActionResult>>(async () => ({ ok: true }));
+const dismissCarryOver = vi.fn<(ids: string[]) => Promise<ActionResult>>(async () => ({ ok: true }));
 
-// Only saveMyWorkColumnOrder/renameMyWorkFixedColumn are exercised below (the
-// move-button fallback, doc-17 #7, and the fixed-slot rename follow-up);
+// Only saveMyWorkColumnOrder/renameMyWorkFixedColumn/carryOverToday/
+// dismissCarryOver are exercised below (the move-button fallback, doc-17 #7;
+// the fixed-slot rename follow-up; and the carry-over undo, doc-17 #11);
 // every other action is a stub so a component render never hits the real
 // Supabase server client. vi.mock's factory is hoisted above every top-level
 // const, so the stub must be defined inline here, not referenced.
 vi.mock("@/app/my-work/actions", () => {
   const ok = async () => ({ ok: true });
   return {
-    carryOverToday: ok,
+    carryOverToday: (ids: string[], today: string) => carryOverToday(ids, today),
     createMyWorkColumn: ok,
     deleteMyWorkColumn: ok,
-    dismissCarryOver: ok,
+    dismissCarryOver: (ids: string[]) => dismissCarryOver(ids),
     renameMyWorkColumn: ok,
     renameMyWorkFixedColumn: (slot: string, name: string) => renameMyWorkFixedColumn(slot, name),
     reorderMyWorkColumn: ok,
@@ -98,6 +101,10 @@ describe("MyWorkSections", () => {
     saveMyWorkColumnOrder.mockResolvedValue({ ok: true });
     renameMyWorkFixedColumn.mockClear();
     renameMyWorkFixedColumn.mockResolvedValue({ ok: true });
+    carryOverToday.mockClear();
+    carryOverToday.mockResolvedValue({ ok: true });
+    dismissCarryOver.mockClear();
+    dismissCarryOver.mockResolvedValue({ ok: true });
   });
 
   it("renders Todo, Today, the free columns, then Done", () => {
@@ -196,6 +203,69 @@ describe("MyWorkSections", () => {
   it("prompts to carry over stale Today items", () => {
     renderSections({ assigned: [active("stale", { todayDate: "2020-01-01" })] });
     expect(screen.getByText(/marked Today on an earlier day/)).toBeInTheDocument();
+  });
+
+  // doc-17 #11: a misclick on either carry-over choice used to drop the
+  // whole day's plan with no way back — resolving now offers a brief Undo
+  // that reverses the same action instead of a permanent one-shot choice.
+  it("offers Undo after leaving items in their columns, and Undo carries them over instead", async () => {
+    renderSections({ assigned: [active("stale", { todayDate: "2020-01-01" })] });
+    fireEvent.click(screen.getByRole("button", { name: "Leave in their columns" }));
+    await waitFor(() => expect(dismissCarryOver).toHaveBeenCalledWith(["stale"]));
+
+    expect(screen.getByText(/Left 1 item in their columns/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(carryOverToday).toHaveBeenCalledWith(["stale"], expect.any(String)));
+  });
+
+  it("offers Undo after carrying items over, and Undo leaves them in their columns instead", async () => {
+    renderSections({ assigned: [active("stale", { todayDate: "2020-01-01" })] });
+    fireEvent.click(screen.getByRole("button", { name: "Carry over" }));
+    await waitFor(() => expect(carryOverToday).toHaveBeenCalledWith(["stale"], expect.any(String)));
+
+    expect(screen.getByText(/Carried 1 item over to today/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(dismissCarryOver).toHaveBeenCalledWith(["stale"]));
+  });
+
+  // Regression: carryOverToday/dismissCarryOver both revalidatePath("/my-work"),
+  // which can refresh the `assigned` server prop mid-undo-window — staleToday
+  // would then read empty. The Undo banner must survive that (frozen ids/count
+  // in carryPhase), not disappear the moment the server data catches up.
+  it("keeps the Undo banner (with its frozen item count) even after the server prop no longer shows the item as stale", async () => {
+    const freeColumns = [DOING];
+    const view = render(
+      <MyWorkSections
+        assigned={[active("stale", { todayDate: "2020-01-01" })]}
+        completions={[]}
+        projects={[TEAM_A]}
+        freeColumns={freeColumns}
+        order={resolveColumnOrder([], freeColumns)}
+        serverTodayKey={TODAY}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Leave in their columns" }));
+    await waitFor(() => expect(dismissCarryOver).toHaveBeenCalledWith(["stale"]));
+    expect(screen.getByText(/Left 1 item in their columns/)).toBeInTheDocument();
+
+    // Simulate the post-revalidation server prop: the item's today_date is no
+    // longer in the past (dismissCarryOver already cleared it), so staleToday
+    // would now be empty were it still the source of truth.
+    view.rerender(
+      <MyWorkSections
+        assigned={[active("stale", { todayDate: null })]}
+        completions={[]}
+        projects={[TEAM_A]}
+        freeColumns={freeColumns}
+        order={resolveColumnOrder([], freeColumns)}
+        serverTodayKey={TODAY}
+      />,
+    );
+
+    expect(screen.getByText(/Left 1 item in their columns/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
   });
 
   // doc-17 #9: the decline control used to read "Not today", a generic

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -377,20 +377,55 @@ export function MyWorkSections({
     () => assigned.filter((s) => s.todayDate !== null && s.todayDate < todayKey),
     [assigned, todayKey],
   );
-  const [carryResolved, setCarryResolved] = useState(false);
+  // "prompting" (the yes/no choice) -> "resolved" (a brief undo window,
+  // doc-17 #11: a misclick used to drop the whole day's plan with no way
+  // back) -> "hidden" (collapses like before). `ids`/`carry` are frozen at
+  // the moment of resolution, NOT re-derived from `staleToday` later:
+  // carryOverToday/dismissCarryOver both revalidatePath("/my-work"), which
+  // can refresh the `assigned` server prop out from under this component
+  // before the undo window closes — staleToday would then read empty and
+  // silently drop the Undo affordance (and its ids) mid-window.
+  const [carryPhase, setCarryPhase] = useState<
+    { kind: "prompting" } | { kind: "resolved"; carry: boolean; ids: string[] } | { kind: "hidden" }
+  >({ kind: "prompting" });
   const [isCarrying, startCarry] = useTransition();
 
   function resolveCarryOver(carry: boolean) {
     const ids = staleToday.map((s) => s.id);
-    setCarryResolved(true);
     startCarry(async () => {
       const result = carry ? await carryOverToday(ids, todayKey) : await dismissCarryOver(ids);
       if (!result.ok) {
         setDragError(result.message);
-        setCarryResolved(false);
+        return;
       }
+      setCarryPhase({ kind: "resolved", carry, ids });
     });
   }
+
+  // Toggles to the OTHER resolution for the same frozen ids, rather than
+  // returning to "prompting" — by the time undo runs, the items have already
+  // moved server-side to one of the two valid end states (not back to their
+  // original stale date), so there's nothing left to "prompt" about. This
+  // also means Undo is itself undoable (clicking it again flips back), each
+  // click re-arming the auto-hide window below.
+  function toggleCarryOver(carry: boolean, ids: string[]) {
+    const nextCarry = !carry;
+    startCarry(async () => {
+      const result = nextCarry ? await carryOverToday(ids, todayKey) : await dismissCarryOver(ids);
+      if (!result.ok) {
+        setDragError(result.message);
+        return;
+      }
+      setCarryPhase({ kind: "resolved", carry: nextCarry, ids });
+    });
+  }
+
+  // The undo window: auto-hides a few seconds after resolving if not undone.
+  useEffect(() => {
+    if (carryPhase.kind !== "resolved") return;
+    const timer = setTimeout(() => setCarryPhase((phase) => (phase.kind === "resolved" ? { kind: "hidden" } : phase)), 6000);
+    return () => clearTimeout(timer);
+  }, [carryPhase]);
 
   // The column the dragged card started in, captured at drag-start — NOT
   // re-derived from `containers` at drag-end (handleDragOver already moved the
@@ -675,34 +710,58 @@ export function MyWorkSections({
           than unmounting it — an instant disappearance would jump the columns
           below up and risk a misclick (ux-principles principle 3: a
           warning's appearance/disappearance must not move controls). */}
-      {staleToday.length > 0 && (
+      {/* Shown while there's something to prompt about, OR while still inside
+          the post-resolve undo window — NOT gated on staleToday alone: once
+          resolved, the frozen carryPhase (not the live, possibly-revalidated
+          staleToday) is the source of truth for whether/what to show. */}
+      {(carryPhase.kind === "resolved" || staleToday.length > 0) && (
         <div
-          className={`grid transition-all duration-200 ${carryResolved ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"}`}
+          className={`grid transition-all duration-200 ${carryPhase.kind === "hidden" ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"}`}
         >
           <div className="overflow-hidden">
             <div className="mx-auto mb-4 flex max-w-3xl items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-              <span>
-                {staleToday.length} item{staleToday.length === 1 ? "" : "s"} were marked Today on an earlier day.
-                Carry them over to today?
-              </span>
-              <div className="flex shrink-0 gap-2">
-                <button
-                  type="button"
-                  disabled={isCarrying}
-                  onClick={() => resolveCarryOver(true)}
-                  className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
-                >
-                  Carry over
-                </button>
-                <button
-                  type="button"
-                  disabled={isCarrying}
-                  onClick={() => resolveCarryOver(false)}
-                  className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
-                >
-                  Leave in their columns
-                </button>
-              </div>
+              {carryPhase.kind === "resolved" ? (
+                <>
+                  <span>
+                    {carryPhase.carry
+                      ? `Carried ${carryPhase.ids.length} item${carryPhase.ids.length === 1 ? "" : "s"} over to today.`
+                      : `Left ${carryPhase.ids.length} item${carryPhase.ids.length === 1 ? "" : "s"} in their columns.`}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={isCarrying}
+                    onClick={() => toggleCarryOver(carryPhase.carry, carryPhase.ids)}
+                    className="shrink-0 rounded-md px-2.5 py-1 text-xs font-medium text-primary hover:bg-muted disabled:opacity-50"
+                  >
+                    Undo
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span>
+                    {staleToday.length} item{staleToday.length === 1 ? "" : "s"} were marked Today on an earlier day.
+                    Carry them over to today?
+                  </span>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      disabled={isCarrying}
+                      onClick={() => resolveCarryOver(true)}
+                      className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                    >
+                      Carry over
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isCarrying}
+                      onClick={() => resolveCarryOver(false)}
+                      className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
+                    >
+                      Leave in their columns
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
