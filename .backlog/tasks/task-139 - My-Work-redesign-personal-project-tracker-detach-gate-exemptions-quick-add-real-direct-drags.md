@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 08:52'
-updated_date: '2026-07-22 11:05'
+updated_date: '2026-07-22 11:43'
 labels: []
 dependencies:
   - TASK-138
@@ -28,7 +28,7 @@ doc-15 (advisor-approved). Fixes both 2026-07-22 dogfooding bugs permanently. (1
 - [x] #2 Adding a personal task from My Work works with zero iterations in the personal project (bug 1 fixed); created task lands in Todo assigned to the viewer
 - [x] #3 Personal-task drags to Done/Todo transition the real state (completed_at + story_completions on done; reopen on todo); Today/free-column drags stay local; team stories are never written from My Work
 - [x] #4 Real-done guard scoped to non-personal stories; personal real-done cards can be dragged back to Todo (reopen)
-- [ ] #5 rls-security-reviewer pass on the migration
+- [x] #5 rls-security-reviewer pass on the migration
 - [x] #6 supabase db reset green; pnpm test + lint green (from apps/web/)
 <!-- AC:END -->
 
@@ -37,3 +37,15 @@ doc-15 (advisor-approved). Fixes both 2026-07-22 dogfooding bugs permanently. (1
 <!-- SECTION:NOTES:BEGIN -->
 Done in the continuous 138->140 pass: migration 20260722000008 (set_story_state is_personal exemptions, stays SECURITY INVOKER). MyWorkQuickAdd target unstarted->backlog. Drag write path (my-work/actions.ts): personal Todo/Done -> real set_story_state; team local; team->Done rejected; real-done guard team-only.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-opus-4-8
+created: 2026-07-22 11:43
+---
+rls-security-reviewer finding for THIS migration specifically (set_story_state, 20260722000008_set_story_state_personal_exemptions.sql) — run together with TASK-138's migration in one combined review call on 2026-07-22, but only the my_work_columns findings were recorded on TASK-138's comment #2, leaving this AC unchecked. Recording properly now (TASK-144 follow-up), no re-run needed since the code is unchanged:
+
+Confirmed SECURITY INVOKER via pg_proc.prosecdef = f (never redeclared DEFINER). is_personal is read from projects, which is member-visible under the existing 'members can view their projects' SELECT policy, so no privilege issue reading it under INVOKER — the RLS-based caller gating on the story's FOR UPDATE is preserved exactly as before. The two skipped gates (estimation check, in-progress auto-iteration-assign) are correctly gated behind not coalesce(v_is_personal, false), defaulting CLOSED (i.e. non-personal/full-gate behavior) if the project lookup somehow returns no row — a fail-safe default, not fail-open. No HIGH/MEDIUM/LOW findings.
+---
+<!-- COMMENTS:END -->
