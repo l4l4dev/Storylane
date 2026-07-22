@@ -224,6 +224,17 @@ export function resolveDragEndTarget(
 }
 
 /**
+ * Whether a same-container drop should persist a manual reorder (TASK-145):
+ * Today is the ONLY column with its own card order (doc-15 decision 4 — "the
+ * day's execution order"); Todo/Done/a free column have no order of their own
+ * to persist, matching `resolveDragEndTarget`'s null for every other
+ * same-container drop.
+ */
+export function isTodayReorder(startContainer: MyWorkColumnId | null, overContainer: MyWorkColumnId | null): boolean {
+  return startContainer === "today" && overContainer === "today";
+}
+
+/**
  * Re-derives Todo's per-project header blocks from a (possibly drag-reordered)
  * flat item list, grouping only CONSECUTIVE same-project items. classifyMyWork's
  * own order is already grouped-by-project, so this matches the server order 1:1

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyMyWork,
   groupDoneByDate,
+  isTodayReorder,
   regroupByProject,
   resolveColumnOrder,
   resolveDragEndTarget,
@@ -256,5 +257,29 @@ describe("resolveColumnOrder", () => {
 
   it("ignores an id that isn't a known slot", () => {
     expect(resolveColumnOrder(["bogus", "todo", "today", "done"], [])).toEqual(["todo", "today", "done"]);
+  });
+});
+
+// TASK-145: Today is the only column with its own persisted card order
+// (doc-15 decision 4) — every other same-container drop stays a true no-op.
+describe("isTodayReorder", () => {
+  it("is true for a same-container drop within Today", () => {
+    expect(isTodayReorder("today", "today")).toBe(true);
+  });
+
+  it("is false for a same-container drop within any other column", () => {
+    expect(isTodayReorder("todo", "todo")).toBe(false);
+    expect(isTodayReorder("done", "done")).toBe(false);
+    expect(isTodayReorder("doing", "doing")).toBe(false);
+  });
+
+  it("is false when the container actually changed (not a reorder)", () => {
+    expect(isTodayReorder("today", "todo")).toBe(false);
+    expect(isTodayReorder("todo", "today")).toBe(false);
+  });
+
+  it("is false when either side is unknown", () => {
+    expect(isTodayReorder(null, "today")).toBe(false);
+    expect(isTodayReorder("today", null)).toBe(false);
   });
 });

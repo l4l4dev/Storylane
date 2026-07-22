@@ -16,12 +16,14 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { addDays } from "@storylane/core";
-import { carryOverToday, dismissCarryOver, setMyWorkColumn } from "@/app/my-work/actions";
+import { carryOverToday, dismissCarryOver, reorderMyWorkToday, setMyWorkColumn } from "@/app/my-work/actions";
 import { findContainer, moveBetweenContainers, storyById } from "@/lib/utils/board";
+import { reorderContainer } from "@/lib/utils/board-dnd";
 import { formatDate, localTodayKey } from "@/lib/utils/format";
 import {
   classifyMyWork,
   groupDoneByDate,
+  isTodayReorder,
   regroupByProject,
   resolveDragEndTarget,
   toDragContainers,
@@ -95,9 +97,11 @@ function FlatColumn({ id, title, items }: { id: MyWorkColumnId; title: string; i
 // midnight — doc-15's 09:00 JST boundary note). Reuses this repo's board drag
 // machinery (dnd-kit + useOptimisticBoardOrder + board.ts container helpers).
 //
-// A My Work drag only changes column MEMBERSHIP (no persisted within-column
-// order except Today's, written from the drop server-side), so onDragEnd just
-// calls setMyWorkColumn(storyId, targetColumn) once the container changes.
+// A My Work drag mostly changes column MEMBERSHIP — onDragEnd calls
+// setMyWorkColumn(storyId, targetColumn) once the container changes. Today is
+// the one column with its own persisted card order (doc-15 decision 4): a
+// same-container drop THERE reorders and writes today_position (TASK-145),
+// handled as a separate branch (isTodayReorder) before the cross-column path.
 export function MyWorkSections({
   assigned,
   completions,
@@ -201,6 +205,25 @@ export function MyWorkSections({
       revertToSnapshot();
       return;
     }
+
+    if (isTodayReorder(startContainer, overContainer)) {
+      // reorderContainer no-ops (returns an equivalent copy) when over.id isn't
+      // a real neighbour (e.g. dropped on the column's own empty padding) or
+      // the index didn't change — safe to always attempt.
+      const reordered = reorderContainer(containers.today ?? [], draggedId, String(over.id));
+      setContainers((prev) => ({ ...prev, today: reordered }));
+      setDragError(null);
+      runDrop(
+        draggedId,
+        async () => {
+          const result = await reorderMyWorkToday(reordered.map((i) => i.storyId));
+          if (!result.ok) throw new Error(result.message);
+        },
+        setDragError,
+      );
+      return;
+    }
+
     const target = resolveDragEndTarget(startContainer, overContainer);
     if (!target) {
       // Dropped back in the column it started in — nothing to persist.

@@ -136,6 +136,40 @@ export async function dismissCarryOver(storyIds: string[]): Promise<ActionResult
 }
 
 /**
+ * Persists a manual reorder WITHIN Today (doc-15 decision 4: "Cards inside
+ * Today are manually orderable" — the day's execution order). `orderedStoryIds`
+ * is the viewer's full Today list in its new order; each gets a dense 0-based
+ * today_position, mirroring TASK-135's iteration-wide position backfill — a
+ * full re-densify keeps the write simple for a list this small and single-
+ * user, no anchor/midpoint bookkeeping needed.
+ *
+ * Only `today_position` is named in the upsert payload, so column_id/
+ * today_date are left untouched on the existing rows (the established
+ * partial-upsert behavior this file's other marks already rely on) — a
+ * reorder never changes which day or which free column a card belongs to.
+ */
+export async function reorderMyWorkToday(orderedStoryIds: string[]): Promise<ActionResult> {
+  if (orderedStoryIds.length === 0) return { ok: true };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+  const { error } = await supabase.from("my_work_story_state").upsert(
+    orderedStoryIds.map((storyId, index) => ({
+      user_id: user.id,
+      story_id: storyId,
+      today_position: index,
+      updated_at: new Date().toISOString(),
+    })),
+    { onConflict: "user_id,story_id" },
+  );
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/my-work");
+  return { ok: true };
+}
+
+/**
  * Adds a free column (TASK-141, doc-15: "add/rename/delete/reorder"). Lands at
  * the end of the user's own columns (`position` = current max + 1) — its place
  * in the combined display order (which also covers Todo/Today/Done) is a

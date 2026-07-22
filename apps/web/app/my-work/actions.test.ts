@@ -18,7 +18,10 @@ let columnRowFound: boolean;
 let profileRowFound: boolean;
 
 const rpcMock = vi.fn<(name: string, args: unknown) => { error: { message: string } | null }>(() => ({ error: null }));
-const upsertMock = vi.fn<(row: Record<string, unknown>) => { error: { message: string } | null }>(() => ({ error: null }));
+// A single row (most marks) or a batch (reorderMyWorkToday's array upsert).
+const upsertMock = vi.fn<(row: Record<string, unknown> | Record<string, unknown>[]) => { error: { message: string } | null }>(
+  () => ({ error: null }),
+);
 const updateMock = vi.fn<(row: Record<string, unknown>) => { error: { message: string } | null }>(() => ({ error: null }));
 const insertColumnMock = vi.fn<(row: Record<string, unknown>) => { error: { message: string } | null }>(() => ({ error: null }));
 const updateColumnMock = vi.fn<(row: Record<string, unknown>) => void>(() => {});
@@ -112,7 +115,7 @@ vi.mock("@/lib/supabase/server", () => ({
               data: maxTodayPosition === null ? null : { today_position: maxTodayPosition },
               error: null,
             })),
-            upsert: (row: Record<string, unknown>) => Promise.resolve(upsertMock(row)),
+            upsert: (row: Record<string, unknown> | Record<string, unknown>[]) => Promise.resolve(upsertMock(row)),
             update: (row: Record<string, unknown>) => updateChain(row),
           };
         default:
@@ -128,6 +131,7 @@ import {
   deleteMyWorkColumn,
   dismissCarryOver,
   renameMyWorkColumn,
+  reorderMyWorkToday,
   saveMyWorkColumnOrder,
   setMyWorkColumn,
 } from "./actions";
@@ -336,5 +340,36 @@ describe("saveMyWorkColumnOrder", () => {
     profileRowFound = false;
     const result = await saveMyWorkColumnOrder(["todo"]);
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("reorderMyWorkToday", () => {
+  it("writes a dense 0-based today_position for the given order", async () => {
+    const result = await reorderMyWorkToday(["s2", "s1", "s3"]);
+    expect(result).toEqual({ ok: true });
+    expect(upsertMock).toHaveBeenCalledWith([
+      expect.objectContaining({ user_id: "u1", story_id: "s2", today_position: 0 }),
+      expect.objectContaining({ user_id: "u1", story_id: "s1", today_position: 1 }),
+      expect.objectContaining({ user_id: "u1", story_id: "s3", today_position: 2 }),
+    ]);
+  });
+
+  it("does not name column_id or today_date, so an existing row's column/day is untouched", async () => {
+    await reorderMyWorkToday(["s1"]);
+    const row = (upsertMock.mock.calls[0][0] as Record<string, unknown>[])[0];
+    expect(row).not.toHaveProperty("column_id");
+    expect(row).not.toHaveProperty("today_date");
+  });
+
+  it("no-ops on an empty list (no DB call)", async () => {
+    const result = await reorderMyWorkToday([]);
+    expect(result).toEqual({ ok: true });
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a write error", async () => {
+    upsertMock.mockReturnValueOnce({ error: { message: "boom" } });
+    const result = await reorderMyWorkToday(["s1"]);
+    expect(result).toEqual({ ok: false, message: "boom" });
   });
 });
