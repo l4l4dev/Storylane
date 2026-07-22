@@ -3,6 +3,7 @@ import {
   classifyMyWork,
   groupDoneByDate,
   regroupByProject,
+  resolveColumnOrder,
   resolveDragEndTarget,
   toDragContainers,
   type DoneEntry,
@@ -223,5 +224,37 @@ describe("resolveDragEndTarget", () => {
   });
   it("returns null when the drop target is unknown", () => {
     expect(resolveDragEndTarget("todo", null)).toBeNull();
+  });
+});
+
+describe("resolveColumnOrder", () => {
+  it("defaults to todo, today, free columns by position, done when nothing is stored", () => {
+    expect(resolveColumnOrder([], [WAITING, DOING])).toEqual(["todo", "today", "doing", "waiting", "done"]);
+  });
+
+  it("uses the stored order verbatim when it already covers everything", () => {
+    expect(resolveColumnOrder(["done", "doing", "today", "todo"], [DOING])).toEqual(["done", "doing", "today", "todo"]);
+  });
+
+  it("drops a stale id (a deleted free column) from the stored order", () => {
+    expect(resolveColumnOrder(["todo", "gone", "today", "done"], [])).toEqual(["todo", "today", "done"]);
+  });
+
+  it("appends a newly added free column not yet in the stored order", () => {
+    expect(resolveColumnOrder(["todo", "today", "doing", "done"], [DOING, WAITING])).toEqual([
+      "todo",
+      "today",
+      "doing",
+      "done",
+      "waiting",
+    ]);
+  });
+
+  it("de-dupes a repeated id in the stored order", () => {
+    expect(resolveColumnOrder(["todo", "todo", "today", "done"], [])).toEqual(["todo", "today", "done"]);
+  });
+
+  it("ignores an id that isn't a known slot", () => {
+    expect(resolveColumnOrder(["bogus", "todo", "today", "done"], [])).toEqual(["todo", "today", "done"]);
   });
 });

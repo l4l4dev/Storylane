@@ -103,12 +103,16 @@ export function MyWorkSections({
   completions,
   projects,
   freeColumns,
+  order,
   serverTodayKey,
 }: {
   assigned: MyWorkStory<MyWorkRowData>[];
   completions: DoneEntry<MyWorkRowData>[];
   projects: MyWorkProject[];
   freeColumns: MyWorkFreeColumn[];
+  // The viewer's full column display order (TASK-141) — resolveColumnOrder's
+  // output, already merged against the live free-column set by the page.
+  order: string[];
   serverTodayKey: string;
 }) {
   const todayKey = useSyncExternalStore(NOOP_SUBSCRIBE, localTodayKey, () => serverTodayKey);
@@ -215,6 +219,53 @@ export function MyWorkSections({
 
   const activeItem = activeId ? storyById(containers, activeId) : undefined;
   const isEmpty = totalCount === 0;
+  const freeColumnById = new Map(freeColumns.map((c) => [c.id, c]));
+
+  // Todo/Done keep their specialized grouped rendering (per-project / per-date
+  // headers); Today and every free column are plain FlatColumns. `order`
+  // (TASK-141) decides only the LEFT-TO-RIGHT sequence — the droppable hooks
+  // for todo/done stay unconditional above regardless of where they render.
+  const todoColumn = (
+    <MyWorkColumnShell key="todo" title="Todo" count={(containers.todo ?? []).length}>
+      <SortableContext items={(containers.todo ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
+        <div ref={setTodoRef} className="flex min-h-10 flex-1 flex-col gap-3">
+          {todoGroups.map((group) => (
+            <div key={group.projectId}>
+              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.projectName}</h3>
+              <ul className="flex flex-col gap-1.5">
+                {group.items.map((item) => (
+                  <SortableItem key={item.id} id={item.id}>
+                    <MyWorkRow story={item.row} />
+                  </SortableItem>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </SortableContext>
+    </MyWorkColumnShell>
+  );
+
+  const doneColumn = (
+    <MyWorkColumnShell key="done" title="Done" count={(containers.done ?? []).length}>
+      <SortableContext items={(containers.done ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
+        <div ref={setDoneRef} className="flex min-h-10 flex-1 flex-col gap-3">
+          {doneGroups.map((group) => (
+            <div key={group.dateKey}>
+              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{doneDateLabel(group.dateKey, todayKey)}</h3>
+              <ul className="flex flex-col gap-1.5">
+                {group.stories.map((item) => (
+                  <SortableItem key={item.id} id={item.id}>
+                    <MyWorkRow story={item.row} completedAt={item.completedAt} />
+                  </SortableItem>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </SortableContext>
+    </MyWorkColumnShell>
+  );
 
   return (
     <DndContext
@@ -280,49 +331,14 @@ export function MyWorkSections({
       )}
 
       <div className="flex gap-3 overflow-x-auto pb-2">
-        <MyWorkColumnShell title="Todo" count={(containers.todo ?? []).length}>
-          <SortableContext items={(containers.todo ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
-            <div ref={setTodoRef} className="flex min-h-10 flex-1 flex-col gap-3">
-              {todoGroups.map((group) => (
-                <div key={group.projectId}>
-                  <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.projectName}</h3>
-                  <ul className="flex flex-col gap-1.5">
-                    {group.items.map((item) => (
-                      <SortableItem key={item.id} id={item.id}>
-                        <MyWorkRow story={item.row} />
-                      </SortableItem>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </SortableContext>
-        </MyWorkColumnShell>
-
-        <FlatColumn id="today" title="Today" items={containers.today ?? []} />
-
-        {freeColumns.map((column) => (
-          <FlatColumn key={column.id} id={column.id} title={column.name} items={containers[column.id] ?? []} />
-        ))}
-
-        <MyWorkColumnShell title="Done" count={(containers.done ?? []).length}>
-          <SortableContext items={(containers.done ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
-            <div ref={setDoneRef} className="flex min-h-10 flex-1 flex-col gap-3">
-              {doneGroups.map((group) => (
-                <div key={group.dateKey}>
-                  <h3 className="mb-2 text-xs font-medium text-muted-foreground">{doneDateLabel(group.dateKey, todayKey)}</h3>
-                  <ul className="flex flex-col gap-1.5">
-                    {group.stories.map((item) => (
-                      <SortableItem key={item.id} id={item.id}>
-                        <MyWorkRow story={item.row} completedAt={item.completedAt} />
-                      </SortableItem>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </SortableContext>
-        </MyWorkColumnShell>
+        {order.map((slotId) => {
+          if (slotId === "todo") return todoColumn;
+          if (slotId === "today") return <FlatColumn key="today" id="today" title="Today" items={containers.today ?? []} />;
+          if (slotId === "done") return doneColumn;
+          const column = freeColumnById.get(slotId);
+          if (!column) return null; // stale id — resolveColumnOrder already drops these server-side
+          return <FlatColumn key={column.id} id={column.id} title={column.name} items={containers[column.id] ?? []} />;
+        })}
       </div>
 
       {/* Portal-rendered so the dragged card floats above every column instead

@@ -3,11 +3,11 @@ id: TASK-138
 title: >-
   My Work redesign: my_work_columns + story-state reshape + mapping drop (doc-15
   schema)
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 08:52'
-updated_date: '2026-07-22 09:43'
+updated_date: '2026-07-22 09:45'
 labels: []
 dependencies:
   - TASK-131

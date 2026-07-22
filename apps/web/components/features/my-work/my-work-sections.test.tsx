@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { MyWorkSections } from "./my-work-sections";
 import type { MyWorkRowData } from "./my-work-row";
 import { localTodayKey } from "@/lib/utils/format";
-import type { DoneEntry, MyWorkFreeColumn, MyWorkProject, MyWorkStory } from "@/lib/utils/my-work";
+import { resolveColumnOrder, type DoneEntry, type MyWorkFreeColumn, type MyWorkProject, type MyWorkStory } from "@/lib/utils/my-work";
 
 const TODAY = localTodayKey();
 const TEAM_A: MyWorkProject = { id: "team-a", name: "Alpha", isPersonal: false };
@@ -37,13 +37,16 @@ function renderSections(props: {
   completions?: DoneEntry<MyWorkRowData>[];
   projects?: MyWorkProject[];
   freeColumns?: MyWorkFreeColumn[];
+  order?: string[];
 }) {
+  const freeColumns = props.freeColumns ?? [DOING];
   return render(
     <MyWorkSections
       assigned={props.assigned ?? []}
       completions={props.completions ?? []}
       projects={props.projects ?? [TEAM_A]}
-      freeColumns={props.freeColumns ?? [DOING]}
+      freeColumns={freeColumns}
+      order={props.order ?? resolveColumnOrder([], freeColumns)}
       serverTodayKey={TODAY}
     />,
   );
@@ -106,5 +109,19 @@ describe("MyWorkSections", () => {
   it("prompts to carry over stale Today items", () => {
     renderSections({ assigned: [active("stale", { todayDate: "2020-01-01" })] });
     expect(screen.getByText(/marked Today on an earlier day/)).toBeInTheDocument();
+  });
+
+  // TASK-141: the column display order (including the fixed slots) is
+  // caller-supplied, not hardcoded.
+  it("renders columns in the given custom order", () => {
+    renderSections({ order: ["done", "doing", "today", "todo"] });
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual(["Done", "Doing", "Today", "Todo"]);
+  });
+
+  it("skips an order entry whose free column no longer exists", () => {
+    renderSections({ order: ["todo", "today", "stale-column-id", "done"] });
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual(["Todo", "Today", "Done"]);
   });
 });

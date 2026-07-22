@@ -11,10 +11,19 @@ let categoryByStateId: Record<string, string>;
 let lowestByCategory: Record<string, string | null>;
 let ownedColumns: Set<string>;
 let maxTodayPosition: number | null;
+// Backs createMyWorkColumn's max-position lookup, and whether the targeted
+// my_work_columns / profiles row is found (RLS-filtered to 0 rows otherwise).
+let maxColumnPosition: number | null;
+let columnRowFound: boolean;
+let profileRowFound: boolean;
 
 const rpcMock = vi.fn<(name: string, args: unknown) => { error: { message: string } | null }>(() => ({ error: null }));
 const upsertMock = vi.fn<(row: Record<string, unknown>) => { error: { message: string } | null }>(() => ({ error: null }));
 const updateMock = vi.fn<(row: Record<string, unknown>) => { error: { message: string } | null }>(() => ({ error: null }));
+const insertColumnMock = vi.fn<(row: Record<string, unknown>) => { error: { message: string } | null }>(() => ({ error: null }));
+const updateColumnMock = vi.fn<(row: Record<string, unknown>) => void>(() => {});
+const deleteColumnMock = vi.fn<() => void>(() => {});
+const updateProfileMock = vi.fn<(row: Record<string, unknown>) => void>(() => {});
 
 type Query = { select: string; filters: Record<string, unknown> };
 
@@ -42,6 +51,17 @@ function updateChain(row: Record<string, unknown>) {
   return self;
 }
 
+// A chainable that resolves once a terminal .select() is called — the
+// update()/delete() row-affected pattern (assertRowAffected checks the
+// resolved row array's length).
+function mutationChain(resolve: () => { data: unknown; error: unknown }) {
+  const self = {
+    eq: () => self,
+    select: () => Promise.resolve(resolve()),
+  };
+  return self;
+}
+
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     auth: { getUser: () => Promise.resolve({ data: { user: { id: "u1" } } }) },
@@ -61,10 +81,31 @@ vi.mock("@/lib/supabase/server", () => ({
             return { data: id ? { id } : null, error: null };
           });
         case "my_work_columns":
-          return node((q) => ({
-            data: ownedColumns.has(q.filters.id as string) && q.filters.user_id === "u1" ? { id: q.filters.id } : null,
-            error: null,
-          }));
+          return {
+            select: (s: string) =>
+              s === "position"
+                ? node(() => ({ data: maxColumnPosition === null ? null : { position: maxColumnPosition }, error: null }))
+                : node((q) => ({
+                    data: ownedColumns.has(q.filters.id as string) && q.filters.user_id === "u1" ? { id: q.filters.id } : null,
+                    error: null,
+                  })),
+            insert: (row: Record<string, unknown>) => Promise.resolve(insertColumnMock(row)),
+            update: (row: Record<string, unknown>) => {
+              updateColumnMock(row);
+              return mutationChain(() => ({ data: columnRowFound ? [{ id: "col-x" }] : [], error: null }));
+            },
+            delete: () => {
+              deleteColumnMock();
+              return mutationChain(() => ({ data: columnRowFound ? [{ id: "col-x" }] : [], error: null }));
+            },
+          };
+        case "profiles":
+          return {
+            update: (row: Record<string, unknown>) => {
+              updateProfileMock(row);
+              return mutationChain(() => ({ data: profileRowFound ? [{ id: "u1" }] : [], error: null }));
+            },
+          };
         case "my_work_story_state":
           return {
             select: () => node(() => ({
@@ -81,7 +122,15 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-import { carryOverToday, dismissCarryOver, setMyWorkColumn } from "./actions";
+import {
+  carryOverToday,
+  createMyWorkColumn,
+  deleteMyWorkColumn,
+  dismissCarryOver,
+  renameMyWorkColumn,
+  saveMyWorkColumnOrder,
+  setMyWorkColumn,
+} from "./actions";
 
 const TODAY = "2026-07-22";
 
@@ -91,12 +140,20 @@ beforeEach(() => {
   lowestByCategory = { unstarted: "unstarted-state", done: "done-state" };
   ownedColumns = new Set(["col-doing"]);
   maxTodayPosition = null;
+  maxColumnPosition = null;
+  columnRowFound = true;
+  profileRowFound = true;
   rpcMock.mockClear();
   rpcMock.mockReturnValue({ error: null });
   upsertMock.mockClear();
   upsertMock.mockReturnValue({ error: null });
   updateMock.mockClear();
   updateMock.mockReturnValue({ error: null });
+  insertColumnMock.mockClear();
+  insertColumnMock.mockReturnValue({ error: null });
+  updateColumnMock.mockClear();
+  deleteColumnMock.mockClear();
+  updateProfileMock.mockClear();
 });
 
 describe("setMyWorkColumn — personal project (real-state direct)", () => {
@@ -207,5 +264,77 @@ describe("carry-over", () => {
     await carryOverToday([], TODAY);
     await dismissCarryOver([]);
     expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("createMyWorkColumn", () => {
+  it("inserts at position max+1 for the viewer's existing columns", async () => {
+    maxColumnPosition = 2;
+    const result = await createMyWorkColumn("Waiting");
+    expect(result).toEqual({ ok: true });
+    expect(insertColumnMock).toHaveBeenCalledWith({ user_id: "u1", name: "Waiting", position: 3 });
+  });
+
+  it("starts at position 0 when the viewer has no columns yet", async () => {
+    maxColumnPosition = null;
+    await createMyWorkColumn("Waiting");
+    expect(insertColumnMock).toHaveBeenCalledWith(expect.objectContaining({ position: 0 }));
+  });
+
+  it("trims the name and rejects a blank one without hitting the DB", async () => {
+    const result = await createMyWorkColumn("   ");
+    expect(result.ok).toBe(false);
+    expect(insertColumnMock).not.toHaveBeenCalled();
+
+    await createMyWorkColumn("  Waiting  ");
+    expect(insertColumnMock).toHaveBeenCalledWith(expect.objectContaining({ name: "Waiting" }));
+  });
+});
+
+describe("renameMyWorkColumn", () => {
+  it("updates the column's name", async () => {
+    const result = await renameMyWorkColumn("col-doing", "In progress");
+    expect(result).toEqual({ ok: true });
+    expect(updateColumnMock).toHaveBeenCalledWith({ name: "In progress" });
+  });
+
+  it("rejects a blank name without hitting the DB", async () => {
+    const result = await renameMyWorkColumn("col-doing", "   ");
+    expect(result.ok).toBe(false);
+    expect(updateColumnMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a not-found/RLS-filtered row as an error instead of a silent success", async () => {
+    columnRowFound = false;
+    const result = await renameMyWorkColumn("not-mine", "New name");
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("deleteMyWorkColumn", () => {
+  it("deletes the column (its cards fall back to Todo via the composite FK, no app logic needed)", async () => {
+    const result = await deleteMyWorkColumn("col-doing");
+    expect(result).toEqual({ ok: true });
+    expect(deleteColumnMock).toHaveBeenCalled();
+  });
+
+  it("surfaces a not-found/RLS-filtered row as an error", async () => {
+    columnRowFound = false;
+    const result = await deleteMyWorkColumn("not-mine");
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("saveMyWorkColumnOrder", () => {
+  it("writes the given order to the viewer's profile", async () => {
+    const result = await saveMyWorkColumnOrder(["done", "todo", "today", "col-doing"]);
+    expect(result).toEqual({ ok: true });
+    expect(updateProfileMock).toHaveBeenCalledWith({ my_work_column_order: ["done", "todo", "today", "col-doing"] });
+  });
+
+  it("surfaces a not-found/RLS-filtered row as an error", async () => {
+    profileRowFound = false;
+    const result = await saveMyWorkColumnOrder(["todo"]);
+    expect(result.ok).toBe(false);
   });
 });

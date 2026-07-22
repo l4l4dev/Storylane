@@ -1,9 +1,10 @@
 import { addDays } from "@storylane/core";
 import { createClient } from "@/lib/supabase/server";
 import { utcTodayKey } from "@/lib/utils/format";
-import type { DoneEntry, MyWorkFreeColumn, MyWorkProject, MyWorkStory } from "@/lib/utils/my-work";
+import { resolveColumnOrder, type DoneEntry, type MyWorkFreeColumn, type MyWorkProject, type MyWorkStory } from "@/lib/utils/my-work";
 import { pointScaleValues, storyStateBadge } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
+import { MyWorkColumnManager } from "@/components/features/my-work/my-work-column-manager";
 import { MyWorkSections } from "@/components/features/my-work/my-work-sections";
 import type { MyWorkRowData } from "@/components/features/my-work/my-work-row";
 import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add";
@@ -55,6 +56,7 @@ export default async function MyWorkPage() {
     { data: myStateRows },
     { data: columnRows },
     { data: completionRows },
+    { data: profileRow },
     { data: soloEpics },
     { data: soloLabels },
     { data: soloMembers },
@@ -99,6 +101,9 @@ export default async function MyWorkPage() {
           .gte("completed_at", doneSince)
           .order("completed_at", { ascending: false })
       : Promise.resolve({ data: null }),
+    // The viewer's saved column display order (TASK-141) — merged read-side
+    // against the live free-column set by resolveColumnOrder below.
+    user ? supabase.from("profiles").select("my_work_column_order").eq("id", user.id).single() : Promise.resolve({ data: null }),
     soloPersonalProject
       ? supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position")
       : Promise.resolve({ data: null }),
@@ -130,6 +135,7 @@ export default async function MyWorkPage() {
     name: c.name,
     position: c.position,
   }));
+  const columnOrder = resolveColumnOrder(profileRow?.my_work_column_order ?? [], freeColumns);
 
   const myStateByStoryId = new Map((myStateRows ?? []).map((r) => [r.story_id, r] as const));
 
@@ -204,11 +210,14 @@ export default async function MyWorkPage() {
         </div>
       )}
 
+      {user && <MyWorkColumnManager order={columnOrder} freeColumns={freeColumns} />}
+
       <MyWorkSections
         assigned={assigned}
         completions={completions}
         projects={projects}
         freeColumns={freeColumns}
+        order={columnOrder}
         serverTodayKey={utcTodayKey()}
       />
     </main>

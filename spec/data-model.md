@@ -163,7 +163,15 @@ structural slots, everything else (the pre-seeded `Doing` + any the user adds)
 is a row here, ordered by `position`. Local by definition: free columns never
 touch a project board. `unique (user_id, id)` is the target of
 `my_work_story_state`'s composite FK below, so a card can't point at another
-user's column.
+user's column. `position` only orders new free columns among themselves at
+creation — the visible left-to-right board order (fixed slots included) is
+`profiles.my_work_column_order` (TASK-141, doc-15), a per-user `text[]` of
+slot ids (`'todo'` / `'today'` / `'done'` / a `my_work_columns` uuid), read-side
+merged against the live free-column set (`resolveColumnOrder` in
+`lib/utils/my-work.ts`) so a stale (deleted) id is dropped and a not-yet-
+ordered one is appended in its default position — no migration needed when a
+column is added or removed. No new RLS: `profiles`' existing own-row UPDATE
+policy already covers writing this column.
 ```sql
 my_work_columns (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),

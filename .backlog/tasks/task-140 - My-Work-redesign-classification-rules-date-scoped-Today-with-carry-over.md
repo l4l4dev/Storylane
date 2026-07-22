@@ -1,11 +1,11 @@
 ---
 id: TASK-140
 title: 'My Work redesign: classification rules + date-scoped Today with carry-over'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 08:53'
-updated_date: '2026-07-22 09:43'
+updated_date: '2026-07-22 09:45'
 labels: []
 dependencies:
   - TASK-138

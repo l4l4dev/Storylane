@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { assertRowAffected } from "@/lib/supabase/assert";
 import type { ActionResult } from "@/lib/types";
 import type { MyWorkColumnId } from "@/lib/utils/my-work";
 
@@ -130,6 +131,106 @@ export async function dismissCarryOver(storyIds: string[]): Promise<ActionResult
     .eq("user_id", user.id)
     .in("story_id", storyIds);
   if (error) return { ok: false, message: error.message };
+  revalidatePath("/my-work");
+  return { ok: true };
+}
+
+/**
+ * Adds a free column (TASK-141, doc-15: "add/rename/delete/reorder"). Lands at
+ * the end of the user's own columns (`position` = current max + 1) — its place
+ * in the combined display order (which also covers Todo/Today/Done) is a
+ * separate concern, resolved read-side by resolveColumnOrder appending any
+ * column not yet in the stored order.
+ */
+export async function createMyWorkColumn(name: string): Promise<ActionResult> {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, message: "Name is required" };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+
+  const { data: maxRow } = await supabase
+    .from("my_work_columns")
+    .select("position")
+    .eq("user_id", user.id)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const position = (maxRow?.position ?? -1) + 1;
+
+  const { error } = await supabase.from("my_work_columns").insert({ user_id: user.id, name: trimmed, position });
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/my-work");
+  return { ok: true };
+}
+
+export async function renameMyWorkColumn(columnId: string, name: string): Promise<ActionResult> {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, message: "Name is required" };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+
+  try {
+    await assertRowAffected(
+      await supabase.from("my_work_columns").update({ name: trimmed }).eq("id", columnId).eq("user_id", user.id).select("id"),
+    );
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Failed to rename" };
+  }
+  revalidatePath("/my-work");
+  return { ok: true };
+}
+
+/**
+ * Deletes a free column. Its cards fall back to Todo with no extra app logic:
+ * the composite FK's `on delete set null (column_id)` (20260722000007) nulls
+ * only column_id on every my_work_story_state row that pointed at it.
+ */
+export async function deleteMyWorkColumn(columnId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+
+  try {
+    await assertRowAffected(
+      await supabase.from("my_work_columns").delete().eq("id", columnId).eq("user_id", user.id).select("id"),
+    );
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Failed to delete" };
+  }
+  revalidatePath("/my-work");
+  return { ok: true };
+}
+
+/**
+ * Persists the viewer's full column display order (TASK-141, doc-15: "the
+ * order covers the three fixed slots too"). The client computes the new order
+ * by swapping two adjacent slot ids (see resolveColumnOrder for how a stored
+ * order is read back); this just writes it verbatim — read-side merging
+ * against the live column set (resolveColumnOrder) keeps a stale or missing id
+ * harmless, so no validation is needed here.
+ */
+export async function saveMyWorkColumnOrder(order: string[]): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+
+  try {
+    await assertRowAffected(
+      await supabase.from("profiles").update({ my_work_column_order: order }).eq("id", user.id).select("id"),
+    );
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Failed to save order" };
+  }
   revalidatePath("/my-work");
   return { ok: true };
 }

@@ -448,6 +448,7 @@ export type Database = {
           display_name: string
           id: string
           is_agent: boolean
+          my_work_column_order: string[]
           username: string
         }
         Insert: {
@@ -456,6 +457,7 @@ export type Database = {
           display_name: string
           id: string
           is_agent?: boolean
+          my_work_column_order?: string[]
           username: string
         }
         Update: {
@@ -464,6 +466,7 @@ export type Database = {
           display_name?: string
           id?: string
           is_agent?: boolean
+          my_work_column_order?: string[]
           username?: string
         }
         Relationships: []

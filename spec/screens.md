@@ -368,7 +368,14 @@ board's own drag machinery (dnd-kit sensors, optimistic per-card revert on a
 failed drop). It is a **purely personal board** (doc-15): placement is manual
 and there is no project-board mapping. My Work keeps its own marks per
 (user, story) in `my_work_story_state`, and each user's free columns live in
-`my_work_columns` (`Doing` pre-seeded; add/rename/delete/reorder is TASK-141).
+`my_work_columns` (`Doing` pre-seeded). A collapsed-by-default "Manage
+columns" panel (TASK-141) lets the user add/rename/delete free columns and
+reorder **every** column — the fixed Todo/Today/Done slots included — via
+up/down arrows (mirroring project Settings' States reorder pattern, not a
+second drag surface). The full left-to-right order is one per-user list
+(`profiles.my_work_column_order`, a slot-id array) merged read-side against
+the live free-column set, so a deleted or not-yet-ordered column degrades
+gracefully with no migration needed per change.
 
 Done is an **additive log**, evaluated independently:
 

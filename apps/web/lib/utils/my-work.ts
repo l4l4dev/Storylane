@@ -269,3 +269,39 @@ export function groupDoneByDate<S extends DoneStory>(stories: readonly S[]): Don
       stories: [...groupStories].sort((a, b) => b.completedAt.localeCompare(a.completedAt)),
     }));
 }
+
+// The three structural slots in their default relative order, interleaved with
+// free columns (by their own `position`) between Today and Done.
+function defaultOrder(freeColumns: readonly MyWorkFreeColumn[]): string[] {
+  const sortedFree = [...freeColumns].sort((a, b) => a.position - b.position).map((c) => c.id);
+  return ["todo", "today", ...sortedFree, "done"];
+}
+
+/**
+ * Resolves the viewer's full column display order (doc-15 TASK-141: "the
+ * order covers the three fixed slots too — per-user ordered list, mechanism
+ * free"). `stored` is `profiles.my_work_column_order` as written by the last
+ * reorder; it's read-side merged against the LIVE free column set so the
+ * order never needs its own migration when a column is added or deleted:
+ * stale ids (a deleted column) are dropped, and any id not yet in `stored`
+ * (a newly added column, or a user who has never reordered anything) is
+ * appended in its default position.
+ */
+export function resolveColumnOrder(stored: readonly string[], freeColumns: readonly MyWorkFreeColumn[]): string[] {
+  const validIds = new Set<string>(["todo", "today", "done", ...freeColumns.map((c) => c.id)]);
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const id of stored) {
+    if (validIds.has(id) && !seen.has(id)) {
+      order.push(id);
+      seen.add(id);
+    }
+  }
+  for (const id of defaultOrder(freeColumns)) {
+    if (!seen.has(id)) {
+      order.push(id);
+      seen.add(id);
+    }
+  }
+  return order;
+}

@@ -3,11 +3,11 @@ id: TASK-139
 title: >-
   My Work redesign: personal-project tracker detach (gate exemptions, quick-add,
   real-direct drags)
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 08:52'
-updated_date: '2026-07-22 09:41'
+updated_date: '2026-07-22 09:45'
 labels: []
 dependencies:
   - TASK-138
