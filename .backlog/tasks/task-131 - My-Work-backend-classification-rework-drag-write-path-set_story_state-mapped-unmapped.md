@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-22 02:17'
+updated_date: '2026-07-22 02:21'
 labels: []
 dependencies:
   - TASK-130
@@ -37,6 +37,20 @@ doc-14 (My Work Kanban rework). Replaces buildMyWorkSections with the new 4-colu
 - [ ] #11 ROUND-4 (advisor-approved 2026-07-22, resolves the TASK-130-review gap): Done is an ADDITIVE axis, not exclusive — a story with any story_completions row for the viewer ALWAYS shows as Done (one entry per row), AND unmapped-project local_status='done' also classifies as Done (a cancellable local mark, NOT a permanent completion log — comment this asymmetry). Todo/Today/Doing are evaluated INDEPENDENTLY of completion history, gated only by 'current real category != done' (assignee=viewer, non-Icebox), applying the existing is_today/mapped-state/unmapped-local_status logic. Consequence: a story completed before and now reopened + in_progress + assigned to the viewer appears in BOTH Done (log) and Doing (live) simultaneously.
 - [ ] #12 ROUND-4 unit tests (added to AC #7's set): (a) unmapped local_status='done' -> Done; (b) past completion + currently reopened in_progress + assigned -> appears in BOTH Done and Doing; (c) mapped project whose real state is still done but local_status set to 'todo' -> does NOT appear in Todo/Doing (no-op, since 'To Todo' never calls set_story_state), Done log still present
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+IMPLEMENTATION SLICES (design unblocked — advisor round 4 in ACs #11/#12 + comment; schema live from TASK-130 migration 20260722000002; database.types.ts already regenerated with the 3 new tables). Do in order, /code-review between commits:
+
+SLICE 1+2 (land together — the type change cascades): Classification (AC #1/#7/#11/#12) in apps/web/lib/utils/my-work.ts — replace buildMyWorkSections. New MyWorkStory: id, projectId, position, category (real StateCategory, non-null), isToday, localStatus (todo/doing/done/null), mapped (bool). assignedColumn(story): category===done -> null (Done via completion); effective = mapped ? (in_progress?doing:todo) : (localStatus ?? (in_progress?doing:todo)); effective===done -> done (unmapped local mark, outranks Today); isToday -> today; else effective. Done column = story_completions entries (incl. reassigned-away) + assigned stories whose assignedColumn===done. Keep groupDoneByDate. Then my-work/page.tsx (AC #2): drop projectsNeedingRollover/rolloverIterationSafely/fetchCurrentIteration + current-iteration batch; new queries = assigned non-Icebox stories + my_work_story_state join, project_my_work_mapping per project (mapped = doing_state_id points to a LIVE in_progress-category state), story_completions for viewer live-joined for Done. The old MyWorkStory + buildMyWorkSections are used by page.tsx + MyWorkSections + my-work-sections.test/my-work-row.test, so keep tsc green across the swap. Unit tests: precedence, mapped vs unmapped Doing/Todo, unmapped local done -> Done, past-completion+reopened-in_progress -> BOTH Done and Doing, mapped real-still-done + local todo -> not in Todo/Doing.
+
+SLICE 3 — drag write-path server actions (AC #3/#4/#5): To Today/Todo = my_work_story_state upsert only, never a project RPC. To Doing/Done = mapped ? set_story_state(story, mapped_state_id) ONLY (not move_story_board) : upsert local_status. Catch set_story_states No active iteration error and surface it. (Consumed by TASK-132 UI.)
+
+SLICE 4 — story_pins teardown (AC #6/#9/#10): NEW migration drops story_pins table+RLS+grants; update move_story_to_project (remove pin carry-over) + remove_member (replace story_pins purge with a my_work_story_state purge) verbatim-plus-change like 20260720000005. Remove togglePin + all story_pins reads (my-work/page.tsx, story-peek-menu.tsx, my-work-row.tsx) + the Pin to My Work menu item + story-pins.integration.test.ts. Regen types. db reset + rls-security-reviewer + test/lint.
+
+GOTCHAS: 2 PRE-EXISTING integration failures unrelated to this work (move-copy label-dedup vs labels_unique_name; finish-story-from-git vs iterations INSERT lockdown) — file separately, do not chase. To Todo never calls set_story_state (a mapped real-done story stays in Done via that drag — expected, test it).
+<!-- SECTION:PLAN:END -->
 
 ## Comments
 
