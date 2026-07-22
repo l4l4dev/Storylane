@@ -1,11 +1,11 @@
 ---
 id: TASK-125
 title: 'Efficiency: batch N+1 queries (dashboard fetch loop, invite RPCs)'
-status: To Do
+status: In Progress
 assignee:
   - '@codex-gpt-5'
 created_date: '2026-07-21 11:00'
-updated_date: '2026-07-22 05:23'
+updated_date: '2026-07-22 11:27'
 labels: []
 dependencies: []
 priority: low

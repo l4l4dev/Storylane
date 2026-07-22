@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-22 05:52'
+updated_date: '2026-07-22 11:18'
 labels: []
 dependencies:
   - TASK-131
@@ -25,7 +25,7 @@ doc-14 (My Work Kanban rework). Replaces MyWorkSections' static vertically-stack
 - [x] #1 MyWorkSections (or its replacement) renders Todo/Today/Doing/Done as side-by-side draggable Kanban columns using this repo's existing dnd-kit patterns (kanban-columns-board.tsx), not a new drag implementation
 - [x] #2 The 'Only current iteration' toggle and its filtering logic are removed entirely
 - [x] #3 Dragging a card between columns calls the appropriate TASK-131 server action (Today/Todo = local-only, Doing/Done = mapped-or-local) and optimistically updates, matching this repo's existing drag-failure-rollback conventions (TASK-113's fix: revert only the dragged card, not the whole board)
-- [ ] #4 set_story_state's 'No active iteration' error (mapped Doing/Done drag into a project with no current iteration) surfaces as a visible banner, not a silent failed drag
+- [ ] #4 ~~set_story_state's 'No active iteration' error (mapped Doing/Done drag into a project with no current iteration) surfaces as a visible banner, not a silent failed drag~~ -- OBSOLETE: doc-15 (TASK-138) removed project_my_work_mapping entirely, so a 'mapped Doing/Done drag' can no longer occur. See comment #4.
 - [x] #5 Per-project accent color (project-color.ts) and row content carry over from the current implementation
 - [x] #6 fable-advisor design review against spec/ux-principles.md passes
 - [x] #7 spec/screens.md 'My Work' section rewritten to match doc-14
@@ -63,6 +63,12 @@ created: 2026-07-22 04:43
 Drag confirmed working by owner (2026-07-22): cards do move columns within My Work now. Fixed a real regression along the way (see commit d473383): handleDragEnd was comparing the dragged card's container as re-derived from already-optimistically-moved state, so the server call never fired on any cross-column drop -- card would lift/follow the cursor but silently revert on the next refresh. Fixed with a drag-start-captured ref + resolveDragEndTarget pure function (4 new tests). Also fixed an unrelated pre-existing gap noticed while dogfooding: /dashboard had no sidebar at all, losing the My Work nav link (commit 68b9ba2).
 
 AC #4 (the 'No active iteration' banner) remains unchecked: it only fires for a MAPPED project's Doing/Done drag, and no project can be mapped yet (TASK-133's Settings UI doesn't exist). The code path itself is implemented and unit-tested (actions.test.ts's 'surfaces No active iteration' case), but end-to-end verification needs TASK-133 to land first. Owner has asked to proceed to TASK-133 next; will close out this AC once a mapped project makes the scenario reachable.
+---
+
+author: @claude-sonnet-5
+created: 2026-07-22 11:18
+---
+AC #4 marked obsolete (strikethrough) rather than fixed: doc-15 (TASK-138, 2026-07-22) removed project_my_work_mapping entirely, so the 'mapped Doing/Done drag into an unmapped-current-iteration project' scenario this AC describes can no longer occur in the current data model. Leaving it struck-through/unchecked as a record rather than deleting the line, so the history of what was descoped stays visible.
 ---
 <!-- COMMENTS:END -->
 
