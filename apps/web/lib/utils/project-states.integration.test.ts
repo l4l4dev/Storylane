@@ -118,7 +118,7 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
 
   it("allows deleting a done-category state when another one remains", async () => {
     const pid = await freshProject("done-with-spare test");
-    await owner.from("project_states").insert({ project_id: pid, name: "Done B", category: "done", position: 10 });
+    await owner.rpc("create_project_state", { p_project_id: pid, p_name: "Done B", p_category: "done" });
     const acceptedId = await stateId(pid, "Accepted");
 
     const { error } = await owner.from("project_states").delete().eq("id", acceptedId);
@@ -139,16 +139,16 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
 
   it("serializes two concurrent deletes of the last two done-category states — exactly one wins", async () => {
     const pid = await freshProject("concurrent-delete test");
-    const { data: doneB } = await owner
-      .from("project_states")
-      .insert({ project_id: pid, name: "Done B", category: "done", position: 10 })
-      .select("id")
-      .single();
+    const { data: doneBId } = await owner.rpc("create_project_state", {
+      p_project_id: pid,
+      p_name: "Done B",
+      p_category: "done",
+    });
     const acceptedId = await stateId(pid, "Accepted");
 
     const results = await Promise.allSettled([
       owner.from("project_states").delete().eq("id", acceptedId),
-      owner.from("project_states").delete().eq("id", doneB!.id),
+      owner.from("project_states").delete().eq("id", doneBId as string),
     ]);
 
     // Both PostgREST calls resolve (not reject) — the RLS-layer response
@@ -369,6 +369,27 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
 
       await admin.from("projects").delete().eq("id", pid);
       await admin.auth.admin.deleteUser(created!.user!.id);
+    });
+
+    // TASK-115 (doc-13 finding #7): a direct client INSERT used to be able to
+    // land a state at an arbitrary position, bypassing create_project_state's
+    // category-block contiguity. The table-level authenticated INSERT policy
+    // is now revoked, so even a legitimate owner can only create states
+    // through the RPC — a raw insert is rejected by RLS.
+    it("rejects a direct client INSERT (only create_project_state may add states)", async () => {
+      const pid = await freshProject("direct-insert exploit test");
+      const before = await orderedNames(pid);
+
+      const { error } = await owner
+        .from("project_states")
+        .insert({ project_id: pid, name: "Injected", category: "in_progress", position: 99 });
+
+      expect(error).not.toBeNull();
+      expect(error?.code).toBe("42501"); // RLS: no INSERT policy grants this
+      // Contiguity is untouched — the row never landed.
+      expect(await orderedNames(pid)).toEqual(before);
+
+      await admin.from("projects").delete().eq("id", pid);
     });
   });
 });

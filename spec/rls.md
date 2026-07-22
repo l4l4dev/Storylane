@@ -25,12 +25,15 @@
   operations, not deletion
 - Every new table with a `project_id` column gets its own policy set following
   the pattern above — policies are never inherited
-- **project_states (doc-8 §2):** same shape as the removed `custom_statuses`
-  — members SELECT/INSERT/UPDATE, **owner-only DELETE**. A composite
-  `UNIQUE(id, project_id)` backs `stories.state_id`'s composite FK, so a
-  cross-project state reference is impossible. Category immutability and the
-  "≥1 unstarted & ≥1 done" minimum are enforced by triggers under a
-  per-project advisory lock, not by RLS
+- **project_states (doc-8 §2):** members SELECT/UPDATE, **owner-only DELETE**;
+  **INSERT is RPC-only** (the client INSERT policy was dropped and the grant
+  revoked — TASK-115, see the changelog bullet below), so states are created
+  only through `create_project_state` and the `handle_new_project_states`
+  seed trigger (both SECURITY DEFINER). A composite `UNIQUE(id, project_id)`
+  backs `stories.state_id`'s composite FK, so a cross-project state reference
+  is impossible. Category immutability and the "≥1 unstarted & ≥1 done"
+  minimum are enforced by triggers under a per-project advisory lock, not by
+  RLS
 - **my_work_story_state (doc-14, replaces the removed `story_pins`):** per
   user, not project-scoped by column — own-rows SELECT/UPDATE/DELETE plus a
   separate UPDATE policy (the write path upserts `is_today`/`local_status`).
@@ -98,6 +101,16 @@
   an arbitrary `number`/`velocity`/`capacity`, derailing sprint numbering and
   poisoning the velocity-rate window. Mirrors the `velocity`/`capacity` UPDATE
   lockdown (TASK-86); the only remaining client write is `update (goal)`
+- project_states INSERT (2026-07-22, TASK-115): the client INSERT policy was
+  **dropped** and the table-level INSERT grant revoked from `authenticated` —
+  states are created only by `create_project_state` and the
+  `handle_new_project_states` seed trigger (both SECURITY DEFINER), never a
+  direct client write. RLS can't restrict column values, so the old
+  owner/member INSERT policy let a member insert a row at an arbitrary
+  `position`, bypassing `create_project_state`'s category-block contiguity
+  and corrupting computeStateGate's advance-button graph. The same bypass
+  still exists for `position` via the members UPDATE policy (a separate
+  follow-up, out of TASK-115's INSERT-only scope)
 - Membership admin (2026-07-15, TASK-54): role changes and removals are
   **RPC-only** — `change_member_role` / `remove_member` (SECURITY DEFINER,
   per-project `membership:` advisory lock). The direct owner UPDATE/DELETE
