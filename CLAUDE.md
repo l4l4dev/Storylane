@@ -126,6 +126,17 @@ Workflow rules:
 - If a review finds poor-quality output, escalate: reassign the task to the next higher model
   (or propose the switch to the owner), leave a task comment explaining why, and redo the work there.
 
+## Backlog Ordering & Doc Hygiene (standing rules, owner-requested 2026-07-22)
+
+- **Doc titles start with the zero-padded doc number** (`NN — Title`, e.g. `15 — My Work
+  redesign ...`) so the browser's alphabetical sort equals creation order. Apply to every
+  new doc at creation (`backlog doc create "16 — ..."`).
+- **To Do is ordered by implementation order, top to bottom, via `--ordinal`** (steps of 100).
+  When creating a task, judge its priority position and set an ordinal that inserts it there
+  (renumber neighbors only if no gap is left). Never leave a new task at the default ordinal.
+- Superseded/consumed docs move to `archive/` (`backlog doc update doc-N --path archive`);
+  review reports live under `reviews/`. Only living design docs stay at the docs root.
+
 ## Code Comment Policy
 
 How belongs in the code itself, what in test names, why in the commit message. A code comment

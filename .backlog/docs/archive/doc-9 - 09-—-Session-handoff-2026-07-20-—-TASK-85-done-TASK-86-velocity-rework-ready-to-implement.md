@@ -1,12 +1,12 @@
 ---
 id: doc-9
 title: >-
-  Session handoff 2026-07-20 — TASK-85 done, TASK-86 velocity rework ready to
-  implement
+  09 — Session handoff 2026-07-20 — TASK-85 done, TASK-86 velocity rework ready
+  to implement
 type: other
 created_date: '2026-07-20 01:07'
+updated_date: '2026-07-22 09:04'
 ---
-
 ## Current state
 
 **TASK-85 (working-day calendar) is Done and merged to local `main`.** Branch

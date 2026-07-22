@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-22 05:24'
-updated_date: '2026-07-22 06:01'
+updated_date: '2026-07-22 08:54'
 labels: []
 dependencies:
   - TASK-131
@@ -34,6 +34,22 @@ doc-14 round-5 addendum (owner decision 2026-07-22). The auto-created personal p
 <!-- SECTION:NOTES:BEGIN -->
 Migration 20260722000004 implemented: handle_new_user() (based on the CURRENT 20260721000004 definition, not the superseded 20260721000001) now also inserts project_my_work_mapping for the new personal project (doing/done state ids picked by lowest position within category), plus a backfill INSERT for existing is_personal projects lacking a row. Verified via supabase db reset: fresh dev-user signup auto-mapped correctly (Doing/Done state ids match). Backfill logic independently verified by stripping the mapping and re-running the exact backfill query -- repopulated identically. AC #3 (no personal-specific special-casing) verified by code inspection (brokenMappingProjectIds has no isPersonal parameter at all) plus a new explicit test. tsc/lint green, full suite 596 passed. rls-security-reviewer pass in progress.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-fable-5
+created: 2026-07-22 08:53
+---
+Cancelled before implementation: doc-15 (My Work redesign, 2026-07-22) removes the project_my_work_mapping machinery entirely - personal tasks now write real state directly via category resolution (TASK-139), so no mapping row is ever needed. Superseded by TASK-138/139.
+---
+
+author: @claude-fable-5
+created: 2026-07-22 08:54
+---
+Correction to the previous comment: TASK-137 WAS implemented (20260722000004_personal_project_my_work_mapping.sql, merged to main) before the doc-15 decision landed. The redesign supersedes it at runtime instead: TASK-138 drops project_my_work_mapping (forward-only, including this backfill's rows) and TASK-139's category-resolved real-state writes take over the personal Done-log behavior this task provided. No action needed here.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 

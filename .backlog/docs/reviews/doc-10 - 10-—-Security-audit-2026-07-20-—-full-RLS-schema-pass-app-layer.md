@@ -1,9 +1,9 @@
 ---
 id: doc-10
-title: Security audit 2026-07-20 - full RLS schema pass + app layer
+title: 10 — Security audit 2026-07-20 — full RLS schema pass + app layer
 type: other
 created_date: '2026-07-20 04:09'
-updated_date: '2026-07-20 04:10'
+updated_date: '2026-07-22 09:04'
 ---
 # Security audit 2026-07-20 (Fable pass, pre-TASK-98 squash)
 

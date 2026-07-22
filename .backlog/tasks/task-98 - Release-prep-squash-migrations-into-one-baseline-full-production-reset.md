@@ -12,7 +12,7 @@ dependencies:
   - TASK-94
   - TASK-103
 priority: medium
-ordinal: 14000
+ordinal: 1500
 ---
 
 ## Description

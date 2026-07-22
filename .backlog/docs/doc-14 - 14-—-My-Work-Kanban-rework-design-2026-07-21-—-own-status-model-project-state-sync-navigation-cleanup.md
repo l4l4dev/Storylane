@@ -1,11 +1,11 @@
 ---
 id: doc-14
 title: >-
-  My Work Kanban rework — own status model, project state sync, navigation
-  cleanup design 2026-07-21
+  14 — My Work Kanban rework design 2026-07-21 — own status model, project state
+  sync, navigation cleanup
 type: specification
 created_date: '2026-07-21 12:07'
-updated_date: '2026-07-22 05:22'
+updated_date: '2026-07-22 09:03'
 ---
 # My Work Kanban rework — own status model, project state sync, navigation cleanup
 

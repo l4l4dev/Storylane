@@ -1,14 +1,12 @@
 ---
 id: doc-12
 title: >-
-  My Work Todo Doing Today Done rework and navigation restructure design
+  12 — My Work Todo Doing Today Done rework and navigation restructure design
   2026-07-21
 type: specification
 created_date: '2026-07-21 07:56'
-updated_date: '2026-07-21 08:04'
+updated_date: '2026-07-22 09:04'
 ---
-
-
 Follow-up to doc-11 (My Work / personal-tasks rework). Two independent threads
 from dogfooding feedback: (A) restructure My Work's sections into a daily-
 planning model (Todo/Doing/Today/Done) instead of Today/Assigned, plus

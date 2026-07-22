@@ -1,9 +1,9 @@
 ---
 id: doc-1
-title: Codex full-codebase review 2026-07-12
+title: 01 — Codex full-codebase review 2026-07-12
 type: other
 created_date: '2026-07-11 16:53'
-updated_date: '2026-07-11 16:53'
+updated_date: '2026-07-22 09:03'
 tags:
   - codex
   - review

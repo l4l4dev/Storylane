@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 10:59'
-updated_date: '2026-07-22 08:27'
+updated_date: '2026-07-22 09:05'
 labels: []
 dependencies: []
 priority: medium
@@ -34,6 +34,12 @@ doc-13 finding #8. Both supabase/migrations/20260720000006_flexible_cadence.sql:
 created: 2026-07-22 08:27
 ---
 IMPORTANT correction: doc-13 finding #8 and this task's AC state that finalize_iteration/transition_story/set_story_state 're-derive authorization after locking'. On reading the code (confirmed by fable-advisor + rls-security-reviewer): finalize_iteration does NOT re-check role after its lock — the claim is factually wrong for it. transition_story/set_story_state achieve it only because they are SECURITY INVOKER and RLS re-evaluates the stories UPDATE policy on their final UPDATE (row_count=0 -> 42501). The two cadence RPCs are SECURITY DEFINER, so RLS doesn't apply inside them; the fix is an explicit post-lock require_project_role() re-check (project_role reads a fresh per-statement snapshot under READ COMMITTED). Both reviews confirmed this is correct. FOLLOW-UP (out of scope, needs a separate task): finalize_iteration has the SAME missing post-lock re-check — proposing to the owner as a new Backlog task, not filing unilaterally.
+---
+
+author: @claude-fable-5
+created: 2026-07-22 09:05
+---
+Owner-side triage of this task's two open questions (2026-07-22): (1) pg + @types/pg devDependency — accepted (advisor-approved as the only way to hold an advisory lock across statements; dev-only, not in build output). (2) Both follow-up findings are now filed and slotted into the To Do order: TASK-142 (finalize_iteration post-lock role re-check — doc-13's claim that it already re-derives authorization was confirmed wrong) and TASK-143 (project_states member-UPDATE position bypass, from TASK-115). Both @claude-opus-4-8.
 ---
 <!-- COMMENTS:END -->
 

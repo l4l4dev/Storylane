@@ -1,9 +1,9 @@
 ---
 id: doc-7
-title: UX panel review 2026-07-18 — board screen (10-expert /ux-review)
+title: 07 — UX panel review 2026-07-18 — board screen (10-expert /ux-review)
 type: other
 created_date: '2026-07-17 15:21'
-updated_date: '2026-07-17 15:21'
+updated_date: '2026-07-22 09:04'
 tags:
   - web
   - ux

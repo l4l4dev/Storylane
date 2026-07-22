@@ -1,12 +1,10 @@
 ---
 id: doc-11
-title: My Work personal-tasks rework and UX fixes design 2026-07-21
+title: 11 — My Work personal-tasks rework and UX fixes design 2026-07-21
 type: specification
 created_date: '2026-07-21 05:46'
-updated_date: '2026-07-21 05:57'
+updated_date: '2026-07-22 09:04'
 ---
-
-
 Batch of five UX fixes from dogfooding, agreed in brainstorming with the owner.
 Several revise decisions from doc-8 (§3, §9, §10) and TASK-87/89/93, so this doc
 is the alignment artifact before an advisor review and implementation planning.

@@ -1,9 +1,9 @@
 ---
 id: doc-5
-title: Design specs archive — TASK-7/TASK-8 projects page (2026-07-10)
+title: 05 — Design specs archive — TASK-7/TASK-8 projects page (2026-07-10)
 type: specification
 created_date: '2026-07-17 12:42'
-updated_date: '2026-07-17 12:42'
+updated_date: '2026-07-22 09:03'
 ---
 > Archived from docs/superpowers/specs/ (2026-07-17). The matching implementation plans in docs/superpowers/plans/ were execution checklists and were deleted — full text in git history before this date.
 

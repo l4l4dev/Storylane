@@ -1,9 +1,11 @@
 ---
 id: doc-13
-title: Full codebase review 2026-07-21 — 8-layer audit (web/ios/core/mcp/migrations)
+title: >-
+  13 — Full codebase review 2026-07-21 — 8-layer audit
+  (web/ios/core/mcp/migrations)
 type: specification
 created_date: '2026-07-21 10:56'
-updated_date: '2026-07-21 11:01'
+updated_date: '2026-07-22 09:04'
 ---
 # Full codebase review 2026-07-21 — 8-layer audit
 

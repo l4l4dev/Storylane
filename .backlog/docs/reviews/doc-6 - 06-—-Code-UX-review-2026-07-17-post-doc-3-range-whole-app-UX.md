@@ -1,9 +1,9 @@
 ---
 id: doc-6
-title: Code & UX review 2026-07-17 (post doc-3 range + whole-app UX)
+title: 06 — Code & UX review 2026-07-17 (post doc-3 range + whole-app UX)
 type: other
 created_date: '2026-07-17 13:17'
-updated_date: '2026-07-17 13:17'
+updated_date: '2026-07-22 09:03'
 ---
 # Code & UX review — 2026-07-17
 
