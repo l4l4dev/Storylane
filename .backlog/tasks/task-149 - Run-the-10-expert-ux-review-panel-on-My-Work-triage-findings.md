@@ -1,10 +1,11 @@
 ---
 id: TASK-149
 title: Run the 10-expert /ux-review panel on My Work + triage findings
-status: To Do
+status: Done
 assignee:
-  - '@claude-fable-5'
+  - '@claude-opus-4-8'
 created_date: '2026-07-22 11:26'
+updated_date: '2026-07-22 13:34'
 labels: []
 dependencies:
   - TASK-148
@@ -20,6 +21,12 @@ Usability-verification lane 3 (owner-approved 2026-07-22). Once the My Work UX b
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Panel run on the current My Work screen after TASK-148 merges; output saved as a numbered doc under reviews/
-- [ ] #2 Findings triaged with the owner; accepted items filed as ordered Backlog tasks, rejected items recorded with a one-line reason
+- [x] #1 Panel run on the current My Work screen after TASK-148 merges; output saved as a numbered doc under reviews/
+- [x] #2 Findings triaged with the owner; accepted items filed as ordered Backlog tasks, rejected items recorded with a one-line reason
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Ran the 10-expert /ux-review panel (Rams, Ive, Norman, Nielsen, Wroblewski, Krug, Au, Garrett, Hall, Levey) on the My Work screen (page.tsx/layout.tsx + 4 components), each reviewing independently and blind to the others via parallel opus agents. Synthesized 46 unique deduplicated findings (High 10 / Medium 14 / Low 22) into doc-17 (reviews/), following doc-7's format. Triaged the High tier with the owner: all 10 accepted, bundled by theme into TASK-150 (free-column management: delete confirm, consolidated edit/reorder UI, always-visible grip per owner decision, order persistence), TASK-151 (row identity at narrow widths + personal/team signifier), TASK-152 (empty-state guidance copy), TASK-153 (carry-over label wording), TASK-154 (Done drag-over gating for team cards). Medium/Low (24 findings) kept in doc-17 deferred for a future batch, matching doc-7's own precedent (it also left Medium/Low un-triaged after its first pass).
+<!-- SECTION:FINAL_SUMMARY:END -->
