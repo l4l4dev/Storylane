@@ -39,6 +39,7 @@ import { findContainer, moveBetweenContainers, storyById } from "@/lib/utils/boa
 import { reorderContainer, reorderIds } from "@/lib/utils/board-dnd";
 import { formatDate, localTodayKey } from "@/lib/utils/format";
 import {
+  canDropOnDone,
   classifyMyWork,
   DEFAULT_COLUMN_NAMES,
   groupDoneByDate,
@@ -402,9 +403,18 @@ export function MyWorkSections({
     if (!over) return;
     const overContainer = findContainer(containers, String(over.id));
     if (!overContainer) return;
-    // Every column accepts every card (doc-15: all columns are valid drop
-    // targets), so isAllowed is always true.
-    setContainers((prev) => moveBetweenContainers(prev, String(active.id), overContainer, String(over.id), () => true));
+    // Every column accepts every card (doc-15) EXCEPT Done for a team story:
+    // setMyWorkColumn rejects that write outright (a team story completes
+    // only on its own board), so letting the drag-over UI accept it first is
+    // a false affordance — the card would visibly enter Done, then snap back
+    // once the drop is rejected. Gate it here so it's never a valid target to
+    // begin with (doc-17 #10).
+    setContainers((prev) =>
+      moveBetweenContainers(prev, String(active.id), overContainer, String(over.id), (activeId, target) => {
+        if (target !== "done") return true;
+        return canDropOnDone(storyById(prev, activeId)?.row.isPersonal ?? false);
+      }),
+    );
   }
 
   // Shared by the drag-end column branch and the non-drag move buttons
@@ -487,6 +497,12 @@ export function MyWorkSections({
       return;
     }
     setDragError(null);
+    // Deliberately NOT gated the way handleDragOver gates entering Done
+    // (canDropOnDone): a team card can still be DROPPED on Done here (it just
+    // never visually entered it during the hover) so setMyWorkColumn's
+    // rejection surfaces as a dragError banner — spec/screens.md's "Dragging
+    // a card" requires a team→Done drop be "rejected with a visible message".
+    // Gating it here too would make that drop a silent no-op instead.
     runDrop(
       draggedId,
       async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canDropOnDone,
   classifyMyWork,
   groupDoneByDate,
   isManualOrderReorder,
@@ -313,6 +314,19 @@ describe("resolveColumnNames", () => {
 // TASK-145/TASK-150: Today and every free column carry their own persisted
 // card order (doc-15 decision 4, extended to free columns) — Todo/Done have
 // none, so a same-container drop there stays a true no-op.
+// doc-17 #10: a team story's drop on Done is rejected server-side (it
+// completes only on its own board), so the drag-over UI must not accept it
+// either, or the card visibly enters Done and snaps back once rejected.
+describe("canDropOnDone", () => {
+  it("is droppable for a personal-project card", () => {
+    expect(canDropOnDone(true)).toBe(true);
+  });
+
+  it("is not droppable for a team card", () => {
+    expect(canDropOnDone(false)).toBe(false);
+  });
+});
+
 describe("isManualOrderReorder", () => {
   it("is true for a same-container drop within Today or a free column", () => {
     expect(isManualOrderReorder("today", "today")).toBe(true);

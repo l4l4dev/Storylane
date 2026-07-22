@@ -233,6 +233,18 @@ export function resolveDragEndTarget(
 }
 
 /**
+ * Whether Done is a valid drag-OVER target for this card (doc-17 #10): a team
+ * story's drop there is rejected outright by setMyWorkColumn (it completes
+ * only on its own board), so letting the drag-over UI accept it first would
+ * be a false affordance — the card would visibly enter Done, then snap back
+ * once the drop is rejected. Gating it here means it's never a valid target
+ * to begin with, for a team card; a personal card is unaffected.
+ */
+export function canDropOnDone(isPersonal: boolean): boolean {
+  return isPersonal;
+}
+
+/**
  * Whether a same-container drop should persist a manual reorder: Today and
  * every free column carry their own card order (doc-15 decision 4 — "the
  * day's execution order", extended to free columns since users expect the
