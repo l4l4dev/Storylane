@@ -1,21 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  buildMyWorkSections,
-  groupDoneByDate,
-  type MyWorkProject,
-  type MyWorkStory,
-} from "@/lib/utils/my-work";
+import { useMemo } from "react";
+import { groupDoneByDate, type MyWorkColumns } from "@/lib/utils/my-work";
 import { addDays } from "@storylane/core";
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { MyWorkRow, type MyWorkRowData } from "./my-work-row";
-
-// A story the client component needs both to classify (MyWorkStory fields)
-// and to render (its MyWorkRowData). Server-shaped so the split can re-run
-// client-side when the "only current iteration" toggle flips.
-export type MyWorkActiveItem = MyWorkStory & { row: MyWorkRowData };
-export type MyWorkDoneItem = { completedAt: string; row: MyWorkRowData };
 
 function doneDateLabel(dateKey: string, todayKey: string): string {
   if (dateKey === todayKey) return "Today";
@@ -32,75 +21,28 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-// My Work's four sections (doc-12 Thread A). Render order is Todo, Today,
-// Doing, Done — Todo is the personal backlog, you move things into Today to
-// plan the day, Doing/Done show live status; Done stays last (done work below
-// active, ux-principles.md principle 9). Classification precedence is still
-// Done > Today > Doing > Todo (a story never appears twice). Carryover is
-// automatic, not enforced here: pins persist across days, and a 1-day
-// personal project's unaccepted stories roll into the next day's iteration —
-// both keep unfinished Today work in Today the next day. A client component
-// (not the server page) so the "only current iteration" toggle can re-filter
-// Todo + Doing without a round trip (doc-12: client-side, no persistence).
-export function MyWorkSections({
-  activeItems,
-  doneItems,
-  projects,
-  currentIterationByProject,
-  pinnedStoryIds,
-}: {
-  activeItems: MyWorkActiveItem[];
-  doneItems: MyWorkDoneItem[];
-  projects: MyWorkProject[];
-  // Maps aren't serializable across the server/client boundary — passed as
-  // entry arrays and rebuilt here.
-  currentIterationByProject: ReadonlyArray<readonly [string, string | null]>;
-  pinnedStoryIds: string[];
-}) {
-  const [onlyCurrentIteration, setOnlyCurrentIteration] = useState(false);
-
-  const iterationMap = useMemo(() => new Map(currentIterationByProject), [currentIterationByProject]);
-  const pinnedSet = useMemo(() => new Set(pinnedStoryIds), [pinnedStoryIds]);
-
-  const { today, doing, todo } = useMemo(
-    () => buildMyWorkSections(activeItems, projects, iterationMap, pinnedSet, onlyCurrentIteration),
-    [activeItems, projects, iterationMap, pinnedSet, onlyCurrentIteration],
-  );
-  // Unfiltered counts drive the toggle's own visibility — gating it on the
-  // filtered todo/doing would let checking the box empty both lists and hide
-  // the only control that could uncheck it again (no persistence to recover from).
-  const hasFilterableItems = useMemo(() => {
-    const unfiltered = buildMyWorkSections(activeItems, projects, iterationMap, pinnedSet, false);
-    return unfiltered.todo.length > 0 || unfiltered.doing.length > 0;
-  }, [activeItems, projects, iterationMap, pinnedSet]);
+// My Work's four columns (doc-14). Render order is Todo, Today, Doing, Done —
+// Todo is the personal backlog, you move things into Today to plan the day,
+// Doing/Done show status; Done stays last (done work below active,
+// ux-principles.md principle 9). Classification is done server-side now (no
+// more client-side "only current iteration" toggle, doc-14); this component
+// only renders. Draggable columns are TASK-132.
+export function MyWorkSections({ columns }: { columns: MyWorkColumns<MyWorkRowData> }) {
+  const { todo, today, doing, done } = columns;
   const todayKey = utcTodayKey();
-  const doneGroups = useMemo(() => groupDoneByDate(doneItems), [doneItems]);
+  const doneGroups = useMemo(() => groupDoneByDate(done), [done]);
 
-  const isEmpty =
-    today.length === 0 && doing.length === 0 && todo.length === 0 && doneItems.length === 0;
+  const isEmpty = todo.length === 0 && today.length === 0 && doing.length === 0 && done.length === 0;
 
   return (
     <div>
-      {hasFilterableItems && (
-        <label className="mb-4 flex w-fit items-center gap-2 text-sm text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={onlyCurrentIteration}
-            onChange={(e) => setOnlyCurrentIteration(e.target.checked)}
-            className="size-4 rounded border-input"
-          />
-          Only current iteration
-        </label>
-      )}
-
       {isEmpty && (
         <p className="text-sm text-muted-foreground">
           Nothing here yet. Stories assigned to you across your projects show up here — add a
-          personal task above, or pin any story to plan your day.
+          personal task above, or open a story to plan your day.
         </p>
       )}
 
-      {/* Render order: Todo (backlog) -> Today (planned) -> Doing (live) -> Done (last). */}
       {todo.length > 0 && (
         <section className="mb-8">
           <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Todo</h2>
@@ -142,8 +84,11 @@ export function MyWorkSections({
                 {doneDateLabel(group.dateKey, todayKey)}
               </h3>
               <div className="flex flex-col gap-1.5">
-                {group.stories.map((story) => (
-                  <MyWorkRow key={story.row.id} story={story.row} />
+                {group.stories.map((entry, i) => (
+                  // A story can appear more than once in Done (completed twice,
+                  // or a completion + an unmapped local mark), so key by index
+                  // within the date group, not by story id.
+                  <MyWorkRow key={`${entry.row.id}-${i}`} story={entry.row} />
                 ))}
               </div>
             </div>

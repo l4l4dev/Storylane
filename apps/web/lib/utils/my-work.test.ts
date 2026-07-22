@@ -1,149 +1,140 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildMyWorkSections,
+  assignedColumn,
+  classifyMyWork,
   groupDoneByDate,
+  type DoneEntry,
   type MyWorkProject,
   type MyWorkStory,
 } from "./my-work";
 
-const PERSONAL: MyWorkProject = { id: "personal", name: "Mika's tasks", isPersonal: true };
-const TEAM_B: MyWorkProject = { id: "team-b", name: "Bravo", isPersonal: false };
+const PERSONAL: MyWorkProject = { id: "personal", name: "Owner's tasks", isPersonal: true };
 const TEAM_A: MyWorkProject = { id: "team-a", name: "Alpha", isPersonal: false };
+const TEAM_B: MyWorkProject = { id: "team-b", name: "Bravo", isPersonal: false };
 
-function story(overrides: Partial<MyWorkStory> & { id: string; projectId: string }): MyWorkStory {
-  return { iterationId: null, position: 0, category: "unstarted", ...overrides };
+// Each story's `row` is just its id here — classification never inspects it.
+function story(overrides: Partial<MyWorkStory<string>> & { id: string; projectId: string }): MyWorkStory<string> {
+  return {
+    position: 0,
+    category: "unstarted",
+    isToday: false,
+    localStatus: null,
+    mapped: false,
+    localUpdatedAt: null,
+    row: overrides.id,
+    ...overrides,
+  };
 }
 
-describe("buildMyWorkSections", () => {
-  it("puts a personal project's current-iteration story in Today", () => {
-    const { today, todo } = buildMyWorkSections(
-      [story({ id: "s1", projectId: "personal", iterationId: "iter-1" })],
-      [PERSONAL],
-      new Map([["personal", "iter-1"]]),
-      new Set(),
-    );
-    expect(today.map((s) => s.id)).toEqual(["s1"]);
-    expect(todo).toEqual([]);
+function completion(id: string, completedAt: string): DoneEntry<string> {
+  return { completedAt, row: id };
+}
+
+describe("assignedColumn", () => {
+  it("routes a real-done story to null (Done handled via its completion log)", () => {
+    expect(assignedColumn(story({ id: "s", projectId: "team-a", category: "done" }))).toBeNull();
   });
 
-  it("puts a pinned story in Today regardless of project or category", () => {
-    const { today } = buildMyWorkSections(
-      [story({ id: "s1", projectId: "team-a", category: "in_progress" })],
-      [TEAM_A],
-      new Map(),
-      new Set(["s1"]),
-    );
-    expect(today.map((s) => s.id)).toEqual(["s1"]);
+  it("unmapped in_progress with no local override -> doing", () => {
+    expect(assignedColumn(story({ id: "s", projectId: "team-a", category: "in_progress" }))).toBe("doing");
   });
 
-  it("puts an in_progress story (not in Today) in Doing", () => {
-    const { doing, todo } = buildMyWorkSections(
-      [story({ id: "s1", projectId: "team-a", category: "in_progress" })],
-      [TEAM_A],
-      new Map(),
-      new Set(),
-    );
-    expect(doing.map((s) => s.id)).toEqual(["s1"]);
-    expect(todo).toEqual([]);
+  it("unmapped local_status='done' -> done (cancellable local mark, outranks Today)", () => {
+    expect(
+      assignedColumn(story({ id: "s", projectId: "team-a", isToday: true, localStatus: "done" })),
+    ).toBe("done");
   });
 
-  it("puts a rejected story in Todo, not Doing (rejected is neither done nor in_progress)", () => {
-    const { doing, todo } = buildMyWorkSections(
-      [story({ id: "s1", projectId: "team-a", category: "rejected" })],
-      [TEAM_A],
-      new Map(),
-      new Set(),
-    );
-    expect(doing).toEqual([]);
-    expect(todo[0].stories.map((s) => s.id)).toEqual(["s1"]);
+  it("mapped project derives from real state and ignores local_status", () => {
+    // local says done, but a mapped project reads the real category: unstarted -> todo.
+    expect(
+      assignedColumn(story({ id: "s", projectId: "team-a", mapped: true, category: "unstarted", localStatus: "done" })),
+    ).toBe("todo");
+    expect(
+      assignedColumn(story({ id: "s", projectId: "team-a", mapped: true, category: "in_progress", localStatus: "todo" })),
+    ).toBe("doing");
   });
 
-  it("groups Todo by project: personal first, then project name", () => {
-    const { todo } = buildMyWorkSections(
-      [
-        story({ id: "b1", projectId: "team-b" }),
-        story({ id: "a1", projectId: "team-a" }),
-        story({ id: "p1", projectId: "personal", iterationId: "iter-old" }),
-      ],
-      [TEAM_A, TEAM_B, PERSONAL],
-      new Map([["personal", "iter-1"]]),
-      new Set(),
-    );
-    expect(todo.map((g) => g.projectId)).toEqual(["personal", "team-a", "team-b"]);
-  });
-
-  it("orders stories within a Todo group by board position", () => {
-    const { todo } = buildMyWorkSections(
-      [
-        story({ id: "second", projectId: "team-a", position: 2 }),
-        story({ id: "first", projectId: "team-a", position: 1 }),
-      ],
-      [TEAM_A],
-      new Map(),
-      new Set(),
-    );
-    expect(todo[0].stories.map((s) => s.id)).toEqual(["first", "second"]);
-  });
-
-  it("orders Today by personal-project group first, then position", () => {
-    const { today } = buildMyWorkSections(
-      [
-        story({ id: "team-pinned", projectId: "team-a", position: 0 }),
-        story({ id: "personal-second", projectId: "personal", iterationId: "iter-1", position: 2 }),
-        story({ id: "personal-first", projectId: "personal", iterationId: "iter-1", position: 1 }),
-      ],
-      [PERSONAL, TEAM_A],
-      new Map([["personal", "iter-1"]]),
-      new Set(["team-pinned"]),
-    );
-    expect(today.map((s) => s.id)).toEqual(["personal-first", "personal-second", "team-pinned"]);
-  });
-
-  it("keeps a personal project's non-current-iteration, unpinned story out of Today", () => {
-    const { today, todo } = buildMyWorkSections(
-      [story({ id: "s1", projectId: "personal", iterationId: "iter-old" })],
-      [PERSONAL],
-      new Map([["personal", "iter-1"]]),
-      new Set(),
-    );
-    expect(today).toEqual([]);
-    expect(todo[0].stories.map((s) => s.id)).toEqual(["s1"]);
-  });
-
-  it("onlyCurrentIteration drops out-of-iteration stories from Doing and Todo but not Today", () => {
-    const stories = [
-      story({ id: "todo-current", projectId: "team-a", iterationId: "iter-a" }),
-      story({ id: "todo-backlog", projectId: "team-a", iterationId: null }),
-      story({ id: "doing-current", projectId: "team-a", iterationId: "iter-a", category: "in_progress" }),
-      story({ id: "doing-backlog", projectId: "team-a", iterationId: "iter-old", category: "in_progress" }),
-      story({ id: "pinned-backlog", projectId: "team-a", iterationId: null }),
-    ];
-    const { today, doing, todo } = buildMyWorkSections(
-      stories,
-      [TEAM_A],
-      new Map([["team-a", "iter-a"]]),
-      new Set(["pinned-backlog"]),
-      true,
-    );
-    // Today keeps the pinned story even though it's not in the current iteration.
-    expect(today.map((s) => s.id)).toEqual(["pinned-backlog"]);
-    expect(doing.map((s) => s.id)).toEqual(["doing-current"]);
-    expect(todo.flatMap((g) => g.stories.map((s) => s.id))).toEqual(["todo-current"]);
+  it("isToday wins over the derived todo/doing slot", () => {
+    expect(assignedColumn(story({ id: "s", projectId: "team-a", isToday: true, category: "in_progress" }))).toBe("today");
   });
 });
 
-describe("groupDoneByDate", () => {
-  it("groups by UTC date of completed_at, newest date and newest-within-date first", () => {
-    const groups = groupDoneByDate([
-      { id: "old", completedAt: "2026-07-19T09:00:00Z" },
-      { id: "today-early", completedAt: "2026-07-21T08:00:00Z" },
-      { id: "today-late", completedAt: "2026-07-21T18:00:00Z" },
-    ]);
-    expect(groups.map((g) => g.dateKey)).toEqual(["2026-07-21", "2026-07-19"]);
-    expect(groups[0].stories.map((s) => s.id)).toEqual(["today-late", "today-early"]);
+describe("classifyMyWork", () => {
+  it("places assigned stories into todo/today/doing by precedence", () => {
+    const { todo, today, doing } = classifyMyWork(
+      [
+        story({ id: "backlog", projectId: "team-a" }),
+        story({ id: "live", projectId: "team-a", category: "in_progress" }),
+        story({ id: "planned", projectId: "team-a", isToday: true }),
+      ],
+      [],
+      [TEAM_A],
+    );
+    expect(todo.flatMap((g) => g.stories.map((s) => s.id))).toEqual(["backlog"]);
+    expect(today.map((s) => s.id)).toEqual(["planned"]);
+    expect(doing.map((s) => s.id)).toEqual(["live"]);
   });
 
-  it("returns an empty array for no done stories", () => {
-    expect(groupDoneByDate([])).toEqual([]);
+  it("groups Todo by project, personal-first then name, position within group", () => {
+    const { todo } = classifyMyWork(
+      [
+        story({ id: "b2", projectId: "team-b", position: 2 }),
+        story({ id: "b1", projectId: "team-b", position: 1 }),
+        story({ id: "a1", projectId: "team-a" }),
+        story({ id: "p1", projectId: "personal" }),
+      ],
+      [],
+      [TEAM_B, TEAM_A, PERSONAL],
+    );
+    expect(todo.map((g) => g.projectId)).toEqual(["personal", "team-a", "team-b"]);
+    expect(todo[2].stories.map((s) => s.id)).toEqual(["b1", "b2"]);
+  });
+
+  it("Done = completion rows (incl. one per repeat) live-joined, newest first", () => {
+    const { done } = classifyMyWork(
+      [],
+      [completion("s", "2026-07-20T09:00:00Z"), completion("s", "2026-07-21T09:00:00Z")],
+      [TEAM_A],
+    );
+    const groups = groupDoneByDate(done);
+    expect(groups.map((g) => g.dateKey)).toEqual(["2026-07-21", "2026-07-20"]);
+    // A story completed twice renders as two entries, never deduped.
+    expect(done).toHaveLength(2);
+  });
+
+  it("unmapped local_status='done' becomes a Done entry dated by its mark", () => {
+    const { done, todo, doing } = classifyMyWork(
+      [story({ id: "s", projectId: "team-a", localStatus: "done", localUpdatedAt: "2026-07-22T10:00:00Z" })],
+      [],
+      [TEAM_A],
+    );
+    expect(done.map((d) => d.completedAt)).toEqual(["2026-07-22T10:00:00Z"]);
+    // ...and nowhere in the active columns.
+    expect(todo).toEqual([]);
+    expect(doing).toEqual([]);
+  });
+
+  it("a past completion + currently reopened in_progress+assigned shows in BOTH Done and Doing", () => {
+    const { done, doing } = classifyMyWork(
+      [story({ id: "s", projectId: "team-a", category: "in_progress" })],
+      [completion("s", "2026-07-19T09:00:00Z")],
+      [TEAM_A],
+    );
+    expect(doing.map((s) => s.id)).toEqual(["s"]);
+    expect(done.map((d) => d.row)).toEqual(["s"]);
+  });
+
+  it("a mapped story whose real state is still done + local todo stays out of Todo/Doing", () => {
+    // "To Todo" never calls set_story_state, so real category stays done ->
+    // assignedColumn null; only the completion log carries it.
+    const { todo, doing, done } = classifyMyWork(
+      [story({ id: "s", projectId: "team-a", mapped: true, category: "done", localStatus: "todo" })],
+      [completion("s", "2026-07-18T09:00:00Z")],
+      [TEAM_A],
+    );
+    expect(todo).toEqual([]);
+    expect(doing).toEqual([]);
+    expect(done.map((d) => d.row)).toEqual(["s"]);
   });
 });

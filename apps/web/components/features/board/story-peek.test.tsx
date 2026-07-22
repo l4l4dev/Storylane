@@ -39,7 +39,6 @@ const detail: StoryDetail = {
   comments: [],
   tasks: [],
   history: [],
-  pinned: false,
 };
 
 describe("StoryPeek", () => {

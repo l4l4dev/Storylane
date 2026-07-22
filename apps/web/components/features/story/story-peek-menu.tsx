@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { MoreVertical, Pin, PinOff } from "lucide-react";
+import { MoreVertical } from "lucide-react";
 import {
   copyStoryToProject,
   deleteStory,
   getMoveTargetProjects,
   moveStoryToProject,
   promoteStoryToEpic,
-  togglePin,
   type MoveCopyTargetProject,
   type StoryDetail,
 } from "@/app/stories/[id]/actions";
@@ -40,63 +39,16 @@ export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
-  // Optimistic (plan item 3: "pinning happens where stories are found").
-  // Callers key this component by `detail.id` so switching stories remounts
-  // it — otherwise this initial value would stick from the first story.
-  const [pinned, setPinned] = useState(detail.pinned);
-  // A failed pin/unpin must say so, not just silently revert
-  // (spec/ux-principles.md principle 2) — but the menu closes itself on
-  // select by default, so a plain revert-and-close would show nothing. The
-  // menu is kept controlled+open on failure specifically so this text is
-  // visible; every other path closes it like the uncontrolled default did.
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [pinError, setPinError] = useState<string | null>(null);
 
   return (
     <>
-      <DropdownMenu
-        open={menuOpen}
-        onOpenChange={(open) => {
-          setMenuOpen(open);
-          if (open) setPinError(null);
-        }}
-      >
+      <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon-sm" aria-label="Story actions">
             <MoreVertical />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onSelect={async (event) => {
-              event.preventDefault();
-              const next = !pinned;
-              setPinned(next);
-              setPinError(null);
-              const result = await togglePin(detail.id, next);
-              if (result.ok) {
-                setMenuOpen(false);
-              } else {
-                setPinned(!next);
-                setPinError(result.message);
-              }
-            }}
-          >
-            {pinned ? (
-              <>
-                <PinOff /> Unpin from My Work
-              </>
-            ) : (
-              <>
-                <Pin /> Pin to My Work
-              </>
-            )}
-          </DropdownMenuItem>
-          {pinError && (
-            <p role="alert" aria-live="polite" className="px-1.5 py-1 text-xs text-destructive">
-              {pinError}
-            </p>
-          )}
           <DropdownMenuItem
             onSelect={(event) => {
               event.preventDefault();

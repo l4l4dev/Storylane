@@ -1,13 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { Bug, Pin, Star, Wrench, type LucideIcon } from "lucide-react";
-import { togglePin } from "@/app/stories/[id]/actions";
+import { Bug, Star, Wrench, type LucideIcon } from "lucide-react";
 import { formatPoints, STORY_TYPE_META, type StoryType } from "@/lib/utils/stories";
 import { projectAccentClass } from "@/lib/utils/project-color";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const STORY_TYPE_ICON: Record<Exclude<StoryType, "release">, LucideIcon> = {
@@ -25,38 +22,14 @@ export type MyWorkRowData = {
   projectId: string;
   projectName: string;
   stateBadge: { label: string; className: string };
-  pinned: boolean;
 };
 
-// A My Work row (Today or a project group under Assigned): a compact,
-// cross-project version of the board's StoryListRow — always shows its
-// project so the row still makes sense outside that project's own board.
-// Read-only otherwise (no drag, no inline transition buttons): My Work
-// parity, priority lives on each project's own board.
+// A My Work row: a compact, cross-project version of the board's StoryListRow
+// — always shows its project so the row still makes sense outside that
+// project's own board. Read-only here; drag interaction is added in TASK-132.
 export function MyWorkRow({ story }: { story: MyWorkRowData }) {
-  const [pinned, setPinned] = useState(story.pinned);
-  const [pending, setPending] = useState(false);
-  // A failed pin/unpin reverts optimistically AND says so — a silent revert
-  // reads as "nothing happened" (spec/ux-principles.md principle 2: every
-  // action produces visible feedback), the same failure this repo's
-  // MutationErrorBanner/story-detail-panel error text already guard against
-  // elsewhere; My Work's per-row list gets the lighter inline form.
-  const [error, setError] = useState<string | null>(null);
   const typeMeta = STORY_TYPE_META[story.storyType as StoryType];
   const TypeIcon = STORY_TYPE_ICON[story.storyType as Exclude<StoryType, "release">];
-
-  async function handleTogglePin() {
-    const next = !pinned;
-    setPinned(next);
-    setError(null);
-    setPending(true);
-    const result = await togglePin(story.id, next);
-    if (!result.ok) {
-      setPinned(!next);
-      setError(result.message);
-    }
-    setPending(false);
-  }
 
   return (
     <div className="flex flex-col gap-1">
@@ -71,19 +44,6 @@ export function MyWorkRow({ story }: { story: MyWorkRowData }) {
           projectAccentClass(story.projectId),
         )}
       >
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={pinned ? "Unpin from My Work" : "Pin to My Work"}
-          aria-pressed={pinned}
-          disabled={pending}
-          onClick={() => void handleTogglePin()}
-          className="shrink-0"
-        >
-          <Pin className={pinned ? "fill-current" : undefined} />
-        </Button>
-
         <Link
           href={`/stories/${story.id}`}
           className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-80"
@@ -118,11 +78,6 @@ export function MyWorkRow({ story }: { story: MyWorkRowData }) {
           </Badge>
         )}
       </div>
-      {error && (
-        <p role="alert" aria-live="polite" className="px-1 text-xs text-destructive">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

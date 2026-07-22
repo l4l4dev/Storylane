@@ -1,27 +1,23 @@
 import { addDays, type StateCategory } from "@storylane/core";
 import { createClient } from "@/lib/supabase/server";
-import { rolloverIterationSafely } from "@/lib/supabase/rollover";
 import { utcTodayKey } from "@/lib/utils/format";
-import type { MyWorkProject } from "@/lib/utils/my-work";
+import { classifyMyWork, type DoneEntry, type MyWorkProject, type MyWorkStory } from "@/lib/utils/my-work";
 import { pointScaleValues, storyStateBadge } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
-import {
-  MyWorkSections,
-  type MyWorkActiveItem,
-  type MyWorkDoneItem,
-} from "@/components/features/my-work/my-work-sections";
+import { MyWorkSections } from "@/components/features/my-work/my-work-sections";
 import type { MyWorkRowData } from "@/components/features/my-work/my-work-row";
 import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add";
 
-// How far back the Done section reaches (doc-12 Thread A) — recent completions
-// only; full history is each project's Iterations page.
+// How far back the Done log reaches (doc-14) — recent completions only; full
+// history is each project's Iterations page.
 const DONE_WINDOW_DAYS = 7;
 
-// Cross-project personal view (spec/screens.md "My Work"): the signed-in
-// user's assigned, non-Icebox stories, split into Todo / Doing / Today /
-// Done (doc-12 Thread A). This server component fetches and shapes the rows;
-// MyWorkSections (client) holds the "only current iteration" toggle and does
-// the section split + render.
+// Cross-project personal view (doc-14 "My Work Kanban rework"): the signed-in
+// user's assigned, non-Icebox stories split into Todo/Today/Doing plus a
+// completion-history Done log. This server component fetches, shapes, and
+// classifies the rows; MyWorkSections (client) renders the columns. My Work
+// keeps its OWN status (my_work_story_state) independent of the real board,
+// optionally synced when a project configures a Doing mapping.
 export default async function MyWorkPage() {
   const supabase = await createClient();
   const {
@@ -48,13 +44,6 @@ export default async function MyWorkPage() {
   // everything else below instead of as a second, sequential round trip.
   const soloPersonalProject = personalProjects.length === 1 ? personalProjects[0] : null;
 
-  // Roll over EVERY project's current iteration before reading it (doc-12:
-  // the current-iteration filter + Today membership now depend on all
-  // projects being fresh, not just personal ones) — same idempotent,
-  // failure-swallowing pattern the dashboard uses (spec/velocity.md
-  // "Automatic scheduling & rollover").
-  await Promise.all(projects.map((p) => rolloverIterationSafely(p.id)));
-
   // An explicit UTC timestamp (not a bare date) so the comparison below is
   // unambiguous regardless of the DB session's timezone setting — a bare
   // "YYYY-MM-DD" literal would be cast to timestamptz using that session
@@ -65,8 +54,9 @@ export default async function MyWorkPage() {
   const [
     { data: statesRows },
     { data: storyRows },
-    { data: pinRows },
-    { data: iterationRows },
+    { data: myStateRows },
+    { data: mappingRows },
+    { data: completionRows },
     { data: soloEpics },
     { data: soloLabels },
     { data: soloMembers },
@@ -79,27 +69,32 @@ export default async function MyWorkPage() {
     user
       ? supabase
           .from("stories")
-          .select("id, project_id, number, title, story_type, state_id, points, iteration_id, position, completed_at")
+          .select("id, project_id, number, title, story_type, state_id, points, position")
           .eq("assignee_id", user.id)
           .not("state_id", "is", null)
-          // Active stories (completed_at null) + recent completions only —
-          // old done work is the Iterations page's job, not this list's.
-          .or(`completed_at.is.null,completed_at.gte.${doneSince}`)
+          // Active axis only: real-done stories live in the Done log via their
+          // completion rows, never as an active card, so they're excluded here
+          // (completed_at is set the moment a story enters a done category).
+          .is("completed_at", null)
       : Promise.resolve({ data: null }),
+    // The viewer's own My Work marks — is_today / local_status per story.
     user
-      ? supabase.from("story_pins").select("story_id").eq("user_id", user.id)
+      ? supabase.from("my_work_story_state").select("story_id, is_today, local_status, updated_at").eq("user_id", user.id)
       : Promise.resolve({ data: null }),
-    // One batched query for every project's latest non-done iteration,
-    // instead of one query per project — the per-project "current" id is
-    // picked out client-side below (first row per project_id, since this
-    // is ordered project_id asc, number desc).
-    supabase
-      .from("iterations")
-      .select("id, project_id")
-      .in("project_id", projectIds)
-      .neq("state", "done")
-      .order("project_id", { ascending: true })
-      .order("number", { ascending: false }),
+    supabase.from("project_my_work_mapping").select("project_id, doing_state_id").in("project_id", projectIds),
+    // The Done log (doc-14): the viewer's completion history, live-joined to
+    // each story's CURRENT data and project name so a completion survives being
+    // reassigned away or even leaving the project (stories' SELECT RLS OR-clause).
+    user
+      ? supabase
+          .from("story_completions")
+          .select(
+            "completed_at, stories(id, project_id, number, title, story_type, points, state_id, projects(name))",
+          )
+          .eq("user_id", user.id)
+          .gte("completed_at", doneSince)
+          .order("completed_at", { ascending: false })
+      : Promise.resolve({ data: null }),
     soloPersonalProject
       ? supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position")
       : Promise.resolve({ data: null }),
@@ -117,14 +112,6 @@ export default async function MyWorkPage() {
       : Promise.resolve({ data: null }),
   ]);
 
-  const iterationByProject = new Map<string, string>();
-  for (const row of iterationRows ?? []) {
-    if (!iterationByProject.has(row.project_id)) iterationByProject.set(row.project_id, row.id);
-  }
-  const currentIterationEntries: ReadonlyArray<readonly [string, string | null]> = projectIds.map(
-    (id) => [id, iterationByProject.get(id) ?? null] as const,
-  );
-
   const statesByProject = new Map<string, ProjectState[]>();
   for (const state of (statesRows ?? []) as ProjectState[]) {
     const bucket = statesByProject.get(state.project_id);
@@ -132,15 +119,27 @@ export default async function MyWorkPage() {
     else statesByProject.set(state.project_id, [state]);
   }
   const categoryByStateId = new Map((statesRows ?? []).map((s) => [s.id, s.category as StateCategory]));
-  const pinnedStoryIds = new Set((pinRows ?? []).map((p) => p.story_id));
   const projectIdSet = new Set(projectIds);
   const projectById = new Map(projects.map((p) => [p.id, p]));
 
-  type StoryRow = NonNullable<typeof storyRows>[number];
-  function toRowData(raw: StoryRow): MyWorkRowData {
-    // visibleStories (below) is pre-filtered to projectIdSet, which is built
-    // from this same projects array — the lookup always hits.
-    const project = projectById.get(raw.project_id)!;
+  // A project is "mapped" for Doing/Done classification only when its Doing
+  // mapping still points to a live in_progress-category state (doc-14: a
+  // category change is treated read-side as unmapped, no trigger). done_state_id
+  // isn't needed here — Done is completion-history driven, not category-derived.
+  const mappedProjectIds = new Set(
+    (mappingRows ?? [])
+      .filter((m) => m.doing_state_id && categoryByStateId.get(m.doing_state_id) === "in_progress")
+      .map((m) => m.project_id),
+  );
+
+  const myStateByStoryId = new Map(
+    (myStateRows ?? []).map((r) => [r.story_id, r] as const),
+  );
+
+  function toRowData(
+    raw: { id: string; number: number; title: string; story_type: string; points: number | null; project_id: string; state_id: string | null },
+    projectName: string,
+  ): MyWorkRowData {
     return {
       id: raw.id,
       number: raw.number,
@@ -148,26 +147,40 @@ export default async function MyWorkPage() {
       storyType: raw.story_type,
       points: raw.points,
       projectId: raw.project_id,
-      projectName: project.name,
+      projectName,
       stateBadge: storyStateBadge(raw.state_id, statesByProject.get(raw.project_id) ?? []),
-      pinned: pinnedStoryIds.has(raw.id),
     };
   }
 
-  const visibleStories = (storyRows ?? []).filter((s) => projectIdSet.has(s.project_id));
-  const activeItems: MyWorkActiveItem[] = visibleStories
-    .filter((s) => categoryByStateId.get(s.state_id as string) !== "done")
-    .map((s) => ({
-      id: s.id,
-      projectId: s.project_id,
-      iterationId: s.iteration_id,
-      position: s.position,
-      category: categoryByStateId.get(s.state_id as string) ?? null,
-      row: toRowData(s),
-    }));
-  const doneItems: MyWorkDoneItem[] = visibleStories
-    .filter((s) => categoryByStateId.get(s.state_id as string) === "done" && s.completed_at)
-    .map((s) => ({ completedAt: s.completed_at as string, row: toRowData(s) }));
+  const assigned: MyWorkStory<MyWorkRowData>[] = (storyRows ?? [])
+    .filter((s) => projectIdSet.has(s.project_id))
+    .map((s) => {
+      const mark = myStateByStoryId.get(s.id);
+      const project = projectById.get(s.project_id)!;
+      return {
+        id: s.id,
+        projectId: s.project_id,
+        position: s.position,
+        category: categoryByStateId.get(s.state_id as string) ?? "unstarted",
+        isToday: mark?.is_today ?? false,
+        localStatus: (mark?.local_status as MyWorkStory["localStatus"]) ?? null,
+        mapped: mappedProjectIds.has(s.project_id),
+        localUpdatedAt: mark?.updated_at ?? null,
+        row: toRowData(s, project.name),
+      };
+    });
+
+  const completions: DoneEntry<MyWorkRowData>[] = (completionRows ?? []).flatMap((c) => {
+    // The embedded story/project can type as an object or a single-element
+    // array depending on the FK cardinality Supabase infers; normalize both.
+    const story = Array.isArray(c.stories) ? c.stories[0] : c.stories;
+    if (!story) return [];
+    const embeddedProject = Array.isArray(story.projects) ? story.projects[0] : story.projects;
+    const projectName = projectById.get(story.project_id)?.name ?? embeddedProject?.name ?? "Unknown project";
+    return [{ completedAt: c.completed_at, row: toRowData(story, projectName) }];
+  });
+
+  const columns = classifyMyWork(assigned, completions, projects);
 
   return (
     <main className="mx-auto max-w-3xl p-6">
@@ -195,13 +208,7 @@ export default async function MyWorkPage() {
         </div>
       )}
 
-      <MyWorkSections
-        activeItems={activeItems}
-        doneItems={doneItems}
-        projects={projects}
-        currentIterationByProject={[...currentIterationEntries]}
-        pinnedStoryIds={[...pinnedStoryIds]}
-      />
+      <MyWorkSections columns={columns} />
     </main>
   );
 }
