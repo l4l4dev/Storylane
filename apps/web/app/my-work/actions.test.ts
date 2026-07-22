@@ -392,62 +392,69 @@ describe("saveMyWorkColumnOrder", () => {
 });
 
 describe("reorderMyWorkToday", () => {
-  it("writes a dense 0-based today_position for the given order", async () => {
-    const result = await reorderMyWorkToday(["s2", "s1", "s3"]);
+  it("writes a dense 0-based today_position for the given order, with today_date on every row", async () => {
+    const result = await reorderMyWorkToday(["s2", "s1", "s3"], "2026-07-23");
     expect(result).toEqual({ ok: true });
     expect(upsertMock).toHaveBeenCalledWith([
-      expect.objectContaining({ user_id: "u1", story_id: "s2", today_position: 0 }),
-      expect.objectContaining({ user_id: "u1", story_id: "s1", today_position: 1 }),
-      expect.objectContaining({ user_id: "u1", story_id: "s3", today_position: 2 }),
+      expect.objectContaining({ user_id: "u1", story_id: "s2", today_date: "2026-07-23", today_position: 0 }),
+      expect.objectContaining({ user_id: "u1", story_id: "s1", today_date: "2026-07-23", today_position: 1 }),
+      expect.objectContaining({ user_id: "u1", story_id: "s3", today_date: "2026-07-23", today_position: 2 }),
     ]);
   });
 
-  it("does not name column_id or today_date, so an existing row's column/day is untouched", async () => {
-    await reorderMyWorkToday(["s1"]);
+  // today_date must ride along (the today_position_needs_date check requires
+  // both together) — a bare today_position INSERT for a card that reached
+  // Today via a still-in-flight setMyWorkColumn write would otherwise violate
+  // it. column_id stays unnamed, so an existing row's free-column is untouched.
+  it("does not name column_id, so an existing row's column is untouched", async () => {
+    await reorderMyWorkToday(["s1"], "2026-07-23");
     const row = (upsertMock.mock.calls[0][0] as Record<string, unknown>[])[0];
     expect(row).not.toHaveProperty("column_id");
-    expect(row).not.toHaveProperty("today_date");
   });
 
   it("no-ops on an empty list (no DB call)", async () => {
-    const result = await reorderMyWorkToday([]);
+    const result = await reorderMyWorkToday([], "2026-07-23");
     expect(result).toEqual({ ok: true });
     expect(upsertMock).not.toHaveBeenCalled();
   });
 
   it("surfaces a write error", async () => {
     upsertMock.mockReturnValueOnce({ error: { message: "boom" } });
-    const result = await reorderMyWorkToday(["s1"]);
+    const result = await reorderMyWorkToday(["s1"], "2026-07-23");
     expect(result).toEqual({ ok: false, message: "boom" });
   });
 });
 
 describe("reorderMyWorkColumn", () => {
-  it("writes a dense 0-based column_position for the given order", async () => {
-    const result = await reorderMyWorkColumn(["s2", "s1", "s3"]);
+  it("writes a dense 0-based column_position for the given order, with column_id on every row", async () => {
+    const result = await reorderMyWorkColumn(["s2", "s1", "s3"], "col-1");
     expect(result).toEqual({ ok: true });
     expect(upsertMock).toHaveBeenCalledWith([
-      expect.objectContaining({ user_id: "u1", story_id: "s2", column_position: 0 }),
-      expect.objectContaining({ user_id: "u1", story_id: "s1", column_position: 1 }),
-      expect.objectContaining({ user_id: "u1", story_id: "s3", column_position: 2 }),
+      expect.objectContaining({ user_id: "u1", story_id: "s2", column_id: "col-1", column_position: 0 }),
+      expect.objectContaining({ user_id: "u1", story_id: "s1", column_id: "col-1", column_position: 1 }),
+      expect.objectContaining({ user_id: "u1", story_id: "s3", column_id: "col-1", column_position: 2 }),
     ]);
   });
 
-  it("does not name column_id, so an existing row's column is untouched", async () => {
-    await reorderMyWorkColumn(["s1"]);
+  // column_id must ride along (the column_position_needs_column check requires
+  // both together) — a bare column_position INSERT for a card that reached the
+  // column via a still-in-flight setMyWorkColumn write would otherwise violate
+  // it. today_date stays unnamed, so an existing row's Today mark is untouched.
+  it("does not name today_date, so an existing row's Today mark is untouched", async () => {
+    await reorderMyWorkColumn(["s1"], "col-1");
     const row = (upsertMock.mock.calls[0][0] as Record<string, unknown>[])[0];
-    expect(row).not.toHaveProperty("column_id");
+    expect(row).not.toHaveProperty("today_date");
   });
 
   it("no-ops on an empty list (no DB call)", async () => {
-    const result = await reorderMyWorkColumn([]);
+    const result = await reorderMyWorkColumn([], "col-1");
     expect(result).toEqual({ ok: true });
     expect(upsertMock).not.toHaveBeenCalled();
   });
 
   it("surfaces a write error", async () => {
     upsertMock.mockReturnValueOnce({ error: { message: "boom" } });
-    const result = await reorderMyWorkColumn(["s1"]);
+    const result = await reorderMyWorkColumn(["s1"], "col-1");
     expect(result).toEqual({ ok: false, message: "boom" });
   });
 });

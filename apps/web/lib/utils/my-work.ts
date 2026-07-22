@@ -64,6 +64,11 @@ export type MyWorkGroup<S> = {
 // data by the page so a reassigned-away completion still renders.
 export type DoneEntry<S> = { completedAt: string; row: S };
 
+// The Done log's default reach-back window (profiles.my_work_done_window_days
+// is now user-configurable; this is only the fallback when that row is
+// unavailable, e.g. no signed-in user).
+export const DEFAULT_DONE_WINDOW_DAYS = 7;
+
 export type MyWorkFreeColumnGroup<S> = { column: MyWorkFreeColumn; stories: MyWorkStory<S>[] };
 
 export type MyWorkColumns<S> = {
@@ -305,20 +310,23 @@ export function groupDoneByDate<S extends DoneStory>(stories: readonly S[]): Don
 
 // The three structural slots in their default relative order, interleaved with
 // free columns (by their own `position`) between Today and Done.
+// "done" is deliberately never part of this order (TASK-155 AC#2): Done is
+// an append-only log, not a column the user repositions among Todo/Today/
+// free columns, so it always renders last, fixed, outside this list.
 function defaultOrder(freeColumns: readonly MyWorkFreeColumn[]): string[] {
   const sortedFree = [...freeColumns].sort((a, b) => a.position - b.position).map((c) => c.id);
-  return ["todo", "today", ...sortedFree, "done"];
+  return ["todo", "today", ...sortedFree];
 }
 
 /**
- * Resolves the viewer's full column display order (doc-15 TASK-141: "the
- * order covers the three fixed slots too — per-user ordered list, mechanism
- * free"). `stored` is `profiles.my_work_column_order` as written by the last
- * reorder; it's read-side merged against the LIVE free column set so the
- * order never needs its own migration when a column is added or deleted:
- * stale ids (a deleted column) are dropped, and any id not yet in `stored`
- * (a newly added column, or a user who has never reordered anything) is
- * appended in its default position.
+ * Resolves the viewer's display order for the REORDERABLE columns — Todo,
+ * Today, and the free columns ("done" is deliberately excluded, see
+ * defaultOrder above). `stored` is `profiles.my_work_column_order` as written
+ * by the last reorder; it's read-side merged against the LIVE free column set
+ * so the order never needs its own migration when a column is added or
+ * deleted: stale ids (a deleted column, or "done" from before it was excluded)
+ * are dropped, and any id not yet in `stored` (a newly added column, or a
+ * user who has never reordered anything) is appended in its default position.
  */
 // Display-name overrides for the three FIXED slots — the slot id/behavior
 // never changes, only its label.
@@ -341,7 +349,10 @@ export function resolveColumnNames(stored: unknown): MyWorkColumnNames {
 }
 
 export function resolveColumnOrder(stored: readonly string[], freeColumns: readonly MyWorkFreeColumn[]): string[] {
-  const validIds = new Set<string>(["todo", "today", "done", ...freeColumns.map((c) => c.id)]);
+  // "done" is excluded even if present in an old stored order (from before
+  // TASK-155) — it's dropped like any other no-longer-valid id, since Done
+  // is no longer part of the reorderable set.
+  const validIds = new Set<string>(["todo", "today", ...freeColumns.map((c) => c.id)]);
   const order: string[] = [];
   const seen = new Set<string>();
   for (const id of stored) {

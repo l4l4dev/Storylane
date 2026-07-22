@@ -59,11 +59,21 @@ export function MyWorkRow({ story, completedAt }: { story: MyWorkRowData; comple
         )}
       >
         {completedAt && (
+          // Strengthened toward reading as history, not a duplicate (owner
+          // decision, doc-17 #12/Norman-Krug direction): visible "Completed"
+          // text, not just an icon a hover title explains. The same story can
+          // render here AND as a live card elsewhere (Done is an additive
+          // log) — this is what tells them apart at a glance. The full date
+          // lives in the title (fable-advisor review): every Done/archive row
+          // already sits under a date group heading, so repeating it inline
+          // per row is redundant and, in Done's narrow column, crowds out the
+          // title — this is metadata, not a second chip competing for width.
           <span
-            className="inline-flex shrink-0 items-center text-green-600 dark:text-green-400"
-            title={`Logged as done (${formatDate(completedAt)})`}
+            className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground"
+            title={`Completed ${formatDate(completedAt)}`}
           >
-            <CircleCheckBig className="h-3.5 w-3.5" aria-label="Completion log entry" />
+            <CircleCheckBig className="h-3 w-3 text-green-600 dark:text-green-400" aria-hidden />
+            Completed
           </span>
         )}
         <Link

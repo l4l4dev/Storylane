@@ -3,6 +3,7 @@ import { addDays } from "@storylane/core";
 import { createClient } from "@/lib/supabase/server";
 import { utcTodayKey } from "@/lib/utils/format";
 import {
+  DEFAULT_DONE_WINDOW_DAYS,
   resolveColumnNames,
   resolveColumnOrder,
   type DoneEntry,
@@ -15,10 +16,6 @@ import type { ProjectState } from "@/lib/types";
 import { MyWorkSections } from "@/components/features/my-work/my-work-sections";
 import type { MyWorkRowData } from "@/components/features/my-work/my-work-row";
 import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add";
-
-// How far back the Done log reaches (doc-14) — recent completions only; full
-// history is each project's Iterations page.
-const DONE_WINDOW_DAYS = 7;
 
 // Cross-project personal view (doc-15 "My Work redesign"): the signed-in user's
 // assigned active stories, split into Todo / Today / user-defined free columns
@@ -53,9 +50,20 @@ export default async function MyWorkPage() {
   // everything else below instead of as a second, sequential round trip.
   const soloPersonalProject = personalProjects.length === 1 ? personalProjects[0] : null;
 
+  // Fetched ahead of the batch below since doneSince (used by the
+  // completions query in that same batch) depends on the configured window.
+  const { data: profileRow } = user
+    ? await supabase
+        .from("profiles")
+        .select("my_work_column_order, my_work_column_names, my_work_done_window_days")
+        .eq("id", user.id)
+        .single()
+    : { data: null };
+  const doneWindowDays = profileRow?.my_work_done_window_days ?? DEFAULT_DONE_WINDOW_DAYS;
+
   // An explicit UTC timestamp (not a bare date) so the comparison below is
   // unambiguous regardless of the DB session's timezone setting.
-  const doneSince = `${addDays(utcTodayKey(), -DONE_WINDOW_DAYS)}T00:00:00.000Z`;
+  const doneSince = `${addDays(utcTodayKey(), -doneWindowDays)}T00:00:00.000Z`;
 
   const [
     { data: statesRows },
@@ -63,7 +71,6 @@ export default async function MyWorkPage() {
     { data: myStateRows },
     { data: columnRows },
     { data: completionRows },
-    { data: profileRow },
     { data: soloEpics },
     { data: soloLabels },
     { data: soloMembers },
@@ -108,13 +115,6 @@ export default async function MyWorkPage() {
           .eq("user_id", user.id)
           .gte("completed_at", doneSince)
           .order("completed_at", { ascending: false })
-      : Promise.resolve({ data: null }),
-    // The viewer's saved column display order (TASK-141) and fixed-slot
-    // display-name overrides (TASK-150 follow-up) — merged read-side against
-    // the live free-column set / defaults by resolveColumnOrder/
-    // resolveColumnNames below.
-    user
-      ? supabase.from("profiles").select("my_work_column_order, my_work_column_names").eq("id", user.id).single()
       : Promise.resolve({ data: null }),
     soloPersonalProject
       ? supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position")
@@ -242,6 +242,7 @@ export default async function MyWorkPage() {
         order={columnOrder}
         columnNames={columnNames}
         hasQuickAdd={soloPersonalProject !== null}
+        doneWindowDays={doneWindowDays}
         serverTodayKey={utcTodayKey()}
       />
     </main>

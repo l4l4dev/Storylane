@@ -51,6 +51,42 @@ export async function updateProfile(
   return { success: "Saved." };
 }
 
+export type MyWorkDoneWindowState = { error?: string; success?: string };
+
+/**
+ * How many days My Work's Done log reaches back before an entry falls out
+ * to the read-only archive (/my-work/archive). Per-user, matches the DB's
+ * own check constraint range.
+ */
+export async function updateMyWorkDoneWindow(
+  _prev: MyWorkDoneWindowState,
+  formData: FormData,
+): Promise<MyWorkDoneWindowState> {
+  const days = Number(formData.get("done_window_days"));
+  if (!Number.isInteger(days) || days < 1 || days > 90) {
+    return { error: "Enter a whole number of days between 1 and 90." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "Not signed in." };
+  }
+
+  const { error } = await supabase.from("profiles").update({ my_work_done_window_days: days }).eq("id", user.id);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/my-work");
+  return { success: "Saved." };
+}
+
 export type TimeOffState = { error?: string };
 
 /**

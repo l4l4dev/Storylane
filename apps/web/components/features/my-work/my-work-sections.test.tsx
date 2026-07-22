@@ -75,6 +75,7 @@ function renderSections(props: {
   freeColumns?: MyWorkFreeColumn[];
   order?: string[];
   hasQuickAdd?: boolean;
+  doneWindowDays?: number;
 }) {
   const freeColumns = props.freeColumns ?? [DOING];
   return render(
@@ -85,6 +86,7 @@ function renderSections(props: {
       freeColumns={freeColumns}
       order={props.order ?? resolveColumnOrder([], freeColumns)}
       hasQuickAdd={props.hasQuickAdd}
+      doneWindowDays={props.doneWindowDays}
       serverTodayKey={TODAY}
     />,
   );
@@ -187,7 +189,7 @@ describe("MyWorkSections", () => {
       assigned: [active("s1", { columnId: "doing" })],
       completions: [doneEntry("s1", `${TODAY}T12:00:00.000Z`)],
     });
-    const markers = screen.getAllByLabelText("Completion log entry");
+    const markers = screen.getAllByText("Completed");
     expect(markers).toHaveLength(1);
   });
 
@@ -206,10 +208,19 @@ describe("MyWorkSections", () => {
 
   // TASK-141: the column display order (including the fixed slots) is
   // caller-supplied, not hardcoded.
-  it("renders columns in the given custom order", () => {
+  it("reorders Todo/Today/free columns per the given custom order (Done still trails)", () => {
+    renderSections({ order: ["doing", "today", "todo"] });
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual(["Doing", "Today", "Todo", "Done"]);
+  });
+
+  // TASK-155 AC#2: Done is excluded from the reorderable order entirely — it
+  // always renders last regardless of what's in (or missing from) `order`,
+  // including a stale "done" some old stored order might still contain.
+  it("always renders Done last, ignoring its position in a given custom order", () => {
     renderSections({ order: ["done", "doing", "today", "todo"] });
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(["Done", "Doing", "Today", "Todo"]);
+    expect(headings).toEqual(["Doing", "Today", "Todo", "Done"]);
   });
 
   it("skips an order entry whose free column no longer exists", () => {
@@ -223,27 +234,45 @@ describe("MyWorkSections", () => {
   // what keeps keyboard reordering (dnd-kit's KeyboardSensor) working, since
   // dnd-kit attaches its listeners/tabIndex to whichever element gets
   // {...attributes} {...listeners}.
-  it("gives each column its own focusable drag handle, separate from the card list", () => {
+  it("gives each reorderable column its own focusable drag handle, separate from the card list", () => {
     renderSections({});
-    ["Todo", "Today", "Doing", "Done"].forEach((title) => {
+    ["Todo", "Today", "Doing"].forEach((title) => {
       const handle = screen.getByRole("button", { name: `Reorder ${title} column` });
       expect(handle.tagName).toBe("BUTTON");
     });
   });
 
+  // TASK-155 AC#2: Done is an append-only log, not a peer draggable column —
+  // it gets no grip and no move buttons at all.
+  it("gives Done no drag handle and no move buttons", () => {
+    renderSections({});
+    expect(screen.queryByRole("button", { name: "Reorder Done column" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Move Done column left" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Move Done column right" })).not.toBeInTheDocument();
+  });
+
+  // TASK-155 AC#2/#4/#5: Done's subheader shows the configured retention
+  // window and links to the archive of everything older than it.
+  it("shows Done's retention window and a link to the archive", () => {
+    renderSections({ doneWindowDays: 14 });
+    expect(screen.getByText("Last 14 days")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Archive" })).toHaveAttribute("href", "/my-work/archive");
+  });
+
   // doc-17 #7: dragging a column's header has no keyboard-arrow-free
-  // equivalent for touch, so every column also gets left/right move buttons.
-  it("disables the move-left button on the first column and move-right on the last", () => {
+  // equivalent for touch, so every REORDERABLE column also gets left/right
+  // move buttons (Done excluded — see above).
+  it("disables the move-left button on the first reorderable column and move-right on the last", () => {
     renderSections({});
     expect(screen.getByRole("button", { name: "Move Todo column left" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Move Done column right" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move Doing column right" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Move Todo column right" })).not.toBeDisabled();
   });
 
-  it("moving a column right persists the swapped order", async () => {
+  it("moving a column right persists the swapped order, never including Done", async () => {
     renderSections({});
     fireEvent.click(screen.getByRole("button", { name: "Move Todo column right" }));
-    await waitFor(() => expect(saveMyWorkColumnOrder).toHaveBeenCalledWith(["today", "todo", "doing", "done"]));
+    await waitFor(() => expect(saveMyWorkColumnOrder).toHaveBeenCalledWith(["today", "todo", "doing"]));
   });
 
   // doc-17 #6: rename/delete for a free column live in its own header now,

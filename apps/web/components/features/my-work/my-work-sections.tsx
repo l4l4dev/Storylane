@@ -23,6 +23,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { addDays } from "@storylane/core";
 import {
@@ -42,6 +43,7 @@ import {
   canDropOnDone,
   classifyMyWork,
   DEFAULT_COLUMN_NAMES,
+  DEFAULT_DONE_WINDOW_DAYS,
   groupDoneByDate,
   isManualOrderReorder,
   regroupByProject,
@@ -68,6 +70,11 @@ import { MyWorkRow, type MyWorkRowData } from "./my-work-row";
 // A noop subscribe is fine: the date is read once per mount (a midnight
 // rollover is picked up on the next refresh).
 const NOOP_SUBSCRIBE = () => () => {};
+
+// Done's shell renders reorderable={false} (TASK-155 AC#2), which hides the
+// move buttons entirely — these are only passed because ColumnMoveProps is
+// required, never actually invoked.
+const NOOP_MOVE = () => {};
 
 function doneDateLabel(dateKey: string, todayKey: string): string {
   if (dateKey === todayKey) return "Today";
@@ -107,6 +114,8 @@ function MyWorkColumnShell({
   children,
   onRename,
   freeColumn,
+  reorderable = true,
+  subheader,
   onMoveLeft,
   onMoveRight,
   canMoveLeft,
@@ -123,6 +132,15 @@ function MyWorkColumnShell({
   // itself (doc-17 #6: editing and reordering now share one surface, the
   // column header, instead of a separate manage panel).
   freeColumn?: MyWorkFreeColumn;
+  // false only for Done (doc-17 #14, TASK-155 AC#2): it's an append-only log,
+  // not a column the user repositions, so it gets no grip and no move
+  // buttons — the useSortable registration below still runs (a stable hook
+  // call every render for this instance), its output is just never attached
+  // to anything, so Done can't be picked up as a drag source.
+  reorderable?: boolean;
+  // Extra content between the title row and the card list — only Done uses
+  // this, to show its retention window + a link to the archive (AC#2/#5).
+  subheader?: React.ReactNode;
 } & ColumnMoveProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: columnSortableId(id),
@@ -136,49 +154,55 @@ function MyWorkColumnShell({
       className={`flex w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/20 ${BOARD_COLUMN_HEIGHT_CLASS} ${isDragging ? "opacity-60" : ""}`}
     >
       <header className="flex items-center gap-1 px-3 pt-3 pb-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label={`Reorder ${title} column`}
-          // Always visible at a legible contrast (doc-17 #7) rather than
-          // hover-gated — a resting-state grip is the only way a mouse user
-          // discovers columns are reorderable at all.
-          className="cursor-grab text-foreground/70 hover:text-foreground active:cursor-grabbing"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical />
-        </Button>
+        {reorderable && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Reorder ${title} column`}
+            // Always visible at a legible contrast (doc-17 #7) rather than
+            // hover-gated — a resting-state grip is the only way a mouse user
+            // discovers columns are reorderable at all.
+            className="cursor-grab text-foreground/70 hover:text-foreground active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical />
+          </Button>
+        )}
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
           <ColumnNameField name={title} onRename={onRename} />
         </h2>
         <span className="shrink-0 text-xs text-muted-foreground">{count}</span>
-        {/* Non-drag fallback (doc-17 #7): touch has no keyboard arrow keys and
-            no hover, so left/right is the only way to reorder columns there.
-            icon-sm (not icon-xs) since this is the touch target. */}
-        <div className="flex shrink-0">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Move ${title} column left`}
-            disabled={!canMoveLeft}
-            onClick={onMoveLeft}
-          >
-            <ChevronLeft />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Move ${title} column right`}
-            disabled={!canMoveRight}
-            onClick={onMoveRight}
-          >
-            <ChevronRight />
-          </Button>
-        </div>
+        {reorderable && (
+          <>
+            {/* Non-drag fallback (doc-17 #7): touch has no keyboard arrow keys
+                and no hover, so left/right is the only way to reorder columns
+                there. icon-sm (not icon-xs) since this is the touch target. */}
+            <div className="flex shrink-0">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Move ${title} column left`}
+                disabled={!canMoveLeft}
+                onClick={onMoveLeft}
+              >
+                <ChevronLeft />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Move ${title} column right`}
+                disabled={!canMoveRight}
+                onClick={onMoveRight}
+              >
+                <ChevronRight />
+              </Button>
+            </div>
+          </>
+        )}
         {/* Separated from the move buttons with its own margin (fable-advisor
             review, principle 6): a destructive action must not sit flush
             beside a routine one. */}
@@ -188,6 +212,7 @@ function MyWorkColumnShell({
           </div>
         )}
       </header>
+      {subheader && <div className="border-t border-border/60 px-3 py-1.5">{subheader}</div>}
       <div className="flex flex-1 flex-col overflow-y-auto px-3 pb-3">{children}</div>
     </section>
   );
@@ -278,6 +303,7 @@ export function MyWorkSections({
   order,
   columnNames = DEFAULT_COLUMN_NAMES,
   hasQuickAdd = true,
+  doneWindowDays = DEFAULT_DONE_WINDOW_DAYS,
   serverTodayKey,
 }: {
   assigned: MyWorkStory<MyWorkRowData>[];
@@ -297,6 +323,10 @@ export function MyWorkSections({
   // pointing at a control that may not exist. Defaults true so existing
   // callers/tests (which don't exercise this copy) don't need updating.
   hasQuickAdd?: boolean;
+  // The viewer's configured Done retention window (profiles.
+  // my_work_done_window_days), shown in Done's subheader alongside a link to
+  // the archive of everything older (TASK-155 AC#2/#4/#5).
+  doneWindowDays?: number;
   serverTodayKey: string;
 }) {
   const todayKey = useSyncExternalStore(NOOP_SUBSCRIBE, localTodayKey, () => serverTodayKey);
@@ -479,11 +509,12 @@ export function MyWorkSections({
       const reordered = reorderContainer(containers[overContainer] ?? [], draggedId, String(over.id));
       setContainers((prev) => ({ ...prev, [overContainer]: reordered }));
       setDragError(null);
-      const persist = overContainer === "today" ? reorderMyWorkToday : reorderMyWorkColumn;
       runDrop(
         draggedId,
         async () => {
-          const result = await persist(reordered.map((i) => i.storyId));
+          const ids = reordered.map((i) => i.storyId);
+          const result =
+            overContainer === "today" ? await reorderMyWorkToday(ids, todayKey) : await reorderMyWorkColumn(ids, overContainer);
           if (!result.ok) throw new Error(result.message);
         },
         setDragError,
@@ -582,7 +613,19 @@ export function MyWorkSections({
       title={columnNames.done}
       count={(containers.done ?? []).length}
       onRename={(name) => renameFixed("done", name)}
-      {...moveProps("done")}
+      reorderable={false}
+      subheader={
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>Last {doneWindowDays} days</span>
+          <Link href="/my-work/archive" className="text-primary hover:underline">
+            Archive
+          </Link>
+        </div>
+      }
+      onMoveLeft={NOOP_MOVE}
+      onMoveRight={NOOP_MOVE}
+      canMoveLeft={false}
+      canMoveRight={false}
     >
       <SortableContext items={(containers.done ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <div ref={setDoneRef} className="flex min-h-10 flex-1 flex-col gap-3">
@@ -673,8 +716,13 @@ export function MyWorkSections({
         </p>
       )}
 
-      <SortableContext items={displayOrder.map(columnSortableId)} strategy={horizontalListSortingStrategy}>
-        <div className="flex gap-3 overflow-x-auto pb-2">
+      {/* Done is a flex sibling OUTSIDE the SortableContext, not one of the
+          mapped items (TASK-155 AC#2): displayOrder never contains "done"
+          (resolveColumnOrder excludes it), so it can't be dragged, and
+          nothing dragged past it can shift its position either — it's
+          always the fixed second-to-last column, with "+ Add column" after it. */}
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        <SortableContext items={displayOrder.map(columnSortableId)} strategy={horizontalListSortingStrategy}>
           {displayOrder.map((slotId) => {
             if (slotId === "todo") return todoColumn;
             if (slotId === "today") {
@@ -690,7 +738,6 @@ export function MyWorkSections({
                 />
               );
             }
-            if (slotId === "done") return doneColumn;
             const column = freeColumnById.get(slotId);
             if (!column) return null; // stale id — resolveColumnOrder already drops these server-side
             return (
@@ -706,12 +753,13 @@ export function MyWorkSections({
               />
             );
           })}
-          {/* Add lives at the end of the row itself now (doc-17 #6):
-              add/rename/delete/reorder are all reachable from this one board,
-              not split across a separate collapsed manage panel. */}
-          <AddColumnTile />
-        </div>
-      </SortableContext>
+        </SortableContext>
+        {doneColumn}
+        {/* Add lives at the end of the row itself now (doc-17 #6):
+            add/rename/delete/reorder are all reachable from this one board,
+            not split across a separate collapsed manage panel. */}
+        <AddColumnTile />
+      </div>
 
       {/* Portal-rendered so the dragged card floats above every column instead
           of being clipped by their overflow-y-auto bodies. */}

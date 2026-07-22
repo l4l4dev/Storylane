@@ -40,12 +40,17 @@ describe("MyWorkRow", () => {
   // distinguishes them at the card level.
   it("shows no completion marker when completedAt is absent (a live card)", () => {
     render(<MyWorkRow story={baseStory} />);
-    expect(screen.queryByLabelText("Completion log entry")).not.toBeInTheDocument();
+    expect(screen.queryByText("Completed")).not.toBeInTheDocument();
   });
 
-  it("shows a completion marker when completedAt is set (a Done log entry)", () => {
+  // doc-17 #12 (owner-chosen Norman/Krug strengthen direction) + #41: visible
+  // "Completed" text at rest, not just an icon a hover title explains. The
+  // full date lives in the title only (fable-advisor review) — every Done/
+  // archive row already sits under a date-group heading, so repeating it
+  // inline would be redundant and crowd out the title in Done's narrow column.
+  it("shows a visible 'Completed' marker (full date in its title) when completedAt is set", () => {
     render(<MyWorkRow story={baseStory} completedAt="2026-07-20T09:00:00Z" />);
-    expect(screen.getByLabelText("Completion log entry")).toBeInTheDocument();
+    expect(screen.getByText("Completed")).toHaveAttribute("title", expect.stringContaining("Completed"));
   });
 
   // doc-17 #3: personal-vs-team governs drag-to-Done behavior, so it must be

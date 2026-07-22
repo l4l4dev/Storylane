@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { appVersion } from "@/lib/utils/app-version";
+import { MyWorkDoneWindowSettings } from "@/components/features/settings/my-work-done-window-settings";
 import { ProfileSettingsForm } from "@/components/features/settings/profile-settings-form";
 import { TimeOffSettings } from "@/components/features/settings/time-off-settings";
 
@@ -17,7 +18,7 @@ export default async function SettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username, display_name")
+    .select("username, display_name, my_work_done_window_days")
     .eq("id", user.id)
     .single();
 
@@ -46,6 +47,13 @@ export default async function SettingsPage() {
       <section className="mt-8">
         <h2 className="mb-3 text-lg font-semibold">Time off</h2>
         <TimeOffSettings dates={(timeOff ?? []).map((row) => row.date)} />
+      </section>
+
+      {/* My Work Done log retention (TASK-155 AC#4) — older completions move
+          to the read-only archive at /my-work/archive. */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold">My Work</h2>
+        <MyWorkDoneWindowSettings days={profile.my_work_done_window_days} />
       </section>
 
       <p className="mt-10 text-xs text-muted-foreground">Storylane {appVersion()}</p>

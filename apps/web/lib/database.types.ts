@@ -453,6 +453,7 @@ export type Database = {
           is_agent: boolean
           my_work_column_names: Json
           my_work_column_order: string[]
+          my_work_done_window_days: number
           username: string
         }
         Insert: {
@@ -463,6 +464,7 @@ export type Database = {
           is_agent?: boolean
           my_work_column_names?: Json
           my_work_column_order?: string[]
+          my_work_done_window_days?: number
           username: string
         }
         Update: {
@@ -473,6 +475,7 @@ export type Database = {
           is_agent?: boolean
           my_work_column_names?: Json
           my_work_column_order?: string[]
+          my_work_done_window_days?: number
           username?: string
         }
         Relationships: []

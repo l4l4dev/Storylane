@@ -166,12 +166,16 @@ export async function dismissCarryOver(storyIds: string[]): Promise<ActionResult
  * full re-densify keeps the write simple for a list this small and single-
  * user, no anchor/midpoint bookkeeping needed.
  *
- * Only `today_position` is named in the upsert payload, so column_id/
- * today_date are left untouched on the existing rows (the established
- * partial-upsert behavior this file's other marks already rely on) — a
- * reorder never changes which day or which free column a card belongs to.
+ * `today_date` is named alongside `today_position` (both required together by
+ * the `today_position_needs_date` check) — column_id is left untouched on
+ * existing rows (a reorder never changes which free column a card belongs
+ * to). Naming only today_position used to upsert a bare INSERT (violating
+ * that check) whenever a card reached Today via a still-in-flight
+ * setMyWorkColumn write and got reordered again before that write landed —
+ * two overlapping drags are possible since runDrop doesn't block a new drag
+ * on the previous one's server round trip.
  */
-export async function reorderMyWorkToday(orderedStoryIds: string[]): Promise<ActionResult> {
+export async function reorderMyWorkToday(orderedStoryIds: string[], clientToday: string): Promise<ActionResult> {
   if (orderedStoryIds.length === 0) return { ok: true };
   const supabase = await createClient();
   const {
@@ -182,6 +186,7 @@ export async function reorderMyWorkToday(orderedStoryIds: string[]): Promise<Act
     orderedStoryIds.map((storyId, index) => ({
       user_id: user.id,
       story_id: storyId,
+      today_date: clientToday,
       today_position: index,
       updated_at: new Date().toISOString(),
     })),
@@ -195,10 +200,12 @@ export async function reorderMyWorkToday(orderedStoryIds: string[]): Promise<Act
 /**
  * Persists a manual reorder WITHIN a free column — generalizes
  * reorderMyWorkToday's approach to any user-defined column: same full
- * re-densify, same partial-upsert shape naming only column_position so
- * today_date/column_id are left untouched on the existing rows.
+ * re-densify, same reasoning for naming `column_id` alongside
+ * `column_position` (both required together by the
+ * `column_position_needs_column` check); today_date is left untouched on
+ * existing rows.
  */
-export async function reorderMyWorkColumn(orderedStoryIds: string[]): Promise<ActionResult> {
+export async function reorderMyWorkColumn(orderedStoryIds: string[], columnId: string): Promise<ActionResult> {
   if (orderedStoryIds.length === 0) return { ok: true };
   const supabase = await createClient();
   const {
@@ -209,6 +216,7 @@ export async function reorderMyWorkColumn(orderedStoryIds: string[]): Promise<Ac
     orderedStoryIds.map((storyId, index) => ({
       user_id: user.id,
       story_id: storyId,
+      column_id: columnId,
       column_position: index,
       updated_at: new Date().toISOString(),
     })),

@@ -257,34 +257,35 @@ describe("resolveDragEndTarget", () => {
 });
 
 describe("resolveColumnOrder", () => {
-  it("defaults to todo, today, free columns by position, done when nothing is stored", () => {
-    expect(resolveColumnOrder([], [WAITING, DOING])).toEqual(["todo", "today", "doing", "waiting", "done"]);
+  it("defaults to todo, today, free columns by position when nothing is stored", () => {
+    expect(resolveColumnOrder([], [WAITING, DOING])).toEqual(["todo", "today", "doing", "waiting"]);
   });
 
   it("uses the stored order verbatim when it already covers everything", () => {
-    expect(resolveColumnOrder(["done", "doing", "today", "todo"], [DOING])).toEqual(["done", "doing", "today", "todo"]);
+    expect(resolveColumnOrder(["doing", "today", "todo"], [DOING])).toEqual(["doing", "today", "todo"]);
   });
 
   it("drops a stale id (a deleted free column) from the stored order", () => {
-    expect(resolveColumnOrder(["todo", "gone", "today", "done"], [])).toEqual(["todo", "today", "done"]);
+    expect(resolveColumnOrder(["todo", "gone", "today"], [])).toEqual(["todo", "today"]);
   });
 
   it("appends a newly added free column not yet in the stored order", () => {
-    expect(resolveColumnOrder(["todo", "today", "doing", "done"], [DOING, WAITING])).toEqual([
-      "todo",
-      "today",
-      "doing",
-      "done",
-      "waiting",
-    ]);
+    expect(resolveColumnOrder(["todo", "today", "doing"], [DOING, WAITING])).toEqual(["todo", "today", "doing", "waiting"]);
   });
 
   it("de-dupes a repeated id in the stored order", () => {
-    expect(resolveColumnOrder(["todo", "todo", "today", "done"], [])).toEqual(["todo", "today", "done"]);
+    expect(resolveColumnOrder(["todo", "todo", "today"], [])).toEqual(["todo", "today"]);
   });
 
   it("ignores an id that isn't a known slot", () => {
-    expect(resolveColumnOrder(["bogus", "todo", "today", "done"], [])).toEqual(["todo", "today", "done"]);
+    expect(resolveColumnOrder(["bogus", "todo", "today"], [])).toEqual(["todo", "today"]);
+  });
+
+  // TASK-155 AC#2: Done is excluded from the reorderable order entirely —
+  // even a stale "done" left over from before this change is dropped like
+  // any other no-longer-valid id.
+  it("drops 'done' from a stored order even though it used to be valid there", () => {
+    expect(resolveColumnOrder(["done", "doing", "today", "todo"], [DOING])).toEqual(["doing", "today", "todo"]);
   });
 });
 
