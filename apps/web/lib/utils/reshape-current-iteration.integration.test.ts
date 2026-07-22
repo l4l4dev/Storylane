@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { Client as PgClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // TASK-105 (doc-11 D3): reshape_current_iteration re-derives the current
@@ -151,5 +152,55 @@ describe.skipIf(!RUN)("reshape_current_iteration (integration)", () => {
     const outsider = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     const { error } = await outsider.rpc("reshape_current_iteration", { p_project_id: projectId });
     expect(error).not.toBeNull(); // project_role gate raises for a non-member
+  });
+
+  // TASK-116 (doc-13 finding #8): reshape_current_iteration re-checks the
+  // caller's role AFTER acquiring the advisory lock, mirroring
+  // override_iteration_length. A raw pg connection holds the same lock so the
+  // RPC blocks after its pre-lock check; the owner is de-membered while it
+  // waits, and the post-lock re-check must reject it (without it, the reshape
+  // to a 1-day span would silently commit). See flexible-cadence.integration
+  // for the same pattern on override_iteration_length.
+  it("rejects a reshape when the caller is de-membered while blocked on the lock (AC #2)", async () => {
+    const projectId = await createProject({ iteration_length: 14, working_weekdays: [1, 2, 3, 4, 5, 6, 7] });
+    const iter = await seedCurrentIteration(projectId);
+    // Length change the Settings save makes before calling the RPC — a real
+    // reshape (to a 1-day span) that would succeed if the caller stayed a member.
+    await supabase.from("projects").update({ iteration_length: 1 }).eq("id", projectId);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const ownerId = user!.id;
+
+    const holder = new PgClient({
+      connectionString:
+        process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    try {
+      await holder.query("select pg_advisory_lock(hashtext('iteration_finalize:' || $1))", [projectId]);
+
+      const reshapePromise = supabase.rpc("reshape_current_iteration", { p_project_id: projectId });
+      await new Promise((r) => setTimeout(r, 400)); // let it park on the lock
+
+      const { error: revokeError } = await admin
+        .from("project_members")
+        .delete()
+        .eq("project_id", projectId)
+        .eq("user_id", ownerId);
+      expect(revokeError).toBeNull();
+
+      await holder.query("select pg_advisory_unlock(hashtext('iteration_finalize:' || $1))", [projectId]);
+
+      const { error } = await reshapePromise;
+      expect(error?.code).toBe("42501"); // require_project_role: 'not authorized'
+
+      // The reshape never landed — end date is still the original 14-day span.
+      const { data: after } = await admin.from("iterations").select("end_date").eq("id", iter.id).single();
+      expect(after!.end_date).toBe(iter.end_date);
+    } finally {
+      await holder.end();
+    }
   });
 });

@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { Client as PgClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // TASK-87 (doc-8 §3-§5): the cadence rules live in SQL — the trigger that
@@ -233,6 +234,76 @@ describe.skipIf(!RUN)("flexible cadence (integration)", () => {
     }
     for (let i = 1; i < rows.length; i++) {
       expect(daysBetween(rows[i - 1].end_date, rows[i].start_date)).toBe(1);
+    }
+  });
+
+  // TASK-116 (doc-13 finding #8): override_iteration_length re-checks the
+  // caller's project role AFTER acquiring the advisory lock, not only before.
+  // A raw pg connection holds the same lock (session-level) so the RPC blocks
+  // AFTER passing its pre-lock check; the owner is de-membered while it waits,
+  // and the post-lock re-check must then reject it. Without the re-check the
+  // stretch would silently commit. Needs a real Postgres connection because
+  // supabase-js (PostgREST) can't hold an advisory lock across statements.
+  it("rejects an override when the caller is de-membered while blocked on the lock (AC #2)", async () => {
+    const projectId = await createProject("override role-revoke race", { iteration_length: 14 });
+    await supabase.rpc("finalize_iteration", { p_project_id: projectId, p_manual: false });
+    const [first] = await iterationsOf(projectId);
+    // A valid stretch that would succeed if the caller were still a member —
+    // so a failure can only come from the post-lock re-check, not the bounds.
+    const stretched = new Date(Date.parse(`${first.end_date}T00:00:00Z`) + 7 * MS_PER_DAY)
+      .toISOString()
+      .slice(0, 10);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const ownerId = user!.id;
+
+    const holder = new PgClient({
+      connectionString:
+        process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    try {
+      // Hold the exact lock override_iteration_length takes (session-level, so
+      // it outlives a single statement and conflicts with the RPC's xact lock).
+      await holder.query("select pg_advisory_lock(hashtext('iteration_finalize:' || $1))", [projectId]);
+
+      // Fire the override without awaiting: it passes the pre-lock membership
+      // check, then blocks on pg_advisory_xact_lock behind our held lock.
+      const overridePromise = supabase.rpc("override_iteration_length", {
+        p_iteration_id: first.id,
+        p_end_date: stretched,
+      });
+      // Give the request time to reach the DB and park on the lock.
+      await new Promise((r) => setTimeout(r, 400));
+
+      // Revoke the owner's membership while the RPC is parked.
+      const { error: revokeError } = await admin
+        .from("project_members")
+        .delete()
+        .eq("project_id", projectId)
+        .eq("user_id", ownerId);
+      expect(revokeError).toBeNull();
+
+      // Release the lock so the parked RPC proceeds to its post-lock re-check.
+      await holder.query("select pg_advisory_unlock(hashtext('iteration_finalize:' || $1))", [projectId]);
+
+      const { error } = await overridePromise;
+      expect(error?.code).toBe("42501"); // require_project_role: 'not authorized'
+
+      // The stretch never landed — end date is unchanged.
+      const { data: after } = await admin
+        .from("iterations")
+        .select("end_date")
+        .eq("id", first.id)
+        .single();
+      expect(after!.end_date).toBe(first.end_date);
+    } finally {
+      await holder.end();
+      // Owner was removed, so the afterAll owner-scoped delete can't reach this
+      // project — clean it up with the service role here.
+      await admin.from("projects").delete().eq("id", projectId);
     }
   });
 
