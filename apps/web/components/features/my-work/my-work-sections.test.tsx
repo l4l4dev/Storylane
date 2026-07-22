@@ -74,6 +74,7 @@ function renderSections(props: {
   projects?: MyWorkProject[];
   freeColumns?: MyWorkFreeColumn[];
   order?: string[];
+  hasQuickAdd?: boolean;
 }) {
   const freeColumns = props.freeColumns ?? [DOING];
   return render(
@@ -83,6 +84,7 @@ function renderSections(props: {
       projects={props.projects ?? [TEAM_A]}
       freeColumns={freeColumns}
       order={props.order ?? resolveColumnOrder([], freeColumns)}
+      hasQuickAdd={props.hasQuickAdd}
       serverTodayKey={TODAY}
     />,
   );
@@ -114,6 +116,46 @@ describe("MyWorkSections", () => {
   it("shows the empty state when there is nothing at all", () => {
     renderSections({});
     expect(screen.getByText(/Nothing here yet/)).toBeInTheDocument();
+  });
+
+  it("points the empty state at the quick-add when it's present", () => {
+    renderSections({ hasQuickAdd: true });
+    expect(screen.getByText(/add a personal task above/)).toBeInTheDocument();
+  });
+
+  // doc-17 #4: the quick-add only renders for exactly one personal project —
+  // for zero/multiple, the empty-state copy must not point at a control
+  // that isn't there.
+  it("points the empty state at a project board instead when there's no quick-add", () => {
+    renderSections({ hasQuickAdd: false });
+    expect(screen.getByText(/add one from a personal project's board/)).toBeInTheDocument();
+    expect(screen.queryByText(/add a personal task above/)).not.toBeInTheDocument();
+  });
+
+  // doc-17 #5: an empty column body used to be a bare strip with no
+  // placeholder — even when OTHER columns have cards (isEmpty is false).
+  it("shows a placeholder in an empty column even when other columns have cards", () => {
+    renderSections({ assigned: [active("t1")] }); // only Todo has a card
+    const today = screen.getByRole("heading", { level: 2, name: "Today" }).closest("section")!;
+    expect(within(today).getByText("Drag stories here to plan today.")).toBeInTheDocument();
+  });
+
+  // fable-advisor review: Done isn't a drop target from My Work, so its
+  // empty hint must not invite a drag the way the generic wording would.
+  it("gives Done its own empty-hint wording, not the generic drag prompt", () => {
+    renderSections({ assigned: [active("t1")] });
+    const done = screen.getByRole("heading", { level: 2, name: "Done" }).closest("section")!;
+    expect(within(done).getByText("Completed stories appear here.")).toBeInTheDocument();
+  });
+
+  // fable-advisor review: when the WHOLE board is empty, the per-column
+  // hints would just repeat the single whole-board message N times.
+  it("suppresses per-column empty hints when the whole board is empty", () => {
+    renderSections({});
+    expect(screen.queryByText("Drag stories here.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Drag stories here to plan today.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Completed stories appear here.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Assigned stories appear here.")).not.toBeInTheDocument();
   });
 
   // Every column stays visible (with a "0" count) even when empty, so a card

@@ -241,6 +241,7 @@ export default async function MyWorkPage() {
         freeColumns={freeColumns}
         order={columnOrder}
         columnNames={columnNames}
+        hasQuickAdd={soloPersonalProject !== null}
         serverTodayKey={utcTodayKey()}
       />
     </main>

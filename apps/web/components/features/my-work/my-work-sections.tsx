@@ -192,6 +192,16 @@ function MyWorkColumnShell({
   );
 }
 
+// An empty column body used to render as a bare strip with no explanation
+// (doc-17 #5) — a short muted line instead, in every column that can be
+// empty. `text` differs per column kind (fable-advisor review: Done isn't a
+// drop target from My Work, so it needs its own wording, not "Drag ..."). Only
+// shown when the WHOLE board isn't already empty — the whole-board empty
+// state above covers that case in one message instead of repeating per column.
+function EmptyColumnHint({ text }: { text: string }) {
+  return <p className="text-xs text-muted-foreground">{text}</p>;
+}
+
 // A flat draggable column (Today + each free column) — one dnd-kit droppable
 // with a plain vertical list. Its own component so the variable number of free
 // columns each keep a stable hook count (useDroppable can't run in a loop in
@@ -202,6 +212,7 @@ function FlatColumn({
   items,
   onRename,
   freeColumn,
+  emptyHint,
   ...move
 }: {
   id: MyWorkColumnId;
@@ -209,12 +220,20 @@ function FlatColumn({
   items: MyWorkDragItem<MyWorkRowData>[];
   onRename: (name: string) => Promise<void>;
   freeColumn?: MyWorkFreeColumn;
+  // undefined suppresses the hint (the whole-board empty state already
+  // covers it in one message — see EmptyColumnHint's own comment).
+  emptyHint?: string;
 } & ColumnMoveProps) {
   const { setNodeRef } = useDroppable({ id });
   return (
     <MyWorkColumnShell id={id} title={title} count={items.length} onRename={onRename} freeColumn={freeColumn} {...move}>
       <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-2">
+          {items.length === 0 && emptyHint && (
+            <li>
+              <EmptyColumnHint text={emptyHint} />
+            </li>
+          )}
           {items.map((item) => (
             <SortableItem key={item.id} id={item.id}>
               <MyWorkRow story={item.row} />
@@ -257,6 +276,7 @@ export function MyWorkSections({
   freeColumns,
   order,
   columnNames = DEFAULT_COLUMN_NAMES,
+  hasQuickAdd = true,
   serverTodayKey,
 }: {
   assigned: MyWorkStory<MyWorkRowData>[];
@@ -270,6 +290,12 @@ export function MyWorkSections({
   // output) — defaults to the plain Todo/Today/Done labels so existing
   // callers/tests don't need updating.
   columnNames?: MyWorkColumnNames;
+  // Whether the page actually rendered the quick-add card above (true only
+  // for exactly one personal project) — the empty-state copy references it,
+  // so it must know when that's not the case (doc-17 #4) instead of always
+  // pointing at a control that may not exist. Defaults true so existing
+  // callers/tests (which don't exercise this copy) don't need updating.
+  hasQuickAdd?: boolean;
   serverTodayKey: string;
 }) {
   const todayKey = useSyncExternalStore(NOOP_SUBSCRIBE, localTodayKey, () => serverTodayKey);
@@ -515,6 +541,7 @@ export function MyWorkSections({
     >
       <SortableContext items={(containers.todo ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <div ref={setTodoRef} className="flex min-h-10 flex-1 flex-col gap-3">
+          {todoGroups.length === 0 && !isEmpty && <EmptyColumnHint text="Assigned stories appear here." />}
           {todoGroups.map((group) => (
             <div key={group.projectId}>
               <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.projectName}</h3>
@@ -543,6 +570,7 @@ export function MyWorkSections({
     >
       <SortableContext items={(containers.done ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <div ref={setDoneRef} className="flex min-h-10 flex-1 flex-col gap-3">
+          {doneGroups.length === 0 && !isEmpty && <EmptyColumnHint text="Completed stories appear here." />}
           {doneGroups.map((group) => (
             <div key={group.dateKey}>
               <h3 className="mb-2 text-xs font-medium text-muted-foreground">{doneDateLabel(group.dateKey, todayKey)}</h3>
@@ -623,8 +651,9 @@ export function MyWorkSections({
 
       {isEmpty && (
         <p className="text-sm text-muted-foreground">
-          Nothing here yet. Stories assigned to you across your projects show up here — add a personal task above,
-          or open a story to plan your day.
+          {hasQuickAdd
+            ? "Nothing here yet. Stories assigned to you across your projects show up here — add a personal task above, or open a story to plan your day."
+            : "Nothing here yet. Stories assigned to you across your projects show up here — add one from a personal project's board, or open a story to plan your day."}
         </p>
       )}
 
@@ -640,6 +669,7 @@ export function MyWorkSections({
                   title={columnNames.today}
                   items={containers.today ?? []}
                   onRename={(name) => renameFixed("today", name)}
+                  emptyHint={isEmpty ? undefined : "Drag stories here to plan today."}
                   {...moveProps("today")}
                 />
               );
@@ -655,6 +685,7 @@ export function MyWorkSections({
                 items={containers[column.id] ?? []}
                 onRename={(name) => renameFree(column.id, name)}
                 freeColumn={column}
+                emptyHint={isEmpty ? undefined : "Drag stories here."}
                 {...moveProps(column.id)}
               />
             );
