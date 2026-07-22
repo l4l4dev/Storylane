@@ -3,11 +3,11 @@ id: TASK-143
 title: >-
   project_states: member UPDATE path can rewrite position, bypassing the
   RPC-only ordering lockdown
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 09:04'
-updated_date: '2026-07-22 10:31'
+updated_date: '2026-07-22 10:32'
 labels: []
 dependencies: []
 priority: medium

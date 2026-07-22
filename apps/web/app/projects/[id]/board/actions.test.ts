@@ -792,4 +792,41 @@ describe("board drop actions -> move_story_board", () => {
       expect(call.p_anchor).toEqual({ before: { kind: "divider", id: "d1" } });
     });
   });
+
+  // Rollover is writers-only (finalize_iteration rejects viewers with 42501,
+  // owner decision 2026-07-22). ensureCurrentIteration must NOT let that
+  // rejection error the board/iterations pages for a viewer — it swallows
+  // 42501 and lets the stale iteration render.
+  describe("ensureCurrentIteration", () => {
+    beforeEach(() => {
+      rpcMock.mockReset();
+      for (const key of Object.keys(rpcResults)) {
+        delete rpcResults[key];
+      }
+      // An expired latest iteration, so the cheap pre-check doesn't early-return
+      // and the RPC is actually attempted.
+      fixtures.iterations = { list: { data: [{ state: "current", end_date: "2000-01-01" }], error: null } };
+    });
+
+    it("swallows the viewer/non-writer 42501 rejection instead of throwing", async () => {
+      rpcResults.finalize_iteration = { data: null, error: { code: "42501", message: "not authorized" } };
+      const { ensureCurrentIteration } = await import("./actions");
+      await expect(ensureCurrentIteration("project-1")).resolves.toBeUndefined();
+      expect(rpcMock).toHaveBeenCalledWith("finalize_iteration", { p_project_id: "project-1", p_manual: false });
+    });
+
+    it("still throws on a real (non-42501) rollover error", async () => {
+      rpcResults.finalize_iteration = { data: null, error: { code: "XX000", message: "boom" } };
+      const { ensureCurrentIteration } = await import("./actions");
+      await expect(ensureCurrentIteration("project-1")).rejects.toThrow("boom");
+    });
+
+    it("skips the RPC entirely when the current iteration is still up to date", async () => {
+      const future = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      fixtures.iterations = { list: { data: [{ state: "current", end_date: future }], error: null } };
+      const { ensureCurrentIteration } = await import("./actions");
+      await ensureCurrentIteration("project-1");
+      expect(rpcMock).not.toHaveBeenCalled();
+    });
+  });
 });

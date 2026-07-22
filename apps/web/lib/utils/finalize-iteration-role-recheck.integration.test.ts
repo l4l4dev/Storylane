@@ -149,14 +149,17 @@ describe.skipIf(!RUN)("finalize_iteration role re-check after the lock (TASK-142
     expect(await iterationsOf(projectId)).toHaveLength(before.length);
   });
 
-  // Guards the regression risk of TASK-142's guard conversion: the lazy path's
-  // old guard was is_project_member(), true for ANY role, so the re-check must
-  // accept 'viewer' too. Gating lazy rollover to writers would leave a viewer
-  // looking at a stale iteration forever.
-  it("still lets a VIEWER trigger the lazy rollover (role set preserved)", async () => {
+  // Owner decision 2026-07-22 (follow-up to TASK-142): the lazy-rollover path
+  // is writers-only now. A viewer must NOT trigger it — rollover is a write,
+  // and an abandoned project should stay visibly abandoned rather than be
+  // advanced by a viewer's page view. (The board/iterations pages swallow this
+  // 42501 client-side so they still render the stale iteration — see
+  // ensureCurrentIteration.)
+  it("refuses a VIEWER's lazy rollover (writers-only)", async () => {
     const projectId = await createProject("finalize-iteration viewer rollover");
     const seed = await supabase.rpc("finalize_iteration", { p_project_id: projectId, p_manual: false });
     expect(seed.error).toBeNull();
+    const before = await iterationsOf(projectId);
 
     const email = `finalize-viewer-${Date.now()}@storylane.local`;
     const password = "integration-test-only-password";
@@ -169,7 +172,9 @@ describe.skipIf(!RUN)("finalize_iteration role re-check after the lock (TASK-142
     await viewer.auth.signInWithPassword({ email, password });
 
     const { error } = await viewer.rpc("finalize_iteration", { p_project_id: projectId, p_manual: false });
-    expect(error).toBeNull(); // not 42501 — viewers are still allowed here
+    expect(error?.code).toBe("42501"); // writers-only — viewer rejected
+    // And nothing was written on their behalf.
+    expect(await iterationsOf(projectId)).toHaveLength(before.length);
   });
 
   // And the writer-only half of the split is preserved: a viewer must NOT be

@@ -663,9 +663,15 @@ function parseFinalizeEvents(raw: unknown): FinalizeIterationEvent[] {
 /**
  * Lazily keeps a project's current iteration row up to date (see
  * spec/velocity.md "Automatic scheduling & rollover"). Called on first
- * access from every view that reads iterations, before it queries them —
- * open to any project member, including viewers, since it's system
- * maintenance triggered by reads.
+ * access from every view that reads iterations, before it queries them.
+ *
+ * Rollover is a WRITE (finalizes iterations, inserts successors, moves
+ * stories), so `finalize_iteration` rejects a viewer with 42501 (owner
+ * decision 2026-07-22: a viewer is read-only, and an abandoned project should
+ * stay visibly abandoned rather than be silently advanced by a viewer's mere
+ * page view). That rejection is swallowed here so the board/iterations pages
+ * still render the stale iteration for a viewer — a writer catches it up on
+ * their next visit.
  *
  * The actual finalize/rollover work lives in the shared
  * `finalize_iteration` SECURITY DEFINER RPC (advisory-locked, idempotent —
@@ -697,7 +703,9 @@ export async function ensureCurrentIteration(projectId: string) {
     p_project_id: projectId,
     p_manual: false,
   });
-  if (error) {
+  // 42501 = the viewer/non-writer gate above — a legitimate "not my job to
+  // roll this over", not a failure. Any other error is real and propagates.
+  if (error && error.code !== "42501") {
     throw new Error(error.message);
   }
 }

@@ -188,11 +188,16 @@ clicked twice, Finish racing a page-load rollover). Rules:
 - Manual finish sets `end_date = LEAST(end_date, today)` — finishing an
   already-overdue iteration must not extend it (the overdue catch-up then
   proceeds as normal rollover).
-- The RPC is SECURITY DEFINER with explicit membership checks inside:
-  **lazy rollover** fires for any project member *including viewers* —
-  it is system maintenance triggered by reads, and viewers could never
-  perform its writes under plain RLS. **Manual finish** requires role
-  owner or member.
+- The RPC is SECURITY DEFINER with explicit membership checks inside
+  (`require_project_role`, re-run after the advisory lock so a mid-wait
+  revocation is caught — TASK-142). **Both lazy rollover and manual finish
+  are owner/member only** (owner decision 2026-07-22): rollover is a write
+  (finalizes iterations, inserts the successor, moves `stories.iteration_id`),
+  and a `viewer` is read-only — an abandoned project stays *visibly*
+  abandoned (its expired iteration shown as-is) rather than being advanced by
+  a viewer's page view. A viewer's rollover call is rejected 42501, which the
+  clients swallow (`ensureCurrentIteration`) so the board still renders the
+  stale row; a writer catches it up on their next visit.
 - A DB trigger rejects setting `stories.iteration_id` to an iteration
   whose `state = 'done'` — this closes the TOCTOU gap where a drag lands
   just after a concurrent finalization (the app's pre-check stays as UX;
