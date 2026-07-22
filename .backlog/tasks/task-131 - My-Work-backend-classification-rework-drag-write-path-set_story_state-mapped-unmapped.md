@@ -3,11 +3,11 @@ id: TASK-131
 title: >-
   My Work backend: classification rework + drag write-path (set_story_state,
   mapped/unmapped)
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-22 01:58'
+updated_date: '2026-07-22 02:17'
 labels: []
 dependencies:
   - TASK-130
@@ -34,6 +34,8 @@ doc-14 (My Work Kanban rework). Replaces buildMyWorkSections with the new 4-colu
 - [ ] #8 pnpm test + lint green
 - [ ] #9 story_pins table + its RLS/grants + story-pins.integration.test.ts are dropped (moved here from TASK-130 to keep main green — the drop is coupled to the TS removal in this task); move_story_to_project and remove_member are updated to stop referencing story_pins (drop the move carry-over; replace the remove_member purge with a my_work_story_state purge for the removed user's rows in that project)
 - [ ] #10 database.types.ts regenerated after the story_pins drop; togglePin server action and all story_pins reads (my-work/page.tsx, story-peek-menu.tsx, my-work-row.tsx) removed so tsc/lint/pnpm test stay green
+- [ ] #11 ROUND-4 (advisor-approved 2026-07-22, resolves the TASK-130-review gap): Done is an ADDITIVE axis, not exclusive — a story with any story_completions row for the viewer ALWAYS shows as Done (one entry per row), AND unmapped-project local_status='done' also classifies as Done (a cancellable local mark, NOT a permanent completion log — comment this asymmetry). Todo/Today/Doing are evaluated INDEPENDENTLY of completion history, gated only by 'current real category != done' (assignee=viewer, non-Icebox), applying the existing is_today/mapped-state/unmapped-local_status logic. Consequence: a story completed before and now reopened + in_progress + assigned to the viewer appears in BOTH Done (log) and Doing (live) simultaneously.
+- [ ] #12 ROUND-4 unit tests (added to AC #7's set): (a) unmapped local_status='done' -> Done; (b) past completion + currently reopened in_progress + assigned -> appears in BOTH Done and Doing; (c) mapped project whose real state is still done but local_status set to 'todo' -> does NOT appear in Todo/Doing (no-op, since 'To Todo' never calls set_story_state), Done log still present
 <!-- AC:END -->
 
 ## Comments
@@ -49,5 +51,11 @@ author: @claude-opus-4-8
 created: 2026-07-22 01:58
 ---
 Design gap surfaced by TASK-130's /code-review (must resolve here): doc-14's write-path sends an UNMAPPED-project drag-to-Done to my_work_story_state.local_status='done' with NO story_completions row (no real state transition). But the classification makes Done story_completions-only, and its step 4 maps only effective 'doing'->Doing (else Todo). So local_status='done' currently routes to Todo, not Done. Resolve one of: (a) classification routes local_status='done' -> Done for unmapped projects; (b) unmapped Done is disallowed in the UI; (c) restrict the my_work_story_state.local_status CHECK to ('todo','doing') (would need a follow-up migration). The (user_id, completed_at) index also doesn't cover the stories SELECT OR-clause's (story_id, user_id) lookup — add a story_completions(story_id) index if the leaver-read path ever gets hot (low priority; OR short-circuits behind is_project_member today).
+---
+
+author: @claude-opus-4-8
+created: 2026-07-22 02:17
+---
+fable-advisor round 4 (2026-07-22) resolution of the unmapped-Done + reopen-precedence gaps — owner-approved, recorded here (doc-14 round-4 addendum deferred to save a 400-line CLI rewrite; ACs #11/#12 are the implementation contract). Q1: option (a) — classification treats unmapped local_status='done' as Done; mapped Done = permanent story_completions log, unmapped Done = cancellable local mark (accepted asymmetry, within doc-14 round-1's 'unmapped is a permanent divergence' stance; round-2's 'never disappears' was contextually about mapped/real progress). (b)/(c) rejected: (c) the CHECK already shipped in TASK-130 and 'done' stays valid under (a); (b) would silently retract the owner-approved 'unmapped Doing/Done upserts local_status' write path. Q2: doc-14's 'Done > Today > Doing > Todo' EXCLUSIVE precedence was internally contradictory (step 2's 'currently not done' = current state, but step 1 keyed on completion HISTORY). Fix = additive: Done (completion rows, + unmapped local_status='done') always shows; Todo/Today/Doing gated only by current-real-category-not-done, independent of history; a reopened active story shows in both. Note for tests: 'To Todo' never calls set_story_state, so a mapped story whose real state stays done won't leave Doing/Done via that drag.
 ---
 <!-- COMMENTS:END -->
