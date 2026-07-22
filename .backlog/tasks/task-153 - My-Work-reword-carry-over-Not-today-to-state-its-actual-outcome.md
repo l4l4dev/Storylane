@@ -1,10 +1,11 @@
 ---
 id: TASK-153
 title: 'My Work: reword carry-over ''Not today'' to state its actual outcome'
-status: To Do
+status: Done
 assignee:
   - '@claude-haiku-4-5'
 created_date: '2026-07-22 13:33'
+updated_date: '2026-07-22 16:30'
 labels: []
 dependencies: []
 references:
@@ -24,5 +25,11 @@ From doc-17 High-impact finding #9. The carry-over prompt's 'Not today' control 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The carry-over decline control's label states its actual outcome instead of reading as a generic dismiss
+- [x] #1 The carry-over decline control's label states its actual outcome instead of reading as a generic dismiss
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Relabeled the carry-over decline button from 'Not today' (generic dismiss) to 'Leave in their columns' (states the actual outcome -- items fall back to their own columns, per doc-17 #9's suggested wording). Mechanical copy-only change (task type: chore, low risk) -- skipped a full fable-advisor pass given the wording itself came directly from the 10-expert panel's own recommendation; verified instead with a new test asserting the new label renders and the old one doesn't. Tests: +1, 37 my-work-scoped unit tests pass; tsc/eslint clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

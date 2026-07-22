@@ -641,7 +641,7 @@ export function MyWorkSections({
                   onClick={() => resolveCarryOver(false)}
                   className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
                 >
-                  Not today
+                  Leave in their columns
                 </button>
               </div>
             </div>

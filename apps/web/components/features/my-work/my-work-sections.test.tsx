@@ -196,6 +196,14 @@ describe("MyWorkSections", () => {
     expect(screen.getByText(/marked Today on an earlier day/)).toBeInTheDocument();
   });
 
+  // doc-17 #9: the decline control used to read "Not today", a generic
+  // dismiss that never said items just fall back to their own columns.
+  it("labels the carry-over decline with its actual outcome, not a generic dismiss", () => {
+    renderSections({ assigned: [active("stale", { todayDate: "2020-01-01" })] });
+    expect(screen.getByRole("button", { name: "Leave in their columns" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Not today" })).not.toBeInTheDocument();
+  });
+
   // TASK-141: the column display order (including the fixed slots) is
   // caller-supplied, not hardcoded.
   it("renders columns in the given custom order", () => {
