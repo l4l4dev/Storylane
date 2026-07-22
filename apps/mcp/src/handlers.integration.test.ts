@@ -180,6 +180,29 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
     expect(story.description).toBe("estimated by the bot");
   });
 
+  // TASK-123 (doc-13 finding #15): the project defaults to the fibonacci
+  // scale (0,1,2,3,5,8,13) — 4 is off-scale on it.
+  it("create_story rejects an off-scale points value on a fibonacci-scale project", async () => {
+    await expect(
+      tools.createStory(bot, { project_id: projectId, title: "off-scale story", points: 4 }),
+    ).rejects.toThrow(/point scale/i);
+  });
+
+  it("update_story rejects an off-scale points value on a fibonacci-scale project", async () => {
+    await expect(tools.updateStory(bot, { story_id: botStoryId, points: 4 })).rejects.toThrow(/point scale/i);
+    // Rejected before the write — the story's prior (valid) points are unchanged.
+    const story = (await tools.getStory(bot, { story_id: botStoryId })) as { points: number };
+    expect(story.points).toBe(3);
+  });
+
+  it("update_story still allows clearing points to null regardless of scale", async () => {
+    await tools.updateStory(bot, { story_id: botStoryId, points: null });
+    const story = (await tools.getStory(bot, { story_id: botStoryId })) as { points: number | null };
+    expect(story.points).toBeNull();
+    // Restore for later tests that assume this story is already estimated.
+    await tools.updateStory(bot, { story_id: botStoryId, points: 3 });
+  });
+
   it("set_story_tasks and toggle_story_task manage the checklist", async () => {
     const set = (await tools.setStoryTasks(bot, {
       story_id: botStoryId,

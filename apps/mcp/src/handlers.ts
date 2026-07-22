@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { velocityRate, shouldAssignCurrentIteration, type StateCategory } from "@storylane/core";
+import { pointScaleValues, velocityRate, shouldAssignCurrentIteration, type StateCategory } from "@storylane/core";
 
 // The MCP server talks to Supabase as an untyped client (it does not import
 // apps/web's generated Database type — that would couple the packages). Rows
@@ -86,6 +86,32 @@ async function assertWritableProject(supabase: Db, projectId: string): Promise<v
   if (!data) throw new Error(NOT_MEMBER);
   if (data.archived_at) {
     throw new Error("This project is archived — unarchive it before making changes.");
+  }
+}
+
+/**
+ * Rejects a points value the project's own point-scale picker could never
+ * produce (doc-13 finding #15) — an agent has no equivalent picker UI to
+ * constrain it, so the schema alone (`z.number().int().min(0)`) would let
+ * e.g. 4 land on a fibonacci-scale project. Mirrors Web's estimateStory
+ * (apps/web/app/projects/[id]/board/actions.ts), which validates the same
+ * way against the same pointScaleValues (packages/core) — one shared rule,
+ * two call sites. No-ops when `points` is null/undefined: clearing an
+ * estimate, or not touching it, is always valid regardless of scale.
+ */
+async function assertValidPoints(supabase: Db, projectId: string, points: number | null | undefined): Promise<void> {
+  if (points === null || points === undefined) return;
+
+  const { data, error } = await supabase
+    .from("projects")
+    .select("point_scale, custom_points")
+    .eq("id", projectId)
+    .single();
+  if (error) throw new Error(`Could not read project: ${error.message}`);
+
+  const allowed = pointScaleValues(data.point_scale, data.custom_points);
+  if (!allowed.includes(points)) {
+    throw new Error(`Invalid points: ${points} is not on this project's point scale (${allowed.join(", ")}).`);
   }
 }
 
@@ -419,6 +445,7 @@ export type CreateStoryArgs = {
 
 export async function createStory(supabase: Db, args: CreateStoryArgs) {
   await assertWritableProject(supabase, args.project_id);
+  await assertValidPoints(supabase, args.project_id, args.points ?? null);
 
   const destination = args.destination ?? "backlog_bottom";
   const stateId = destination === "icebox" ? null : await unstartedStateId(supabase, args.project_id);
@@ -484,6 +511,9 @@ export type UpdateStoryArgs = {
 export async function updateStory(supabase: Db, args: UpdateStoryArgs) {
   const projectId = await storyProjectId(supabase, args.story_id);
   await assertWritableProject(supabase, projectId);
+  // `args.points === null` clears the estimate (always valid) — only an
+  // actual number needs checking against the project's scale.
+  if (args.points !== undefined) await assertValidPoints(supabase, projectId, args.points);
 
   const patch: Record<string, unknown> = {};
   if (args.title !== undefined) patch.title = args.title;
