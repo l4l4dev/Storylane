@@ -181,7 +181,15 @@ describe.skipIf(!RUN)("reshape_current_iteration (integration)", () => {
     try {
       await holder.query("select pg_advisory_lock(hashtext('iteration_finalize:' || $1))", [projectId]);
 
-      const reshapePromise = supabase.rpc("reshape_current_iteration", { p_project_id: projectId });
+      // Promise.resolve assimilates the thenable, which is what actually
+      // dispatches the request: supabase-js's builder is LAZY — it only issues
+      // the HTTP call from its own .then(). Holding the builder unawaited sends
+      // nothing, so the revoke below would land before the RPC even started and
+      // this would assert the PRE-lock guard (which passes trivially) instead of
+      // the post-lock re-check it exists to prove (TASK-142).
+      const reshapePromise = Promise.resolve(
+        supabase.rpc("reshape_current_iteration", { p_project_id: projectId }),
+      );
       await new Promise((r) => setTimeout(r, 400)); // let it park on the lock
 
       const { error: revokeError } = await admin

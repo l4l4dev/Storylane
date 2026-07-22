@@ -269,12 +269,19 @@ describe.skipIf(!RUN)("flexible cadence (integration)", () => {
       // it outlives a single statement and conflicts with the RPC's xact lock).
       await holder.query("select pg_advisory_lock(hashtext('iteration_finalize:' || $1))", [projectId]);
 
-      // Fire the override without awaiting: it passes the pre-lock membership
-      // check, then blocks on pg_advisory_xact_lock behind our held lock.
-      const overridePromise = supabase.rpc("override_iteration_length", {
-        p_iteration_id: first.id,
-        p_end_date: stretched,
-      });
+      // Fire the override without awaiting its RESULT: it passes the pre-lock
+      // membership check, then blocks on pg_advisory_xact_lock behind our held
+      // lock. Promise.resolve assimilates the thenable, which is what actually
+      // dispatches the request — supabase-js's builder is LAZY and only issues
+      // the HTTP call from its own .then(), so holding it unawaited would send
+      // nothing and the revoke below would beat the RPC to the pre-lock guard,
+      // asserting that instead of the post-lock re-check (TASK-142).
+      const overridePromise = Promise.resolve(
+        supabase.rpc("override_iteration_length", {
+          p_iteration_id: first.id,
+          p_end_date: stretched,
+        }),
+      );
       // Give the request time to reach the DB and park on the lock.
       await new Promise((r) => setTimeout(r, 400));
 
