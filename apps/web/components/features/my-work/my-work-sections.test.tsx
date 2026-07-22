@@ -44,6 +44,7 @@ function row(id: string, over: Partial<MyWorkRowData> = {}): MyWorkRowData {
     points: null,
     projectId: "team-a",
     projectName: "Alpha",
+    isPersonal: false,
     stateBadge: { label: "Unstarted", className: "" },
     ...over,
   };

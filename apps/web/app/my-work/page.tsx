@@ -154,7 +154,7 @@ export default async function MyWorkPage() {
 
   function toRowData(
     raw: { id: string; number: number; title: string; story_type: string; points: number | null; project_id: string; state_id: string | null },
-    projectName: string,
+    project: { name: string; isPersonal: boolean },
   ): MyWorkRowData {
     return {
       id: raw.id,
@@ -163,7 +163,8 @@ export default async function MyWorkPage() {
       storyType: raw.story_type,
       points: raw.points,
       projectId: raw.project_id,
-      projectName,
+      projectName: project.name,
+      isPersonal: project.isPersonal,
       stateBadge: storyStateBadge(raw.state_id, statesByProject.get(raw.project_id) ?? []),
     };
   }
@@ -181,7 +182,7 @@ export default async function MyWorkPage() {
         todayPosition: mark?.today_position ?? null,
         columnId: mark?.column_id ?? null,
         columnPosition: mark?.column_position ?? null,
-        row: toRowData(s, project.name),
+        row: toRowData(s, project),
       };
     });
 
@@ -191,8 +192,9 @@ export default async function MyWorkPage() {
     const story = Array.isArray(c.stories) ? c.stories[0] : c.stories;
     if (!story) return [];
     const embeddedProject = Array.isArray(story.projects) ? story.projects[0] : story.projects;
-    const projectName = projectById.get(story.project_id)?.name ?? embeddedProject?.name ?? "Unknown project";
-    return [{ completedAt: c.completed_at, row: toRowData(story, projectName) }];
+    const knownProject = projectById.get(story.project_id);
+    const projectName = knownProject?.name ?? embeddedProject?.name ?? "Unknown project";
+    return [{ completedAt: c.completed_at, row: toRowData(story, { name: projectName, isPersonal: knownProject?.isPersonal ?? false }) }];
   });
 
   return (

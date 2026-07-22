@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Bug, CircleCheckBig, Star, Wrench, type LucideIcon } from "lucide-react";
-import { formatDate } from "@/lib/utils/format";
+import { Bug, CircleCheckBig, Star, User, Wrench, type LucideIcon } from "lucide-react";
+import { formatDate, initials } from "@/lib/utils/format";
 import { formatPoints, STORY_TYPE_META, type StoryType } from "@/lib/utils/stories";
 import { projectAccentClass } from "@/lib/utils/project-color";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,10 @@ export type MyWorkRowData = {
   points: number | null;
   projectId: string;
   projectName: string;
+  // Governs whether a drag can complete the card in Done (setMyWorkColumn) —
+  // surfaced on the card itself so that behavior difference is visible, not
+  // just discoverable by trying to drag it (doc-17 #3).
+  isPersonal: boolean;
   stateBadge: { label: string; className: string };
 };
 
@@ -72,9 +76,35 @@ export function MyWorkRow({ story, completedAt }: { story: MyWorkRowData; comple
             </span>
           )}
           <span className="shrink-0 text-xs text-muted-foreground">#{story.number}</span>
+          {story.isPersonal && (
+            <span
+              className="inline-flex shrink-0 items-center gap-0.5 rounded bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground"
+              title="Personal project — completes only here, in My Work"
+            >
+              <User className="h-3 w-3" aria-hidden />
+              {/* Icon stays persistent at every width (doc-17 #3); the label
+                  only joins it at sm+ so it doesn't crowd out the title on
+                  narrow rows. */}
+              <span className="hidden sm:inline">Personal</span>
+            </span>
+          )}
           <span className="min-w-0 flex-1 truncate text-sm font-medium">{story.title}</span>
         </Link>
 
+        {/* Below sm the full-name badge (right after this) hides — this
+            compact initials marker keeps project identity visible at every
+            width instead of losing it entirely (doc-17 #2). Neutral border
+            (not the project accent) since the letters already carry identity
+            here and the row's left border already carries the accent hue —
+            a third encoding of the same thing would be redundant. */}
+        <span
+          role="img"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-[10px] font-semibold text-foreground sm:hidden"
+          title={story.projectName}
+          aria-label={story.projectName}
+        >
+          {initials(story.projectName)}
+        </span>
         <Badge
           variant="outline"
           // Per-project accent on the BORDER only (doc-12 "ラベルの色も"): the

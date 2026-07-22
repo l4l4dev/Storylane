@@ -10,6 +10,7 @@ const baseStory: MyWorkRowData = {
   points: 3,
   projectId: "p1",
   projectName: "Storylane",
+  isPersonal: false,
   stateBadge: { label: "In progress", className: "bg-blue-100" },
 };
 
@@ -45,5 +46,24 @@ describe("MyWorkRow", () => {
   it("shows a completion marker when completedAt is set (a Done log entry)", () => {
     render(<MyWorkRow story={baseStory} completedAt="2026-07-20T09:00:00Z" />);
     expect(screen.getByLabelText("Completion log entry")).toBeInTheDocument();
+  });
+
+  // doc-17 #3: personal-vs-team governs drag-to-Done behavior, so it must be
+  // visible on the card, not just discoverable by dragging it.
+  it("shows a persistent 'Personal' signifier for a personal-project story", () => {
+    render(<MyWorkRow story={{ ...baseStory, isPersonal: true }} />);
+    expect(screen.getByText("Personal")).toBeInTheDocument();
+  });
+
+  it("shows no 'Personal' signifier for a team story", () => {
+    render(<MyWorkRow story={baseStory} />);
+    expect(screen.queryByText("Personal")).not.toBeInTheDocument();
+  });
+
+  // doc-17 #2: identity must survive even where the full name badge hides
+  // below sm — a compact initials marker carries it instead.
+  it("always renders a compact project-initials marker carrying the full name", () => {
+    render(<MyWorkRow story={baseStory} />);
+    expect(screen.getByText("ST")).toHaveAttribute("title", "Storylane");
   });
 });
