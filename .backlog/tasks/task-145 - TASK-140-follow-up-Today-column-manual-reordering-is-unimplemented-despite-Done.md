@@ -3,7 +3,7 @@ id: TASK-145
 title: >-
   TASK-140 follow-up: Today column manual reordering is unimplemented despite
   Done
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-22 11:14'
