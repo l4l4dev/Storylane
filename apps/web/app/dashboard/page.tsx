@@ -43,6 +43,7 @@ export default async function DashboardPage({
   await Promise.all(projectsNeedingRollover(projects ?? []).map((p) => rolloverIterationSafely(p.id)));
 
   type IterationRow = {
+    project_id: string;
     number: number;
     velocity: number | null;
     capacity: number | null;
@@ -50,36 +51,44 @@ export default async function DashboardPage({
     skipped: boolean;
   };
   type MemberRow = {
+    project_id: string;
     user_id: string;
     role: string;
     is_favorite: boolean;
     profiles: { display_name: string; avatar_url: string | null } | null;
   };
 
-  async function fetchIterations(projectId: string): Promise<readonly [string, IterationRow[]]> {
-    const { data } = await supabase
-      .from("iterations")
-      .select("number, velocity, capacity, state, skipped")
-      .eq("project_id", projectId)
-      .order("number", { ascending: false });
-    return [projectId, data ?? []] as const;
+  const projectIds = (projects ?? []).map((project) => project.id);
+  let iterationRows: IterationRow[] = [];
+  let memberRows: MemberRow[] = [];
+  if (projectIds.length > 0) {
+    const [iterationsResult, membersResult] = await Promise.all([
+      supabase
+        .from("iterations")
+        .select("project_id, number, velocity, capacity, state, skipped")
+        .in("project_id", projectIds)
+        .order("number", { ascending: false }),
+      supabase
+        .from("project_members")
+        .select("project_id, user_id, role, is_favorite, profiles(display_name, avatar_url)")
+        .in("project_id", projectIds),
+    ]);
+    iterationRows = iterationsResult.data ?? [];
+    memberRows = membersResult.data ?? [];
   }
 
-  async function fetchMembers(projectId: string): Promise<readonly [string, MemberRow[]]> {
-    const { data } = await supabase
-      .from("project_members")
-      .select("user_id, role, is_favorite, profiles(display_name, avatar_url)")
-      .eq("project_id", projectId);
-    return [projectId, data ?? []] as const;
+  const iterationsById = new Map<string, IterationRow[]>();
+  for (const iteration of iterationRows) {
+    const rows = iterationsById.get(iteration.project_id);
+    if (rows) rows.push(iteration);
+    else iterationsById.set(iteration.project_id, [iteration]);
   }
-
-  const [iterationsByProject, membersByProject] = await Promise.all([
-    Promise.all((projects ?? []).map((p) => fetchIterations(p.id))),
-    Promise.all((projects ?? []).map((p) => fetchMembers(p.id))),
-  ]);
-
-  const iterationsById = new Map(iterationsByProject);
-  const membersById = new Map(membersByProject);
+  const membersById = new Map<string, MemberRow[]>();
+  for (const member of memberRows) {
+    const rows = membersById.get(member.project_id);
+    if (rows) rows.push(member);
+    else membersById.set(member.project_id, [member]);
+  }
 
   const cards: ProjectCardData[] = (projects ?? []).map((project) => {
     const memberRows = membersById.get(project.id) ?? [];

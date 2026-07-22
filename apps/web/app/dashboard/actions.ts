@@ -103,17 +103,16 @@ export async function createProject(formData: FormData): Promise<ActionResult | 
 
   // Invitations stay outside the transaction: a failed lookup must not undo the
   // project, so failures are counted and surfaced, not fatal.
-  let failedInviteCount = 0;
-  for (const userId of invitedUserIds) {
-    const { error: inviteError } = await supabase.rpc("invite_member", {
-      p_project_id: project.id,
-      p_user_id: userId,
-      p_role: "member",
-    });
-    if (inviteError) {
-      failedInviteCount += 1;
-    }
-  }
+  const inviteResults = await Promise.all(
+    invitedUserIds.map((userId) =>
+      supabase.rpc("invite_member", {
+        p_project_id: project.id,
+        p_user_id: userId,
+        p_role: "member",
+      }),
+    ),
+  );
+  const failedInviteCount = inviteResults.filter(({ error: inviteError }) => inviteError).length;
 
   revalidatePath("/dashboard");
   // TASK-32: land on the new project's board instead of back on /dashboard

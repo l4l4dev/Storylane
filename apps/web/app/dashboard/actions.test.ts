@@ -77,6 +77,29 @@ describe("createProject", () => {
     await expect(createProject(formData)).rejects.toThrow("REDIRECT:/projects/project-1/board?invite_failed=1");
   });
 
+  it("starts all invites without waiting for an earlier invite to finish", async () => {
+    let resolveFirstInvite: ((value: { error: null }) => void) | undefined;
+    inviteMemberMock
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ error: null }>((resolve) => {
+            resolveFirstInvite = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ error: null });
+    const { createProject } = await import("./actions");
+
+    const formData = new FormData();
+    formData.set("name", "My Project");
+    formData.append("invited_user_ids", "user-a");
+    formData.append("invited_user_ids", "user-b");
+
+    const result = createProject(formData);
+    await vi.waitFor(() => expect(inviteMemberMock).toHaveBeenCalledTimes(2));
+    resolveFirstInvite?.({ error: null });
+    await expect(result).rejects.toThrow("REDIRECT:/projects/project-1/board");
+  });
+
   it("caps invites at 20 ids", async () => {
     const { createProject } = await import("./actions");
 
