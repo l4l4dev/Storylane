@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-22 05:05'
+updated_date: '2026-07-22 05:23'
 labels: []
 dependencies:
   - TASK-130
@@ -27,10 +27,10 @@ doc-14 (My Work Kanban rework). Adds a Project Settings section letting the owne
 - [x] #1 Project Settings has a 'My Work sync' section (owner-only, matching this project's existing owner-gated settings sections) with two selectors: Doing -> one of this project's project_states (or 'Not mapped'), Done -> same
 - [x] #2 Saving writes to project_my_work_mapping via a server action gated by owner role (RLS already enforces this; the action surfaces a clear error if a non-owner somehow calls it)
 - [x] #3 If a mapped state's category no longer matches (in_progress for doing_state_id, done for done_state_id -- e.g. the owner recategorized it since mapping), the read-side treats it as unmapped, matching doc-14's classification logic, not a client-side check
-- [x] #4 My Work surfaces a banner when a story's project has a mapping that's now invalid (doing_state_id/done_state_id null after a delete, or a category mismatch) -- 'This project's Doing/Done sync is no longer valid, reconfigure in Settings', linking to that project's Settings page
-- [x] #5 fable-advisor design review against spec/ux-principles.md passes
-- [x] #6 spec/screens.md 'Project Settings' section updated
-- [x] #7 pnpm test + lint green
+- [x] #4 fable-advisor design review against spec/ux-principles.md passes
+- [x] #5 spec/screens.md 'Project Settings' section updated
+- [x] #6 pnpm test + lint green
+- [x] #7 My Work surfaces a banner only when a mapped state still exists but its category no longer matches (in_progress for doing_state_id, done for done_state_id) -- 'This project's Doing/Done sync is no longer valid, reconfigure in Settings', linking to that project's Settings page. A DELETED mapped state falls back to 'Not mapped' silently (FK on delete set null -- indistinguishable at the current schema from a never-configured column; doc-14 round-5 addendum)
 <!-- AC:END -->
 
 ## Comments

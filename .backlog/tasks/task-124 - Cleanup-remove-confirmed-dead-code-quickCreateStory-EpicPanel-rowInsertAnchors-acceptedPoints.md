@@ -5,8 +5,9 @@ title: >-
   rowInsertAnchors, acceptedPoints)
 status: To Do
 assignee:
-  - '@claude-haiku-4-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-21 11:00'
+updated_date: '2026-07-22 05:22'
 labels: []
 dependencies: []
 priority: low

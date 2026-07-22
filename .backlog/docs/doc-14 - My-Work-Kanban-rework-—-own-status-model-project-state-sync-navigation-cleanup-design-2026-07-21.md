@@ -5,7 +5,7 @@ title: >-
   cleanup design 2026-07-21
 type: specification
 created_date: '2026-07-21 12:07'
-updated_date: '2026-07-21 12:32'
+updated_date: '2026-07-22 05:22'
 ---
 # My Work Kanban rework — own status model, project state sync, navigation cleanup
 
@@ -409,3 +409,42 @@ Doing/Done drags can surface `set_story_state`'s existing `'No active
 iteration'` error — needs a visible banner, not a silent failure; (6) minor
 indexing/cascade gaps (`my_work_story_state.story_id`, `story_completions
 (user_id, completed_at)`, `project_my_work_mapping`'s `on delete cascade`).
+
+## Round-4 addendum (2026-07-22, fable-advisor approved — implemented in TASK-131)
+
+Recorded here after the fact; TASK-131's ACs #11/#12 and comments #2/#3 were
+the implementation contract and carry the full trail.
+
+- The "Done > Today > Doing > Todo" **exclusive** precedence above was
+  internally contradictory (Done keys on completion *history*, the other
+  columns on *current* state). Resolution: **Done is an additive axis.** Any
+  `story_completions` row for the viewer always renders in Done (one entry
+  per row); Todo/Today/Doing are evaluated independently, gated only by
+  current-real-category ≠ done. A story completed earlier and now reopened,
+  in progress, and assigned to the viewer appears in **both** Done (log) and
+  Doing (live) — the Done-column instance carries a completion marker.
+- An **unmapped**-project drag to Done sets `local_status = 'done'` and
+  classifies as **Done** — a cancellable local mark, *not* a
+  `story_completions` entry. Accepted asymmetry: mapped Done = permanent
+  log, unmapped Done = local mark (within round 1's "unmapped is a
+  permanent divergence" stance).
+
+## Round-5 addendum (2026-07-22, owner decision) — personal project auto-mapping; banner scope
+
+- **Personal project ("My Tasks") gets a default mapping automatically.**
+  Its Settings page is unreachable by design (TASK-103 hiding + TASK-129
+  back-link), so it could never be mapped by hand — leaving personal-task
+  Done a local mark forever, never entering the permanent Done log, which
+  defeats My Work's primary use case. Owner decision (2026-07-22): at
+  personal-project creation, also insert a `project_my_work_mapping` row
+  (first `in_progress`-category state → Doing, first `done`-category state
+  → Done), plus a one-time backfill for existing personal projects.
+- If those mapped states later drift (deleted or recategorized via direct
+  URL / MCP), the **standard broken-mapping behavior applies unchanged**
+  (read-side treats it as unmapped; My Work banner) — no personal-specific
+  mechanism.
+- **Banner scope clarified** (settles round 2 #3's open trigger question,
+  matches the shipped TASK-133 implementation): the banner fires only on a
+  **category mismatch** of a still-existing mapped state. A *deleted* mapped
+  state falls back to "Not mapped" silently — with the current schema it is
+  indistinguishable from a column the owner never configured.

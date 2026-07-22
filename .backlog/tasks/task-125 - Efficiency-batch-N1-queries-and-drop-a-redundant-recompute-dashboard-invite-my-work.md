@@ -1,13 +1,11 @@
 ---
 id: TASK-125
-title: >-
-  Efficiency: batch N+1 queries and drop a redundant recompute (dashboard,
-  invite, my-work)
+title: 'Efficiency: batch N+1 queries (dashboard fetch loop, invite RPCs)'
 status: To Do
 assignee:
-  - '@claude-sonnet-5'
+  - '@codex-gpt-5'
 created_date: '2026-07-21 11:00'
-updated_date: '2026-07-21 12:34'
+updated_date: '2026-07-22 05:23'
 labels: []
 dependencies: []
 priority: low

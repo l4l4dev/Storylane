@@ -3,9 +3,9 @@ id: TASK-98
 title: 'Release prep: squash migrations into one baseline + full production reset'
 status: To Do
 assignee:
-  - '@claude-sonnet-5'
+  - '@claude-opus-4-8'
 created_date: '2026-07-19 00:49'
-updated_date: '2026-07-21 06:00'
+updated_date: '2026-07-22 05:23'
 labels: []
 milestone: m-1
 dependencies:

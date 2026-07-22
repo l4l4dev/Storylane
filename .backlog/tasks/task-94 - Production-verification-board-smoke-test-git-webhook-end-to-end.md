@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-18 15:10'
-updated_date: '2026-07-19 17:02'
+updated_date: '2026-07-22 05:24'
 labels: []
 milestone: m-1
 dependencies: []
@@ -34,3 +34,13 @@ Webhook steps: in project Settings configure the Git integration (repo URL + gen
 <!-- SECTION:NOTES:BEGIN -->
 Absorbed deferrals (2026-07-20): before the smoke test, complete TASK-96 owner setup (DEPLOY.md 'One-time setup (owner)': 3 GitHub secrets + Vercel Deploy Hook + auto-deploy off), then push main — the first green workflow run proves TASK-96 AC#1-4. During the smoke test also confirm the settings footer shows 'v<version> (<sha>)' (TASK-95 AC#1).
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-fable-5
+created: 2026-07-22 05:24
+---
+doc-14 My Work rework shipped since this task was written (TASK-130/131/132/133 on feat/task-131-my-work-backend; TASK-137 pending) -- add to the production smoke test: (1) Project Settings 'My Work sync' mapping save as owner; (2) My Work cross-column drag on a MAPPED project actually transitions the real board state (and writes story_completions on Done); (3) unmapped project drag stays local-only; (4) mapped Doing/Done drag into a project with no active iteration surfaces the 'No active iteration' banner (also closes TASK-132 AC #4 end-to-end); (5) recategorizing a mapped state surfaces the broken-mapping banner on My Work; (6) personal-project auto-mapping (TASK-137) makes a personal task's Done land in the permanent Done log.
+---
+<!-- COMMENTS:END -->
