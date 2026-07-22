@@ -24,6 +24,7 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
   let ownerId: string;
   let unstartedStateId: string;
   let startedStateId: string;
+  let activeIterationId: string;
 
   beforeAll(async () => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -64,12 +65,16 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
     startedStateId = stateRows!.find((s) => s.name === "Started")!.id;
 
     // set_story_state's auto-assign-on-entering-in_progress rule pulls a
-    // backlog story into whichever iteration is current — an active
-    // iteration must exist, but its id isn't otherwise needed here.
-    const { error: iterError } = await admin
+    // backlog story into whichever iteration is current; the move test also
+    // schedules its story here so it's a valid tracker target (columnForStory
+    // only places current-iteration stories in state columns).
+    const { data: iter, error: iterError } = await admin
       .from("iterations")
-      .insert({ project_id: projectId, number: 1, state: "active", start_date: "2026-07-01", end_date: "2026-07-14" });
-    if (iterError) throw new Error(`Failed to seed iteration: ${iterError.message}`);
+      .insert({ project_id: projectId, number: 1, state: "active", start_date: "2026-07-01", end_date: "2026-07-14" })
+      .select("id")
+      .single();
+    if (iterError || !iter) throw new Error(`Failed to seed iteration: ${iterError?.message}`);
+    activeIterationId = iter.id;
 
     async function createRoleUser(label: string, role: "member" | "viewer") {
       const email = `write-model-${label}-${Date.now()}@storylane.local`;
@@ -138,11 +143,15 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
 
     it("move_story_board succeeds for a non-author, non-assignee member", async () => {
       const story = await createOwnerStory("member move");
+      // Schedule into the current iteration: a tracker move only targets a
+      // current-iteration story (TASK-134 rejects a tracker move on one that
+      // isn't). The permission check under test runs before that guard anyway.
+      await admin.from("stories").update({ iteration_id: activeIterationId }).eq("id", story.id);
       const { error } = await member.rpc("move_story_board", {
         p_project_id: projectId,
         p_item: { kind: "story", id: story.id },
         p_view: "tracker",
-        p_expected: { state_id: story.state_id, iteration_id: story.iteration_id },
+        p_expected: { state_id: story.state_id, iteration_id: activeIterationId },
         p_deltas: {},
         p_anchor: {},
       });

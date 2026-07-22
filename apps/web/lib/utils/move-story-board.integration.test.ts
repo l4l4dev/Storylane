@@ -354,4 +354,184 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
     // after sF1). Result: sA0, sA1, sF0, sF1.
     expect(await positionsOf([sA0, sA1, sF0, sF1])).toEqual([0, 1, 2, 3]);
   });
+
+  // TASK-134: a tracker move whose story is no longer in the current iteration
+  // (a done-category story left behind by a mid-drag finalize keeps its
+  // iteration_id, and its unchanged state/iteration slips past the staleness
+  // check) must be REJECTED, not renumbered into the current iteration's space.
+  it("rejects a tracker reorder on a story whose iteration is no longer current (TASK-134)", async () => {
+    const [a] = await seedCurrentIteration([{ stateId: states.Accepted, position: 0 }]);
+    const staleIterationId = iterationId;
+    // The story's iteration is finalized; a newer one becomes current.
+    await asService.from("iterations").update({ state: "done" }).eq("id", staleIterationId);
+    await asService
+      .from("iterations")
+      .insert({ project_id: projectId, number: 2, state: "active", start_date: "2026-07-15", end_date: "2026-07-28" });
+
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: a },
+      p_view: "tracker",
+      // The story's own state/iteration are unchanged, so p_expected matches and
+      // the existing staleness check can't catch this.
+      p_expected: { state_id: states.Accepted, iteration_id: staleIterationId },
+      p_deltas: {},
+      p_anchor: {},
+    });
+    expect(error?.message).toMatch(/stale/i);
+    // Rolled back: still in its old iteration, position untouched.
+    const { data } = await asService.from("stories").select("position, iteration_id").eq("id", a).single();
+    expect((data as StoryRow).position).toBe(0);
+    expect((data as StoryRow).iteration_id).toBe(staleIterationId);
+  });
+
+  // TASK-134 AC #5: the guard must fire for any non-'list' p_view, including a
+  // forged/unknown value (the RPC is granted to authenticated and doesn't
+  // enum-check p_view), not just the literal 'tracker'.
+  it("rejects a forged p_view cross-iteration move too (TASK-134 AC #5)", async () => {
+    const [a] = await seedCurrentIteration([{ stateId: states.Accepted, position: 0 }]);
+    const staleIterationId = iterationId;
+    await asService.from("iterations").update({ state: "done" }).eq("id", staleIterationId);
+    await asService
+      .from("iterations")
+      .insert({ project_id: projectId, number: 2, state: "active", start_date: "2026-07-15", end_date: "2026-07-28" });
+
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: a },
+      p_view: "sneaky-forged-view",
+      p_expected: { state_id: states.Accepted, iteration_id: staleIterationId },
+      p_deltas: {},
+      p_anchor: {},
+    });
+    expect(error?.message).toMatch(/stale/i);
+  });
+
+  // TASK-136: a reorder rewrites only the AFFECTED RANGE, not the whole
+  // iteration. Started at 0,1,2; Finished parked far at 20,21 (a deliberate
+  // gap — a whole-iteration re-densify would collapse 20/21 to 3/4). A short
+  // within-range reorder must leave the far rows exactly where they are.
+  it("rewrites only the affected position range, leaving out-of-range rows untouched (TASK-136)", async () => {
+    const [a0, a1, a2, f20, f21] = await seedCurrentIteration([
+      { stateId: states.Started, position: 0 },
+      { stateId: states.Started, position: 1 },
+      { stateId: states.Started, position: 2 },
+      { stateId: states.Finished, position: 20 },
+      { stateId: states.Finished, position: 21 },
+    ]);
+    // Move a2 before a1 (affected range = [1,2]).
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: a2 },
+      p_view: "tracker",
+      p_expected: { state_id: states.Started, iteration_id: iterationId },
+      p_deltas: {},
+      p_anchor: { before: { kind: "story", id: a1 } },
+    });
+    expect(error).toBeNull();
+    // In-range shifted (a0 stays 0, a2→1, a1→2); out-of-range untouched.
+    expect(await positionsOf([a0, a2, a1])).toEqual([0, 1, 2]);
+    expect(await positionsOf([f20, f21])).toEqual([20, 21]);
+  });
+
+  // TASK-136 regression: append must land past the LAST story (max+1), not at
+  // count(*). Positions go sparse in production (a List current→backlog drag or
+  // finalize vacates a slot and nothing re-densifies), so count would drop the
+  // card mid-sequence.
+  it("appends to the end of a sparse sequence, not mid-list (TASK-136 gap)", async () => {
+    const [a0, f20, f21] = await seedCurrentIteration([
+      { stateId: states.Started, position: 0 },
+      { stateId: states.Finished, position: 20 },
+      { stateId: states.Finished, position: 21 },
+    ]);
+    // Move a0 into the Finished column, dropped at its end (no anchor).
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: a0 },
+      p_view: "tracker",
+      p_expected: { state_id: states.Started, iteration_id: iterationId },
+      p_deltas: { state_id: states.Finished },
+      p_anchor: {},
+    });
+    expect(error).toBeNull();
+    const [pa0, pf20, pf21] = await positionsOf([a0, f20, f21]);
+    expect(pa0).toBeGreaterThan(pf21); // last in flat order, not at count()=2
+    expect([pf20, pf21]).toEqual([20, 21]); // real tail untouched
+  });
+
+  // Exercises the in-scope DOWN shift (position - 1) — every other reorder test
+  // is an up-move, so this is the only one that shifts a real row downward.
+  it("reorders a story later within its column (down move)", async () => {
+    const [a, b, c] = await seedCurrentIteration([
+      { stateId: states.Started, position: 0 },
+      { stateId: states.Started, position: 1 },
+      { stateId: states.Started, position: 2 },
+    ]);
+    // Move a (pos 0) to before c → order b, a, c.
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: a },
+      p_view: "tracker",
+      p_expected: { state_id: states.Started, iteration_id: iterationId },
+      p_deltas: {},
+      p_anchor: { before: { kind: "story", id: c } },
+    });
+    expect(error).toBeNull();
+    expect(await positionsOf([b, a, c])).toEqual([0, 1, 2]);
+  });
+
+  // Exercises the ENTERING branch (shift target..end) into a POPULATED
+  // iteration — the only prior entering test moved into an empty iteration
+  // (n_others=0), so the shift never touched a row.
+  it("moves a backlog story into a populated current iteration at the anchor", async () => {
+    const [x, y, z] = await seedCurrentIteration([
+      { stateId: states.Started, position: 0 },
+      { stateId: states.Started, position: 1 },
+      { stateId: states.Started, position: 2 },
+    ]);
+    const { data: m } = await asService
+      .from("stories")
+      .insert({ project_id: projectId, title: "m", state_id: states.Unstarted, iteration_id: null, position: 0, created_by: ownerId })
+      .select("id")
+      .single();
+    // Schedule m into the current iteration, dropped before y.
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: m!.id },
+      p_view: "list",
+      p_expected: { state_id: states.Unstarted, iteration_id: null },
+      p_deltas: { iteration: "current" },
+      p_anchor: { before: { kind: "story", id: y } },
+    });
+    expect(error).toBeNull();
+    // m lands before y, shifting y,z up: x(0), m(1), y(2), z(3).
+    expect(await positionsOf([x, m!.id, y, z])).toEqual([0, 1, 2, 3]);
+  });
+
+  // Exercises the Icebox scope (state_id is null, project-wide) — untested
+  // before; the null-scope predicate appears in every branch of the rewrite.
+  it("reorders Icebox (null-state) stories", async () => {
+    await asService.from("stories").delete().eq("project_id", projectId);
+    const { data: i0 } = await asService
+      .from("stories")
+      .insert({ project_id: projectId, title: "i0", state_id: null, iteration_id: null, position: 0, created_by: ownerId })
+      .select("id")
+      .single();
+    const { data: i1 } = await asService
+      .from("stories")
+      .insert({ project_id: projectId, title: "i1", state_id: null, iteration_id: null, position: 1, created_by: ownerId })
+      .select("id")
+      .single();
+    // Move i1 before i0.
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: i1!.id },
+      p_view: "list",
+      p_expected: { state_id: null, iteration_id: null },
+      p_deltas: {},
+      p_anchor: { before: { kind: "story", id: i0!.id } },
+    });
+    expect(error).toBeNull();
+    expect(await positionsOf([i1!.id, i0!.id])).toEqual([0, 1]);
+  });
 });

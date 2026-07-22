@@ -3,10 +3,11 @@ id: TASK-134
 title: >-
   move_story_board: tracker-view drags skip the cross-iteration guard,
   corrupting story position
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 13:14'
+updated_date: '2026-07-22 00:54'
 labels: []
 dependencies: []
 priority: high
@@ -22,9 +23,30 @@ Found in code review (2026-07-21) of the range following TASK-111's fix. In supa
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The reroute/scope logic in move_story_board treats p_view='tracker' the same as p_view='list' for the cross-iteration check -- any state-bearing move where the story's actual iteration is not distinct from the project's current iteration gets rerouted or raises the existing 'stale story state; refresh and retry' error, instead of silently renumbering into the wrong iteration's sequence
-- [ ] #2 The column-end anchor-resolution query and the position-rewrite loop use the same iteration scope so they can no longer diverge
-- [ ] #3 The anchor-resolution query's duplicated 3-condition filter is factored into a single CTE reused by both the max(position) lookup and the next-id lookup
-- [ ] #4 A test reproduces the race (a done-category story whose iteration is finalized between staleness-check-passing input and RPC execution) and proves the RPC now rejects it or rescopes correctly instead of corrupting position
-- [ ] #5 rls-security-reviewer pass is clean; migration passes local supabase db reset; pnpm test + lint green
+- [x] #1 The column-end anchor-resolution query and the position-rewrite loop use the same iteration scope so they can no longer diverge
+- [x] #2 The anchor-resolution query's duplicated 3-condition filter is factored into a single CTE reused by both the max(position) lookup and the next-id lookup
+- [x] #3 A test reproduces the race (a done-category story whose iteration is finalized between staleness-check-passing input and RPC execution) and proves the RPC now rejects it or rescopes correctly instead of corrupting position
+- [x] #4 rls-security-reviewer pass is clean; migration passes local supabase db reset; pnpm test + lint green
+- [x] #5 The reroute/scope logic treats any non-'list' p_view (tracker or an unknown/forged value) the same for the cross-iteration check: a state-bearing move where the story's actual iteration IS DISTINCT FROM the current iteration (or there is no current iteration) is rejected with 'stale story state; refresh and retry' instead of silently renumbering into the wrong iteration's sequence; p_view='list' still routes such a move to the backlog splice as before
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+ONE migration (20260722000001) fixes both TASK-134 + TASK-136 (same function). Advisor-reviewed (修正付き承認).
+TASK-134: (1) zone selection restructured — a state-bearing move whose destination isn't the current iteration routes to backlog for p_view='list' (legit current->backlog drag) but RAISES 'stale' for ANY non-'list' p_view (advisor hole-1: tracker OR a forged/unknown p_view, since the RPC is granted to authenticated with no enum check). (2) single-zone rewrite + column-end anchor now share one iteration scope (v_new_iteration). (3) anchor query's duplicated 3-cond filter factored into one CTE.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented in 20260722000001_move_story_board_iteration_guard_range.sql. Verified: supabase db reset applies clean; integration suite move-story-board (13 tests incl. 3 new: cross-iteration tracker reject, forged p_view reject, range-limiting) + stories-write-model + grant-lockdown = 22 pass. Existing TASK-111 within-column + column-end tests still pass (range logic gives identical final positions). Fixed a pre-existing test (stories-write-model 'member move') that did a tracker move on a state-bearing BACKLOG story (iteration_id null) — per columnForStory that's never a tracker target; scheduled it into the current iteration so it's a valid target (permission assertion unchanged). Full unit suite 573 pass, lint clean. rls-security-reviewer pass pending.
+
+rls-security-reviewer: CLEAN, no findings (auth gate first, all range UPDATEs project-scoped, raise rolls back the whole txn, search_path pinned, no dynamic SQL). All ACs met.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+move_story_board no longer corrupts position on a stale/forged cross-iteration move: a state-bearing move whose destination isn't the current iteration routes to the backlog splice for p_view='list' but is rejected with 'stale' for any other p_view (tracker or forged) — closing the done-category-story race and the direct-RPC path. The column-end anchor and the position rewrite now share one iteration scope (v_new_iteration) via a single CTE. Verified: advisor-approved, rls-security-reviewer clean, supabase db reset applies, 22 integration tests pass (incl. 3 new), unit 573 pass, lint clean.
+<!-- SECTION:FINAL_SUMMARY:END -->
