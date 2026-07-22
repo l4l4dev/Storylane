@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-22 13:33'
-updated_date: '2026-07-22 16:38'
+updated_date: '2026-07-22 16:45'
 labels: []
+milestone: m-5
 dependencies: []
 references:
   - >-

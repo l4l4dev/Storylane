@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 11:26'
-updated_date: '2026-07-22 13:34'
+updated_date: '2026-07-22 16:45'
 labels: []
+milestone: m-5
 dependencies:
   - TASK-148
 priority: medium

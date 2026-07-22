@@ -7,8 +7,9 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 11:18'
-updated_date: '2026-07-22 07:06'
+updated_date: '2026-07-22 16:45'
 labels: []
+milestone: m-2
 dependencies: []
 priority: medium
 type: bug

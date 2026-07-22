@@ -7,8 +7,9 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 12:34'
-updated_date: '2026-07-22 02:07'
+updated_date: '2026-07-22 16:45'
 labels: []
+milestone: m-5
 dependencies: []
 priority: high
 type: feature

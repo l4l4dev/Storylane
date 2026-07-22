@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-22 11:18'
+updated_date: '2026-07-22 16:45'
 labels: []
+milestone: m-5
 dependencies:
   - TASK-131
 priority: high

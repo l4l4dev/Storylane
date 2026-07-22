@@ -126,6 +126,17 @@ Workflow rules:
 - If a review finds poor-quality output, escalate: reassign the task to the next higher model
   (or propose the switch to the owner), leave a task comment explaining why, and redo the work there.
 
+## Backlog Milestone Policy (owner-requested 2026-07-23)
+
+Every Backlog task MUST have a milestone — set it at creation time (`--milestone`/`-m`), never
+leave it unset. Check current milestones with `backlog milestone list --plain` before picking
+one (the list changes over time — don't assume the ids below stay accurate):
+
+- Pick the existing milestone whose scope covers the task's actual outcome — don't default to
+  whichever milestone is currently active if the task belongs elsewhere.
+- If no existing milestone fits, ask the owner before creating a new one (same rule as Backlog
+  task creation itself — see [[feedback-ask-before-creating-backlog-tasks]] in memory).
+
 ## Backlog Ordering & Doc Hygiene (standing rules, owner-requested 2026-07-22)
 
 - **Doc titles start with the zero-padded doc number** (`NN — Title`, e.g. `15 — My Work
