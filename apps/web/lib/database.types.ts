@@ -395,6 +395,7 @@ export type Database = {
       my_work_story_state: {
         Row: {
           column_id: string | null
+          column_position: number | null
           story_id: string
           today_date: string | null
           today_position: number | null
@@ -403,6 +404,7 @@ export type Database = {
         }
         Insert: {
           column_id?: string | null
+          column_position?: number | null
           story_id: string
           today_date?: string | null
           today_position?: number | null
@@ -411,6 +413,7 @@ export type Database = {
         }
         Update: {
           column_id?: string | null
+          column_position?: number | null
           story_id?: string
           today_date?: string | null
           today_position?: number | null
@@ -448,6 +451,7 @@ export type Database = {
           display_name: string
           id: string
           is_agent: boolean
+          my_work_column_names: Json
           my_work_column_order: string[]
           username: string
         }
@@ -457,6 +461,7 @@ export type Database = {
           display_name: string
           id: string
           is_agent?: boolean
+          my_work_column_names?: Json
           my_work_column_order?: string[]
           username: string
         }
@@ -466,6 +471,7 @@ export type Database = {
           display_name?: string
           id?: string
           is_agent?: boolean
+          my_work_column_names?: Json
           my_work_column_order?: string[]
           username?: string
         }

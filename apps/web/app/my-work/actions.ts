@@ -57,7 +57,13 @@ export async function setMyWorkColumn(
     if (!stateId) return { ok: false, message: `This project has no ${category} state to move the story into.` };
     const { error } = await supabase.rpc("set_story_state", { p_story_id: storyId, p_state_id: stateId });
     if (error) return { ok: false, message: error.message };
-    return persistMark(supabase, user.id, storyId, { column_id: null, today_date: null, today_position: null }, story.project_id);
+    return persistMark(
+      supabase,
+      user.id,
+      storyId,
+      { column_id: null, column_position: null, today_date: null, today_position: null },
+      story.project_id,
+    );
   }
 
   // Team story → Done: not writable from My Work (doc-15 decision 5).
@@ -81,19 +87,36 @@ export async function setMyWorkColumn(
   }
 
   // Local marks. Today keeps column_id (it overlays); Todo/free clear it.
+  // Every branch that changes column_id also resets column_position — a free
+  // column's manual order is meaningless outside that column, and a stale
+  // value left behind either violates the column_position/column_id check
+  // constraint (moving to Todo) or misorders the target free column with a
+  // leftover position from the one the card just left.
   if (target === "today") {
     const today_position = await nextTodayPosition(supabase, user.id, clientToday);
     return persistMark(supabase, user.id, storyId, { today_date: clientToday, today_position }, story.project_id);
   }
   if (target === "todo") {
-    return persistMark(supabase, user.id, storyId, { column_id: null, today_date: null, today_position: null }, story.project_id);
+    return persistMark(
+      supabase,
+      user.id,
+      storyId,
+      { column_id: null, column_position: null, today_date: null, today_position: null },
+      story.project_id,
+    );
   }
   // A free column uuid. RLS already scopes columns to the viewer; verify here
   // for a friendly error rather than a silent FK violation.
   if (!(await ownsColumn(supabase, user.id, target))) {
     return { ok: false, message: "Unknown column." };
   }
-  return persistMark(supabase, user.id, storyId, { column_id: target, today_date: null, today_position: null }, story.project_id);
+  return persistMark(
+    supabase,
+    user.id,
+    storyId,
+    { column_id: target, column_position: null, today_date: null, today_position: null },
+    story.project_id,
+  );
 }
 
 /**
@@ -160,6 +183,33 @@ export async function reorderMyWorkToday(orderedStoryIds: string[]): Promise<Act
       user_id: user.id,
       story_id: storyId,
       today_position: index,
+      updated_at: new Date().toISOString(),
+    })),
+    { onConflict: "user_id,story_id" },
+  );
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/my-work");
+  return { ok: true };
+}
+
+/**
+ * Persists a manual reorder WITHIN a free column — generalizes
+ * reorderMyWorkToday's approach to any user-defined column: same full
+ * re-densify, same partial-upsert shape naming only column_position so
+ * today_date/column_id are left untouched on the existing rows.
+ */
+export async function reorderMyWorkColumn(orderedStoryIds: string[]): Promise<ActionResult> {
+  if (orderedStoryIds.length === 0) return { ok: true };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+  const { error } = await supabase.from("my_work_story_state").upsert(
+    orderedStoryIds.map((storyId, index) => ({
+      user_id: user.id,
+      story_id: storyId,
+      column_position: index,
       updated_at: new Date().toISOString(),
     })),
     { onConflict: "user_id,story_id" },
@@ -244,6 +294,45 @@ export async function deleteMyWorkColumn(columnId: string): Promise<ActionResult
 }
 
 /**
+ * Renames one of the three FIXED slots (Todo/Today/Done) — a per-user display
+ * label only; the slot id and every behavior keyed off it (classification,
+ * drag targets) is untouched. Read-modify-write since the column is a single
+ * jsonb map covering all three slots (mirrors createMyWorkColumn's own
+ * read-then-write for its position).
+ */
+export async function renameMyWorkFixedColumn(slot: "todo" | "today" | "done", name: string): Promise<ActionResult> {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, message: "Name is required" };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+
+  // The read's error is checked (unlike a fresh row's expected-empty case) —
+  // an unnoticed failure here would fall through to `current = {}` and the
+  // write below would silently wipe out the other two slots' saved names.
+  const { data: profileRow, error: readError } = await supabase
+    .from("profiles")
+    .select("my_work_column_names")
+    .eq("id", user.id)
+    .single();
+  if (readError) return { ok: false, message: readError.message };
+  const current = (profileRow?.my_work_column_names ?? {}) as Record<string, string>;
+  const next = { ...current, [slot]: trimmed };
+
+  try {
+    await assertRowAffected(
+      await supabase.from("profiles").update({ my_work_column_names: next }).eq("id", user.id).select("id"),
+    );
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Failed to rename" };
+  }
+  revalidatePath("/my-work");
+  return { ok: true };
+}
+
+/**
  * Persists the viewer's full column display order (TASK-141, doc-15: "the
  * order covers the three fixed slots too"). The client computes the new order
  * by swapping two adjacent slot ids (see resolveColumnOrder for how a stored
@@ -316,7 +405,7 @@ async function persistMark(
   supabase: Supabase,
   userId: string,
   storyId: string,
-  patch: { column_id?: string | null; today_date?: string | null; today_position?: number | null },
+  patch: { column_id?: string | null; column_position?: number | null; today_date?: string | null; today_position?: number | null },
   projectId: string,
 ): Promise<ActionResult> {
   const { error } = await supabase

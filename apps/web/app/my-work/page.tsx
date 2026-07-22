@@ -2,10 +2,16 @@ import Link from "next/link";
 import { addDays } from "@storylane/core";
 import { createClient } from "@/lib/supabase/server";
 import { utcTodayKey } from "@/lib/utils/format";
-import { resolveColumnOrder, type DoneEntry, type MyWorkFreeColumn, type MyWorkProject, type MyWorkStory } from "@/lib/utils/my-work";
+import {
+  resolveColumnNames,
+  resolveColumnOrder,
+  type DoneEntry,
+  type MyWorkFreeColumn,
+  type MyWorkProject,
+  type MyWorkStory,
+} from "@/lib/utils/my-work";
 import { pointScaleValues, storyStateBadge } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
-import { MyWorkColumnManager } from "@/components/features/my-work/my-work-column-manager";
 import { MyWorkSections } from "@/components/features/my-work/my-work-sections";
 import type { MyWorkRowData } from "@/components/features/my-work/my-work-row";
 import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add";
@@ -78,11 +84,12 @@ export default async function MyWorkPage() {
           // moment a story enters a done category).
           .is("completed_at", null)
       : Promise.resolve({ data: null }),
-    // The viewer's own My Work marks — column_id / today_date / today_position.
+    // The viewer's own My Work marks — column_id / today_date / today_position
+    // / column_position (TASK-150: free-column manual order).
     user
       ? supabase
           .from("my_work_story_state")
-          .select("story_id, column_id, today_date, today_position")
+          .select("story_id, column_id, today_date, today_position, column_position")
           .eq("user_id", user.id)
       : Promise.resolve({ data: null }),
     // The viewer's free columns (doc-15). 'Doing' is pre-seeded.
@@ -102,9 +109,13 @@ export default async function MyWorkPage() {
           .gte("completed_at", doneSince)
           .order("completed_at", { ascending: false })
       : Promise.resolve({ data: null }),
-    // The viewer's saved column display order (TASK-141) — merged read-side
-    // against the live free-column set by resolveColumnOrder below.
-    user ? supabase.from("profiles").select("my_work_column_order").eq("id", user.id).single() : Promise.resolve({ data: null }),
+    // The viewer's saved column display order (TASK-141) and fixed-slot
+    // display-name overrides (TASK-150 follow-up) — merged read-side against
+    // the live free-column set / defaults by resolveColumnOrder/
+    // resolveColumnNames below.
+    user
+      ? supabase.from("profiles").select("my_work_column_order, my_work_column_names").eq("id", user.id).single()
+      : Promise.resolve({ data: null }),
     soloPersonalProject
       ? supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position")
       : Promise.resolve({ data: null }),
@@ -137,6 +148,7 @@ export default async function MyWorkPage() {
     position: c.position,
   }));
   const columnOrder = resolveColumnOrder(profileRow?.my_work_column_order ?? [], freeColumns);
+  const columnNames = resolveColumnNames(profileRow?.my_work_column_names);
 
   const myStateByStoryId = new Map((myStateRows ?? []).map((r) => [r.story_id, r] as const));
 
@@ -168,6 +180,7 @@ export default async function MyWorkPage() {
         todayDate: mark?.today_date ?? null,
         todayPosition: mark?.today_position ?? null,
         columnId: mark?.column_id ?? null,
+        columnPosition: mark?.column_position ?? null,
         row: toRowData(s, project.name),
       };
     });
@@ -219,14 +232,13 @@ export default async function MyWorkPage() {
         </div>
       )}
 
-      {user && <MyWorkColumnManager freeColumns={freeColumns} />}
-
       <MyWorkSections
         assigned={assigned}
         completions={completions}
         projects={projects}
         freeColumns={freeColumns}
         order={columnOrder}
+        columnNames={columnNames}
         serverTodayKey={utcTodayKey()}
       />
     </main>

@@ -2,26 +2,35 @@
 
 import { useState, useTransition } from "react";
 import { X } from "lucide-react";
-import { createMyWorkColumn, deleteMyWorkColumn, renameMyWorkColumn } from "@/app/my-work/actions";
-import type { MyWorkFreeColumn } from "@/lib/utils/my-work";
+import { createMyWorkColumn, deleteMyWorkColumn } from "@/app/my-work/actions";
 import { isImeComposing } from "@/lib/utils/keyboard";
 import { useInlineEdit } from "@/components/features/board/use-inline-edit";
+import { BOARD_COLUMN_HEIGHT_CLASS } from "@/components/features/board/kanban-columns-board";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-// Click-to-edit rename field for a free column — same pattern as project
-// Settings' StateManager InlineTextField (useInlineEdit is state-model-
-// agnostic).
-function ColumnNameField({ column }: { column: MyWorkFreeColumn }) {
+/**
+ * My Work's free-column CRUD controls (doc-15/doc-17). Add, rename, and
+ * delete all live inline in the board itself now — this module has no
+ * standalone panel of its own; MyWorkSections renders ColumnNameField and
+ * DeleteColumnButton in each free column's header, and AddColumnTile at the
+ * end of the column row (doc-17 #6: one coherent surface instead of a
+ * separate collapsed manage panel + the board's own drag-to-reorder).
+ */
+
+// Click-to-edit rename field — same pattern as project Settings' StateManager
+// InlineTextField (useInlineEdit is state-model-agnostic). Used for both a
+// free column's own name and a fixed slot's display-name override —
+// `onRename` is the only thing that differs between them (renameMyWorkColumn
+// vs renameMyWorkFixedColumn).
+export function ColumnNameField({ name, onRename }: { name: string; onRename: (name: string) => Promise<void> }) {
   const { buttonRef, editor } = useInlineEdit({
-    initialValue: column.name,
+    initialValue: name,
     fallbackError: "Failed to save",
     shouldCommit: (value) => Boolean(value),
-    async onCommit(trimmed) {
-      const result = await renameMyWorkColumn(column.id, trimmed);
-      if (!result.ok) throw new Error(result.message);
-    },
+    onCommit: onRename,
   });
 
   if (!editor.editing) {
@@ -30,7 +39,7 @@ function ColumnNameField({ column }: { column: MyWorkFreeColumn }) {
         ref={buttonRef}
         type="button"
         onClick={editor.startEditing}
-        aria-label={`Edit name: ${column.name}`}
+        aria-label={`Edit name: ${name}`}
         className="w-full truncate rounded px-1.5 py-1 text-left text-sm hover:bg-muted"
       >
         {editor.synced}
@@ -64,101 +73,137 @@ function ColumnNameField({ column }: { column: MyWorkFreeColumn }) {
   );
 }
 
-function DeleteColumnButton({ columnId, name }: { columnId: string; name: string }) {
+// Delete asks for confirmation and states the card destination (doc-17 #1):
+// deleting used to be a single click with no way back and no explanation of
+// where its cards go (they fall back to Todo via the column_id FK's own
+// ON DELETE SET NULL — see the delete-column migration/action).
+export function DeleteColumnButton({ columnId, name }: { columnId: string; name: string }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  return (
-    <div className="flex flex-col items-end gap-0.5">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        disabled={isPending}
-        aria-label={`Delete column ${name}`}
-        className="text-muted-foreground hover:text-destructive"
-        onClick={() => {
-          setError(null);
-          startTransition(async () => {
-            const result = await deleteMyWorkColumn(columnId);
-            if (!result.ok) setError(result.message);
-          });
-        }}
-      >
-        <X />
-      </Button>
-      {error && <span className="max-w-40 text-right text-xs text-destructive">{error}</span>}
-    </div>
-  );
-}
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-/**
- * My Work's column management panel (TASK-141, doc-15): add/rename/delete
- * free columns. Reordering (including the fixed Todo/Today/Done slots) now
- * happens by dragging a column's own header directly on the board (TASK-148,
- * replacing this panel's former up/down arrows) — this panel's job shrinks
- * to just the free columns themselves, since the board is now the single
- * place display order lives and is edited.
- */
-export function MyWorkColumnManager({ freeColumns }: { freeColumns: MyWorkFreeColumn[] }) {
-  const [open, setOpen] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
-  const [isAdding, startAdd] = useTransition();
-  const [newName, setNewName] = useState("");
-
-  function handleAdd(event: React.FormEvent) {
-    event.preventDefault();
-    const name = newName.trim();
-    if (!name) return;
-    setAddError(null);
-    startAdd(async () => {
-      const result = await createMyWorkColumn(name);
-      if (result.ok) setNewName("");
-      else setAddError(result.message);
+  function handleDelete() {
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteMyWorkColumn(columnId);
+      if (result.ok) setConfirmOpen(false);
+      else setError(result.message);
     });
   }
 
   return (
-    <div className="mx-auto mb-4 max-w-3xl">
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Delete column ${name}`}
+        className="shrink-0 text-muted-foreground hover:text-destructive"
+        onClick={() => {
+          setError(null);
+          setConfirmOpen(true);
+        }}
+      >
+        <X />
+      </Button>
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (!open && isPending) return;
+          setConfirmOpen(open);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete column &quot;{name}&quot;?</DialogTitle>
+            <DialogDescription>Its cards move to Todo. This can&apos;t be undone.</DialogDescription>
+          </DialogHeader>
+          {error && (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setConfirmOpen(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleDelete} disabled={isPending}>
+              {isPending ? "Deleting…" : "Delete column"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// A "+ Add column" tile at the end of the column row (doc-17 #6) — replaces
+// the old standalone "Manage columns" panel; adding a column is now reachable
+// from the same board surface as rename/delete/reorder.
+export function AddColumnTile() {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleAdd(event: React.FormEvent) {
+    event.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await createMyWorkColumn(trimmed);
+      if (result.ok) {
+        setName("");
+        setAdding(false);
+      } else {
+        setError(result.message);
+      }
+    });
+  }
+
+  if (!adding) {
+    return (
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="text-sm font-medium text-muted-foreground hover:text-foreground"
+        onClick={() => setAdding(true)}
+        className={`flex w-72 shrink-0 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground ${BOARD_COLUMN_HEIGHT_CLASS}`}
       >
-        {open ? "Hide column settings" : "Manage columns"}
+        + Add column
       </button>
+    );
+  }
 
-      {open && (
-        <div className="mt-2 flex flex-col gap-3 rounded-lg border border-border p-3">
-          {freeColumns.length > 0 && (
-            <ul className="flex flex-col gap-1.5">
-              {freeColumns.map((column) => (
-                <li key={column.id} className="flex items-center gap-2 rounded-lg border border-border p-2">
-                  <div className="min-w-0 flex-1">
-                    <ColumnNameField column={column} />
-                  </div>
-                  <DeleteColumnButton columnId={column.id} name={column.name} />
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <form onSubmit={handleAdd} className="flex items-end gap-2">
-            <div className="flex flex-1 flex-col gap-1.5">
-              <Label htmlFor="new-my-work-column-name">New column</Label>
-              <Input
-                id="new-my-work-column-name"
-                value={newName}
-                onChange={(event) => setNewName(event.target.value)}
-                disabled={isAdding}
-              />
-            </div>
-            <Button type="submit" variant="outline" disabled={isAdding || !newName.trim()}>
-              Add
-            </Button>
-          </form>
-          {addError && <span className="text-xs text-destructive">{addError}</span>}
-        </div>
-      )}
-    </div>
+  return (
+    <form
+      onSubmit={handleAdd}
+      className={`flex w-72 shrink-0 flex-col gap-2 rounded-lg border border-border bg-muted/20 p-3 ${BOARD_COLUMN_HEIGHT_CLASS}`}
+    >
+      <Label htmlFor="new-my-work-column-name">New column</Label>
+      <Input
+        id="new-my-work-column-name"
+        autoFocus
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        disabled={isPending}
+      />
+      {error && <span className="text-xs text-destructive">{error}</span>}
+      <div className="flex gap-2">
+        <Button type="submit" variant="outline" disabled={isPending || !name.trim()}>
+          Add
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={isPending}
+          onClick={() => {
+            setAdding(false);
+            setError(null);
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }

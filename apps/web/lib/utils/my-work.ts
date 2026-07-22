@@ -47,6 +47,9 @@ export type MyWorkStory<S = unknown> = {
   // for Todo. null also covers a card whose column was deleted (the composite
   // FK's SET NULL drops it back to Todo).
   columnId: string | null;
+  // Manual order within its free column — same role as todayPosition,
+  // generalized to any user-defined column.
+  columnPosition: number | null;
   row: S;
 };
 
@@ -73,6 +76,18 @@ export type MyWorkColumns<S> = {
 function compareGroup(a: { isPersonal: boolean; name: string }, b: { isPersonal: boolean; name: string }): number {
   if (a.isPersonal !== b.isPersonal) return a.isPersonal ? -1 : 1;
   return a.name.localeCompare(b.name);
+}
+
+// Shared shape for Today/free-column manual ordering: ascending by position,
+// nulls last (an unpositioned card sinks to the bottom), ties broken by
+// `fallback`.
+function sortByManualPosition<S>(a: S, b: S, pa: number | null, pb: number | null, fallback: (a: S, b: S) => number): number {
+  if (pa !== pb) {
+    if (pa === null) return 1;
+    if (pb === null) return -1;
+    return pa - pb;
+  }
+  return fallback(a, b);
 }
 
 /**
@@ -122,21 +137,15 @@ export function classifyMyWork<S>(
 
   // Today is manually ordered (doc-15 decision 4): today_position asc, nulls
   // last (a freshly-marked card with no position yet sinks to the bottom),
-  // ties broken by the cross-project order.
-  today.sort((a, b) => {
-    const pa = a.todayPosition;
-    const pb = b.todayPosition;
-    if (pa !== pb) {
-      if (pa === null) return 1;
-      if (pb === null) return -1;
-      return pa - pb;
-    }
-    return sortCrossProject(a, b);
-  });
+  // ties broken by the cross-project order. Free columns use the same manual-
+  // order-with-fallback shape, keyed by columnPosition instead.
+  today.sort((a, b) => sortByManualPosition(a, b, a.todayPosition, b.todayPosition, sortCrossProject));
 
   const free: MyWorkFreeColumnGroup<S>[] = orderedColumns.map((column) => ({
     column,
-    stories: (byColumn.get(column.id) ?? []).sort(sortCrossProject),
+    stories: (byColumn.get(column.id) ?? []).sort((a, b) =>
+      sortByManualPosition(a, b, a.columnPosition, b.columnPosition, sortCrossProject),
+    ),
   }));
 
   const groupsByProject = new Map<string, MyWorkStory<S>[]>();
@@ -224,14 +233,15 @@ export function resolveDragEndTarget(
 }
 
 /**
- * Whether a same-container drop should persist a manual reorder (TASK-145):
- * Today is the ONLY column with its own card order (doc-15 decision 4 — "the
- * day's execution order"); Todo/Done/a free column have no order of their own
- * to persist, matching `resolveDragEndTarget`'s null for every other
- * same-container drop.
+ * Whether a same-container drop should persist a manual reorder: Today and
+ * every free column carry their own card order (doc-15 decision 4 — "the
+ * day's execution order", extended to free columns since users expect the
+ * same for e.g. "Doing"); Todo/Done have no order of their own to persist,
+ * matching `resolveDragEndTarget`'s null for every other same-container drop.
  */
-export function isTodayReorder(startContainer: MyWorkColumnId | null, overContainer: MyWorkColumnId | null): boolean {
-  return startContainer === "today" && overContainer === "today";
+export function isManualOrderReorder(startContainer: MyWorkColumnId | null, overContainer: MyWorkColumnId | null): boolean {
+  if (startContainer === null || startContainer !== overContainer) return false;
+  return startContainer !== "todo" && startContainer !== "done";
 }
 
 /**
@@ -298,6 +308,26 @@ function defaultOrder(freeColumns: readonly MyWorkFreeColumn[]): string[] {
  * (a newly added column, or a user who has never reordered anything) is
  * appended in its default position.
  */
+// Display-name overrides for the three FIXED slots — the slot id/behavior
+// never changes, only its label.
+export type MyWorkColumnNames = { todo: string; today: string; done: string };
+export const DEFAULT_COLUMN_NAMES: MyWorkColumnNames = { todo: "Todo", today: "Today", done: "Done" };
+
+/**
+ * Reads `profiles.my_work_column_names` (a jsonb map, shape unvalidated at
+ * the DB layer) defensively: any key missing or not a non-empty string falls
+ * back to the default label, so a malformed/partial value degrades
+ * gracefully instead of blanking a column's name.
+ */
+export function resolveColumnNames(stored: unknown): MyWorkColumnNames {
+  const raw = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
+  const pick = (slot: keyof MyWorkColumnNames): string => {
+    const value = raw[slot];
+    return typeof value === "string" && value.trim() ? value : DEFAULT_COLUMN_NAMES[slot];
+  };
+  return { todo: pick("todo"), today: pick("today"), done: pick("done") };
+}
+
 export function resolveColumnOrder(stored: readonly string[], freeColumns: readonly MyWorkFreeColumn[]): string[] {
   const validIds = new Set<string>(["todo", "today", "done", ...freeColumns.map((c) => c.id)]);
   const order: string[] = [];

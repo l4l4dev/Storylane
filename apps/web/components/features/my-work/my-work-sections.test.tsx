@@ -1,9 +1,34 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ActionResult } from "@/lib/types";
 import { MyWorkSections } from "./my-work-sections";
 import type { MyWorkRowData } from "./my-work-row";
 import { localTodayKey } from "@/lib/utils/format";
 import { resolveColumnOrder, type DoneEntry, type MyWorkFreeColumn, type MyWorkProject, type MyWorkStory } from "@/lib/utils/my-work";
+
+const saveMyWorkColumnOrder = vi.fn<(order: string[]) => Promise<ActionResult>>(async () => ({ ok: true }));
+const renameMyWorkFixedColumn = vi.fn<(slot: string, name: string) => Promise<ActionResult>>(async () => ({ ok: true }));
+
+// Only saveMyWorkColumnOrder/renameMyWorkFixedColumn are exercised below (the
+// move-button fallback, doc-17 #7, and the fixed-slot rename follow-up);
+// every other action is a stub so a component render never hits the real
+// Supabase server client. vi.mock's factory is hoisted above every top-level
+// const, so the stub must be defined inline here, not referenced.
+vi.mock("@/app/my-work/actions", () => {
+  const ok = async () => ({ ok: true });
+  return {
+    carryOverToday: ok,
+    createMyWorkColumn: ok,
+    deleteMyWorkColumn: ok,
+    dismissCarryOver: ok,
+    renameMyWorkColumn: ok,
+    renameMyWorkFixedColumn: (slot: string, name: string) => renameMyWorkFixedColumn(slot, name),
+    reorderMyWorkColumn: ok,
+    reorderMyWorkToday: ok,
+    saveMyWorkColumnOrder: (order: string[]) => saveMyWorkColumnOrder(order),
+    setMyWorkColumn: ok,
+  };
+});
 
 const TODAY = localTodayKey();
 const TEAM_A: MyWorkProject = { id: "team-a", name: "Alpha", isPersonal: false };
@@ -25,7 +50,17 @@ function row(id: string, over: Partial<MyWorkRowData> = {}): MyWorkRowData {
 }
 
 function active(id: string, over: Partial<MyWorkStory<MyWorkRowData>> = {}): MyWorkStory<MyWorkRowData> {
-  return { id, projectId: "team-a", position: 0, todayDate: null, todayPosition: null, columnId: null, row: row(id), ...over };
+  return {
+    id,
+    projectId: "team-a",
+    position: 0,
+    todayDate: null,
+    todayPosition: null,
+    columnId: null,
+    columnPosition: null,
+    row: row(id),
+    ...over,
+  };
 }
 
 function doneEntry(id: string, completedAt: string): DoneEntry<MyWorkRowData> {
@@ -53,6 +88,13 @@ function renderSections(props: {
 }
 
 describe("MyWorkSections", () => {
+  beforeEach(() => {
+    saveMyWorkColumnOrder.mockClear();
+    saveMyWorkColumnOrder.mockResolvedValue({ ok: true });
+    renameMyWorkFixedColumn.mockClear();
+    renameMyWorkFixedColumn.mockResolvedValue({ ok: true });
+  });
+
   it("renders Todo, Today, the free columns, then Done", () => {
     renderSections({
       assigned: [active("todo1"), active("today1", { todayDate: TODAY }), active("doing1", { columnId: "doing" })],
@@ -136,5 +178,51 @@ describe("MyWorkSections", () => {
       const handle = screen.getByRole("button", { name: `Reorder ${title} column` });
       expect(handle.tagName).toBe("BUTTON");
     });
+  });
+
+  // doc-17 #7: dragging a column's header has no keyboard-arrow-free
+  // equivalent for touch, so every column also gets left/right move buttons.
+  it("disables the move-left button on the first column and move-right on the last", () => {
+    renderSections({});
+    expect(screen.getByRole("button", { name: "Move Todo column left" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move Done column right" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move Todo column right" })).not.toBeDisabled();
+  });
+
+  it("moving a column right persists the swapped order", async () => {
+    renderSections({});
+    fireEvent.click(screen.getByRole("button", { name: "Move Todo column right" }));
+    await waitFor(() => expect(saveMyWorkColumnOrder).toHaveBeenCalledWith(["today", "todo", "doing", "done"]));
+  });
+
+  // doc-17 #6: rename/delete for a free column live in its own header now,
+  // not a separate collapsed manage panel.
+  it("shows rename and delete controls in a free column's own header", () => {
+    renderSections({});
+    expect(screen.getByLabelText("Edit name: Doing")).toBeInTheDocument();
+    expect(screen.getByLabelText("Delete column Doing")).toBeInTheDocument();
+  });
+
+  it("fixed columns (Todo/Today/Done) have no delete control", () => {
+    renderSections({});
+    expect(screen.queryByLabelText("Delete column Todo")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Delete column Today")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Delete column Done")).not.toBeInTheDocument();
+  });
+
+  it("offers a '+ Add column' tile at the end of the row", () => {
+    renderSections({});
+    expect(screen.getByText("+ Add column")).toBeInTheDocument();
+  });
+
+  // Owner follow-up 2026-07-22: the fixed slots (Todo/Today/Done) can be
+  // renamed too, display label only.
+  it("lets a fixed slot's name be edited, calling renameMyWorkFixedColumn with its slot id", async () => {
+    renderSections({});
+    fireEvent.click(screen.getByLabelText("Edit name: Todo"));
+    const input = screen.getByDisplayValue("Todo");
+    fireEvent.change(input, { target: { value: "Backlog" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(renameMyWorkFixedColumn).toHaveBeenCalledWith("todo", "Backlog"));
   });
 });

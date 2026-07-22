@@ -16,6 +16,9 @@ let maxTodayPosition: number | null;
 let maxColumnPosition: number | null;
 let columnRowFound: boolean;
 let profileRowFound: boolean;
+// Backs renameMyWorkFixedColumn's read-modify-write of the fixed-slot names map.
+let columnNamesRow: Record<string, string>;
+let columnNamesReadError: { message: string } | null;
 
 const rpcMock = vi.fn<(name: string, args: unknown) => { error: { message: string } | null }>(() => ({ error: null }));
 // A single row (most marks) or a batch (reorderMyWorkToday's array upsert).
@@ -104,6 +107,8 @@ vi.mock("@/lib/supabase/server", () => ({
           };
         case "profiles":
           return {
+            select: () =>
+              node(() => ({ data: { my_work_column_names: columnNamesRow }, error: columnNamesReadError })),
             update: (row: Record<string, unknown>) => {
               updateProfileMock(row);
               return mutationChain(() => ({ data: profileRowFound ? [{ id: "u1" }] : [], error: null }));
@@ -131,6 +136,8 @@ import {
   deleteMyWorkColumn,
   dismissCarryOver,
   renameMyWorkColumn,
+  renameMyWorkFixedColumn,
+  reorderMyWorkColumn,
   reorderMyWorkToday,
   saveMyWorkColumnOrder,
   setMyWorkColumn,
@@ -147,6 +154,8 @@ beforeEach(() => {
   maxColumnPosition = null;
   columnRowFound = true;
   profileRowFound = true;
+  columnNamesRow = {};
+  columnNamesReadError = null;
   rpcMock.mockClear();
   rpcMock.mockReturnValue({ error: null });
   upsertMock.mockClear();
@@ -165,12 +174,15 @@ describe("setMyWorkColumn — personal project (real-state direct)", () => {
     story.projects.is_personal = true;
   });
 
-  it("To Done writes the real done state and clears local marks", async () => {
+  it("To Done writes the real done state and clears local marks (including column_position)", async () => {
     const result = await setMyWorkColumn("s1", "done", TODAY);
     expect(result).toEqual({ ok: true });
     expect(rpcMock).toHaveBeenCalledWith("set_story_state", { p_story_id: "s1", p_state_id: "done-state" });
+    // Regression guard: clearing column_id without also
+    // clearing column_position violates my_work_story_state_column_position_
+    // needs_column for any card previously reordered inside a free column.
     expect(upsertMock).toHaveBeenCalledWith(
-      expect.objectContaining({ column_id: null, today_date: null, today_position: null }),
+      expect.objectContaining({ column_id: null, column_position: null, today_date: null, today_position: null }),
     );
   });
 
@@ -189,11 +201,13 @@ describe("setMyWorkColumn — personal project (real-state direct)", () => {
     expect(upsertMock).not.toHaveBeenCalled();
   });
 
-  it("a free-column drag stays local even for a personal story", async () => {
+  it("a free-column drag stays local even for a personal story, resetting column_position for the new column", async () => {
     const result = await setMyWorkColumn("s1", "col-doing", TODAY);
     expect(result).toEqual({ ok: true });
     expect(rpcMock).not.toHaveBeenCalled();
-    expect(upsertMock).toHaveBeenCalledWith(expect.objectContaining({ column_id: "col-doing", today_date: null }));
+    expect(upsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ column_id: "col-doing", column_position: null, today_date: null }),
+    );
   });
 });
 
@@ -212,18 +226,20 @@ describe("setMyWorkColumn — team story (local marks only)", () => {
     expect(row).not.toHaveProperty("column_id");
   });
 
-  it("To Todo clears column_id and today marks locally", async () => {
+  it("To Todo clears column_id, column_position, and today marks locally", async () => {
     await setMyWorkColumn("s1", "todo", TODAY);
     expect(rpcMock).not.toHaveBeenCalled();
+    // Regression guard: see the "To Done" test above for why
+    // column_position must be cleared alongside column_id.
     expect(upsertMock).toHaveBeenCalledWith(
-      expect.objectContaining({ column_id: null, today_date: null, today_position: null }),
+      expect.objectContaining({ column_id: null, column_position: null, today_date: null, today_position: null }),
     );
   });
 
-  it("a free-column drag sets column_id and clears today marks", async () => {
+  it("a free-column drag sets column_id, resets column_position, and clears today marks", async () => {
     await setMyWorkColumn("s1", "col-doing", TODAY);
     expect(upsertMock).toHaveBeenCalledWith(
-      expect.objectContaining({ column_id: "col-doing", today_date: null, today_position: null }),
+      expect.objectContaining({ column_id: "col-doing", column_position: null, today_date: null, today_position: null }),
     );
   });
 
@@ -315,6 +331,38 @@ describe("renameMyWorkColumn", () => {
   });
 });
 
+describe("renameMyWorkFixedColumn", () => {
+  it("writes the new name for the given slot, leaving the others in the map untouched", async () => {
+    columnNamesRow = { today: "Focus" };
+    const result = await renameMyWorkFixedColumn("todo", "Backlog");
+    expect(result).toEqual({ ok: true });
+    expect(updateProfileMock).toHaveBeenCalledWith({ my_work_column_names: { today: "Focus", todo: "Backlog" } });
+  });
+
+  it("rejects a blank name without hitting the DB", async () => {
+    const result = await renameMyWorkFixedColumn("today", "   ");
+    expect(result.ok).toBe(false);
+    expect(updateProfileMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a not-found/RLS-filtered row as an error", async () => {
+    profileRowFound = false;
+    const result = await renameMyWorkFixedColumn("done", "Archive");
+    expect(result.ok).toBe(false);
+  });
+
+  // Regression guard: an unchecked read error used to fall
+  // through to current = {}, so the write below would silently wipe out the
+  // other two slots' saved names instead of surfacing the read failure.
+  it("surfaces a read error instead of silently overwriting the other slots' names", async () => {
+    columnNamesRow = { today: "Focus" };
+    columnNamesReadError = { message: "read boom" };
+    const result = await renameMyWorkFixedColumn("todo", "Backlog");
+    expect(result).toEqual({ ok: false, message: "read boom" });
+    expect(updateProfileMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("deleteMyWorkColumn", () => {
   it("deletes the column (its cards fall back to Todo via the composite FK, no app logic needed)", async () => {
     const result = await deleteMyWorkColumn("col-doing");
@@ -370,6 +418,36 @@ describe("reorderMyWorkToday", () => {
   it("surfaces a write error", async () => {
     upsertMock.mockReturnValueOnce({ error: { message: "boom" } });
     const result = await reorderMyWorkToday(["s1"]);
+    expect(result).toEqual({ ok: false, message: "boom" });
+  });
+});
+
+describe("reorderMyWorkColumn", () => {
+  it("writes a dense 0-based column_position for the given order", async () => {
+    const result = await reorderMyWorkColumn(["s2", "s1", "s3"]);
+    expect(result).toEqual({ ok: true });
+    expect(upsertMock).toHaveBeenCalledWith([
+      expect.objectContaining({ user_id: "u1", story_id: "s2", column_position: 0 }),
+      expect.objectContaining({ user_id: "u1", story_id: "s1", column_position: 1 }),
+      expect.objectContaining({ user_id: "u1", story_id: "s3", column_position: 2 }),
+    ]);
+  });
+
+  it("does not name column_id, so an existing row's column is untouched", async () => {
+    await reorderMyWorkColumn(["s1"]);
+    const row = (upsertMock.mock.calls[0][0] as Record<string, unknown>[])[0];
+    expect(row).not.toHaveProperty("column_id");
+  });
+
+  it("no-ops on an empty list (no DB call)", async () => {
+    const result = await reorderMyWorkColumn([]);
+    expect(result).toEqual({ ok: true });
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a write error", async () => {
+    upsertMock.mockReturnValueOnce({ error: { message: "boom" } });
+    const result = await reorderMyWorkColumn(["s1"]);
     expect(result).toEqual({ ok: false, message: "boom" });
   });
 });

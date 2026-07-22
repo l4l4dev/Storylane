@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   classifyMyWork,
   groupDoneByDate,
-  isTodayReorder,
+  isManualOrderReorder,
   regroupByProject,
+  resolveColumnNames,
   resolveColumnOrder,
   resolveDragEndTarget,
   toDragContainers,
@@ -24,7 +25,7 @@ const WAITING: MyWorkFreeColumn = { id: "waiting", name: "Waiting", position: 1 
 
 // Each story's `row` is just its id here — classification never inspects it.
 function story(overrides: Partial<MyWorkStory<string>> & { id: string; projectId: string }): MyWorkStory<string> {
-  return { position: 0, todayDate: null, todayPosition: null, columnId: null, row: overrides.id, ...overrides };
+  return { position: 0, todayDate: null, todayPosition: null, columnId: null, columnPosition: null, row: overrides.id, ...overrides };
 }
 
 function completion(id: string, completedAt: string): DoneEntry<string> {
@@ -95,6 +96,23 @@ describe("classifyMyWork", () => {
     expect(free.map((f) => f.column.id)).toEqual(["doing", "waiting"]); // sorted by position
   });
 
+  // TASK-150: a free column's own cards are manually ordered by
+  // column_position, the same nulls-last shape as Today's today_position.
+  it("orders cards within a free column by column_position (nulls last)", () => {
+    const { free } = classifyMyWork(
+      [
+        story({ id: "d-late", projectId: "team-a", columnId: "doing", columnPosition: 5 }),
+        story({ id: "d-none", projectId: "team-a", columnId: "doing", columnPosition: null }),
+        story({ id: "d-early", projectId: "team-a", columnId: "doing", columnPosition: 1 }),
+      ],
+      [],
+      [TEAM_A],
+      [DOING],
+      TODAY,
+    );
+    expect(free[0].stories.map((s) => s.id)).toEqual(["d-early", "d-late", "d-none"]);
+  });
+
   it("groups Todo by project, personal-first then name, position within group", () => {
     const { todo } = classifyMyWork(
       [
@@ -144,7 +162,16 @@ function rowShape(id: string, projectId: string, projectName: string): Row {
   return { id, projectId, projectName };
 }
 function dragStory(id: string, projectId: string, projectName: string): MyWorkStory<Row> {
-  return { id, projectId, position: 0, todayDate: null, todayPosition: null, columnId: null, row: rowShape(id, projectId, projectName) };
+  return {
+    id,
+    projectId,
+    position: 0,
+    todayDate: null,
+    todayPosition: null,
+    columnId: null,
+    columnPosition: null,
+    row: rowShape(id, projectId, projectName),
+  };
 }
 
 describe("toDragContainers", () => {
@@ -260,26 +287,50 @@ describe("resolveColumnOrder", () => {
   });
 });
 
-// TASK-145: Today is the only column with its own persisted card order
-// (doc-15 decision 4) — every other same-container drop stays a true no-op.
-describe("isTodayReorder", () => {
-  it("is true for a same-container drop within Today", () => {
-    expect(isTodayReorder("today", "today")).toBe(true);
+// TASK-150 follow-up (owner request 2026-07-22): the three fixed slots can be
+// renamed, display-label only.
+describe("resolveColumnNames", () => {
+  it("defaults every slot when nothing is stored", () => {
+    expect(resolveColumnNames(undefined)).toEqual({ todo: "Todo", today: "Today", done: "Done" });
+    expect(resolveColumnNames(null)).toEqual({ todo: "Todo", today: "Today", done: "Done" });
+    expect(resolveColumnNames({})).toEqual({ todo: "Todo", today: "Today", done: "Done" });
   });
 
-  it("is false for a same-container drop within any other column", () => {
-    expect(isTodayReorder("todo", "todo")).toBe(false);
-    expect(isTodayReorder("done", "done")).toBe(false);
-    expect(isTodayReorder("doing", "doing")).toBe(false);
+  it("uses a stored override per slot, leaving the rest at their default", () => {
+    expect(resolveColumnNames({ today: "Focus" })).toEqual({ todo: "Todo", today: "Focus", done: "Done" });
+  });
+
+  it("falls back to the default for a blank or non-string override", () => {
+    expect(resolveColumnNames({ todo: "  ", today: 5, done: null })).toEqual({ todo: "Todo", today: "Today", done: "Done" });
+  });
+
+  it("ignores a non-object value entirely", () => {
+    expect(resolveColumnNames("bogus")).toEqual({ todo: "Todo", today: "Today", done: "Done" });
+    expect(resolveColumnNames(["todo"])).toEqual({ todo: "Todo", today: "Today", done: "Done" });
+  });
+});
+
+// TASK-145/TASK-150: Today and every free column carry their own persisted
+// card order (doc-15 decision 4, extended to free columns) — Todo/Done have
+// none, so a same-container drop there stays a true no-op.
+describe("isManualOrderReorder", () => {
+  it("is true for a same-container drop within Today or a free column", () => {
+    expect(isManualOrderReorder("today", "today")).toBe(true);
+    expect(isManualOrderReorder("doing", "doing")).toBe(true);
+  });
+
+  it("is false for a same-container drop within Todo or Done", () => {
+    expect(isManualOrderReorder("todo", "todo")).toBe(false);
+    expect(isManualOrderReorder("done", "done")).toBe(false);
   });
 
   it("is false when the container actually changed (not a reorder)", () => {
-    expect(isTodayReorder("today", "todo")).toBe(false);
-    expect(isTodayReorder("todo", "today")).toBe(false);
+    expect(isManualOrderReorder("today", "todo")).toBe(false);
+    expect(isManualOrderReorder("todo", "today")).toBe(false);
   });
 
   it("is false when either side is unknown", () => {
-    expect(isTodayReorder(null, "today")).toBe(false);
-    expect(isTodayReorder("today", null)).toBe(false);
+    expect(isManualOrderReorder(null, "today")).toBe(false);
+    expect(isManualOrderReorder("today", null)).toBe(false);
   });
 });

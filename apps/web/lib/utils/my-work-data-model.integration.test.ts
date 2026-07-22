@@ -190,6 +190,57 @@ describe.skipIf(!RUN)("My Work data model (TASK-130 integration)", () => {
     expect(fkErr).not.toBeNull(); // FK violation — can't borrow another user's column
   });
 
+  // Regression guard: column_position must never be non-null
+  // once column_id is null — a BEFORE UPDATE trigger enforces this even when
+  // the caller (app code, or the column_fk's own ON DELETE SET NULL) only
+  // touches column_id and forgets column_position.
+  it("resets column_position whenever column_id is cleared or the column is deleted", async () => {
+    const { data: column, error: columnError } = await admin
+      .from("my_work_columns")
+      .insert({ user_id: ownerId, name: `trigger-test-${Date.now()}`, position: 100 })
+      .select("id")
+      .single();
+    if (columnError || !column) throw new Error(`Failed to seed column: ${columnError?.message}`);
+
+    const story = await createStory(startedStateId, ownerId);
+    await admin
+      .from("my_work_story_state")
+      .upsert({ user_id: ownerId, story_id: story, column_id: column.id, column_position: 0 });
+
+    // A caller that clears column_id but forgets column_position (the exact
+    // shape of the bug this migration fixes) — the trigger saves it.
+    const { error: updateError } = await admin
+      .from("my_work_story_state")
+      .update({ column_id: null })
+      .eq("user_id", ownerId)
+      .eq("story_id", story);
+    expect(updateError).toBeNull();
+    const { data: afterClear } = await admin
+      .from("my_work_story_state")
+      .select("column_id, column_position")
+      .eq("user_id", ownerId)
+      .eq("story_id", story)
+      .single();
+    expect(afterClear).toEqual({ column_id: null, column_position: null });
+
+    // Put it back, then delete the column itself (the FK's ON DELETE SET NULL
+    // path) — must not raise a check-constraint violation.
+    await admin
+      .from("my_work_story_state")
+      .update({ column_id: column.id, column_position: 0 })
+      .eq("user_id", ownerId)
+      .eq("story_id", story);
+    const { error: deleteError } = await admin.from("my_work_columns").delete().eq("id", column.id);
+    expect(deleteError).toBeNull();
+    const { data: afterDelete } = await admin
+      .from("my_work_story_state")
+      .select("column_id, column_position")
+      .eq("user_id", ownerId)
+      .eq("story_id", story)
+      .single();
+    expect(afterDelete).toEqual({ column_id: null, column_position: null });
+  });
+
   // doc-14's sharpest edge: a story stays readable to whoever completed it even
   // after they leave the project, so their Done log can live-join to it.
   it("keeps a completed story readable to a completer who has left the project", async () => {

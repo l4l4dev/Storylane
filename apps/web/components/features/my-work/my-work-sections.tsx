@@ -22,22 +22,33 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { addDays } from "@storylane/core";
-import { carryOverToday, dismissCarryOver, reorderMyWorkToday, saveMyWorkColumnOrder, setMyWorkColumn } from "@/app/my-work/actions";
+import {
+  carryOverToday,
+  dismissCarryOver,
+  renameMyWorkColumn,
+  renameMyWorkFixedColumn,
+  reorderMyWorkColumn,
+  reorderMyWorkToday,
+  saveMyWorkColumnOrder,
+  setMyWorkColumn,
+} from "@/app/my-work/actions";
 import { findContainer, moveBetweenContainers, storyById } from "@/lib/utils/board";
 import { reorderContainer, reorderIds } from "@/lib/utils/board-dnd";
 import { formatDate, localTodayKey } from "@/lib/utils/format";
 import {
   classifyMyWork,
+  DEFAULT_COLUMN_NAMES,
   groupDoneByDate,
-  isTodayReorder,
+  isManualOrderReorder,
   regroupByProject,
   resolveDragEndTarget,
   toDragContainers,
   type DoneEntry,
   type MyWorkColumnId,
+  type MyWorkColumnNames,
   type MyWorkDragItem,
   type MyWorkFreeColumn,
   type MyWorkProject,
@@ -47,6 +58,7 @@ import { BOARD_COLUMN_HEIGHT_CLASS } from "@/components/features/board/kanban-co
 import { MutationErrorBanner } from "@/components/features/board/mutation-error-banner";
 import { SortableItem } from "@/components/features/board/sortable-item";
 import { useOptimisticBoardOrder } from "@/components/features/board/use-optimistic-board-order";
+import { AddColumnTile, ColumnNameField, DeleteColumnButton } from "./my-work-column-manager";
 import { MyWorkRow, type MyWorkRowData } from "./my-work-row";
 
 // The viewer's local wall date, read the SSR-safe way: the server snapshot is
@@ -81,17 +93,36 @@ function columnSortableId(id: string): string {
   return `col:${id}`;
 }
 
+// Column-move props threaded down from MyWorkSections' `displayOrder` state —
+// every column (fixed slot or free) supports left/right reordering, mirroring
+// the drag-the-header path 1:1 for keyboard/touch users who have no drag
+// gesture available (doc-17 finding #7).
+type ColumnMoveProps = { onMoveLeft: () => void; onMoveRight: () => void; canMoveLeft: boolean; canMoveRight: boolean };
+
 function MyWorkColumnShell({
   id,
   title,
   count,
   children,
+  onRename,
+  freeColumn,
+  onMoveLeft,
+  onMoveRight,
+  canMoveLeft,
+  canMoveRight,
 }: {
   id: string;
   title: string;
   count: number;
   children: React.ReactNode;
-}) {
+  // Every column's display name is editable — a free column's own name or a
+  // fixed slot's display-name override, depending on which the caller wires up.
+  onRename: (name: string) => Promise<void>;
+  // Present only for a user-defined free column — adds delete to the header
+  // itself (doc-17 #6: editing and reordering now share one surface, the
+  // column header, instead of a separate manage panel).
+  freeColumn?: MyWorkFreeColumn;
+} & ColumnMoveProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: columnSortableId(id),
     data: { type: "column", columnId: id },
@@ -103,20 +134,58 @@ function MyWorkColumnShell({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`flex w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/20 ${BOARD_COLUMN_HEIGHT_CLASS} ${isDragging ? "opacity-60" : ""}`}
     >
-      <header className="flex items-center gap-2 px-3 pt-3 pb-2">
+      <header className="flex items-center gap-1 px-3 pt-3 pb-2">
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
           aria-label={`Reorder ${title} column`}
-          className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+          // Always visible at a legible contrast (doc-17 #7) rather than
+          // hover-gated — a resting-state grip is the only way a mouse user
+          // discovers columns are reorderable at all.
+          className="cursor-grab text-foreground/70 hover:text-foreground active:cursor-grabbing"
           {...attributes}
           {...listeners}
         >
           <GripVertical />
         </Button>
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <span className="text-xs text-muted-foreground">{count}</span>
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
+          <ColumnNameField name={title} onRename={onRename} />
+        </h2>
+        <span className="shrink-0 text-xs text-muted-foreground">{count}</span>
+        {/* Non-drag fallback (doc-17 #7): touch has no keyboard arrow keys and
+            no hover, so left/right is the only way to reorder columns there.
+            icon-sm (not icon-xs) since this is the touch target. */}
+        <div className="flex shrink-0">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Move ${title} column left`}
+            disabled={!canMoveLeft}
+            onClick={onMoveLeft}
+          >
+            <ChevronLeft />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Move ${title} column right`}
+            disabled={!canMoveRight}
+            onClick={onMoveRight}
+          >
+            <ChevronRight />
+          </Button>
+        </div>
+        {/* Separated from the move buttons with its own margin (fable-advisor
+            review, principle 6): a destructive action must not sit flush
+            beside a routine one. */}
+        {freeColumn && (
+          <div className="ml-1 shrink-0">
+            <DeleteColumnButton columnId={freeColumn.id} name={freeColumn.name} />
+          </div>
+        )}
       </header>
       <div className="flex flex-1 flex-col overflow-y-auto px-3 pb-3">{children}</div>
     </section>
@@ -127,10 +196,23 @@ function MyWorkColumnShell({
 // with a plain vertical list. Its own component so the variable number of free
 // columns each keep a stable hook count (useDroppable can't run in a loop in
 // the parent). Todo/Done keep their own grouped rendering below.
-function FlatColumn({ id, title, items }: { id: MyWorkColumnId; title: string; items: MyWorkDragItem<MyWorkRowData>[] }) {
+function FlatColumn({
+  id,
+  title,
+  items,
+  onRename,
+  freeColumn,
+  ...move
+}: {
+  id: MyWorkColumnId;
+  title: string;
+  items: MyWorkDragItem<MyWorkRowData>[];
+  onRename: (name: string) => Promise<void>;
+  freeColumn?: MyWorkFreeColumn;
+} & ColumnMoveProps) {
   const { setNodeRef } = useDroppable({ id });
   return (
-    <MyWorkColumnShell id={id} title={title} count={items.length}>
+    <MyWorkColumnShell id={id} title={title} count={items.length} onRename={onRename} freeColumn={freeColumn} {...move}>
       <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-2">
           {items.map((item) => (
@@ -174,6 +256,7 @@ export function MyWorkSections({
   projects,
   freeColumns,
   order,
+  columnNames = DEFAULT_COLUMN_NAMES,
   serverTodayKey,
 }: {
   assigned: MyWorkStory<MyWorkRowData>[];
@@ -183,6 +266,10 @@ export function MyWorkSections({
   // The viewer's full column display order (TASK-141) — resolveColumnOrder's
   // output, already merged against the live free-column set by the page.
   order: string[];
+  // The three fixed slots' display-name overrides (resolveColumnNames'
+  // output) — defaults to the plain Todo/Today/Done labels so existing
+  // callers/tests don't need updating.
+  columnNames?: MyWorkColumnNames;
   serverTodayKey: string;
 }) {
   const todayKey = useSyncExternalStore(NOOP_SUBSCRIBE, localTodayKey, () => serverTodayKey);
@@ -294,6 +381,30 @@ export function MyWorkSections({
     setContainers((prev) => moveBetweenContainers(prev, String(active.id), overContainer, String(over.id), () => true));
   }
 
+  // Shared by the drag-end column branch and the non-drag move buttons
+  // (doc-17 #7's touch fallback) — both just compute a new `displayOrder` and
+  // persist it the same way.
+  function persistColumnOrder(reordered: string[]) {
+    setDisplayOrder(reordered);
+    setDragError(null);
+    startColumnReorder(async () => {
+      const result = await saveMyWorkColumnOrder(reordered);
+      if (!result.ok) {
+        setDisplayOrder(syncedOrder); // revert the whole array — no per-item semantics needed for a flat reorder
+        setDragError(result.message);
+      }
+    });
+  }
+
+  // Swaps a column with its immediate left/right neighbour — the keyboard/
+  // touch-friendly equivalent of dragging its header one slot over.
+  function moveColumn(id: string, direction: "left" | "right") {
+    const index = displayOrder.indexOf(id);
+    const neighborIndex = direction === "left" ? index - 1 : index + 1;
+    if (neighborIndex < 0 || neighborIndex >= displayOrder.length) return;
+    persistColumnOrder(reorderIds(displayOrder, id, displayOrder[neighborIndex]));
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     if (isColumnDrag(event)) {
       setIsDraggingColumn(false);
@@ -305,16 +416,7 @@ export function MyWorkSections({
       if (!activeColumnId || !overColumnId || activeColumnId === overColumnId) return;
       // reorderIds no-ops (returns an equivalent copy) if either id can't be
       // found or the index didn't change — safe to always attempt.
-      const reordered = reorderIds(displayOrder, activeColumnId, overColumnId);
-      setDisplayOrder(reordered);
-      setDragError(null);
-      startColumnReorder(async () => {
-        const result = await saveMyWorkColumnOrder(reordered);
-        if (!result.ok) {
-          setDisplayOrder(syncedOrder); // revert the whole array — no per-item semantics needed for a flat reorder
-          setDragError(result.message);
-        }
-      });
+      persistColumnOrder(reorderIds(displayOrder, activeColumnId, overColumnId));
       return;
     }
 
@@ -334,17 +436,18 @@ export function MyWorkSections({
       return;
     }
 
-    if (isTodayReorder(startContainer, overContainer)) {
+    if (isManualOrderReorder(startContainer, overContainer)) {
       // reorderContainer no-ops (returns an equivalent copy) when over.id isn't
       // a real neighbour (e.g. dropped on the column's own empty padding) or
       // the index didn't change — safe to always attempt.
-      const reordered = reorderContainer(containers.today ?? [], draggedId, String(over.id));
-      setContainers((prev) => ({ ...prev, today: reordered }));
+      const reordered = reorderContainer(containers[overContainer] ?? [], draggedId, String(over.id));
+      setContainers((prev) => ({ ...prev, [overContainer]: reordered }));
       setDragError(null);
+      const persist = overContainer === "today" ? reorderMyWorkToday : reorderMyWorkColumn;
       runDrop(
         draggedId,
         async () => {
-          const result = await reorderMyWorkToday(reordered.map((i) => i.storyId));
+          const result = await persist(reordered.map((i) => i.storyId));
           if (!result.ok) throw new Error(result.message);
         },
         setDragError,
@@ -372,12 +475,44 @@ export function MyWorkSections({
   const isEmpty = totalCount === 0;
   const freeColumnById = new Map(freeColumns.map((c) => [c.id, c]));
 
+  // Every column supports left/right move buttons (the non-drag fallback,
+  // doc-17 #7) — position looked up fresh each render from `displayOrder`.
+  function moveProps(id: string): ColumnMoveProps {
+    const index = displayOrder.indexOf(id);
+    return {
+      onMoveLeft: () => moveColumn(id, "left"),
+      onMoveRight: () => moveColumn(id, "right"),
+      canMoveLeft: index > 0,
+      canMoveRight: index >= 0 && index < displayOrder.length - 1,
+    };
+  }
+
+  // Renames one of the fixed slots — display label only, the slot id/behavior
+  // this component keys everything else off of (classification, drag
+  // targets, `displayOrder`) never changes.
+  async function renameFixed(slot: "todo" | "today" | "done", name: string) {
+    const result = await renameMyWorkFixedColumn(slot, name);
+    if (!result.ok) throw new Error(result.message);
+  }
+
+  async function renameFree(columnId: string, name: string) {
+    const result = await renameMyWorkColumn(columnId, name);
+    if (!result.ok) throw new Error(result.message);
+  }
+
   // Todo/Done keep their specialized grouped rendering (per-project / per-date
   // headers); Today and every free column are plain FlatColumns. `displayOrder`
   // (TASK-141/148) decides only the LEFT-TO-RIGHT sequence — the droppable
   // hooks for todo/done stay unconditional above regardless of where they render.
   const todoColumn = (
-    <MyWorkColumnShell key="todo" id="todo" title="Todo" count={(containers.todo ?? []).length}>
+    <MyWorkColumnShell
+      key="todo"
+      id="todo"
+      title={columnNames.todo}
+      count={(containers.todo ?? []).length}
+      onRename={(name) => renameFixed("todo", name)}
+      {...moveProps("todo")}
+    >
       <SortableContext items={(containers.todo ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <div ref={setTodoRef} className="flex min-h-10 flex-1 flex-col gap-3">
           {todoGroups.map((group) => (
@@ -398,7 +533,14 @@ export function MyWorkSections({
   );
 
   const doneColumn = (
-    <MyWorkColumnShell key="done" id="done" title="Done" count={(containers.done ?? []).length}>
+    <MyWorkColumnShell
+      key="done"
+      id="done"
+      title={columnNames.done}
+      count={(containers.done ?? []).length}
+      onRename={(name) => renameFixed("done", name)}
+      {...moveProps("done")}
+    >
       <SortableContext items={(containers.done ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <div ref={setDoneRef} className="flex min-h-10 flex-1 flex-col gap-3">
           {doneGroups.map((group) => (
@@ -490,12 +632,37 @@ export function MyWorkSections({
         <div className="flex gap-3 overflow-x-auto pb-2">
           {displayOrder.map((slotId) => {
             if (slotId === "todo") return todoColumn;
-            if (slotId === "today") return <FlatColumn key="today" id="today" title="Today" items={containers.today ?? []} />;
+            if (slotId === "today") {
+              return (
+                <FlatColumn
+                  key="today"
+                  id="today"
+                  title={columnNames.today}
+                  items={containers.today ?? []}
+                  onRename={(name) => renameFixed("today", name)}
+                  {...moveProps("today")}
+                />
+              );
+            }
             if (slotId === "done") return doneColumn;
             const column = freeColumnById.get(slotId);
             if (!column) return null; // stale id — resolveColumnOrder already drops these server-side
-            return <FlatColumn key={column.id} id={column.id} title={column.name} items={containers[column.id] ?? []} />;
+            return (
+              <FlatColumn
+                key={column.id}
+                id={column.id}
+                title={column.name}
+                items={containers[column.id] ?? []}
+                onRename={(name) => renameFree(column.id, name)}
+                freeColumn={column}
+                {...moveProps(column.id)}
+              />
+            );
           })}
+          {/* Add lives at the end of the row itself now (doc-17 #6):
+              add/rename/delete/reorder are all reachable from this one board,
+              not split across a separate collapsed manage panel. */}
+          <AddColumnTile />
         </div>
       </SortableContext>
 
