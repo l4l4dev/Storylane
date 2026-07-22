@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 08:53'
-updated_date: '2026-07-22 09:45'
+updated_date: '2026-07-22 11:06'
 labels: []
 dependencies:
   - TASK-138
@@ -22,11 +22,11 @@ doc-15 (advisor-approved). Replace classifyMyWork with the final rules: Done = v
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Classification implements doc-15 exactly: completions+personal-real-done Done, client-local-date Today, column_id/Todo fallback, and the real-done-no-completion exclusion (unit tests for each incl. two-completions and reopened-story cases)
-- [ ] #2 Carry-over prompt shows on first load of a new local day and applies/clears today_date per choice; no prompt when nothing to carry
+- [x] #1 Classification implements doc-15 exactly: completions+personal-real-done Done, client-local-date Today, column_id/Todo fallback, and the real-done-no-completion exclusion (unit tests for each incl. two-completions and reopened-story cases)
+- [x] #2 Carry-over prompt shows on first load of a new local day and applies/clears today_date per choice; no prompt when nothing to carry
 - [ ] #3 Today column supports manual reordering persisted in today_position; other columns unchanged
-- [ ] #4 spec/screens.md and spec/data-model.md rewritten to match doc-15
-- [ ] #5 pnpm test + lint green (from apps/web/)
+- [x] #4 spec/screens.md and spec/data-model.md rewritten to match doc-15
+- [x] #5 pnpm test + lint green (from apps/web/)
 <!-- AC:END -->
 
 ## Implementation Notes

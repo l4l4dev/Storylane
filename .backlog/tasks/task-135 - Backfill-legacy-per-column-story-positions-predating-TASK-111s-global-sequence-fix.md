@@ -3,7 +3,7 @@ id: TASK-135
 title: >-
   Backfill legacy per-column story positions predating TASK-111's
   global-sequence fix
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 13:14'

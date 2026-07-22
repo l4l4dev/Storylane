@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 08:52'
-updated_date: '2026-07-22 09:45'
+updated_date: '2026-07-22 11:05'
 labels: []
 dependencies:
   - TASK-138
@@ -24,12 +24,12 @@ doc-15 (advisor-approved). Fixes both 2026-07-22 dogfooding bugs permanently. (1
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 set_story_state redefined per doc-15: is_personal skips estimation gate + iteration auto-assign; function remains SECURITY INVOKER (assert in the rls review)
-- [ ] #2 Adding a personal task from My Work works with zero iterations in the personal project (bug 1 fixed); created task lands in Todo assigned to the viewer
-- [ ] #3 Personal-task drags to Done/Todo transition the real state (completed_at + story_completions on done; reopen on todo); Today/free-column drags stay local; team stories are never written from My Work
-- [ ] #4 Real-done guard scoped to non-personal stories; personal real-done cards can be dragged back to Todo (reopen)
+- [x] #1 set_story_state redefined per doc-15: is_personal skips estimation gate + iteration auto-assign; function remains SECURITY INVOKER (assert in the rls review)
+- [x] #2 Adding a personal task from My Work works with zero iterations in the personal project (bug 1 fixed); created task lands in Todo assigned to the viewer
+- [x] #3 Personal-task drags to Done/Todo transition the real state (completed_at + story_completions on done; reopen on todo); Today/free-column drags stay local; team stories are never written from My Work
+- [x] #4 Real-done guard scoped to non-personal stories; personal real-done cards can be dragged back to Todo (reopen)
 - [ ] #5 rls-security-reviewer pass on the migration
-- [ ] #6 supabase db reset green; pnpm test + lint green (from apps/web/)
+- [x] #6 supabase db reset green; pnpm test + lint green (from apps/web/)
 <!-- AC:END -->
 
 ## Implementation Notes

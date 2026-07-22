@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 11:00'
-updated_date: '2026-07-22 07:27'
+updated_date: '2026-07-22 11:01'
 labels: []
 dependencies: []
 priority: medium
@@ -23,7 +23,7 @@ doc-13 finding #12. apps/web/components/features/projects/project-card-menu.tsx:
 <!-- AC:BEGIN -->
 - [x] #1 project-card-menu.tsx's favorite toggle shows an inline error on RPC failure, matching the sibling pin-toggle's pattern
 - [x] #2 A test proves a failed favorite toggle shows an error, not a silent revert
-- [ ] #3 pnpm test + lint green
+- [x] #3 pnpm test + lint green
 <!-- AC:END -->
 
 ## Comments
