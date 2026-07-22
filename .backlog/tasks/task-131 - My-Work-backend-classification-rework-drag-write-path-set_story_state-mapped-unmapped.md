@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-21 13:14'
+updated_date: '2026-07-22 01:58'
 labels: []
 dependencies:
   - TASK-130
@@ -32,6 +32,8 @@ doc-14 (My Work Kanban rework). Replaces buildMyWorkSections with the new 4-colu
 - [ ] #6 'Pin to My Work' story-peek menu item removed for stories not in the viewer's My Work base scope (assigned to them); story_pins usage removed from my-work-row.tsx and story-peek-menu.tsx
 - [ ] #7 Unit tests for the new classification function (precedence, mapped vs unmapped Doing/Done, Done showing a reassigned-away story, a story completed twice appearing as two Done entries)
 - [ ] #8 pnpm test + lint green
+- [ ] #9 story_pins table + its RLS/grants + story-pins.integration.test.ts are dropped (moved here from TASK-130 to keep main green — the drop is coupled to the TS removal in this task); move_story_to_project and remove_member are updated to stop referencing story_pins (drop the move carry-over; replace the remove_member purge with a my_work_story_state purge for the removed user's rows in that project)
+- [ ] #10 database.types.ts regenerated after the story_pins drop; togglePin server action and all story_pins reads (my-work/page.tsx, story-peek-menu.tsx, my-work-row.tsx) removed so tsc/lint/pnpm test stay green
 <!-- AC:END -->
 
 ## Comments
@@ -41,5 +43,11 @@ author: @claude-sonnet-5
 created: 2026-07-21 13:14
 ---
 Code review (2026-07-21) on the current my-work/page.tsx + my-work-sections.tsx found: (1) buildMyWorkSections is invoked twice per render just to derive a boolean (hasFilterableItems) -- duplicated classify/sort/group pass; (2) my-work/page.tsx's current-iteration query duplicates the same selection rule already hand-rolled in dashboard/page.tsx and board/page.tsx. AC #1/#2 of this task already replace buildMyWorkSections and drop all current-iteration fetching from my-work/page.tsx, so both are expected to be resolved as a side effect -- flagging so they're not silently reintroduced in the rewrite, not asking for separate tracking. (dashboard/page.tsx and board/page.tsx will still independently duplicate the current-iteration selection rule between just the two of them after this lands -- judged too small to warrant its own task, mentioning for awareness only.)
+---
+
+author: @claude-opus-4-8
+created: 2026-07-22 01:58
+---
+Design gap surfaced by TASK-130's /code-review (must resolve here): doc-14's write-path sends an UNMAPPED-project drag-to-Done to my_work_story_state.local_status='done' with NO story_completions row (no real state transition). But the classification makes Done story_completions-only, and its step 4 maps only effective 'doing'->Doing (else Todo). So local_status='done' currently routes to Todo, not Done. Resolve one of: (a) classification routes local_status='done' -> Done for unmapped projects; (b) unmapped Done is disallowed in the UI; (c) restrict the my_work_story_state.local_status CHECK to ('todo','doing') (would need a follow-up migration). The (user_id, completed_at) index also doesn't cover the stories SELECT OR-clause's (story_id, user_id) lookup — add a story_completions(story_id) index if the leaver-read path ever gets hot (low priority; OR short-circuits behind is_project_member today).
 ---
 <!-- COMMENTS:END -->

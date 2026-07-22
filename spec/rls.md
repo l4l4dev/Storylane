@@ -31,14 +31,32 @@
   cross-project state reference is impossible. Category immutability and the
   "≥1 unstarted & ≥1 done" minimum are enforced by triggers under a
   per-project advisory lock, not by RLS
-- **story_pins (doc-8 §9):** not project-scoped by column — gated per user.
-  SELECT/DELETE `user_id = auth.uid()`; INSERT `WITH CHECK user_id =
-  auth.uid() AND is_project_member(<story's project>)`. **No cross-user
-  reads.** Pin lifecycle writes that touch other users' rows go through
-  SECURITY DEFINER RPCs: `move_story_to_project` recreates pins on the new
-  story id for destination-project members; **`remove_member` deletes the
-  removed user's pins in that project** (prevents ghost pins reviving on
-  re-invite)
+- **story_pins (doc-8 §9, superseded by my_work_story_state — doc-14):** not
+  project-scoped by column — gated per user. SELECT/DELETE `user_id =
+  auth.uid()`; INSERT `WITH CHECK user_id = auth.uid() AND
+  is_project_member(<story's project>)`. **No cross-user reads.** Pin lifecycle
+  writes that touch other users' rows go through SECURITY DEFINER RPCs:
+  `move_story_to_project` recreates pins on the new story id for
+  destination-project members; **`remove_member` deletes the removed user's
+  pins in that project** (prevents ghost pins reviving on re-invite). Dropped
+  in TASK-131 once the TS reading it is reworked
+- **my_work_story_state (doc-14):** per user, not project-scoped by column —
+  same own-rows shape as story_pins plus a separate UPDATE policy (the write
+  path upserts `is_today`/`local_status`). SELECT/UPDATE/DELETE `user_id =
+  auth.uid()`; INSERT `WITH CHECK user_id = auth.uid() AND
+  is_project_member(<story's project>)`. **No cross-user reads.**
+- **project_my_work_mapping (doc-14):** project-scoped config row, the
+  integrations owner-writes pattern but with SELECT widened to all members
+  (each member's My Work classification reads the mapping): SELECT
+  `is_project_member`; INSERT/UPDATE/DELETE `project_role = 'owner'`
+- **story_completions (doc-14):** append-only completion log — gated per user.
+  SELECT `user_id = auth.uid()` only; **no client INSERT/UPDATE/DELETE policy
+  and the grants are revoked** (the TASK-110 lockdown pattern) — the
+  `maintain_story_completed_at` SECURITY DEFINER trigger is the only writer.
+  **stories' own SELECT policy carries an OR-clause for this table**
+  (`is_project_member(project_id) OR exists a story_completions row for this
+  story + auth.uid()`) so a completer keeps read access to their Done entry's
+  story even after leaving the project
 - **project_calendar_exceptions:** project-scoped, standard pattern
   (members read, owner/member write per role)
 - **user_time_off (doc-8 §6):** stores **dates + kind only, no reason/notes**

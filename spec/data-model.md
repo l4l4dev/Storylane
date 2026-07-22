@@ -157,7 +157,12 @@ any story (see spec/rls.md).
   the old fixed Kanban (the Pivotal-parity anchor).
 - **minimal** — Todo(`unstarted`) / Doing(`in_progress`) / Done(`done`).
 
-### story_pins
+### story_pins (superseded by my_work_story_state — doc-14)
+Superseded by `my_work_story_state` (doc-14): the old boolean pin folds into
+that table's `is_today`, and My Work no longer pins stories not assigned to
+the viewer. The table + its two lifecycle RPCs are dropped in TASK-131 (kept
+until the TS that reads it is reworked). Original description follows.
+
 Per-user "surface this in today's My Work" mark (doc-8 §9). A longer-cadence
 project's story appears in My Work's "today" bucket only when the user pins
 it; 1-day-project current-iteration stories are today's plan without a pin.
@@ -175,6 +180,65 @@ DEFINER RPCs): `move_story_to_project` recreates pins on the new story id
 for pinners who are members of the destination project (discards the rest);
 `remove_member` deletes the removed user's pins in that project (prevents
 ghost pins reviving on re-invite). See spec/rls.md.
+
+### my_work_story_state (doc-14)
+Per-user, per-story My Work marks. Replaces `story_pins`: `is_today` is the
+personal "focusing on this today" marker (folds in the old pin, but only for a
+story in the viewer's own base scope — `assignee_id = user_id`; My Work no
+longer marks unassigned stories). `local_status` is the drag override used
+**only when the story's project has no Doing/Done mapping** (`null` = derive
+from the real state category); a mapped project's Doing/Done is computed from
+the real `state_id`, never written here.
+```sql
+my_work_story_state (
+  user_id      uuid REFERENCES profiles(id) ON DELETE CASCADE,
+  story_id     uuid REFERENCES stories(id)  ON DELETE CASCADE,
+  is_today     boolean NOT NULL DEFAULT false,
+  local_status text CHECK (local_status IN ('todo','doing','done')),
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, story_id)
+)  -- + index on (story_id) for the reverse "who customized this" lookup
+```
+RLS: own-rows SELECT/UPDATE/DELETE (`user_id = auth.uid()`); INSERT WITH CHECK
+`user_id = auth.uid() AND` caller is a member of the story's project. See spec/rls.md.
+
+### project_my_work_mapping (doc-14)
+Per-project mapping of My Work's Doing/Done virtual columns to the project's
+own `project_states` (owner-configured in Settings; either/both may be
+unmapped). `on delete set null` falls a mapping back to unmapped if the mapped
+state is deleted; a state that merely changes *category* is handled read-side
+(classification treats a category-mismatched mapping as unmapped).
+```sql
+project_my_work_mapping (
+  project_id     uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  doing_state_id uuid REFERENCES project_states(id) ON DELETE SET NULL,
+  done_state_id  uuid REFERENCES project_states(id) ON DELETE SET NULL,
+  configured_by  uuid REFERENCES profiles(id),
+  updated_at     timestamptz NOT NULL DEFAULT now()
+)
+```
+RLS (integrations' owner-writes pattern, SELECT widened to members): SELECT
+`is_project_member`; INSERT/UPDATE/DELETE `project_role = 'owner'`.
+
+### story_completions (doc-14)
+Append-only personal completion log — the source of My Work's Done column.
+One row is inserted every time a story enters a `done`-category state,
+credited to `assignee_id` at that moment; reopening/redoing adds a **new** row
+and never touches old ones (a completion, once logged, is permanent even after
+the story is reassigned or the completer leaves the project). Distinct from
+`stories.completed_at` (the current-state column, cleared on reopen).
+```sql
+story_completions (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  story_id     uuid NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+  user_id      uuid NOT NULL REFERENCES profiles(id),
+  completed_at timestamptz NOT NULL DEFAULT now()
+)  -- + index on (user_id, completed_at DESC): the Done log's query shape
+```
+Written **only** by the `maintain_story_completed_at` SECURITY DEFINER trigger
+(gated to the UPDATE into a done category, `assignee_id` not null); no client
+write path (RLS SELECT own-rows only, INSERT/UPDATE/DELETE grants revoked). See
+spec/rls.md.
 
 ### Working-day calendar (doc-8 §6)
 Two date-exception layers on top of `projects.working_weekdays`. They affect
