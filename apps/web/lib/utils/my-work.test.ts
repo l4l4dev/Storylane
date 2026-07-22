@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  assignedColumn,
-  brokenMappingProjectIds,
   classifyMyWork,
   groupDoneByDate,
   regroupByProject,
@@ -10,77 +8,89 @@ import {
   type DoneEntry,
   type MyWorkColumns,
   type MyWorkDragItem,
-  type MyWorkMapping,
+  type MyWorkFreeColumn,
   type MyWorkProject,
   type MyWorkStory,
 } from "./my-work";
 
+const TODAY = "2026-07-22";
 const PERSONAL: MyWorkProject = { id: "personal", name: "Owner's tasks", isPersonal: true };
 const TEAM_A: MyWorkProject = { id: "team-a", name: "Alpha", isPersonal: false };
 const TEAM_B: MyWorkProject = { id: "team-b", name: "Bravo", isPersonal: false };
+const DOING: MyWorkFreeColumn = { id: "doing", name: "Doing", position: 0 };
+const WAITING: MyWorkFreeColumn = { id: "waiting", name: "Waiting", position: 1 };
 
 // Each story's `row` is just its id here — classification never inspects it.
 function story(overrides: Partial<MyWorkStory<string>> & { id: string; projectId: string }): MyWorkStory<string> {
-  return {
-    position: 0,
-    category: "unstarted",
-    isToday: false,
-    localStatus: null,
-    mapped: false,
-    localUpdatedAt: null,
-    row: overrides.id,
-    ...overrides,
-  };
+  return { position: 0, todayDate: null, todayPosition: null, columnId: null, row: overrides.id, ...overrides };
 }
 
 function completion(id: string, completedAt: string): DoneEntry<string> {
   return { completedAt, row: id };
 }
 
-describe("assignedColumn", () => {
-  it("routes a real-done story to null (Done handled via its completion log)", () => {
-    expect(assignedColumn(story({ id: "s", projectId: "team-a", category: "done" }))).toBeNull();
-  });
-
-  it("unmapped in_progress with no local override -> doing", () => {
-    expect(assignedColumn(story({ id: "s", projectId: "team-a", category: "in_progress" }))).toBe("doing");
-  });
-
-  it("unmapped local_status='done' -> done (cancellable local mark, outranks Today)", () => {
-    expect(
-      assignedColumn(story({ id: "s", projectId: "team-a", isToday: true, localStatus: "done" })),
-    ).toBe("done");
-  });
-
-  it("mapped project derives from real state and ignores local_status", () => {
-    // local says done, but a mapped project reads the real category: unstarted -> todo.
-    expect(
-      assignedColumn(story({ id: "s", projectId: "team-a", mapped: true, category: "unstarted", localStatus: "done" })),
-    ).toBe("todo");
-    expect(
-      assignedColumn(story({ id: "s", projectId: "team-a", mapped: true, category: "in_progress", localStatus: "todo" })),
-    ).toBe("doing");
-  });
-
-  it("isToday wins over the derived todo/doing slot", () => {
-    expect(assignedColumn(story({ id: "s", projectId: "team-a", isToday: true, category: "in_progress" }))).toBe("today");
-  });
-});
-
 describe("classifyMyWork", () => {
-  it("places assigned stories into todo/today/doing by precedence", () => {
-    const { todo, today, doing } = classifyMyWork(
+  it("places by precedence: Today (today_date) > free column (column_id) > Todo", () => {
+    const { todo, today, free } = classifyMyWork(
       [
         story({ id: "backlog", projectId: "team-a" }),
-        story({ id: "live", projectId: "team-a", category: "in_progress" }),
-        story({ id: "planned", projectId: "team-a", isToday: true }),
+        story({ id: "inDoing", projectId: "team-a", columnId: "doing" }),
+        story({ id: "planned", projectId: "team-a", todayDate: TODAY }),
       ],
       [],
       [TEAM_A],
+      [DOING],
+      TODAY,
     );
     expect(todo.flatMap((g) => g.stories.map((s) => s.id))).toEqual(["backlog"]);
     expect(today.map((s) => s.id)).toEqual(["planned"]);
-    expect(doing.map((s) => s.id)).toEqual(["live"]);
+    expect(free[0].stories.map((s) => s.id)).toEqual(["inDoing"]);
+  });
+
+  it("a Today mark from a past day falls back to its column (not shown in Today)", () => {
+    const { today, free, todo } = classifyMyWork(
+      [
+        story({ id: "staleInDoing", projectId: "team-a", todayDate: "2020-01-01", columnId: "doing" }),
+        story({ id: "staleBacklog", projectId: "team-a", todayDate: "2020-01-01" }),
+      ],
+      [],
+      [TEAM_A],
+      [DOING],
+      TODAY,
+    );
+    expect(today).toEqual([]);
+    expect(free[0].stories.map((s) => s.id)).toEqual(["staleInDoing"]);
+    expect(todo.flatMap((g) => g.stories.map((s) => s.id))).toEqual(["staleBacklog"]);
+  });
+
+  it("a card whose column was deleted (column_id null / unknown) falls to Todo", () => {
+    const { todo, free } = classifyMyWork(
+      [story({ id: "orphan", projectId: "team-a", columnId: "gone" })],
+      [],
+      [TEAM_A],
+      [DOING],
+      TODAY,
+    );
+    expect(free[0].stories).toEqual([]);
+    expect(todo.flatMap((g) => g.stories.map((s) => s.id))).toEqual(["orphan"]);
+  });
+
+  it("orders free columns by position and Today by today_position (nulls last)", () => {
+    const { today, free } = classifyMyWork(
+      [
+        story({ id: "t-late", projectId: "team-a", todayDate: TODAY, todayPosition: 5 }),
+        story({ id: "t-none", projectId: "team-a", todayDate: TODAY, todayPosition: null }),
+        story({ id: "t-early", projectId: "team-a", todayDate: TODAY, todayPosition: 1 }),
+        story({ id: "w", projectId: "team-a", columnId: "waiting" }),
+        story({ id: "d", projectId: "team-a", columnId: "doing" }),
+      ],
+      [],
+      [TEAM_A],
+      [WAITING, DOING], // deliberately unsorted input
+      TODAY,
+    );
+    expect(today.map((s) => s.id)).toEqual(["t-early", "t-late", "t-none"]);
+    expect(free.map((f) => f.column.id)).toEqual(["doing", "waiting"]); // sorted by position
   });
 
   it("groups Todo by project, personal-first then name, position within group", () => {
@@ -93,6 +103,8 @@ describe("classifyMyWork", () => {
       ],
       [],
       [TEAM_B, TEAM_A, PERSONAL],
+      [],
+      TODAY,
     );
     expect(todo.map((g) => g.projectId)).toEqual(["personal", "team-a", "team-b"]);
     expect(todo[2].stories.map((s) => s.id)).toEqual(["b1", "b2"]);
@@ -103,82 +115,48 @@ describe("classifyMyWork", () => {
       [],
       [completion("s", "2026-07-20T09:00:00Z"), completion("s", "2026-07-21T09:00:00Z")],
       [TEAM_A],
+      [],
+      TODAY,
     );
     const groups = groupDoneByDate(done);
     expect(groups.map((g) => g.dateKey)).toEqual(["2026-07-21", "2026-07-20"]);
-    // A story completed twice renders as two entries, never deduped.
     expect(done).toHaveLength(2);
   });
 
-  it("unmapped local_status='done' becomes a Done entry dated by its mark", () => {
-    const { done, todo, doing } = classifyMyWork(
-      [story({ id: "s", projectId: "team-a", localStatus: "done", localUpdatedAt: "2026-07-22T10:00:00Z" })],
-      [],
-      [TEAM_A],
-    );
-    expect(done.map((d) => d.completedAt)).toEqual(["2026-07-22T10:00:00Z"]);
-    // ...and nowhere in the active columns.
-    expect(todo).toEqual([]);
-    expect(doing).toEqual([]);
-  });
-
-  it("a past completion + currently reopened in_progress+assigned shows in BOTH Done and Doing", () => {
-    const { done, doing } = classifyMyWork(
-      [story({ id: "s", projectId: "team-a", category: "in_progress" })],
+  it("a past completion + a current active card shows in BOTH Done and its column", () => {
+    const { done, free } = classifyMyWork(
+      [story({ id: "s", projectId: "team-a", columnId: "doing" })],
       [completion("s", "2026-07-19T09:00:00Z")],
       [TEAM_A],
+      [DOING],
+      TODAY,
     );
-    expect(doing.map((s) => s.id)).toEqual(["s"]);
-    expect(done.map((d) => d.row)).toEqual(["s"]);
-  });
-
-  it("a mapped story whose real state is still done + local todo stays out of Todo/Doing", () => {
-    // "To Todo" never calls set_story_state, so real category stays done ->
-    // assignedColumn null; only the completion log carries it.
-    const { todo, doing, done } = classifyMyWork(
-      [story({ id: "s", projectId: "team-a", mapped: true, category: "done", localStatus: "todo" })],
-      [completion("s", "2026-07-18T09:00:00Z")],
-      [TEAM_A],
-    );
-    expect(todo).toEqual([]);
-    expect(doing).toEqual([]);
+    expect(free[0].stories.map((s) => s.id)).toEqual(["s"]);
     expect(done.map((d) => d.row)).toEqual(["s"]);
   });
 });
 
-// TASK-132: drag-container helpers need a row shape with id/projectId/
-// projectName (unlike the bare-string `row` used by the classification tests
-// above).
+// TASK-132: drag-container helpers need a row shape with id/projectId/projectName.
 type Row = { id: string; projectId: string; projectName: string };
-function row(id: string, projectId: string, projectName: string): Row {
+function rowShape(id: string, projectId: string, projectName: string): Row {
   return { id, projectId, projectName };
 }
 function dragStory(id: string, projectId: string, projectName: string): MyWorkStory<Row> {
-  return {
-    id,
-    projectId,
-    position: 0,
-    category: "unstarted",
-    isToday: false,
-    localStatus: null,
-    mapped: false,
-    localUpdatedAt: null,
-    row: row(id, projectId, projectName),
-  };
+  return { id, projectId, position: 0, todayDate: null, todayPosition: null, columnId: null, row: rowShape(id, projectId, projectName) };
 }
 
 describe("toDragContainers", () => {
-  it("gives Todo/Today/Doing the bare story id as their dnd-kit id", () => {
+  it("keys structural + free columns, giving active cards the bare story id", () => {
     const columns: MyWorkColumns<Row> = {
       todo: [{ projectId: "team-a", projectName: "Alpha", isPersonal: false, stories: [dragStory("s1", "team-a", "Alpha")] }],
       today: [dragStory("s2", "team-a", "Alpha")],
-      doing: [dragStory("s3", "team-a", "Alpha")],
+      free: [{ column: DOING, stories: [dragStory("s3", "team-a", "Alpha")] }],
       done: [],
     };
     const containers = toDragContainers(columns);
     expect(containers.todo.map((i) => i.id)).toEqual(["s1"]);
     expect(containers.today.map((i) => i.id)).toEqual(["s2"]);
-    expect(containers.doing.map((i) => i.id)).toEqual(["s3"]);
+    expect(containers.doing.map((i) => i.id)).toEqual(["s3"]); // keyed by the free column's id
     expect(containers.todo[0].storyId).toBe("s1");
   });
 
@@ -186,24 +164,23 @@ describe("toDragContainers", () => {
     const columns: MyWorkColumns<Row> = {
       todo: [],
       today: [],
-      doing: [],
+      free: [],
       done: [
-        { completedAt: "2026-07-20T09:00:00Z", row: row("s1", "team-a", "Alpha") },
-        { completedAt: "2026-07-21T09:00:00Z", row: row("s1", "team-a", "Alpha") },
+        { completedAt: "2026-07-20T09:00:00Z", row: rowShape("s1", "team-a", "Alpha") },
+        { completedAt: "2026-07-21T09:00:00Z", row: rowShape("s1", "team-a", "Alpha") },
       ],
     };
     const containers = toDragContainers(columns);
     expect(containers.done.map((i) => i.id)).toEqual(["done:0:s1", "done:1:s1"]);
-    // Both still point back at the same underlying story for the server call.
     expect(containers.done.map((i) => i.storyId)).toEqual(["s1", "s1"]);
   });
 
-  it("lets a story appear in both an active column and Done without id collision", () => {
+  it("lets a story appear in both a free column and Done without id collision", () => {
     const columns: MyWorkColumns<Row> = {
       todo: [],
       today: [],
-      doing: [dragStory("s1", "team-a", "Alpha")],
-      done: [{ completedAt: "2026-07-19T09:00:00Z", row: row("s1", "team-a", "Alpha") }],
+      free: [{ column: DOING, stories: [dragStory("s1", "team-a", "Alpha")] }],
+      done: [{ completedAt: "2026-07-19T09:00:00Z", row: rowShape("s1", "team-a", "Alpha") }],
     };
     const containers = toDragContainers(columns);
     const allIds = [...containers.doing, ...containers.done].map((i) => i.id);
@@ -213,15 +190,11 @@ describe("toDragContainers", () => {
 
 describe("regroupByProject", () => {
   function item(id: string, projectId: string, projectName: string): MyWorkDragItem<Row> {
-    return { id, storyId: id, completedAt: "", row: row(id, projectId, projectName) };
+    return { id, storyId: id, completedAt: "", row: rowShape(id, projectId, projectName) };
   }
 
   it("groups consecutive same-project items into one block", () => {
-    const groups = regroupByProject([
-      item("a1", "team-a", "Alpha"),
-      item("a2", "team-a", "Alpha"),
-      item("b1", "team-b", "Bravo"),
-    ]);
+    const groups = regroupByProject([item("a1", "team-a", "Alpha"), item("a2", "team-a", "Alpha"), item("b1", "team-b", "Bravo")]);
     expect(groups.map((g) => ({ projectId: g.projectId, ids: g.items.map((i) => i.id) }))).toEqual([
       { projectId: "team-a", ids: ["a1", "a2"] },
       { projectId: "team-b", ids: ["b1"] },
@@ -229,11 +202,7 @@ describe("regroupByProject", () => {
   });
 
   it("splits a non-consecutive run into a separate block (post-drag degradation)", () => {
-    const groups = regroupByProject([
-      item("a1", "team-a", "Alpha"),
-      item("b1", "team-b", "Bravo"),
-      item("a2", "team-a", "Alpha"),
-    ]);
+    const groups = regroupByProject([item("a1", "team-a", "Alpha"), item("b1", "team-b", "Bravo"), item("a2", "team-a", "Alpha")]);
     expect(groups.map((g) => g.projectId)).toEqual(["team-a", "team-b", "team-a"]);
   });
 
@@ -242,109 +211,17 @@ describe("regroupByProject", () => {
   });
 });
 
-// TASK-132 regression: a drag-end handler must compare the column the card
-// STARTED in against the drop target, never a container re-derived from
-// live (already-optimistically-moved) state — see resolveDragEndTarget's
-// own doc comment for the bug this guards against.
 describe("resolveDragEndTarget", () => {
   it("returns the target column when it differs from the start column", () => {
     expect(resolveDragEndTarget("todo", "doing")).toBe("doing");
   });
-
   it("returns null when dropped back in the column it started in", () => {
     expect(resolveDragEndTarget("todo", "todo")).toBeNull();
   });
-
   it("returns null when the start column is unknown", () => {
     expect(resolveDragEndTarget(null, "doing")).toBeNull();
   });
-
   it("returns null when the drop target is unknown", () => {
     expect(resolveDragEndTarget("todo", null)).toBeNull();
-  });
-});
-
-describe("brokenMappingProjectIds", () => {
-  const CATEGORIES = new Map([
-    ["doing-state", "in_progress"],
-    ["done-state", "done"],
-    ["recategorized-state", "unstarted"],
-  ]) as ReadonlyMap<string, "unstarted" | "in_progress" | "done" | "rejected">;
-  const OWNS_P1 = new Set(["p1"]);
-
-  function mapping(over: Partial<MyWorkMapping> & { projectId: string }): MyWorkMapping {
-    return { doingStateId: null, doneStateId: null, configured: true, ...over };
-  }
-
-  it("is not broken when both mapped states still match their expected category", () => {
-    const broken = brokenMappingProjectIds(
-      [mapping({ projectId: "p1", doingStateId: "doing-state", doneStateId: "done-state" })],
-      CATEGORIES,
-      OWNS_P1,
-    );
-    expect(broken.has("p1")).toBe(false);
-  });
-
-  it("is broken when the mapped Doing state's category drifted", () => {
-    const broken = brokenMappingProjectIds(
-      [mapping({ projectId: "p1", doingStateId: "recategorized-state" })],
-      CATEGORIES,
-      OWNS_P1,
-    );
-    expect(broken.has("p1")).toBe(true);
-  });
-
-  it("is broken when the mapped Done state's category drifted", () => {
-    const broken = brokenMappingProjectIds(
-      [mapping({ projectId: "p1", doneStateId: "recategorized-state" })],
-      CATEGORIES,
-      OWNS_P1,
-    );
-    expect(broken.has("p1")).toBe(true);
-  });
-
-  it("is never broken for a project the owner never configured, even with no mapping", () => {
-    const broken = brokenMappingProjectIds(
-      [mapping({ projectId: "p1", configured: false })],
-      CATEGORIES,
-      OWNS_P1,
-    );
-    expect(broken.has("p1")).toBe(false);
-  });
-
-  it("is not broken when a field is left intentionally unmapped (null)", () => {
-    const broken = brokenMappingProjectIds(
-      [mapping({ projectId: "p1", doingStateId: "doing-state", doneStateId: null })],
-      CATEGORIES,
-      OWNS_P1,
-    );
-    expect(broken.has("p1")).toBe(false);
-  });
-
-  // fable-advisor (TASK-133): only an owner can reconfigure a mapping —
-  // a broken mapping must never surface for a viewer who isn't this
-  // project's owner (they'd hit a Settings section they can't see).
-  it("is hidden from a viewer who isn't this project's owner, even if genuinely broken", () => {
-    const broken = brokenMappingProjectIds(
-      [mapping({ projectId: "p1", doingStateId: "recategorized-state" })],
-      CATEGORIES,
-      new Set(), // viewer owns nothing
-    );
-    expect(broken.has("p1")).toBe(false);
-  });
-
-  // TASK-137 AC #3: a personal project's auto-configured mapping drifting is
-  // detected through this SAME function, with no personal-specific branch —
-  // the function's own signature carries no isPersonal input at all, so a
-  // personal project's drifted mapping (owner-viewable, since the personal
-  // project's own creator is always its owner) behaves identically to any
-  // other project's.
-  it("treats a personal project's drifted auto-mapping exactly like any other project's (no special-casing)", () => {
-    const broken = brokenMappingProjectIds(
-      [mapping({ projectId: "personal-project", doingStateId: "recategorized-state" })],
-      CATEGORIES,
-      new Set(["personal-project"]), // its creator, viewing as owner
-    );
-    expect(broken.has("personal-project")).toBe(true);
   });
 });

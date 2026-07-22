@@ -360,29 +360,71 @@ export type Database = {
           },
         ]
       }
+      my_work_columns: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          position: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "my_work_columns_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       my_work_story_state: {
         Row: {
-          is_today: boolean
-          local_status: string | null
+          column_id: string | null
           story_id: string
+          today_date: string | null
+          today_position: number | null
           updated_at: string
           user_id: string
         }
         Insert: {
-          is_today?: boolean
-          local_status?: string | null
+          column_id?: string | null
           story_id: string
+          today_date?: string | null
+          today_position?: number | null
           updated_at?: string
           user_id: string
         }
         Update: {
-          is_today?: boolean
-          local_status?: string | null
+          column_id?: string | null
           story_id?: string
+          today_date?: string | null
+          today_position?: number | null
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "my_work_story_state_column_fk"
+            columns: ["user_id", "column_id"]
+            isOneToOne: false
+            referencedRelation: "my_work_columns"
+            referencedColumns: ["user_id", "id"]
+          },
           {
             foreignKeyName: "my_work_story_state_story_id_fkey"
             columns: ["story_id"]
@@ -490,59 +532,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      project_my_work_mapping: {
-        Row: {
-          configured_by: string | null
-          doing_state_id: string | null
-          done_state_id: string | null
-          project_id: string
-          updated_at: string
-        }
-        Insert: {
-          configured_by?: string | null
-          doing_state_id?: string | null
-          done_state_id?: string | null
-          project_id: string
-          updated_at?: string
-        }
-        Update: {
-          configured_by?: string | null
-          doing_state_id?: string | null
-          done_state_id?: string | null
-          project_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_my_work_mapping_configured_by_fkey"
-            columns: ["configured_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_my_work_mapping_doing_state_id_fkey"
-            columns: ["doing_state_id"]
-            isOneToOne: false
-            referencedRelation: "project_states"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_my_work_mapping_done_state_id_fkey"
-            columns: ["done_state_id"]
-            isOneToOne: false
-            referencedRelation: "project_states"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_my_work_mapping_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: true
-            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]

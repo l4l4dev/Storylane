@@ -5,7 +5,6 @@ import { IntegrationSettings, type IntegrationRow } from "@/components/features/
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
 import { MemberList } from "@/components/features/projects/member-list";
 import { LabelManager } from "@/components/features/projects/label-manager";
-import { MyWorkMappingSettings, type MyWorkMappingRow } from "@/components/features/projects/my-work-mapping-settings";
 import { StateManager } from "@/components/features/projects/state-manager";
 import {
   WorkingDaysSettings,
@@ -73,17 +72,6 @@ export default async function ProjectSettingsPage({
   // RLS returns integrations only to owners — empty for everyone else.
   const { data: integrations } = isOwner
     ? await supabase.from("integrations").select("id, provider, config, is_active").eq("project_id", id)
-    : { data: null };
-
-  // The section itself renders owner-only (isOwner check below), even though
-  // project_my_work_mapping's own SELECT policy allows any member to read it
-  // (every member's My Work classification needs it).
-  const { data: myWorkMapping } = isOwner
-    ? await supabase
-        .from("project_my_work_mapping")
-        .select("doing_state_id, done_state_id")
-        .eq("project_id", id)
-        .maybeSingle()
     : { data: null };
 
   return (
@@ -250,20 +238,6 @@ export default async function ProjectSettingsPage({
         <h2 className="mb-3 text-lg font-semibold">States</h2>
         <StateManager projectId={project.id} states={states} canManage={isMember} canDelete={isOwner} />
       </section>
-
-      {/* My Work sync (TASK-133, doc-14): owner-only, matching Integrations'
-          gating — the write (project_my_work_mapping insert/update) is
-          owner-only per RLS, even though every member can read the row. */}
-      {isOwner && (
-        <section className="mt-8">
-          <h2 className="mb-3 text-lg font-semibold">My Work sync</h2>
-          <MyWorkMappingSettings
-            projectId={project.id}
-            states={states}
-            mapping={myWorkMapping as MyWorkMappingRow | null}
-          />
-        </section>
-      )}
 
       {/* Integrations (owner-only: config holds secrets — see spec/integrations.md) */}
       {isOwner && (

@@ -34,20 +34,20 @@
   is impossible. Category immutability and the "≥1 unstarted & ≥1 done"
   minimum are enforced by triggers under a per-project advisory lock, not by
   RLS
-- **my_work_story_state (doc-14, replaces the removed `story_pins`):** per
-  user, not project-scoped by column — own-rows SELECT/UPDATE/DELETE plus a
-  separate UPDATE policy (the write path upserts `is_today`/`local_status`).
-  SELECT/UPDATE/DELETE `user_id = auth.uid()`; INSERT `WITH CHECK user_id =
-  auth.uid() AND is_project_member(<story's project>)`. **No cross-user
-  reads.** Lifecycle writes that touch other users' rows go through the same
-  SECURITY DEFINER RPCs `story_pins` used: `move_story_to_project` no longer
-  carries marks over (a moved story is recreated under a new id; marks stay
-  personal to the original); **`remove_member` purges the removed user's rows
-  in that project** (prevents ghost marks reviving on re-invite)
-- **project_my_work_mapping (doc-14):** project-scoped config row, the
-  integrations owner-writes pattern but with SELECT widened to all members
-  (each member's My Work classification reads the mapping): SELECT
-  `is_project_member`; INSERT/UPDATE/DELETE `project_role = 'owner'`
+- **my_work_columns (doc-15):** per-user free columns — own rows, all four ops
+  (`user_id = auth.uid()`). Its `unique (user_id, id)` is the target of
+  my_work_story_state's composite FK, so the DB (not RLS alone) stops a card
+  from pointing at another user's column
+- **my_work_story_state (doc-14, reshaped by doc-15):** per user, not
+  project-scoped by column — own-rows SELECT/UPDATE/DELETE (the write path
+  upserts `column_id`/`today_date`/`today_position`). SELECT/UPDATE/DELETE
+  `user_id = auth.uid()`; INSERT `WITH CHECK user_id = auth.uid() AND
+  is_project_member(<story's project>)`. **No cross-user reads.** Lifecycle
+  writes that touch other users' rows go through SECURITY DEFINER RPCs:
+  `move_story_to_project` no longer carries marks over (a moved story is
+  recreated under a new id; marks stay personal to the original); **`remove_member`
+  purges the removed user's rows in that project** (prevents ghost marks reviving
+  on re-invite). *(`project_my_work_mapping` removed in doc-15.)*
 - **story_completions (doc-14):** append-only completion log — gated per user.
   SELECT `user_id = auth.uid()` only; **no client INSERT/UPDATE/DELETE policy
   and the grants are revoked** (the TASK-110 lockdown pattern) — the

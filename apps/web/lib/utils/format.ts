@@ -12,6 +12,19 @@ export function utcTodayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Today as a YYYY-MM-DD key in the **viewer's local wall date** — My Work's
+// Today column and carry-over are per the user's own day, not UTC (doc-15:
+// DB current_date is UTC and would shift the boundary to 09:00 JST). Client-
+// only: a server render has no viewer timezone, so callers seed with
+// utcTodayKey and correct to this on mount.
+export function localTodayKey(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 // A bare YYYY-MM-DD, as every `date` column reaches the client.
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 

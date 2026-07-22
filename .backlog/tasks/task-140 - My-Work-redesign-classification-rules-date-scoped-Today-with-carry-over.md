@@ -1,10 +1,11 @@
 ---
 id: TASK-140
 title: 'My Work redesign: classification rules + date-scoped Today with carry-over'
-status: To Do
+status: In Progress
 assignee:
-  - '@claude-sonnet-5'
+  - '@claude-opus-4-8'
 created_date: '2026-07-22 08:53'
+updated_date: '2026-07-22 09:43'
 labels: []
 dependencies:
   - TASK-138
@@ -27,3 +28,19 @@ doc-15 (advisor-approved). Replace classifyMyWork with the final rules: Done = v
 - [ ] #4 spec/screens.md and spec/data-model.md rewritten to match doc-15
 - [ ] #5 pnpm test + lint green (from apps/web/)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done in the continuous pass: classification rewritten (Today today_date > free column column_id > Todo; Done = completions). Date-scoped Today via client local date (useSyncExternalStore). Carry-over prompt + carryOverToday/dismissCarryOver actions. fable-advisor approve-with-changes; principle-3 banner layout-shift fix applied.
+<!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude-opus-4-8
+created: 2026-07-22 09:43
+---
+fable-advisor design review (ux-principles): approve-with-changes. Required principle-3 fix (carry-over banner collapse animation to avoid column layout jump) applied. Optional (non-blocking): team-Done log cards are draggable-but-always-reject — cursor polish, deferred.
+---
+<!-- COMMENTS:END -->

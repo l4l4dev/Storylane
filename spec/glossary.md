@@ -18,5 +18,5 @@
 | Epic | A large feature grouping that spans multiple stories |
 | Points | A numeric estimate of a story's scope, chosen from the project's point scale |
 | Virtual iteration | A future iteration shown as a numbered backlog group — computed from velocity × planned capacity at render time, no DB row |
-| My Work | Cross-project personal Kanban of all stories assigned to the signed-in user (Todo/Today/Doing/Done, own status via `my_work_story_state`; replaces the per-project Focus view — doc-14) |
+| My Work | Cross-project personal Kanban of all stories assigned to the signed-in user (Todo / Today / user-defined free columns / Done; own status via `my_work_story_state` + `my_work_columns`, no project-board mapping — doc-15, replaces the per-project Focus view) |
 | Agent member | An ordinary project member flagged `profiles.is_agent = true` so UIs can tell coding agents apart from humans |

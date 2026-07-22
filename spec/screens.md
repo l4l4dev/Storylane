@@ -357,59 +357,58 @@ Conflict & failure rules (2026-07-08):
   **Move / Copy to another project** (behavior in spec/features.md
   "Story Management"), alongside Delete.
 
-### My Work (`/my-work`, replaces the per-project Focus view — doc-8 §9, doc-14, TASK-89/131/132)
+### My Work (`/my-work`, replaces the per-project Focus view — doc-8 §9, doc-14/doc-15, TASK-89/131/138–141)
 
 A cross-project personal view: the signed-in user's stories assigned to
 them, across every project they belong to (archived projects excluded).
 Scoped to **assigned, non-Icebox** stories — Icebox stories haven't entered
-a board yet. Renders as a real **Kanban board**: four columns, side by side,
-draggable — **Todo / Today / Doing / Done** — reusing the project board's own
-drag machinery (dnd-kit sensors, optimistic per-card revert on a failed
-drop). My Work keeps its **own** status per (user, story)
-(`my_work_story_state`), independent of the story's real project state; a
-project can optionally map its Doing/Done columns onto its own board states
-(owner-configured in Settings, TASK-133) to keep the two in sync.
+a board yet. Renders as a real **Kanban board**, side by side, draggable, with
+**Todo / Today / user-defined free columns / Done** — reusing the project
+board's own drag machinery (dnd-kit sensors, optimistic per-card revert on a
+failed drop). It is a **purely personal board** (doc-15): placement is manual
+and there is no project-board mapping. My Work keeps its own marks per
+(user, story) in `my_work_story_state`, and each user's free columns live in
+`my_work_columns` (`Doing` pre-seeded; add/rename/delete/reorder is TASK-141).
 
-Done is an **additive log**, evaluated independently of the other three:
+Done is an **additive log**, evaluated independently:
 
-- **Done** — every time the viewer completes a story (`story_completions`,
-  append-only — reopening and re-completing adds a new entry, never
-  overwrites one), plus any unmapped-project story the viewer has locally
-  marked done. Grouped by date (Today / Yesterday / date, newest first).
-  Entries are **live-joined** to the story's current title/points/state, so
-  they keep updating even if the story is reassigned away or the viewer
-  later leaves the project — the log is permanent, the ticket underneath
-  isn't frozen. A story currently active elsewhere (e.g. reopened and
-  back in progress) can appear in **both** Done and Doing at once — Done
-  never hides an active card, and an active card never erases its history.
+- **Done** — the viewer's `story_completions` rows (append-only — reopening
+  and re-completing adds a new entry). Grouped by date (Today / Yesterday /
+  date, newest first). Entries are **live-joined** to the story's current
+  title/points/state, so they keep updating even if the story is reassigned
+  away or the viewer later leaves the project. A story active elsewhere can
+  appear in **both** Done and an active column at once. A team story that is
+  real-done but has **no** completion row for the viewer (e.g. assigned after
+  someone else finished it) shows in **no** column — it's finished work that
+  isn't the viewer's completion record.
 
-Todo/Today/Doing classify a story into exactly one of the three, gated only
-by "its real state category isn't `done` right now":
+The active columns classify each assigned, non-done story by precedence —
+**Today** (its `today_date` = the viewer's local today) > its **free column**
+(`column_id`) > **Todo**:
 
-- **Today** — a pure personal marker: the user dragged this card into Today
-  (or out of it). Not derived from any project's iteration — no automatic
-  membership, no separate pin button, no pinning at all. Carries over
-  automatically (it's just a stored flag, not a per-day snapshot).
-- **Doing** — the project maps Doing to a real `in_progress`-category state
-  and the story is currently in it, OR the project is unmapped and the
-  viewer's local status is `doing` (defaulting to derived-from-real-category
-  when untouched).
+- **Today** — date-scoped (belongs to a calendar date, the viewer's local
+  wall date). On the first visit of a new day, unfinished yesterday-Today
+  items prompt a **carry-over** confirmation (carry to today, or fall back to
+  their column). Cards inside Today are manually orderable.
+- **Free columns** — user-defined personal statuses (`Doing` seeded). Local by
+  definition; they never touch any project board.
 - **Todo** — everything else assigned to the viewer, grouped by project
-  (personal project first, then project name; board position order within
-  a group).
+  (personal project first, then project name; board position order within a
+  group).
 
-**Dragging a card** always writes `my_work_story_state` first:
+**Dragging a card:**
 
-- **To Today or Todo** — a `my_work_story_state`-only write, mapped or not.
-  Never changes the story's real project state.
-- **To Doing or Done, project mapped** — also transitions the story's real
-  state (`set_story_state`) to the mapped state, so a mapped project's
-  Doing/Done can never drift from its real board. If the target state would
-  need to schedule the story into a current iteration and the project has
-  none, the drag is rejected with a visible banner (never a silent no-op).
-- **To Doing or Done, project unmapped** — a local-only write
-  (`my_work_story_state.local_status`); the real project is untouched, by
-  design (an accepted, permanent divergence for projects that don't map).
+- **Team stories** — every drag is a local `my_work_story_state` mark
+  (Todo / Today / free column). Completing a team story happens on **its own
+  board**, not here (a drag to Done is rejected with a visible message); it
+  still lands in the viewer's Done log automatically via the `story_completions`
+  trigger. A team story already real-done can't be dragged out of Done (an
+  explicit message, not a silent snap-back).
+- **Personal-project stories** — Todo/Done drags write the **real** state via
+  `set_story_state` (Done → `completed_at` + `story_completions`; Todo → the
+  lowest unstarted state, i.e. reopen). Today and free columns stay local.
+  Personal projects are exempt from the estimation gate and iteration
+  auto-assign (`set_story_state` reads `projects.is_personal`).
 
 Every row shows the story's type icon/title (linking to the standalone
 `/stories/[id]` page — My Work has no side peek of its own), its project as
@@ -440,22 +439,11 @@ Sections, in order, each gated by its own RLS-matching role (see spec/rls.md):
 - **Calendar** — working weekdays (owner), date exceptions (any member).
 - **States** — reorder/rename/edit action label (any member), delete
   (owner) — see "Board layout".
-- **My Work sync (doc-14, TASK-133)** — owner-only. Two selectors, Doing and
-  Done, each offering "Not mapped" plus this project's own states of the
-  matching category (`in_progress` / `done`). Saving writes
-  `project_my_work_mapping`; leaving either blank is an explicit, always-
-  available choice, not just an empty default (see "My Work"). If a
-  previously-mapped state's category has since drifted away from what that
-  column expects, the selector still shows it (labelled e.g. "no longer
-  Doing-category") rather than silently falling back to "Not mapped", and My
-  Work itself surfaces a banner (owner-visible reconfigure link) — the
-  read-side treats a category-mismatched mapping as unmapped either way,
-  matching classification's own rule, never a client-only check. A mapped
-  state later *deleted* (as opposed to recategorized) falls back to "Not
-  mapped" with no distinct banner — indistinguishable, at the current schema,
-  from a mapping the owner simply never configured for that column.
 - **Integrations** — owner-only (config holds secrets — see
   spec/integrations.md).
+
+*(The "My Work sync" section was removed in doc-15 — My Work no longer maps to
+project boards, so there is nothing per-project to configure.)*
 
 ### Story card UX (Kanban view)
 

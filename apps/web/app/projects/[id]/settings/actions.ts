@@ -554,37 +554,3 @@ export async function deleteIntegration(formData: FormData) {
   );
   revalidatePath(`/projects/${projectId}/settings`);
 }
-
-/**
- * Saves this project's Doing/Done -> My Work mapping (TASK-133, doc-14).
- * Either selector may be left blank ("Not mapped" — an explicit, always-
- * available choice, not just an empty default). RLS already restricts
- * insert/update to the project owner; a non-owner's call surfaces that as a
- * thrown error here, matching this file's other owner-gated writes
- * (saveIntegration) rather than silently no-opping.
- */
-export async function saveMyWorkMapping(formData: FormData) {
-  const projectId = String(formData.get("project_id"));
-  const doingStateId = String(formData.get("doing_state_id") ?? "").trim() || null;
-  const doneStateId = String(formData.get("done_state_id") ?? "").trim() || null;
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { error } = await supabase.from("project_my_work_mapping").upsert(
-    {
-      project_id: projectId,
-      doing_state_id: doingStateId,
-      done_state_id: doneStateId,
-      configured_by: user?.id,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "project_id" },
-  );
-  if (error) {
-    throw new Error(error.message);
-  }
-  revalidatePath(`/projects/${projectId}/settings`);
-  revalidatePath("/my-work");
-}

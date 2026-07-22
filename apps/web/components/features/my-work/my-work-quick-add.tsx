@@ -4,8 +4,10 @@ import { useState } from "react";
 import { DraftStoryCard, DraftStoryTrigger } from "@/components/features/board/draft-story-card";
 
 // My Work's header quick-add (spec/screens.md "My Work", doc-8 §10): no
-// global shortcut, just the solo personal project's own draft-story card,
-// scheduled straight into its current iteration.
+// global shortcut, just the solo personal project's own draft-story card.
+// Lands in the backlog (iteration-less, lowest unstarted) via insert_board_item
+// — the personal project has no iterations, ever (doc-15 decision 7), so the
+// "unstarted" path's current-iteration requirement can never be met there.
 export function MyWorkQuickAdd({
   projectId,
   currentUserId,
@@ -34,7 +36,7 @@ export function MyWorkQuickAdd({
   return (
     <DraftStoryCard
       projectId={projectId}
-      target="unstarted"
+      target="backlog"
       view="list"
       beforeItemId={null}
       pointScale={pointScale}

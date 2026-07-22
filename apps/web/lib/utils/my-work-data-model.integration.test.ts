@@ -1,10 +1,11 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// TASK-130 (doc-14): the My Work data-model foundation — the
-// story_completions completion-log trigger, its write lockdown, the
-// project_my_work_mapping owner-writes RLS, and the stories SELECT OR-clause
-// that keeps a completed story readable after the completer leaves the project.
+// TASK-130 (doc-14) + TASK-138 (doc-15): the My Work data-model foundation —
+// the story_completions completion-log trigger, its write lockdown, the stories
+// SELECT OR-clause that keeps a completed story readable after the completer
+// leaves the project, and the my_work_columns own-rows RLS + composite-FK guard
+// that replaced the dropped project_my_work_mapping.
 //
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/my-work-data-model.integration.test.ts
 const RUN = process.env.SUPABASE_INTEGRATION === "1";
@@ -157,34 +158,36 @@ describe.skipIf(!RUN)("My Work data model (TASK-130 integration)", () => {
     expect(error).not.toBeNull(); // no client INSERT policy + grant revoked
   });
 
-  it("lets a member read but only an owner write project_my_work_mapping", async () => {
-    // Owner (dev user) writes the mapping.
-    const { error: insErr } = await owner
-      .from("project_my_work_mapping")
-      .insert({ project_id: projectId, doing_state_id: startedStateId, done_state_id: doneStateId, configured_by: ownerId });
-    expect(insErr).toBeNull();
+  // TASK-138 (doc-15): my_work_columns replaced project_my_work_mapping. It is
+  // own-rows only, and its (user_id, id) unique constraint is the target of
+  // my_work_story_state's composite FK — the invariant that a card can't point
+  // at another user's column.
+  it("scopes my_work_columns to own rows and blocks pointing a mark at a foreign column", async () => {
+    // The dev user (owner client) reads their pre-seeded 'Doing' column.
+    const { data: ownCols } = await owner.from("my_work_columns").select("id, name").eq("user_id", ownerId);
+    expect((ownCols ?? []).some((c) => c.name === "Doing")).toBe(true);
 
-    // A plain member can read it but not write it.
-    const email = `mw-map-member-${Date.now()}@storylane.local`;
+    // A second user has their own separate columns.
+    const email = `mw-col-other-${Date.now()}@storylane.local`;
     const password = "integration-test-only-password";
     const { data: created } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
-    await admin.from("project_members").insert({ project_id: projectId, user_id: created!.user!.id, role: "member" });
-    const memberClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-    await memberClient.auth.signInWithPassword({ email, password });
+    const otherId = created!.user!.id;
+    await admin.from("project_members").insert({ project_id: projectId, user_id: otherId, role: "member" });
+    const other = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    await other.auth.signInWithPassword({ email, password });
 
-    const { data: readRow } = await memberClient
-      .from("project_my_work_mapping")
-      .select("project_id")
-      .eq("project_id", projectId)
-      .maybeSingle();
-    expect(readRow).not.toBeNull(); // member reads
+    // The other user cannot see the dev user's columns (own-rows SELECT).
+    const { data: crossRead } = await other.from("my_work_columns").select("id").eq("user_id", ownerId);
+    expect(crossRead ?? []).toHaveLength(0);
 
-    const { data: writeRows } = await memberClient
-      .from("project_my_work_mapping")
-      .update({ doing_state_id: null })
-      .eq("project_id", projectId)
-      .select("project_id");
-    expect(writeRows ?? []).toHaveLength(0); // member write RLS-filtered to 0 rows
+    // The composite FK blocks pointing the other user's mark at the dev user's
+    // column: (other.user_id, ownColumnId) has no matching my_work_columns row.
+    const foreignColumnId = (ownCols ?? []).find((c) => c.name === "Doing")!.id;
+    const story = await createStory(startedStateId, otherId);
+    const { error: fkErr } = await other
+      .from("my_work_story_state")
+      .insert({ user_id: otherId, story_id: story, column_id: foreignColumnId });
+    expect(fkErr).not.toBeNull(); // FK violation — can't borrow another user's column
   });
 
   // doc-14's sharpest edge: a story stays readable to whoever completed it even

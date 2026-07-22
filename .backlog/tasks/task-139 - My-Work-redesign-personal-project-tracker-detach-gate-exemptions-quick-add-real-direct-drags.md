@@ -3,10 +3,11 @@ id: TASK-139
 title: >-
   My Work redesign: personal-project tracker detach (gate exemptions, quick-add,
   real-direct drags)
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 08:52'
+updated_date: '2026-07-22 09:41'
 labels: []
 dependencies:
   - TASK-138
@@ -30,3 +31,9 @@ doc-15 (advisor-approved). Fixes both 2026-07-22 dogfooding bugs permanently. (1
 - [ ] #5 rls-security-reviewer pass on the migration
 - [ ] #6 supabase db reset green; pnpm test + lint green (from apps/web/)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done in the continuous 138->140 pass: migration 20260722000008 (set_story_state is_personal exemptions, stays SECURITY INVOKER). MyWorkQuickAdd target unstarted->backlog. Drag write path (my-work/actions.ts): personal Todo/Done -> real set_story_state; team local; team->Done rejected; real-done guard team-only.
+<!-- SECTION:NOTES:END -->

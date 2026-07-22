@@ -157,44 +157,56 @@ any story (see spec/rls.md).
   the old fixed Kanban (the Pivotal-parity anchor).
 - **minimal** — Todo(`unstarted`) / Doing(`in_progress`) / Done(`done`).
 
-### my_work_story_state (doc-14, replaces the removed `story_pins`)
-Per-user, per-story My Work marks. Replaces `story_pins`: `is_today` is the
-personal "focusing on this today" marker (folds in the old pin, but only for a
-story in the viewer's own base scope — `assignee_id = user_id`; My Work no
-longer marks unassigned stories). `local_status` is the drag override used
-**only when the story's project has no Doing/Done mapping** (`null` = derive
-from the real state category); a mapped project's Doing/Done is computed from
-the real `state_id`, never written here.
+### my_work_columns (doc-15)
+Per-user **free columns** for the My Work screen — Todo/Today/Done are
+structural slots, everything else (the pre-seeded `Doing` + any the user adds)
+is a row here, ordered by `position`. Local by definition: free columns never
+touch a project board. `unique (user_id, id)` is the target of
+`my_work_story_state`'s composite FK below, so a card can't point at another
+user's column.
+```sql
+my_work_columns (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  name       text NOT NULL,
+  position   int  NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, id)
+)  -- + index on (user_id, position)
+```
+Seeded one `Doing` row per user (backfill + at signup via `handle_new_user`).
+RLS: own rows, all four ops (`user_id = auth.uid()`).
+
+### my_work_story_state (doc-14, reshaped by doc-15)
+Per-user, per-story My Work marks. Placement is manual (doc-15): a card is in
+**Today** when `today_date` = the viewer's local today (`today_position` is the
+day's manual order), else its **free column** (`column_id`), else **Todo**.
+There is no project-board mapping any more — My Work is a purely personal board.
 ```sql
 my_work_story_state (
-  user_id      uuid REFERENCES profiles(id) ON DELETE CASCADE,
-  story_id     uuid REFERENCES stories(id)  ON DELETE CASCADE,
-  is_today     boolean NOT NULL DEFAULT false,
-  local_status text CHECK (local_status IN ('todo','doing','done')),
-  updated_at   timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, story_id)
+  user_id        uuid REFERENCES profiles(id) ON DELETE CASCADE,
+  story_id       uuid REFERENCES stories(id)  ON DELETE CASCADE,
+  column_id      uuid,   -- free column (NULL = Todo); composite FK below
+  today_date     date,   -- Today mark for a specific calendar date (NULL = not today)
+  today_position int,    -- manual order within Today
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, story_id),
+  CHECK (today_position IS NULL OR today_date IS NOT NULL),
+  FOREIGN KEY (user_id, column_id) REFERENCES my_work_columns (user_id, id)
+    ON DELETE SET NULL (column_id)   -- deleting a column drops its cards back to Todo
 )  -- + index on (story_id) for the reverse "who customized this" lookup
 ```
-RLS: own-rows SELECT/UPDATE/DELETE (`user_id = auth.uid()`); INSERT WITH CHECK
+The composite FK (not a plain single-column one) enforces two invariants: a row
+can't borrow another user's column, and column deletion nulls only `column_id`,
+never `user_id` (which is part of the PK). The column-list `SET NULL` form is
+PG15+ (local runs PG17). `today_date`/carry-over use the **client's** local wall
+date, never DB `current_date` (UTC would shift the day boundary to 09:00 JST) —
+only the one-time migration backfill uses `current_date`. RLS: own-rows
+SELECT/UPDATE/DELETE (`user_id = auth.uid()`); INSERT WITH CHECK
 `user_id = auth.uid() AND` caller is a member of the story's project. See spec/rls.md.
 
-### project_my_work_mapping (doc-14)
-Per-project mapping of My Work's Doing/Done virtual columns to the project's
-own `project_states` (owner-configured in Settings; either/both may be
-unmapped). `on delete set null` falls a mapping back to unmapped if the mapped
-state is deleted; a state that merely changes *category* is handled read-side
-(classification treats a category-mismatched mapping as unmapped).
-```sql
-project_my_work_mapping (
-  project_id     uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
-  doing_state_id uuid REFERENCES project_states(id) ON DELETE SET NULL,
-  done_state_id  uuid REFERENCES project_states(id) ON DELETE SET NULL,
-  configured_by  uuid REFERENCES profiles(id),
-  updated_at     timestamptz NOT NULL DEFAULT now()
-)
-```
-RLS (integrations' owner-writes pattern, SELECT widened to members): SELECT
-`is_project_member`; INSERT/UPDATE/DELETE `project_role = 'owner'`.
+*(`project_my_work_mapping` was removed in doc-15 — free columns never touch a
+project board, so a mapping had nothing left to do.)*
 
 ### story_completions (doc-14)
 Append-only personal completion log — the source of My Work's Done column.

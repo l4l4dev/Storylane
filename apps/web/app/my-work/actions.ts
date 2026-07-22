@@ -3,158 +3,201 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types";
-import type { MyWorkColumn } from "@/lib/utils/my-work";
+import type { MyWorkColumnId } from "@/lib/utils/my-work";
 
-// set_story_state raises this (errcode P0001) when a mapped Doing/Done drag
-// would start a story but the target project has no current iteration to
-// schedule it into (doc-14: the one place My Work reintroduces an iteration
-// dependency). Surfaced as a visible, actionable message instead of the raw
-// exception text so a failed drag never looks like it silently did nothing
-// (ux-principles.md principle 2).
-const NO_ITERATION_MESSAGE =
-  "This project has no active iteration to start the story in — open its board to start an iteration first.";
+type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 /**
- * Moves a card between My Work's columns (doc-14 "Dragging a card"). My Work
- * keeps its OWN status (my_work_story_state), optionally synced to the real
- * board when the project maps Doing/Done to its own states:
+ * Moves a card between My Work's columns (doc-15 "Dragging a card"). My Work is
+ * a purely personal board — there is no project-board mapping. Placement rules:
  *
- *   - Todo / Today  — always a my_work_story_state-only write, never a project
- *     transition (backward/personal moves stay local, mapped or not).
- *   - Doing / Done  — when the project's mapping still points to a live state
- *     of the right category, transition the REAL state via set_story_state
- *     (single source of truth, no local_status divergence). Otherwise it's a
- *     local-only my_work_story_state.local_status write.
+ *   - Personal-project stories (is_personal): Todo/Done write the REAL state
+ *     via set_story_state (Done → completed_at + story_completions permanent
+ *     log; Todo → the lowest unstarted state, i.e. reopen). Today and free
+ *     columns stay local marks. The personal project's states are category-
+ *     resolvable without configuration (it's ours, template known).
+ *   - Team stories: every drag is a local my_work_story_state mark. Completing
+ *     happens on the story's own board (Done is not writable here); the
+ *     completion still lands in the viewer's Done log via the story_completions
+ *     trigger.
  *
- * Every non-Today drop also clears is_today — that's the "leave Today" half of
- * the move, so a card marked Today doesn't stay pinned there (Today outranks
- * Doing in classification).
+ * Today overlays a card's column (it keeps its column_id) so declining a
+ * carry-over next day drops it back where it was. Every other target clears the
+ * Today mark. `clientToday` is the viewer's local wall date (YYYY-MM-DD) — DB
+ * current_date is UTC and would shift the day boundary.
  */
-export async function setMyWorkColumn(storyId: string, column: MyWorkColumn): Promise<ActionResult> {
+export async function setMyWorkColumn(
+  storyId: string,
+  target: MyWorkColumnId,
+  clientToday: string,
+): Promise<ActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) {
-    return { ok: false, message: "Not signed in" };
-  }
+  if (!user) return { ok: false, message: "Not signed in" };
 
   const { data: story, error: storyError } = await supabase
     .from("stories")
-    .select("project_id, state_id")
+    .select("project_id, state_id, projects(is_personal)")
     .eq("id", storyId)
     .single();
   if (storyError || !story) {
     return { ok: false, message: storyError?.message ?? "Story not found" };
   }
+  const project = Array.isArray(story.projects) ? story.projects[0] : story.projects;
+  const isPersonal = project?.is_personal ?? false;
 
-  // Doing/Done sync only when a valid mapping exists.
-  if (column === "doing" || column === "done") {
-    const mappedStateId = await resolveMappedState(supabase, story.project_id, column);
-    if (mappedStateId) {
-      const { error } = await supabase.rpc("set_story_state", {
-        p_story_id: storyId,
-        p_state_id: mappedStateId,
-      });
-      if (error) {
-        return {
-          ok: false,
-          message: error.message === "No active iteration" ? NO_ITERATION_MESSAGE : error.message,
-        };
-      }
-      // Mapped: the real state is the single source of truth, so don't write a
-      // local_status (no divergence). Only clear is_today (leave-Today half).
-      const localWrite = await writeMark(supabase, user.id, storyId, false, undefined);
-      if (localWrite) return localWrite;
-      revalidatePaths(story.project_id, storyId);
-      return { ok: true };
-    }
+  // Personal Todo/Done: write the real state (single source of truth), then
+  // clear local marks — the card's home is now the real board's category.
+  if (isPersonal && (target === "todo" || target === "done")) {
+    const category = target === "done" ? "done" : "unstarted";
+    const stateId = await lowestStateOfCategory(supabase, story.project_id, category);
+    if (!stateId) return { ok: false, message: `This project has no ${category} state to move the story into.` };
+    const { error } = await supabase.rpc("set_story_state", { p_story_id: storyId, p_state_id: stateId });
+    if (error) return { ok: false, message: error.message };
+    return persistMark(supabase, user.id, storyId, { column_id: null, today_date: null, today_position: null }, story.project_id);
   }
 
-  // A real-done story can never leave Done via a local-only write:
-  // assignedColumn (lib/utils/my-work.ts) routes category==='done' to Done
-  // unconditionally, before it even looks at is_today/local_status. Without
-  // this guard the write below would silently succeed (ok:true) and then the
-  // card would snap back to Done on the next revalidate with no explanation
-  // — a fable-advisor TASK-132 finding (ux-principles.md principle 2).
-  if (await isRealCategoryDone(supabase, story.state_id)) {
+  // Team story → Done: not writable from My Work (doc-15 decision 5).
+  if (target === "done") {
+    return {
+      ok: false,
+      message: "Complete this story on its project board — it lands in your Done log automatically.",
+    };
+  }
+
+  // A team story already real-done can't be moved out of Done via a local mark:
+  // classification excludes real-done from active columns, so the card would
+  // snap back to Done on the next refresh with no explanation (ux-principles
+  // principle 2). Personal real-done is handled by the Todo branch above (it
+  // reopens the real state).
+  if (!isPersonal && (await isRealCategoryDone(supabase, story.state_id))) {
     return {
       ok: false,
       message: "This story is already completed on its project board — reopen it there to move it out of Done.",
     };
   }
 
-  // Local-only write: Todo/Today, or an unmapped Doing/Done.
-  const isToday = column === "today";
-  // "Today" preserves any existing local_status (undefined = leave as-is);
-  // Todo/unmapped-Doing/Done set it explicitly.
-  const localStatus = column === "today" ? undefined : column;
-  const localWrite = await writeMark(supabase, user.id, storyId, isToday, localStatus);
-  if (localWrite) return localWrite;
-  revalidatePaths(story.project_id, storyId);
+  // Local marks. Today keeps column_id (it overlays); Todo/free clear it.
+  if (target === "today") {
+    const today_position = await nextTodayPosition(supabase, user.id, clientToday);
+    return persistMark(supabase, user.id, storyId, { today_date: clientToday, today_position }, story.project_id);
+  }
+  if (target === "todo") {
+    return persistMark(supabase, user.id, storyId, { column_id: null, today_date: null, today_position: null }, story.project_id);
+  }
+  // A free column uuid. RLS already scopes columns to the viewer; verify here
+  // for a friendly error rather than a silent FK violation.
+  if (!(await ownsColumn(supabase, user.id, target))) {
+    return { ok: false, message: "Unknown column." };
+  }
+  return persistMark(supabase, user.id, storyId, { column_id: target, today_date: null, today_position: null }, story.project_id);
+}
+
+/**
+ * Carry-over confirmation (doc-15 decision 4): stale Today marks (a past
+ * today_date) either move to today or fall back to their column. Bulk, keyed by
+ * story id and scoped to the viewer's own marks.
+ */
+export async function carryOverToday(storyIds: string[], clientToday: string): Promise<ActionResult> {
+  if (storyIds.length === 0) return { ok: true };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+  const { error } = await supabase
+    .from("my_work_story_state")
+    .update({ today_date: clientToday, updated_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .in("story_id", storyIds);
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/my-work");
   return { ok: true };
 }
 
-// Returns the mapped state id for the target column only when the mapping still
-// points to a live state of the matching category (doc-14: a category change is
-// treated read-side as unmapped, no trigger needed). Null = unmapped/broken.
-async function resolveMappedState(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  projectId: string,
-  column: "doing" | "done",
-): Promise<string | null> {
-  const { data: mapping } = await supabase
-    .from("project_my_work_mapping")
-    .select("doing_state_id, done_state_id")
-    .eq("project_id", projectId)
-    .maybeSingle();
-  const stateId = column === "doing" ? mapping?.doing_state_id : mapping?.done_state_id;
-  if (!stateId) return null;
-  const wantCategory = column === "doing" ? "in_progress" : "done";
-  const { data: state } = await supabase.from("project_states").select("category").eq("id", stateId).single();
-  return state?.category === wantCategory ? stateId : null;
+export async function dismissCarryOver(storyIds: string[]): Promise<ActionResult> {
+  if (storyIds.length === 0) return { ok: true };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+  const { error } = await supabase
+    .from("my_work_story_state")
+    .update({ today_date: null, today_position: null, updated_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .in("story_id", storyIds);
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/my-work");
+  return { ok: true };
 }
 
-async function isRealCategoryDone(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  stateId: string | null,
-): Promise<boolean> {
+async function lowestStateOfCategory(supabase: Supabase, projectId: string, category: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("project_states")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("category", category)
+    .order("position", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+async function isRealCategoryDone(supabase: Supabase, stateId: string | null): Promise<boolean> {
   if (!stateId) return false; // Icebox — not reachable from My Work anyway.
   const { data } = await supabase.from("project_states").select("category").eq("id", stateId).single();
   return data?.category === "done";
 }
 
-// Upserts the viewer's mark. `localStatus === undefined` preserves the current
-// value (read-modify-write, since upsert would otherwise null it); a concrete
-// value or null overwrites it.
-async function writeMark(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+async function nextTodayPosition(supabase: Supabase, userId: string, clientToday: string): Promise<number> {
+  const { data } = await supabase
+    .from("my_work_story_state")
+    .select("today_position")
+    .eq("user_id", userId)
+    .eq("today_date", clientToday)
+    .order("today_position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.today_position ?? -1) + 1;
+}
+
+async function ownsColumn(supabase: Supabase, userId: string, columnId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("my_work_columns")
+    .select("id")
+    .eq("id", columnId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return data !== null;
+}
+
+// Partial upsert: only the patched columns change on an existing row (supabase
+// upsert SETs just the payload's columns on conflict), so a Today write
+// preserves column_id and a free-column write preserves nothing it doesn't name.
+async function persistMark(
+  supabase: Supabase,
   userId: string,
   storyId: string,
-  isToday: boolean,
-  localStatus: "todo" | "doing" | "done" | null | undefined,
-): Promise<ActionResult | null> {
-  let nextLocal = localStatus ?? null;
-  if (localStatus === undefined) {
-    const { data: existing } = await supabase
-      .from("my_work_story_state")
-      .select("local_status")
-      .eq("user_id", userId)
-      .eq("story_id", storyId)
-      .maybeSingle();
-    // DB CHECK constrains local_status to this union; the generated type widens it to string.
-    nextLocal = (existing?.local_status as "todo" | "doing" | "done" | null) ?? null;
-  }
-  const { error } = await supabase.from("my_work_story_state").upsert(
-    { user_id: userId, story_id: storyId, is_today: isToday, local_status: nextLocal, updated_at: new Date().toISOString() },
-    { onConflict: "user_id,story_id" },
-  );
-  return error ? { ok: false, message: error.message } : null;
+  patch: { column_id?: string | null; today_date?: string | null; today_position?: number | null },
+  projectId: string,
+): Promise<ActionResult> {
+  const { error } = await supabase
+    .from("my_work_story_state")
+    .upsert(
+      { user_id: userId, story_id: storyId, updated_at: new Date().toISOString(), ...patch },
+      { onConflict: "user_id,story_id" },
+    );
+  if (error) return { ok: false, message: error.message };
+  revalidatePaths(projectId, storyId);
+  return { ok: true };
 }
 
 function revalidatePaths(projectId: string, storyId: string) {
   revalidatePath("/my-work");
-  // A mapped drag changed the real board too.
+  // A personal Todo/Done drag changed the real board too.
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/stories/${storyId}`);
 }
