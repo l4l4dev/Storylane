@@ -275,3 +275,43 @@ export function groupDoneByDate<S extends DoneStory>(stories: readonly S[]): Don
       stories: [...groupStories].sort((a, b) => b.completedAt.localeCompare(a.completedAt)),
     }));
 }
+
+export type MyWorkMapping = {
+  projectId: string;
+  doingStateId: string | null;
+  doneStateId: string | null;
+  // Whether the owner has ever saved this project's mapping (project_my_work_
+  // mapping.configured_by). A project the owner never configured has both
+  // fields null too, but that's an intentional default, not a broken sync —
+  // only a CONFIGURED mapping's category drift counts as "broken" (TASK-133;
+  // distinguishing "was mapped, then the state got deleted" from "never
+  // configured" would need a schema change this task deliberately skips).
+  configured: boolean;
+};
+
+/**
+ * Projects whose configured Doing/Done mapping has drifted: a mapped state id
+ * is still set, but the owner has since changed its category away from what
+ * that column expects (doc-14, TASK-133 AC #3/#4). Read-side only — never a
+ * client-side-only check — matching how classification itself
+ * (`assignedColumn`'s `mapped` input) treats a category mismatch as unmapped.
+ *
+ * `ownerProjectIds` scopes the result to projects the VIEWER owns (fable-
+ * advisor, TASK-133): only an owner can reconfigure a mapping (Settings'
+ * "My Work sync" section renders owner-only), so a banner shown to a plain
+ * member would point at a Settings section they can't even see.
+ */
+export function brokenMappingProjectIds(
+  mappings: readonly MyWorkMapping[],
+  categoryByStateId: ReadonlyMap<string, StateCategory>,
+  ownerProjectIds: ReadonlySet<string>,
+): Set<string> {
+  const broken = new Set<string>();
+  for (const m of mappings) {
+    if (!m.configured || !ownerProjectIds.has(m.projectId)) continue;
+    const doingBroken = m.doingStateId !== null && categoryByStateId.get(m.doingStateId) !== "in_progress";
+    const doneBroken = m.doneStateId !== null && categoryByStateId.get(m.doneStateId) !== "done";
+    if (doingBroken || doneBroken) broken.add(m.projectId);
+  }
+  return broken;
+}

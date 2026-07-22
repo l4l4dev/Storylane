@@ -428,6 +428,35 @@ trigger here (ambiguous which one), same as today.
 The per-project Focus view is removed with `stories.focus` (TASK-88); board
 views reduce to List / Kanban.
 
+### Project Settings (`/projects/[id]/settings`)
+
+Sections, in order, each gated by its own RLS-matching role (see spec/rls.md):
+
+- **Details** — name, description, iteration term/length, point scale,
+  velocity window. Owner-editable; members see it read-only.
+- **Members** — invite (owner), role changes and removal (owner), list
+  (everyone).
+- **Labels** — create (any member), delete (owner).
+- **Calendar** — working weekdays (owner), date exceptions (any member).
+- **States** — reorder/rename/edit action label (any member), delete
+  (owner) — see "Board layout".
+- **My Work sync (doc-14, TASK-133)** — owner-only. Two selectors, Doing and
+  Done, each offering "Not mapped" plus this project's own states of the
+  matching category (`in_progress` / `done`). Saving writes
+  `project_my_work_mapping`; leaving either blank is an explicit, always-
+  available choice, not just an empty default (see "My Work"). If a
+  previously-mapped state's category has since drifted away from what that
+  column expects, the selector still shows it (labelled e.g. "no longer
+  Doing-category") rather than silently falling back to "Not mapped", and My
+  Work itself surfaces a banner (owner-visible reconfigure link) — the
+  read-side treats a category-mismatched mapping as unmapped either way,
+  matching classification's own rule, never a client-only check. A mapped
+  state later *deleted* (as opposed to recategorized) falls back to "Not
+  mapped" with no distinct banner — indistinguishable, at the current schema,
+  from a mapping the owner simply never configured for that column.
+- **Integrations** — owner-only (config holds secrets — see
+  spec/integrations.md).
+
 ### Story card UX (Kanban view)
 
 - Card contents (multica-style): story-type icon, title, one-line truncated

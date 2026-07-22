@@ -1,9 +1,17 @@
 import { addDays, type StateCategory } from "@storylane/core";
 import { createClient } from "@/lib/supabase/server";
 import { utcTodayKey } from "@/lib/utils/format";
-import { classifyMyWork, type DoneEntry, type MyWorkProject, type MyWorkStory } from "@/lib/utils/my-work";
+import {
+  brokenMappingProjectIds,
+  classifyMyWork,
+  type DoneEntry,
+  type MyWorkMapping,
+  type MyWorkProject,
+  type MyWorkStory,
+} from "@/lib/utils/my-work";
 import { pointScaleValues, storyStateBadge } from "@/lib/utils/stories";
 import type { ProjectState } from "@/lib/types";
+import { MyWorkMappingBrokenBanner } from "@/components/features/my-work/my-work-mapping-broken-banner";
 import { MyWorkSections } from "@/components/features/my-work/my-work-sections";
 import type { MyWorkRowData } from "@/components/features/my-work/my-work-row";
 import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add";
@@ -56,6 +64,7 @@ export default async function MyWorkPage() {
     { data: storyRows },
     { data: myStateRows },
     { data: mappingRows },
+    { data: myRoleRows },
     { data: completionRows },
     { data: soloEpics },
     { data: soloLabels },
@@ -81,7 +90,18 @@ export default async function MyWorkPage() {
     user
       ? supabase.from("my_work_story_state").select("story_id, is_today, local_status, updated_at").eq("user_id", user.id)
       : Promise.resolve({ data: null }),
-    supabase.from("project_my_work_mapping").select("project_id, doing_state_id").in("project_id", projectIds),
+    supabase
+      .from("project_my_work_mapping")
+      .select("project_id, doing_state_id, done_state_id, configured_by")
+      .in("project_id", projectIds),
+    // Only an owner can reconfigure a project's My Work mapping (Settings'
+    // "My Work sync" section renders owner-only) — the broken-mapping banner
+    // must stay scoped to owners too (spec/screens.md "owner-visible"), or a
+    // plain member would see a "reconfigure in Settings" link to a section
+    // they can't even see.
+    user
+      ? supabase.from("project_members").select("project_id, role").eq("user_id", user.id).in("project_id", projectIds)
+      : Promise.resolve({ data: null }),
     // The Done log (doc-14): the viewer's completion history, live-joined to
     // each story's CURRENT data and project name so a completion survives being
     // reassigned away or even leaving the project (stories' SELECT RLS OR-clause).
@@ -131,6 +151,22 @@ export default async function MyWorkPage() {
       .filter((m) => m.doing_state_id && categoryByStateId.get(m.doing_state_id) === "in_progress")
       .map((m) => m.project_id),
   );
+
+  // TASK-133: a project the owner DID configure, whose mapped state(s) have
+  // since drifted category — surfaced as a banner, not silently treated as
+  // unmapped (which the classification above already does read-side).
+  const mappings: MyWorkMapping[] = (mappingRows ?? []).map((m) => ({
+    projectId: m.project_id,
+    doingStateId: m.doing_state_id,
+    doneStateId: m.done_state_id,
+    configured: m.configured_by !== null,
+  }));
+  const ownerProjectIds = new Set(
+    (myRoleRows ?? []).filter((r) => r.role === "owner").map((r) => r.project_id),
+  );
+  const brokenProjects = [...brokenMappingProjectIds(mappings, categoryByStateId, ownerProjectIds)]
+    .map((id) => projectById.get(id))
+    .filter((p): p is MyWorkProject => p !== undefined);
 
   const myStateByStoryId = new Map(
     (myStateRows ?? []).map((r) => [r.story_id, r] as const),
@@ -190,6 +226,8 @@ export default async function MyWorkPage() {
       <div className="mx-auto mb-4 flex max-w-3xl items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">My Work</h1>
       </div>
+
+      <MyWorkMappingBrokenBanner projects={brokenProjects} />
 
       {soloPersonalProject && (
         <div className="mx-auto mb-6 max-w-3xl">

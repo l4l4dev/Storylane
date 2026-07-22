@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assignedColumn,
+  brokenMappingProjectIds,
   classifyMyWork,
   groupDoneByDate,
   regroupByProject,
@@ -9,6 +10,7 @@ import {
   type DoneEntry,
   type MyWorkColumns,
   type MyWorkDragItem,
+  type MyWorkMapping,
   type MyWorkProject,
   type MyWorkStory,
 } from "./my-work";
@@ -259,5 +261,75 @@ describe("resolveDragEndTarget", () => {
 
   it("returns null when the drop target is unknown", () => {
     expect(resolveDragEndTarget("todo", null)).toBeNull();
+  });
+});
+
+describe("brokenMappingProjectIds", () => {
+  const CATEGORIES = new Map([
+    ["doing-state", "in_progress"],
+    ["done-state", "done"],
+    ["recategorized-state", "unstarted"],
+  ]) as ReadonlyMap<string, "unstarted" | "in_progress" | "done" | "rejected">;
+  const OWNS_P1 = new Set(["p1"]);
+
+  function mapping(over: Partial<MyWorkMapping> & { projectId: string }): MyWorkMapping {
+    return { doingStateId: null, doneStateId: null, configured: true, ...over };
+  }
+
+  it("is not broken when both mapped states still match their expected category", () => {
+    const broken = brokenMappingProjectIds(
+      [mapping({ projectId: "p1", doingStateId: "doing-state", doneStateId: "done-state" })],
+      CATEGORIES,
+      OWNS_P1,
+    );
+    expect(broken.has("p1")).toBe(false);
+  });
+
+  it("is broken when the mapped Doing state's category drifted", () => {
+    const broken = brokenMappingProjectIds(
+      [mapping({ projectId: "p1", doingStateId: "recategorized-state" })],
+      CATEGORIES,
+      OWNS_P1,
+    );
+    expect(broken.has("p1")).toBe(true);
+  });
+
+  it("is broken when the mapped Done state's category drifted", () => {
+    const broken = brokenMappingProjectIds(
+      [mapping({ projectId: "p1", doneStateId: "recategorized-state" })],
+      CATEGORIES,
+      OWNS_P1,
+    );
+    expect(broken.has("p1")).toBe(true);
+  });
+
+  it("is never broken for a project the owner never configured, even with no mapping", () => {
+    const broken = brokenMappingProjectIds(
+      [mapping({ projectId: "p1", configured: false })],
+      CATEGORIES,
+      OWNS_P1,
+    );
+    expect(broken.has("p1")).toBe(false);
+  });
+
+  it("is not broken when a field is left intentionally unmapped (null)", () => {
+    const broken = brokenMappingProjectIds(
+      [mapping({ projectId: "p1", doingStateId: "doing-state", doneStateId: null })],
+      CATEGORIES,
+      OWNS_P1,
+    );
+    expect(broken.has("p1")).toBe(false);
+  });
+
+  // fable-advisor (TASK-133): only an owner can reconfigure a mapping —
+  // a broken mapping must never surface for a viewer who isn't this
+  // project's owner (they'd hit a Settings section they can't see).
+  it("is hidden from a viewer who isn't this project's owner, even if genuinely broken", () => {
+    const broken = brokenMappingProjectIds(
+      [mapping({ projectId: "p1", doingStateId: "recategorized-state" })],
+      CATEGORIES,
+      new Set(), // viewer owns nothing
+    );
+    expect(broken.has("p1")).toBe(false);
   });
 });

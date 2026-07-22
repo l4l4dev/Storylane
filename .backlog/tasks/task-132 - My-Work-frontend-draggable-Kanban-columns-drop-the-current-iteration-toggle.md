@@ -1,11 +1,11 @@
 ---
 id: TASK-132
 title: 'My Work frontend: draggable Kanban columns, drop the current-iteration toggle'
-status: To Do
+status: In Progress
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-22 03:32'
+updated_date: '2026-07-22 04:43'
 labels: []
 dependencies:
   - TASK-131
@@ -24,7 +24,7 @@ doc-14 (My Work Kanban rework). Replaces MyWorkSections' static vertically-stack
 <!-- AC:BEGIN -->
 - [x] #1 MyWorkSections (or its replacement) renders Todo/Today/Doing/Done as side-by-side draggable Kanban columns using this repo's existing dnd-kit patterns (kanban-columns-board.tsx), not a new drag implementation
 - [x] #2 The 'Only current iteration' toggle and its filtering logic are removed entirely
-- [ ] #3 Dragging a card between columns calls the appropriate TASK-131 server action (Today/Todo = local-only, Doing/Done = mapped-or-local) and optimistically updates, matching this repo's existing drag-failure-rollback conventions (TASK-113's fix: revert only the dragged card, not the whole board)
+- [x] #3 Dragging a card between columns calls the appropriate TASK-131 server action (Today/Todo = local-only, Doing/Done = mapped-or-local) and optimistically updates, matching this repo's existing drag-failure-rollback conventions (TASK-113's fix: revert only the dragged card, not the whole board)
 - [ ] #4 set_story_state's 'No active iteration' error (mapped Doing/Done drag into a project with no current iteration) surfaces as a visible banner, not a silent failed drag
 - [x] #5 Per-project accent color (project-color.ts) and row content carry over from the current implementation
 - [x] #6 fable-advisor design review against spec/ux-principles.md passes
@@ -55,5 +55,13 @@ Verification: tsc + lint green; my-work-scoped tests 38 passed (classification, 
 Browser verification (manual, via claude-in-chrome): logged in as dev user, confirmed (a) all 4 columns render side-by-side with counts even empty, (b) empty-state message, (c) quick-add creates a story that appears correctly grouped under its project in Todo with accent color/type icon/state badge/project chip, (d) clicking a card still navigates to /stories/[id] (drag doesn't swallow clicks), (e) 'Pin to My Work' is confirmed GONE from the story peek overflow menu, (f) keyboard-based drag (Space to lift, arrow keys, Escape) engages dnd-kit and Escape correctly cancels+reverts with no server call. Test data (2 stories) created and deleted during verification.
 
 GAP — could not automate the actual cross-column POINTER drag (AC #3/#4's core interaction): both the computer-tool's click-drag and raw synthetic PointerEvent dispatch (pointerdown+multiple pointermove+pointerup via JS) failed to register with dnd-kit's PointerSensor. This is a known dnd-kit browser-automation limitation, not specific to this implementation — it reuses kanban-columns-board.tsx's identical sensor setup, and that board has zero component-level drag tests in this repo for the same reason. AC #3 and #4 left UNCHECKED pending the owner's own manual drag-and-drop check (see kakunin-tejun steps).
+---
+
+author: @claude-sonnet-5
+created: 2026-07-22 04:43
+---
+Drag confirmed working by owner (2026-07-22): cards do move columns within My Work now. Fixed a real regression along the way (see commit d473383): handleDragEnd was comparing the dragged card's container as re-derived from already-optimistically-moved state, so the server call never fired on any cross-column drop -- card would lift/follow the cursor but silently revert on the next refresh. Fixed with a drag-start-captured ref + resolveDragEndTarget pure function (4 new tests). Also fixed an unrelated pre-existing gap noticed while dogfooding: /dashboard had no sidebar at all, losing the My Work nav link (commit 68b9ba2).
+
+AC #4 (the 'No active iteration' banner) remains unchecked: it only fires for a MAPPED project's Doing/Done drag, and no project can be mapped yet (TASK-133's Settings UI doesn't exist). The code path itself is implemented and unit-tested (actions.test.ts's 'surfaces No active iteration' case), but end-to-end verification needs TASK-133 to land first. Owner has asked to proceed to TASK-133 next; will close out this AC once a mapped project makes the scenario reachable.
 ---
 <!-- COMMENTS:END -->
