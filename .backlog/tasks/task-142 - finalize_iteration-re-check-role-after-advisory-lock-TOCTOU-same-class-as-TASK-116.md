@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-22 09:04'
-updated_date: '2026-07-22 10:18'
+updated_date: '2026-07-22 10:51'
 labels: []
 dependencies: []
 priority: medium
@@ -59,6 +59,12 @@ author: @claude-opus-4-8
 created: 2026-07-22 10:18
 ---
 rls-security-reviewer: CLEAN, no HIGH/MEDIUM/LOW findings. Confirmed (a) role sets preserved exactly incl. the viewer-inclusive lazy path, (b) each PL/pgSQL perform gets its own READ COMMITTED snapshot so STABLE caching can't defeat the re-check, (c) body byte-identical to 20260720000006 outside the guards, (d) errcode change matches spec/rls.md and nothing branches on the old strings. Noted for the owner as a SEPARATE potential backlog item (explicitly out of scope here, pre-existing): a viewer can trigger lazy rollover, which writes (finalizes/inserts iterations, moves stories.iteration_id).
+---
+
+author: @claude-opus-4-8
+created: 2026-07-22 10:51
+---
+Follow-up SHIPPED (commit 62bd951, owner decision 2026-07-22 'viewer stays read-only, abandoned looks abandoned'): finalize_iteration lazy rollover narrowed to owner/member (migration 20260722000012, one-line v_roles change vs 20260722000010). ensureCurrentIteration swallows the viewer 42501 so the board still renders the stale iteration. spec/velocity.md updated. Proven by the flipped integration test (viewer -> 42501, nothing written) + 3 ensureCurrentIteration unit tests. fable-advisor: approve. rls-security-reviewer: confirmed 'applies cleanly' but its run was CUT OFF by the account session limit (resets 9pm JST) before the empirical check - a full re-run is still owed. NON-BLOCKING follow-up flagged by fable-advisor (needs owner go-ahead to task-ify): a small viewer-only hint on kanban-board.tsx IterationDates when end_date < today and !canOverride (e.g. 'waiting for a project member to advance this'), @claude-sonnet-5, ends with a design review.
 ---
 <!-- COMMENTS:END -->
 
