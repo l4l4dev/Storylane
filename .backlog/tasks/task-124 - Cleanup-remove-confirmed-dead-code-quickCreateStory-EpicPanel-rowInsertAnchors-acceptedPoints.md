@@ -3,7 +3,7 @@ id: TASK-124
 title: >-
   Cleanup: remove confirmed-dead code (quickCreateStory, EpicPanel,
   rowInsertAnchors, acceptedPoints)
-status: In Progress
+status: Done
 assignee:
   - '@codex-gpt-5'
 created_date: '2026-07-21 11:00'

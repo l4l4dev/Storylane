@@ -3,11 +3,11 @@ id: TASK-126
 title: >-
   Cleanup: de-duplicate evaluateDrop/evaluateListDrop, debounce timers, and
   date-part helpers
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-21 11:01'
-updated_date: '2026-07-22 11:34'
+updated_date: '2026-07-22 11:35'
 labels: []
 dependencies: []
 priority: low
