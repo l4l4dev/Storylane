@@ -10,6 +10,10 @@ import { pointScaleValues } from "@/lib/utils/stories";
 export type StoryDetail = {
   id: string;
   projectId: string;
+  // The hidden per-user My Tasks project (projects.is_personal) has no
+  // reachable Board nav — the story detail page's back-link routes to
+  // /my-work instead when this is true (TASK-129).
+  isPersonalProject: boolean;
   // Per-project sequential story number — shown as #123, referenced as
   // [SL-123] in PR titles (see spec/integrations.md).
   number: number;
@@ -58,7 +62,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     await Promise.all([
       supabase
         .from("projects")
-        .select("point_scale, custom_points")
+        .select("point_scale, custom_points, is_personal")
         .eq("id", story.project_id)
         .single(),
       supabase.from("epics").select("id, name").eq("project_id", story.project_id).order("position"),
@@ -93,6 +97,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
   return {
     id: story.id,
     projectId: story.project_id,
+    isPersonalProject: project?.is_personal ?? false,
     number: story.number,
     title: story.title,
     description: story.description,

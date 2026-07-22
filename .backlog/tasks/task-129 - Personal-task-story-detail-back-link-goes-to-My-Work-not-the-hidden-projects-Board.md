@@ -3,10 +3,11 @@ id: TASK-129
 title: >-
   Personal-task story detail: back-link goes to My Work, not the hidden
   project's Board
-status: To Do
+status: Done
 assignee:
-  - '@claude-haiku-4-5'
+  - '@claude-sonnet-5'
 created_date: '2026-07-21 12:34'
+updated_date: '2026-07-22 07:48'
 labels: []
 dependencies: []
 priority: medium
@@ -22,9 +23,29 @@ doc-14 navigation fix (agreed early in the conversation, independent of the rest
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The story detail's back-link reads the story's project is_personal flag; when true, it links to /my-work instead of /projects/[id]/board
-- [ ] #2 A non-personal-project story's back-link is unchanged (/projects/[id]/board)
-- [ ] #3 The link label changes accordingly ('← My Work' vs '← Board')
-- [ ] #4 A test covers both cases
-- [ ] #5 pnpm test + lint green
+- [x] #1 The story detail's back-link reads the story's project is_personal flag; when true, it links to /my-work instead of /projects/[id]/board
+- [x] #2 A non-personal-project story's back-link is unchanged (/projects/[id]/board)
+- [x] #3 The link label changes accordingly ('← My Work' vs '← Board')
+- [x] #4 A test covers both cases
+- [x] #5 pnpm test + lint green
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-22 07:39
+---
+Reassigned from @claude-haiku-4-5 to @claude-sonnet-5 per owner instruction (2026-07-22).
+---
+
+created: 2026-07-22 07:48
+---
+fable-advisor reviewed and approved as-is (agent af45dcbc9d9d86bdc): the "← My Work" label/href matches the sidebar's established My Work nav labeling, and the back-link text-arrow pattern matches settings/page.tsx's existing '← Projects' convention. Follow-up finding (out of scope for this task): story-peek-menu.tsx's PromoteToEpicDialog.handlePromote has the same hardcoded board-redirect bug for personal-project stories (router.push always targets /projects/:id/board after promoting, even for a personal project) — worth a separate task if the owner wants it fixed; also raises an open spec question of whether "Promote to Epic" should even be offered for personal-project stories at all, which needs owner input, not something advisor could resolve alone.
+---
+<!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The story detail page's back-link now reads the story's project is_personal flag (threaded through StoryDetail.isPersonalProject from getStoryDetail's existing projects query) and links to /my-work with a '← My Work' label when true, leaving the non-personal /projects/:id/board case unchanged. Added app/stories/[id]/page.test.tsx covering both cases; updated existing StoryDetail test fixtures with the new field. fable-advisor approved with no required changes. Manually verified both cases in-browser.
+<!-- SECTION:FINAL_SUMMARY:END -->

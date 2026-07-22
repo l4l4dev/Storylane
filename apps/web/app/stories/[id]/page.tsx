@@ -21,10 +21,10 @@ export default async function StoryDetailPage({
       <div className="mb-6 flex items-start justify-between gap-2">
         <div>
           <Link
-            href={`/projects/${detail.projectId}/board`}
+            href={detail.isPersonalProject ? "/my-work" : `/projects/${detail.projectId}/board`}
             className="text-sm text-primary hover:underline"
           >
-            ← Board
+            {detail.isPersonalProject ? "← My Work" : "← Board"}
           </Link>
           <h1 className="mt-2 text-2xl font-bold">
             <span className="mr-2 font-normal text-muted-foreground">#{detail.number}</span>

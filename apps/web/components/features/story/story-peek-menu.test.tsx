@@ -32,6 +32,7 @@ vi.mock("@/app/stories/[id]/actions", async (importOriginal) => {
 const baseDetail: StoryDetail = {
   id: "s1",
   projectId: "p1",
+  isPersonalProject: false,
   number: 42,
   title: "Big story to split",
   description: null,

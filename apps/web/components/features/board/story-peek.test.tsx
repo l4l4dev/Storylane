@@ -22,6 +22,7 @@ vi.mock("@/components/features/story/story-peek-menu", () => ({
 const detail: StoryDetail = {
   id: "s1",
   projectId: "p1",
+  isPersonalProject: false,
   number: 42,
   title: "Add login",
   description: null,
