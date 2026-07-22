@@ -205,6 +205,28 @@ export function toDragContainers<S extends { id: string }>(columns: MyWorkColumn
 }
 
 /**
+ * Whether a drag-end should call the server, and with which target column
+ * (TASK-132 fix — a real regression, not a hypothetical): the caller must
+ * compare the column the card STARTED in (captured once at drag-start)
+ * against the drop target, never a container re-derived from the live
+ * `containers` state at drag-end — the drag-over handler already relocates
+ * the card into the hovered column as the user drags, so by drag-end the
+ * card's "current" container in that state is already the target, making a
+ * naive current-vs-target comparison always equal (never persisting a move:
+ * the card visually follows the cursor during the drag but silently reverts
+ * once the page's data next refreshes, since nothing was ever sent to the
+ * server). Returns null when there's nothing to persist (dropped back where
+ * it started, or either side is unknown).
+ */
+export function resolveDragEndTarget(
+  startContainer: MyWorkColumn | null,
+  overContainer: MyWorkColumn | null,
+): MyWorkColumn | null {
+  if (!startContainer || !overContainer || startContainer === overContainer) return null;
+  return overContainer;
+}
+
+/**
  * Re-derives Todo's per-project header blocks from a (possibly drag-
  * reordered) flat item list, grouping only CONSECUTIVE same-project items.
  * classifyMyWork's own order is already grouped-by-project, so this matches

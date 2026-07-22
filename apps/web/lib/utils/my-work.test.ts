@@ -4,6 +4,7 @@ import {
   classifyMyWork,
   groupDoneByDate,
   regroupByProject,
+  resolveDragEndTarget,
   toDragContainers,
   type DoneEntry,
   type MyWorkColumns,
@@ -236,5 +237,27 @@ describe("regroupByProject", () => {
 
   it("returns no groups for an empty list", () => {
     expect(regroupByProject([])).toEqual([]);
+  });
+});
+
+// TASK-132 regression: a drag-end handler must compare the column the card
+// STARTED in against the drop target, never a container re-derived from
+// live (already-optimistically-moved) state — see resolveDragEndTarget's
+// own doc comment for the bug this guards against.
+describe("resolveDragEndTarget", () => {
+  it("returns the target column when it differs from the start column", () => {
+    expect(resolveDragEndTarget("todo", "doing")).toBe("doing");
+  });
+
+  it("returns null when dropped back in the column it started in", () => {
+    expect(resolveDragEndTarget("todo", "todo")).toBeNull();
+  });
+
+  it("returns null when the start column is unknown", () => {
+    expect(resolveDragEndTarget(null, "doing")).toBeNull();
+  });
+
+  it("returns null when the drop target is unknown", () => {
+    expect(resolveDragEndTarget("todo", null)).toBeNull();
   });
 });

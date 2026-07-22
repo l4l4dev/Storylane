@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -22,6 +22,7 @@ import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import {
   groupDoneByDate,
   regroupByProject,
+  resolveDragEndTarget,
   toDragContainers,
   type MyWorkColumn,
   type MyWorkColumns,
@@ -104,8 +105,21 @@ export function MyWorkSections({ columns }: { columns: MyWorkColumns<MyWorkRowDa
 
   const totalCount = containers.todo.length + containers.today.length + containers.doing.length + containers.done.length;
 
+  // The column the dragged card started in, captured at drag-start — NOT
+  // re-derived from `containers` at drag-end. handleDragOver already moves the
+  // card into the hovered column optimistically while the drag is in progress,
+  // so by drag-end `containers` already shows the card sitting in the TARGET
+  // column; comparing against that (instead of this snapshot) would make
+  // "did the column actually change" always true and never false, silently
+  // skipping the server call on every successful cross-column drop (the
+  // card would visually follow the cursor during the drag but never persist
+  // the move, snapping back once the page's data next refreshes).
+  const dragStartContainer = useRef<MyWorkColumn | null>(null);
+
   function handleDragStart(event: DragStartEvent) {
-    beginDrag(String(event.active.id));
+    const id = String(event.active.id);
+    dragStartContainer.current = (findContainer(containers, id) as MyWorkColumn | undefined) ?? null;
+    beginDrag(id);
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -122,28 +136,30 @@ export function MyWorkSections({ columns }: { columns: MyWorkColumns<MyWorkRowDa
   function handleDragEnd(event: DragEndEvent) {
     endDrag();
     const { active, over } = event;
+    const startContainer = dragStartContainer.current;
+    dragStartContainer.current = null;
     if (!over) {
       revertToSnapshot();
       return;
     }
     const activeId = String(active.id);
-    const overContainer = findContainer(containers, String(over.id)) as MyWorkColumn | undefined;
-    const currentContainer = findContainer(containers, activeId) as MyWorkColumn | undefined;
+    const overContainer = (findContainer(containers, String(over.id)) as MyWorkColumn | undefined) ?? null;
     const item = storyById(containers, activeId);
-    if (!overContainer || !currentContainer || !item) {
+    if (!overContainer || !item) {
       revertToSnapshot();
       return;
     }
-    if (currentContainer === overContainer) {
-      // Dropped back where it started — nothing changed, no server call
-      // (My Work has no intra-column ordering to persist).
+    const target = resolveDragEndTarget(startContainer, overContainer);
+    if (!target) {
+      // Dropped back in the column it started in — nothing changed, no
+      // server call (My Work has no intra-column ordering to persist).
       return;
     }
     setDragError(null);
     runDrop(
       activeId,
       async () => {
-        const result = await setMyWorkColumn(item.storyId, overContainer);
+        const result = await setMyWorkColumn(item.storyId, target);
         if (!result.ok) throw new Error(result.message);
       },
       setDragError,
