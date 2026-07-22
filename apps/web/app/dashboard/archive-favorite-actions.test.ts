@@ -87,12 +87,12 @@ describe("archiveProject / unarchiveProject / toggleFavorite", () => {
     });
   });
 
-  it("toggleFavorite returns ok: false without throwing when the RPC errors", async () => {
+  it("toggleFavorite returns ok: false with the RPC's message, without throwing", async () => {
     rpcMock.mockResolvedValue({ error: { message: "Not a project member" } });
     const { toggleFavorite } = await import("./actions");
 
     const result = await toggleFavorite("project-1", true);
 
-    expect(result).toEqual({ ok: false });
+    expect(result).toEqual({ ok: false, message: "Not a project member" });
   });
 });

@@ -152,14 +152,14 @@ export async function unarchiveProject(formData: FormData): Promise<void> {
  * here as a returned status instead of a thrown error since this
  * is called directly from a client event handler, not a `<form action>`).
  */
-export async function toggleFavorite(projectId: string, favorite: boolean): Promise<{ ok: boolean }> {
+export async function toggleFavorite(projectId: string, favorite: boolean): Promise<ActionResult> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("toggle_project_favorite", {
     p_project_id: projectId,
     p_favorite: favorite,
   });
   if (error) {
-    return { ok: false };
+    return { ok: false, message: error.message };
   }
   revalidatePath("/dashboard");
   return { ok: true };

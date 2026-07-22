@@ -74,12 +74,39 @@ describe("ProjectCardMenu", () => {
   });
 
   it("reverts the optimistic favorite toggle when the action reports failure", async () => {
-    toggleFavoriteMock.mockResolvedValueOnce({ ok: false });
+    toggleFavoriteMock.mockResolvedValueOnce({ ok: false, message: "Could not update favorite" });
     render(
       <ProjectCardMenu projectId="p1" projectName="My Project" isOwner={false} isFavorite={false} isArchived={false} />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Add to favorites" }));
 
     await screen.findByRole("button", { name: "Add to favorites" });
+  });
+
+  // TASK-120 (doc-13 finding #12): a failed toggle used to revert silently,
+  // with zero indication anything went wrong.
+  it("shows a visible error instead of silently reverting on failure", async () => {
+    toggleFavoriteMock.mockResolvedValueOnce({ ok: false, message: "Could not update favorite" });
+    render(
+      <ProjectCardMenu projectId="p1" projectName="My Project" isOwner={false} isFavorite={false} isArchived={false} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add to favorites" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not update favorite");
+  });
+
+  it("clears a previous error once a later toggle succeeds", async () => {
+    toggleFavoriteMock.mockResolvedValueOnce({ ok: false, message: "Could not update favorite" });
+    toggleFavoriteMock.mockResolvedValueOnce({ ok: true });
+    render(
+      <ProjectCardMenu projectId="p1" projectName="My Project" isOwner={false} isFavorite={false} isArchived={false} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add to favorites" }));
+    await screen.findByRole("alert");
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to favorites" }));
+    await screen.findByRole("button", { name: "Remove from favorites" });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
