@@ -3,11 +3,11 @@ id: TASK-131
 title: >-
   My Work backend: classification rework + drag write-path (set_story_state,
   mapped/unmapped)
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-21 12:35'
-updated_date: '2026-07-22 02:21'
+updated_date: '2026-07-22 02:49'
 labels: []
 dependencies:
   - TASK-130
@@ -24,18 +24,18 @@ doc-14 (My Work Kanban rework). Replaces buildMyWorkSections with the new 4-colu
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 New classification function (replacing buildMyWorkSections) implements the precedence exactly as doc-14 specifies: story_completions row for viewer -> Done (one entry per completion, live-joined to current story data, never deduped away); else assignee_id=viewer + is_today -> Today; else effective status (mapped: derived from real state_id: unmapped: local_status or derived from category) -> Doing/Todo
-- [ ] #2 my-work/page.tsx drops all current-iteration fetching/rollover (projectsNeedingRollover, rolloverIterationSafely, fetchCurrentIteration) -- no longer read by classification
-- [ ] #3 Drag-to-Today/Todo server action upserts my_work_story_state only, never calls any project-state RPC, regardless of mapping
-- [ ] #4 Drag-to-Doing/Done server action calls set_story_state with the project's mapped state id when mapped; upserts my_work_story_state.local_status when unmapped
-- [ ] #5 set_story_state's existing 'No active iteration' error (when a mapped in_progress-category target has no current iteration) is caught and surfaced as a visible error to the caller, not swallowed
-- [ ] #6 'Pin to My Work' story-peek menu item removed for stories not in the viewer's My Work base scope (assigned to them); story_pins usage removed from my-work-row.tsx and story-peek-menu.tsx
-- [ ] #7 Unit tests for the new classification function (precedence, mapped vs unmapped Doing/Done, Done showing a reassigned-away story, a story completed twice appearing as two Done entries)
-- [ ] #8 pnpm test + lint green
-- [ ] #9 story_pins table + its RLS/grants + story-pins.integration.test.ts are dropped (moved here from TASK-130 to keep main green — the drop is coupled to the TS removal in this task); move_story_to_project and remove_member are updated to stop referencing story_pins (drop the move carry-over; replace the remove_member purge with a my_work_story_state purge for the removed user's rows in that project)
-- [ ] #10 database.types.ts regenerated after the story_pins drop; togglePin server action and all story_pins reads (my-work/page.tsx, story-peek-menu.tsx, my-work-row.tsx) removed so tsc/lint/pnpm test stay green
-- [ ] #11 ROUND-4 (advisor-approved 2026-07-22, resolves the TASK-130-review gap): Done is an ADDITIVE axis, not exclusive — a story with any story_completions row for the viewer ALWAYS shows as Done (one entry per row), AND unmapped-project local_status='done' also classifies as Done (a cancellable local mark, NOT a permanent completion log — comment this asymmetry). Todo/Today/Doing are evaluated INDEPENDENTLY of completion history, gated only by 'current real category != done' (assignee=viewer, non-Icebox), applying the existing is_today/mapped-state/unmapped-local_status logic. Consequence: a story completed before and now reopened + in_progress + assigned to the viewer appears in BOTH Done (log) and Doing (live) simultaneously.
-- [ ] #12 ROUND-4 unit tests (added to AC #7's set): (a) unmapped local_status='done' -> Done; (b) past completion + currently reopened in_progress + assigned -> appears in BOTH Done and Doing; (c) mapped project whose real state is still done but local_status set to 'todo' -> does NOT appear in Todo/Doing (no-op, since 'To Todo' never calls set_story_state), Done log still present
+- [x] #1 New classification function (replacing buildMyWorkSections) implements the precedence exactly as doc-14 specifies: story_completions row for viewer -> Done (one entry per completion, live-joined to current story data, never deduped away); else assignee_id=viewer + is_today -> Today; else effective status (mapped: derived from real state_id: unmapped: local_status or derived from category) -> Doing/Todo
+- [x] #2 my-work/page.tsx drops all current-iteration fetching/rollover (projectsNeedingRollover, rolloverIterationSafely, fetchCurrentIteration) -- no longer read by classification
+- [x] #3 Drag-to-Today/Todo server action upserts my_work_story_state only, never calls any project-state RPC, regardless of mapping
+- [x] #4 Drag-to-Doing/Done server action calls set_story_state with the project's mapped state id when mapped; upserts my_work_story_state.local_status when unmapped
+- [x] #5 set_story_state's existing 'No active iteration' error (when a mapped in_progress-category target has no current iteration) is caught and surfaced as a visible error to the caller, not swallowed
+- [x] #6 'Pin to My Work' story-peek menu item removed for stories not in the viewer's My Work base scope (assigned to them); story_pins usage removed from my-work-row.tsx and story-peek-menu.tsx
+- [x] #7 Unit tests for the new classification function (precedence, mapped vs unmapped Doing/Done, Done showing a reassigned-away story, a story completed twice appearing as two Done entries)
+- [x] #8 pnpm test + lint green
+- [x] #9 story_pins table + its RLS/grants + story-pins.integration.test.ts are dropped (moved here from TASK-130 to keep main green — the drop is coupled to the TS removal in this task); move_story_to_project and remove_member are updated to stop referencing story_pins (drop the move carry-over; replace the remove_member purge with a my_work_story_state purge for the removed user's rows in that project)
+- [x] #10 database.types.ts regenerated after the story_pins drop; togglePin server action and all story_pins reads (my-work/page.tsx, story-peek-menu.tsx, my-work-row.tsx) removed so tsc/lint/pnpm test stay green
+- [x] #11 ROUND-4 (advisor-approved 2026-07-22, resolves the TASK-130-review gap): Done is an ADDITIVE axis, not exclusive — a story with any story_completions row for the viewer ALWAYS shows as Done (one entry per row), AND unmapped-project local_status='done' also classifies as Done (a cancellable local mark, NOT a permanent completion log — comment this asymmetry). Todo/Today/Doing are evaluated INDEPENDENTLY of completion history, gated only by 'current real category != done' (assignee=viewer, non-Icebox), applying the existing is_today/mapped-state/unmapped-local_status logic. Consequence: a story completed before and now reopened + in_progress + assigned to the viewer appears in BOTH Done (log) and Doing (live) simultaneously.
+- [x] #12 ROUND-4 unit tests (added to AC #7's set): (a) unmapped local_status='done' -> Done; (b) past completion + currently reopened in_progress + assigned -> appears in BOTH Done and Doing; (c) mapped project whose real state is still done but local_status set to 'todo' -> does NOT appear in Todo/Doing (no-op, since 'To Todo' never calls set_story_state), Done log still present
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -71,5 +71,18 @@ author: @claude-opus-4-8
 created: 2026-07-22 02:17
 ---
 fable-advisor round 4 (2026-07-22) resolution of the unmapped-Done + reopen-precedence gaps — owner-approved, recorded here (doc-14 round-4 addendum deferred to save a 400-line CLI rewrite; ACs #11/#12 are the implementation contract). Q1: option (a) — classification treats unmapped local_status='done' as Done; mapped Done = permanent story_completions log, unmapped Done = cancellable local mark (accepted asymmetry, within doc-14 round-1's 'unmapped is a permanent divergence' stance; round-2's 'never disappears' was contextually about mapped/real progress). (b)/(c) rejected: (c) the CHECK already shipped in TASK-130 and 'done' stays valid under (a); (b) would silently retract the owner-approved 'unmapped Doing/Done upserts local_status' write path. Q2: doc-14's 'Done > Today > Doing > Todo' EXCLUSIVE precedence was internally contradictory (step 2's 'currently not done' = current state, but step 1 keyed on completion HISTORY). Fix = additive: Done (completion rows, + unmapped local_status='done') always shows; Todo/Today/Doing gated only by current-real-category-not-done, independent of history; a reopened active story shows in both. Note for tests: 'To Todo' never calls set_story_state, so a mapped story whose real state stays done won't leave Doing/Done via that drag.
+---
+
+author: @claude-opus-4-8
+created: 2026-07-22 02:49
+---
+Implemented on branch feat/task-131-my-work-backend (3 commits, not merged/pushed):
+- slice 1+2 (d09bc05): classifyMyWork/assignedColumn replace buildMyWorkSections (doc-14 two-axis, additive Done, ROUND-4 AC #11/#12); page.tsx drops current-iteration/rollover, reads my_work_story_state + project_my_work_mapping + live-joined story_completions; MyWorkSections now a pure renderer (toggle gone); TS-side story_pins removed (togglePin, peek "Pin to My Work", row pin button, StoryDetail.pinned).
+- slice 3 (ce753ab): setMyWorkColumn drag write-path (To Today/Todo local-only; To Doing/Done set_story_state when mapping valid else local_status; is_today cleared on non-Today drops; 'No active iteration' surfaced).
+- slice 4 (37d40cc): migration 20260722000003 drops story_pins, move_story_to_project loses pin carry-over, remove_member purges my_work_story_state (story_completions kept), types regenerated, story-pins integration test dropped.
+
+Verification: tsc + lint green; non-integration suite 567 passed (1 comment-thread parallelism flake, passes in isolation, unrelated); db reset OK; integration TASK-130 + membership 19 green; move-copy 11 green (remaining 1 = pre-existing label-dedup vs labels_unique_name, not from this work). rls-security-reviewer on the migration: clean.
+
+Pending before merge: owner runs /code-review high (user-triggered). fable-advisor UI design review deferred to TASK-132 (the draggable-column UI); this task's only UI change is the doc-14-mandated pin-affordance removal.
 ---
 <!-- COMMENTS:END -->

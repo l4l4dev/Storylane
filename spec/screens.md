@@ -357,62 +357,73 @@ Conflict & failure rules (2026-07-08):
   **Move / Copy to another project** (behavior in spec/features.md
   "Story Management"), alongside Delete.
 
-### My Work (`/my-work`, replaces the per-project Focus view — doc-8 §9, TASK-89)
+### My Work (`/my-work`, replaces the per-project Focus view — doc-8 §9, doc-14, TASK-89/131/132)
 
 A cross-project personal view: the signed-in user's stories assigned to
 them, across every project they belong to (archived projects excluded).
 Scoped to **assigned, non-Icebox** stories — Icebox stories haven't entered
-a board yet. It's a **personal daily-planning** surface: Todo is your
-backlog, you move things into Today to plan the day, and Doing/Done show live
-status. Four sections (doc-12 Thread A), rendered top to bottom **Todo →
-Today → Doing → Done** (backlog → planned → live → done last, ux-principles.md
-principle 9), even though a story is *classified* into the first section it
-qualifies for in the precedence **Done > Today > Doing > Todo** (never in two):
+a board yet. Renders as a real **Kanban board**: four columns, side by side,
+draggable — **Todo / Today / Doing / Done** — reusing the project board's own
+drag machinery (dnd-kit sensors, optimistic per-card revert on a failed
+drop). My Work keeps its **own** status per (user, story)
+(`my_work_story_state`), independent of the story's real project state; a
+project can optionally map its Doing/Done columns onto its own board states
+(owner-configured in Settings, TASK-133) to keep the two in sync.
 
-- **Todo** — assigned work not in any section below (your personal backlog),
-  grouped by project (personal project first, then project name; board
-  position order within a group).
-- **Today** — a **personal project's current-iteration** stories (today's
-  plan by definition, no pin needed) plus any story the user has personally
-  **pinned** (`story_pins`), regardless of project. Unchanged from doc-8 §9.
-- **Doing** — stories whose state category is `in_progress` (and not already
-  in Today), flat and cross-project.
-- **Done** — stories completed within the **last 7 days** (`completed_at`),
-  grouped by date (Today / Yesterday / date, newest first). Older completions
-  are the project's own Iterations page's job, not a growing personal list.
+Done is an **additive log**, evaluated independently of the other three:
 
-**Carryover is automatic, not enforced by My Work**: pins persist across
-days, and a 1-day personal project's unaccepted stories roll into the next
-day's iteration on rollover — so work planned into Today but not finished
-carries to the next day rather than being auto-cleared.
+- **Done** — every time the viewer completes a story (`story_completions`,
+  append-only — reopening and re-completing adds a new entry, never
+  overwrites one), plus any unmapped-project story the viewer has locally
+  marked done. Grouped by date (Today / Yesterday / date, newest first).
+  Entries are **live-joined** to the story's current title/points/state, so
+  they keep updating even if the story is reassigned away or the viewer
+  later leaves the project — the log is permanent, the ticket underneath
+  isn't frozen. A story currently active elsewhere (e.g. reopened and
+  back in progress) can appear in **both** Done and Doing at once — Done
+  never hides an active card, and an active card never erases its history.
 
-A **"Only current iteration"** toggle (client-side, resets on reload)
-narrows **Todo + Doing** to stories in their own project's current iteration
-— hiding backlog/unscheduled assigned work. Today and Done are unaffected.
+Todo/Today/Doing classify a story into exactly one of the three, gated only
+by "its real state category isn't `done` right now":
 
-Every row shows a pin toggle, the story's type icon/title (linking to the
-standalone `/stories/[id]` page — My Work has no side peek of its own),
-its project as a chip, its state badge, and its points. Each row carries a
-**per-project accent color** (left border + project chip) so rows from
-different projects read apart at a glance — a deterministic project-identity
-color (`lib/utils/project-color.ts`, the dataviz-validated categorical
-palette) meant to be reused by the sidebar/dashboard later. No reordering
-inside My Work (parity: it is a read view; priority lives on each project's
-own board).
+- **Today** — a pure personal marker: the user dragged this card into Today
+  (or out of it). Not derived from any project's iteration — no automatic
+  membership, no separate pin button, no pinning at all. Carries over
+  automatically (it's just a stored flag, not a per-day snapshot).
+- **Doing** — the project maps Doing to a real `in_progress`-category state
+  and the story is currently in it, OR the project is unmapped and the
+  viewer's local status is `doing` (defaulting to derived-from-real-category
+  when untouched).
+- **Todo** — everything else assigned to the viewer, grouped by project
+  (personal project first, then project name; board position order within
+  a group).
 
-**Pinning** is a plain per-user table write (`story_pins`, no RPC — TASK-88)
-available from three places: the row's pin toggle in My Work itself, and
-the **Pin to My Work / Unpin from My Work** item in the story peek's
-overflow (⋯) menu — so pinning happens where stories are found, not only
-inside My Work.
+**Dragging a card** always writes `my_work_story_state` first:
 
-No global quick-add shortcut (doc-8 §10, decided here): a Linear-style
-shortcut is deferred indefinitely. Instead, when the user has exactly one
-1-day (personal) project, My Work's header carries that project's own draft
-story card (see "Quick-add: draft story card"), scheduling straight into
-its current iteration — the common case (a single personal task list) needs
-no shortcut at all. Zero or multiple personal projects: no trigger here
-(ambiguous which one), same as today.
+- **To Today or Todo** — a `my_work_story_state`-only write, mapped or not.
+  Never changes the story's real project state.
+- **To Doing or Done, project mapped** — also transitions the story's real
+  state (`set_story_state`) to the mapped state, so a mapped project's
+  Doing/Done can never drift from its real board. If the target state would
+  need to schedule the story into a current iteration and the project has
+  none, the drag is rejected with a visible banner (never a silent no-op).
+- **To Doing or Done, project unmapped** — a local-only write
+  (`my_work_story_state.local_status`); the real project is untouched, by
+  design (an accepted, permanent divergence for projects that don't map).
+
+Every row shows the story's type icon/title (linking to the standalone
+`/stories/[id]` page — My Work has no side peek of its own), its project as
+a chip, its state badge, and its points. Each row carries a **per-project
+accent color** (left border + project chip) so rows from different projects
+read apart at a glance — a deterministic project-identity color
+(`lib/utils/project-color.ts`, the dataviz-validated categorical palette)
+also reused by the sidebar/dashboard.
+
+No global quick-add shortcut (doc-8 §10): a Linear-style shortcut is
+deferred indefinitely. Instead, when the user has exactly one personal
+project, My Work's header carries that project's own draft story card (see
+"Quick-add: draft story card"). Zero or multiple personal projects: no
+trigger here (ambiguous which one), same as today.
 
 The per-project Focus view is removed with `stories.focus` (TASK-88); board
 views reduce to List / Kanban.

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Bug, Star, Wrench, type LucideIcon } from "lucide-react";
+import { Bug, CircleCheckBig, Star, Wrench, type LucideIcon } from "lucide-react";
+import { formatDate } from "@/lib/utils/format";
 import { formatPoints, STORY_TYPE_META, type StoryType } from "@/lib/utils/stories";
 import { projectAccentClass } from "@/lib/utils/project-color";
 import { Badge } from "@/components/ui/badge";
@@ -26,8 +27,17 @@ export type MyWorkRowData = {
 
 // A My Work row: a compact, cross-project version of the board's StoryListRow
 // — always shows its project so the row still makes sense outside that
-// project's own board. Read-only here; drag interaction is added in TASK-132.
-export function MyWorkRow({ story }: { story: MyWorkRowData }) {
+// project's own board. This component itself is a plain render; the drag
+// affordance (TASK-132) is added by MyWorkSections wrapping it in SortableItem.
+//
+// `completedAt` is set only for a Done-column card (fable-advisor TASK-132):
+// Done is an additive log (lib/utils/my-work.ts classifyMyWork), so the SAME
+// story can render simultaneously as a live Doing card (no completedAt) and a
+// Done log entry (completedAt set) — the state badge alone (which always
+// reflects the CURRENT real state, live-joined) can't tell those apart, so a
+// completion marker is required to distinguish "this is a log entry" from
+// "this is the live card" at a glance (ux-principles.md principle 9).
+export function MyWorkRow({ story, completedAt }: { story: MyWorkRowData; completedAt?: string }) {
   const typeMeta = STORY_TYPE_META[story.storyType as StoryType];
   const TypeIcon = STORY_TYPE_ICON[story.storyType as Exclude<StoryType, "release">];
 
@@ -44,6 +54,14 @@ export function MyWorkRow({ story }: { story: MyWorkRowData }) {
           projectAccentClass(story.projectId),
         )}
       >
+        {completedAt && (
+          <span
+            className="inline-flex shrink-0 items-center text-green-600 dark:text-green-400"
+            title={`Logged as done (${formatDate(completedAt)})`}
+          >
+            <CircleCheckBig className="h-3.5 w-3.5" aria-label="Completion log entry" />
+          </span>
+        )}
         <Link
           href={`/stories/${story.id}`}
           className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-80"

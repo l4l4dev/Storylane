@@ -3,7 +3,11 @@ import {
   assignedColumn,
   classifyMyWork,
   groupDoneByDate,
+  regroupByProject,
+  toDragContainers,
   type DoneEntry,
+  type MyWorkColumns,
+  type MyWorkDragItem,
   type MyWorkProject,
   type MyWorkStory,
 } from "./my-work";
@@ -136,5 +140,101 @@ describe("classifyMyWork", () => {
     expect(todo).toEqual([]);
     expect(doing).toEqual([]);
     expect(done.map((d) => d.row)).toEqual(["s"]);
+  });
+});
+
+// TASK-132: drag-container helpers need a row shape with id/projectId/
+// projectName (unlike the bare-string `row` used by the classification tests
+// above).
+type Row = { id: string; projectId: string; projectName: string };
+function row(id: string, projectId: string, projectName: string): Row {
+  return { id, projectId, projectName };
+}
+function dragStory(id: string, projectId: string, projectName: string): MyWorkStory<Row> {
+  return {
+    id,
+    projectId,
+    position: 0,
+    category: "unstarted",
+    isToday: false,
+    localStatus: null,
+    mapped: false,
+    localUpdatedAt: null,
+    row: row(id, projectId, projectName),
+  };
+}
+
+describe("toDragContainers", () => {
+  it("gives Todo/Today/Doing the bare story id as their dnd-kit id", () => {
+    const columns: MyWorkColumns<Row> = {
+      todo: [{ projectId: "team-a", projectName: "Alpha", isPersonal: false, stories: [dragStory("s1", "team-a", "Alpha")] }],
+      today: [dragStory("s2", "team-a", "Alpha")],
+      doing: [dragStory("s3", "team-a", "Alpha")],
+      done: [],
+    };
+    const containers = toDragContainers(columns);
+    expect(containers.todo.map((i) => i.id)).toEqual(["s1"]);
+    expect(containers.today.map((i) => i.id)).toEqual(["s2"]);
+    expect(containers.doing.map((i) => i.id)).toEqual(["s3"]);
+    expect(containers.todo[0].storyId).toBe("s1");
+  });
+
+  it("gives Done entries unique synthetic ids even when the same story repeats", () => {
+    const columns: MyWorkColumns<Row> = {
+      todo: [],
+      today: [],
+      doing: [],
+      done: [
+        { completedAt: "2026-07-20T09:00:00Z", row: row("s1", "team-a", "Alpha") },
+        { completedAt: "2026-07-21T09:00:00Z", row: row("s1", "team-a", "Alpha") },
+      ],
+    };
+    const containers = toDragContainers(columns);
+    expect(containers.done.map((i) => i.id)).toEqual(["done:0:s1", "done:1:s1"]);
+    // Both still point back at the same underlying story for the server call.
+    expect(containers.done.map((i) => i.storyId)).toEqual(["s1", "s1"]);
+  });
+
+  it("lets a story appear in both an active column and Done without id collision", () => {
+    const columns: MyWorkColumns<Row> = {
+      todo: [],
+      today: [],
+      doing: [dragStory("s1", "team-a", "Alpha")],
+      done: [{ completedAt: "2026-07-19T09:00:00Z", row: row("s1", "team-a", "Alpha") }],
+    };
+    const containers = toDragContainers(columns);
+    const allIds = [...containers.doing, ...containers.done].map((i) => i.id);
+    expect(new Set(allIds).size).toBe(allIds.length);
+  });
+});
+
+describe("regroupByProject", () => {
+  function item(id: string, projectId: string, projectName: string): MyWorkDragItem<Row> {
+    return { id, storyId: id, completedAt: "", row: row(id, projectId, projectName) };
+  }
+
+  it("groups consecutive same-project items into one block", () => {
+    const groups = regroupByProject([
+      item("a1", "team-a", "Alpha"),
+      item("a2", "team-a", "Alpha"),
+      item("b1", "team-b", "Bravo"),
+    ]);
+    expect(groups.map((g) => ({ projectId: g.projectId, ids: g.items.map((i) => i.id) }))).toEqual([
+      { projectId: "team-a", ids: ["a1", "a2"] },
+      { projectId: "team-b", ids: ["b1"] },
+    ]);
+  });
+
+  it("splits a non-consecutive run into a separate block (post-drag degradation)", () => {
+    const groups = regroupByProject([
+      item("a1", "team-a", "Alpha"),
+      item("b1", "team-b", "Bravo"),
+      item("a2", "team-a", "Alpha"),
+    ]);
+    expect(groups.map((g) => g.projectId)).toEqual(["team-a", "team-b", "team-a"]);
+  });
+
+  it("returns no groups for an empty list", () => {
+    expect(regroupByProject([])).toEqual([]);
   });
 });

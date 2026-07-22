@@ -183,13 +183,16 @@ export default async function MyWorkPage() {
   const columns = classifyMyWork(assigned, completions, projects);
 
   return (
-    <main className="mx-auto max-w-3xl p-6">
-      <div className="mb-4 flex items-center justify-between gap-4">
+    // Unconstrained width (matches the project board's own <main className="p-6">)
+    // now that the four columns render side by side (TASK-132) — the header and
+    // quick-add card keep their own reading width via the inner max-w-3xl wrapper.
+    <main className="p-6">
+      <div className="mx-auto mb-4 flex max-w-3xl items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">My Work</h1>
       </div>
 
       {soloPersonalProject && (
-        <div className="mb-6">
+        <div className="mx-auto mb-6 max-w-3xl">
           <MyWorkQuickAdd
             projectId={soloPersonalProject.id}
             currentUserId={user!.id}

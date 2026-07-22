@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types";
-
-export type MyWorkColumn = "todo" | "today" | "doing" | "done";
+import type { MyWorkColumn } from "@/lib/utils/my-work";
 
 // set_story_state raises this (errcode P0001) when a mapped Doing/Done drag
 // would start a story but the target project has no current iteration to
@@ -42,7 +41,7 @@ export async function setMyWorkColumn(storyId: string, column: MyWorkColumn): Pr
 
   const { data: story, error: storyError } = await supabase
     .from("stories")
-    .select("project_id")
+    .select("project_id, state_id")
     .eq("id", storyId)
     .single();
   if (storyError || !story) {
@@ -70,6 +69,19 @@ export async function setMyWorkColumn(storyId: string, column: MyWorkColumn): Pr
       revalidatePaths(story.project_id, storyId);
       return { ok: true };
     }
+  }
+
+  // A real-done story can never leave Done via a local-only write:
+  // assignedColumn (lib/utils/my-work.ts) routes category==='done' to Done
+  // unconditionally, before it even looks at is_today/local_status. Without
+  // this guard the write below would silently succeed (ok:true) and then the
+  // card would snap back to Done on the next revalidate with no explanation
+  // — a fable-advisor TASK-132 finding (ux-principles.md principle 2).
+  if (await isRealCategoryDone(supabase, story.state_id)) {
+    return {
+      ok: false,
+      message: "This story is already completed on its project board — reopen it there to move it out of Done.",
+    };
   }
 
   // Local-only write: Todo/Today, or an unmapped Doing/Done.
@@ -101,6 +113,15 @@ async function resolveMappedState(
   const wantCategory = column === "doing" ? "in_progress" : "done";
   const { data: state } = await supabase.from("project_states").select("category").eq("id", stateId).single();
   return state?.category === wantCategory ? stateId : null;
+}
+
+async function isRealCategoryDone(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  stateId: string | null,
+): Promise<boolean> {
+  if (!stateId) return false; // Icebox — not reachable from My Work anyway.
+  const { data } = await supabase.from("project_states").select("category").eq("id", stateId).single();
+  return data?.category === "done";
 }
 
 // Upserts the viewer's mark. `localStatus === undefined` preserves the current

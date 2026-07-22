@@ -7,21 +7,23 @@ A short map of how things connect across the three layers (Web / iOS / Supabase)
 ```
 profiles ──< project_members >── projects ──< integrations
    │                                 │      ──< project_calendar_exceptions
-story_pins        ┌──────┬───────────┼──────────┬──────────────┐
-   │            epics  iterations  labels   project_states  (working_weekdays,
-   │              │       │          │          │             iteration_length,
-   └──< stories >─┴───────┴──< story_labels >───┘             iteration_term)
+   │                                 │      ──< project_my_work_mapping
+my_work_story_state ┌──────┬─────────┼──────────┬──────────────┐
+   │              epics  iterations  labels   project_states  (working_weekdays,
+   │                │       │          │          │             iteration_length,
+   └──< stories >───┴───────┴──< story_labels >───┘             iteration_term)
           │  state_id → project_states (NULL = Icebox)
-   ┌──────┼──────────┐
- tasks  comments  activity_logs
+   ┌──────┼──────────┬──────────────┐
+ tasks  comments  activity_logs  story_completions
 
 profiles ──< user_time_off        (cross-project; capacity math)
+profiles ──< story_completions    (cross-project; My Work's Done log)
 ```
 
-- `stories.iteration_id` / `stories.epic_id` are nullable (ON DELETE SET NULL) — a story can exist in the backlog with no iteration/epic. `stories.state_id` is a composite FK to `project_states` (ON DELETE RESTRICT); **NULL = Icebox** (unscheduled). The old fixed `stories.state` enum, `custom_statuses`, `swimlanes`, `recurring_stories`, `stories.focus`, and `projects.workflow_mode` were removed in the doc-8 concept redesign (single mode).
+- `stories.iteration_id` / `stories.epic_id` are nullable (ON DELETE SET NULL) — a story can exist in the backlog with no iteration/epic. `stories.state_id` is a composite FK to `project_states` (ON DELETE RESTRICT); **NULL = Icebox** (unscheduled). The old fixed `stories.state` enum, `custom_statuses`, `swimlanes`, `recurring_stories`, `stories.focus`, `projects.workflow_mode`, and `story_pins` were removed in the doc-8 concept redesign / doc-14 My Work rework (single mode).
 - `iterations.velocity` and `iterations.capacity` are derived and **snapshotted** at finalization (see spec/velocity.md), not independently editable once `state = 'done'`.
 - `activity_logs` fans out from `stories` but also references `project_id` directly — it survives story deletion.
-- `story_pins(user_id, story_id)` is per-user, cross-project (drives My Work); `user_time_off(user_id, date, kind)` is per-user and read by co-members for capacity math.
+- `my_work_story_state(user_id, story_id)` is per-user, cross-project (drives My Work's Today marker + unmapped local status); `story_completions(id, story_id, user_id, completed_at)` is an append-only per-user completion log (My Work's Done column), live-joined to the story's current data; `project_my_work_mapping(project_id)` maps a project's Doing/Done onto its own `project_states`; `user_time_off(user_id, date, kind)` is per-user and read by co-members for capacity math.
 
 ## Cross-layer coupling
 
@@ -38,7 +40,7 @@ profiles ──< user_time_off        (cross-project; capacity math)
 | Iteration rollover ⇄ lazy finalization | `spec/velocity.md` (Task 12.5) — iterations past `end_date` are finalized on first access; no cron in Phase 1 | Web and iOS must apply the identical rollover rule from one shared place per client (or it moves server-side to an Edge Function) — never implement it in only one client or duplicate it per view. Manual "Finish iteration" (2026-07-07) reuses the same finalization path, never a second one. |
 | iteration_goals ⇄ rollover | `spec/data-model.md` + `spec/velocity.md` (2026-07-07) — future-iteration goals keyed by number, adopted into the real `iterations` row on rollover/manual finish | Goal adoption lives inside the shared finalization path; anything creating an iteration row must consult `iteration_goals`. |
 | stories.completed_at ⇄ done category | `spec/data-model.md` (doc-8 §2) — set when a story enters a `done`-category state, cleared when it leaves | Maintained by the single `set_story_state` write path; done-state columns and My Work date grouping read it. |
-| Story pins ⇄ My Work | `spec/data-model.md` `story_pins` (doc-8 §9) — per-user, cross-project; pin lifecycle (move/copy recreate, remove_member cleanup) lives in SECURITY DEFINER RPCs | My Work is a cross-project client read; pins are the only cross-user-adjacent write, so they never go through plain table writes. |
+| My Work state ⇄ project board | `spec/data-model.md` `my_work_story_state` / `project_my_work_mapping` / `story_completions` (doc-14) — My Work keeps its own status per (user, story), optionally synced to the real board via a project's Doing/Done mapping; `remove_member` purges a removed user's `my_work_story_state` rows (SECURITY DEFINER RPC), `story_completions` is written only by the `maintain_story_completed_at` trigger | My Work is a cross-project client read layered on TWO write paths (the real board's `set_story_state` for mapped columns, plain `my_work_story_state` upserts otherwise) — a client never infers My Work's own status from `stories.state_id` alone. |
 | Story Move/Copy ⇄ cross-project RPC | `spec/features.md` "Move / Copy" (2026-07-07, implemented TASK-14 `20260711000001_move_copy_story.sql`) — SECURITY DEFINER, membership re-checked in both projects, first RPC in the codebase touching two `project_id`s in one transaction | The only sanctioned cross-project write path; clients never move stories across projects with plain table writes. The "neither project archived" re-check is deferred until TASK-8 adds `projects.archived_at`. |
 | Slack notifications ⇄ DB trigger → Edge Function | `spec/integrations.md` "Slack Notifications" (TASK-24, `20260721000003_slack_notifications_outbox.sql`) — `notify_slack_event` triggers on `activity_logs` (`story.state_changed`) and `iterations` (finalize/start) record a `slack_notifications` outbox row + fire pg_net → the `slack-notify` Edge Function, which reads the row + `integrations` and posts to Slack | Client-agnostic on purpose (decision-1 §3): any client's write notifies, so no client (Web/iOS/MCP) sends Slack itself — the Web server action's `notifySlack` was removed. Message-formatting logic is duplicated into the Edge Function (Deno can't import the web workspace); the vitest and Deno tests assert the same input/output pairs to catch drift. |
 

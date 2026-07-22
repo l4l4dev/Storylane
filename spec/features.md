@@ -74,10 +74,10 @@
     link is dropped (story lands in the target's Icebox, `state_id IS NULL`);
     points are kept only if the value exists in the target's point scale,
     otherwise cleared; assignee is kept only if they are a member of the
-    target project. **Pins carry over** (doc-8 §9): `move_story_to_project`
-    recreates `story_pins` on the new story id for pinners who are members of
-    the target project, discarding the rest (cross-user write, inside the
-    RPC). The original is deleted; both projects get an activity-log entry.
+    target project. My Work marks (`my_work_story_state`) do **not** carry
+    over (doc-14, TASK-131): the story is recreated under a new id, and a
+    mark is personal to the original story. The original is deleted; both
+    projects get an activity-log entry.
   - **Copy** duplicates content only (title, description, type, tasks,
     labels) — no comments, no history. Same landing rules as Move.
   - Implemented as a single Postgres RPC per operation for atomicity.
@@ -171,15 +171,15 @@
   here — not on the Projects page, not per project. Avatar comes from OAuth
   (`avatar_url`); avatar upload is Phase 2.
 
-#### My Work (cross-project personal view, doc-8 §9 — replaces Focus view)
+#### My Work (cross-project personal view, doc-8 §9 + doc-14 — replaces Focus view)
 - All stories assigned to the signed-in user across every project they
-  belong to (`/my-work`, see spec/screens.md "My Work").
-- 1-day-project current-iteration stories are today's plan by definition;
-  longer-cadence stories appear in "today" when the user **pins** them
-  (`story_pins`). Personal/1-day stories are visually distinguished.
+  belong to (`/my-work`), rendered as a draggable four-column Kanban board
+  (Todo/Today/Doing/Done — see spec/screens.md "My Work" for the full
+  classification and drag-write-path rules).
+- Today is a pure personal marker set by dragging a card into/out of it — no
+  iteration linkage, no pinning.
 - The per-project Focus view and `stories.focus` are removed; board views
-  reduce to List / Kanban. Screen details (buckets, ordering) are not yet
-  fully specced.
+  reduce to List / Kanban.
 
 #### Notifications
 - When assigned to a story

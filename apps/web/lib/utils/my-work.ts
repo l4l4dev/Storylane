@@ -159,6 +159,75 @@ export function classifyMyWork<S>(
   return { todo, today, doing, done: [...completions, ...localDone] };
 }
 
+// One dnd-kit draggable card (TASK-132). Todo/Today/Doing use the bare story
+// id as the dnd-kit id — classification guarantees a story sits in at most
+// one of these three at a time. Done is additive (AC #11/#12): the same
+// story can carry multiple completion entries, or one alongside its own
+// live Doing card, so a Done item's id is synthesized (index + story id) to
+// stay unique across the whole drag surface (all four columns share one
+// DndContext, which requires globally-unique ids).
+//
+// `completedAt` is only meaningful on Done items ("" elsewhere, never read
+// there) — kept as a plain required field rather than a second item type so
+// every column shares one `T` for useOptimisticBoardOrder's single-type
+// `Record<string, T[]>` state, and so groupDoneByDate (which wants
+// `{completedAt: string}`) applies directly to `containers.done` with no cast.
+export type MyWorkDragItem<S> = {
+  id: string;
+  storyId: string;
+  completedAt: string;
+  row: S;
+};
+
+export type MyWorkDragContainers<S> = Record<MyWorkColumn, MyWorkDragItem<S>[]>;
+
+/**
+ * Flattens classifyMyWork's output into the flat per-column item lists a
+ * dnd-kit drag surface needs (doc-14 "Dragging a card"). Todo's per-project
+ * grouping is a display concern layered back on top by `regroupByProject` —
+ * the drag container itself is one flat list per column, matching how a
+ * story only ever needs ONE list membership call (server-side reordering
+ * within a column doesn't exist for My Work; only column membership changes).
+ */
+export function toDragContainers<S extends { id: string }>(columns: MyWorkColumns<S>): MyWorkDragContainers<S> {
+  const activeItem = (s: MyWorkStory<S>): MyWorkDragItem<S> => ({ id: s.id, storyId: s.id, completedAt: "", row: s.row });
+  return {
+    todo: columns.todo.flatMap((g) => g.stories.map(activeItem)),
+    today: columns.today.map(activeItem),
+    doing: columns.doing.map(activeItem),
+    done: columns.done.map((entry, i) => ({
+      id: `done:${i}:${entry.row.id}`,
+      storyId: entry.row.id,
+      completedAt: entry.completedAt,
+      row: entry.row,
+    })),
+  };
+}
+
+/**
+ * Re-derives Todo's per-project header blocks from a (possibly drag-
+ * reordered) flat item list, grouping only CONSECUTIVE same-project items.
+ * classifyMyWork's own order is already grouped-by-project, so this matches
+ * the server order 1:1 at rest; a drag that inserts a card into the middle of
+ * an unrelated project's run just gets its own single-item header until the
+ * next server round-trip (revalidatePath) restores the canonical grouping —
+ * a transient, self-correcting cosmetic gap, not a bug.
+ */
+export function regroupByProject<S extends { projectId: string; projectName: string }>(
+  items: readonly MyWorkDragItem<S>[],
+): { projectId: string; projectName: string; items: MyWorkDragItem<S>[] }[] {
+  const groups: { projectId: string; projectName: string; items: MyWorkDragItem<S>[] }[] = [];
+  for (const item of items) {
+    const last = groups[groups.length - 1];
+    if (last && last.projectId === item.row.projectId) {
+      last.items.push(item);
+    } else {
+      groups.push({ projectId: item.row.projectId, projectName: item.row.projectName, items: [item] });
+    }
+  }
+  return groups;
+}
+
 export type DoneStory = { completedAt: string };
 export type DoneDateGroup<S> = { dateKey: string; stories: S[] };
 

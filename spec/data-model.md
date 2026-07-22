@@ -157,31 +157,7 @@ any story (see spec/rls.md).
   the old fixed Kanban (the Pivotal-parity anchor).
 - **minimal** — Todo(`unstarted`) / Doing(`in_progress`) / Done(`done`).
 
-### story_pins (superseded by my_work_story_state — doc-14)
-Superseded by `my_work_story_state` (doc-14): the old boolean pin folds into
-that table's `is_today`, and My Work no longer pins stories not assigned to
-the viewer. The table + its two lifecycle RPCs are dropped in TASK-131 (kept
-until the TS that reads it is reworked). Original description follows.
-
-Per-user "surface this in today's My Work" mark (doc-8 §9). A longer-cadence
-project's story appears in My Work's "today" bucket only when the user pins
-it; 1-day-project current-iteration stories are today's plan without a pin.
-```sql
-story_pins (
-  user_id  uuid REFERENCES profiles(id) ON DELETE CASCADE,
-  story_id uuid REFERENCES stories(id)  ON DELETE CASCADE,
-  PRIMARY KEY (user_id, story_id)
-)
-```
-RLS: SELECT/DELETE `user_id = auth.uid()`; INSERT WITH CHECK `user_id =
-auth.uid() AND` caller is a member of the story's project. No cross-user
-reads. Lifecycle (cross-user writes, so they live in the existing SECURITY
-DEFINER RPCs): `move_story_to_project` recreates pins on the new story id
-for pinners who are members of the destination project (discards the rest);
-`remove_member` deletes the removed user's pins in that project (prevents
-ghost pins reviving on re-invite). See spec/rls.md.
-
-### my_work_story_state (doc-14)
+### my_work_story_state (doc-14, replaces the removed `story_pins`)
 Per-user, per-story My Work marks. Replaces `story_pins`: `is_today` is the
 personal "focusing on this today" marker (folds in the old pin, but only for a
 story in the viewer's own base scope — `assignee_id = user_id`; My Work no

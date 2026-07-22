@@ -31,20 +31,16 @@
   cross-project state reference is impossible. Category immutability and the
   "≥1 unstarted & ≥1 done" minimum are enforced by triggers under a
   per-project advisory lock, not by RLS
-- **story_pins (doc-8 §9, superseded by my_work_story_state — doc-14):** not
-  project-scoped by column — gated per user. SELECT/DELETE `user_id =
-  auth.uid()`; INSERT `WITH CHECK user_id = auth.uid() AND
-  is_project_member(<story's project>)`. **No cross-user reads.** Pin lifecycle
-  writes that touch other users' rows go through SECURITY DEFINER RPCs:
-  `move_story_to_project` recreates pins on the new story id for
-  destination-project members; **`remove_member` deletes the removed user's
-  pins in that project** (prevents ghost pins reviving on re-invite). Dropped
-  in TASK-131 once the TS reading it is reworked
-- **my_work_story_state (doc-14):** per user, not project-scoped by column —
-  same own-rows shape as story_pins plus a separate UPDATE policy (the write
-  path upserts `is_today`/`local_status`). SELECT/UPDATE/DELETE `user_id =
-  auth.uid()`; INSERT `WITH CHECK user_id = auth.uid() AND
-  is_project_member(<story's project>)`. **No cross-user reads.**
+- **my_work_story_state (doc-14, replaces the removed `story_pins`):** per
+  user, not project-scoped by column — own-rows SELECT/UPDATE/DELETE plus a
+  separate UPDATE policy (the write path upserts `is_today`/`local_status`).
+  SELECT/UPDATE/DELETE `user_id = auth.uid()`; INSERT `WITH CHECK user_id =
+  auth.uid() AND is_project_member(<story's project>)`. **No cross-user
+  reads.** Lifecycle writes that touch other users' rows go through the same
+  SECURITY DEFINER RPCs `story_pins` used: `move_story_to_project` no longer
+  carries marks over (a moved story is recreated under a new id; marks stay
+  personal to the original); **`remove_member` purges the removed user's rows
+  in that project** (prevents ghost marks reviving on re-invite)
 - **project_my_work_mapping (doc-14):** project-scoped config row, the
   integrations owner-writes pattern but with SELECT widened to all members
   (each member's My Work classification reads the mapping): SELECT

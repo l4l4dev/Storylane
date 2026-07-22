@@ -32,4 +32,18 @@ describe("MyWorkRow", () => {
     expect(row.className).toMatch(/project-accent-[1-8]/);
     expect(row).toHaveClass("border-l-[color:var(--project-accent)]");
   });
+
+  // fable-advisor (TASK-132, ux-principles.md principle 9): Done is an
+  // additive log, so the same story can render as a live Doing card AND a
+  // Done log entry at once — completedAt is the only thing that
+  // distinguishes them at the card level.
+  it("shows no completion marker when completedAt is absent (a live card)", () => {
+    render(<MyWorkRow story={baseStory} />);
+    expect(screen.queryByLabelText("Completion log entry")).not.toBeInTheDocument();
+  });
+
+  it("shows a completion marker when completedAt is set (a Done log entry)", () => {
+    render(<MyWorkRow story={baseStory} completedAt="2026-07-20T09:00:00Z" />);
+    expect(screen.getByLabelText("Completion log entry")).toBeInTheDocument();
+  });
 });
