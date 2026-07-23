@@ -289,6 +289,113 @@ function FlatColumn({
   );
 }
 
+// Todo's per-project grouped rendering — its own component for the same
+// reason FlatColumn is one (TASK-164): useDroppable must be called by a
+// descendant of DndContext to register at all (React resolves useContext by
+// render-tree position, not call order) — MyWorkSections itself sits ABOVE
+// the DndContext it returns, so a useDroppable call in its own body silently
+// never registers (confirmed live: the "todo" id never appeared in dnd-kit's
+// droppableContainers during a drag). FlatColumn's useDroppable worked
+// because FlatColumn is instantiated INSIDE the returned <DndContext> tree.
+function TodoColumn({
+  title,
+  groups,
+  isEmpty,
+  onRename,
+  ...move
+}: {
+  title: string;
+  groups: ReturnType<typeof regroupByProject<MyWorkRowData>>;
+  isEmpty: boolean;
+  onRename: (name: string) => Promise<void>;
+} & ColumnMoveProps) {
+  const { setNodeRef } = useDroppable({ id: "todo" });
+  const count = groups.reduce((sum, group) => sum + group.items.length, 0);
+  return (
+    <MyWorkColumnShell id="todo" title={title} count={count} onRename={onRename} {...move}>
+      <SortableContext items={groups.flatMap((g) => g.items.map((i) => i.id))} strategy={verticalListSortingStrategy}>
+        <div ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-3">
+          {groups.length === 0 && !isEmpty && <EmptyColumnHint text="Assigned stories appear here." />}
+          {groups.map((group) => (
+            <div key={group.projectId}>
+              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.projectName}</h3>
+              <ul className="flex flex-col gap-1.5">
+                {group.items.map((item) => (
+                  <SortableItem key={item.id} id={item.id}>
+                    <MyWorkRow story={item.row} />
+                  </SortableItem>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </SortableContext>
+    </MyWorkColumnShell>
+  );
+}
+
+// Done's per-date grouped rendering — mirrors TodoColumn (TASK-164), same
+// useDroppable-must-be-a-DndContext-descendant reasoning. Never reorderable
+// (TASK-155 AC#2), so its move props are always the fixed no-op/disabled
+// values ColumnMoveProps requires but MyWorkColumnShell never invokes here.
+function DoneColumn({
+  title,
+  groups,
+  isEmpty,
+  onRename,
+  doneWindowDays,
+  todayKey,
+}: {
+  title: string;
+  groups: ReturnType<typeof groupDoneByDate<MyWorkDragItem<MyWorkRowData>>>;
+  isEmpty: boolean;
+  onRename: (name: string) => Promise<void>;
+  doneWindowDays: number;
+  todayKey: string;
+}) {
+  const { setNodeRef } = useDroppable({ id: "done" });
+  const count = groups.reduce((sum, group) => sum + group.stories.length, 0);
+  return (
+    <MyWorkColumnShell
+      id="done"
+      title={title}
+      count={count}
+      onRename={onRename}
+      reorderable={false}
+      subheader={
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>Last {doneWindowDays} days</span>
+          <Link href="/my-work/archive" className="text-primary hover:underline">
+            Archive
+          </Link>
+        </div>
+      }
+      onMoveLeft={NOOP_MOVE}
+      onMoveRight={NOOP_MOVE}
+      canMoveLeft={false}
+      canMoveRight={false}
+    >
+      <SortableContext items={groups.flatMap((g) => g.stories.map((i) => i.id))} strategy={verticalListSortingStrategy}>
+        <div ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-3">
+          {groups.length === 0 && !isEmpty && <EmptyColumnHint text="Completed stories appear here." />}
+          {groups.map((group) => (
+            <div key={group.dateKey}>
+              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{doneDateLabel(group.dateKey, todayKey)}</h3>
+              <ul className="flex flex-col gap-1.5">
+                {group.stories.map((item) => (
+                  <SortableItem key={item.id} id={item.id}>
+                    <MyWorkRow story={item.row} completedAt={item.completedAt} />
+                  </SortableItem>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </SortableContext>
+    </MyWorkColumnShell>
+  );
+}
+
 // My Work's Kanban columns (doc-15). Classification is date-scoped to the
 // VIEWER's local today (Today = today_date = today), so it runs here on the
 // client, not in the server component that fetched the rows: seeded with the
@@ -372,9 +479,6 @@ export function MyWorkSections({
     setSyncedOrder(order);
     setDisplayOrder(order);
   }
-
-  const { setNodeRef: setTodoRef } = useDroppable({ id: "todo" });
-  const { setNodeRef: setDoneRef } = useDroppable({ id: "done" });
 
   const sensors = useSensors(
     // Same activation threshold as the board: without it dnd-kit starts a drag
@@ -627,77 +731,31 @@ export function MyWorkSections({
   }
 
   // Todo/Done keep their specialized grouped rendering (per-project / per-date
-  // headers); Today and every free column are plain FlatColumns. `displayOrder`
-  // (TASK-141/148) decides only the LEFT-TO-RIGHT sequence — the droppable
-  // hooks for todo/done stay unconditional above regardless of where they render.
+  // headers) via their own TodoColumn/DoneColumn components (TASK-164 —
+  // useDroppable must run inside the <DndContext> tree below, not here);
+  // Today and every free column are plain FlatColumns. `displayOrder`
+  // (TASK-141/148) decides only the LEFT-TO-RIGHT sequence.
   const todoColumn = (
-    <MyWorkColumnShell
+    <TodoColumn
       key="todo"
-      id="todo"
       title={columnNames.todo}
-      count={(containers.todo ?? []).length}
+      groups={todoGroups}
+      isEmpty={isEmpty}
       onRename={(name) => renameFixed("todo", name)}
       {...moveProps("todo")}
-    >
-      <SortableContext items={(containers.todo ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
-        <div ref={setTodoRef} className="flex min-h-10 flex-1 flex-col gap-3">
-          {todoGroups.length === 0 && !isEmpty && <EmptyColumnHint text="Assigned stories appear here." />}
-          {todoGroups.map((group) => (
-            <div key={group.projectId}>
-              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.projectName}</h3>
-              <ul className="flex flex-col gap-1.5">
-                {group.items.map((item) => (
-                  <SortableItem key={item.id} id={item.id}>
-                    <MyWorkRow story={item.row} />
-                  </SortableItem>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </SortableContext>
-    </MyWorkColumnShell>
+    />
   );
 
   const doneColumn = (
-    <MyWorkColumnShell
+    <DoneColumn
       key="done"
-      id="done"
       title={columnNames.done}
-      count={(containers.done ?? []).length}
+      groups={doneGroups}
+      isEmpty={isEmpty}
       onRename={(name) => renameFixed("done", name)}
-      reorderable={false}
-      subheader={
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>Last {doneWindowDays} days</span>
-          <Link href="/my-work/archive" className="text-primary hover:underline">
-            Archive
-          </Link>
-        </div>
-      }
-      onMoveLeft={NOOP_MOVE}
-      onMoveRight={NOOP_MOVE}
-      canMoveLeft={false}
-      canMoveRight={false}
-    >
-      <SortableContext items={(containers.done ?? []).map((i) => i.id)} strategy={verticalListSortingStrategy}>
-        <div ref={setDoneRef} className="flex min-h-10 flex-1 flex-col gap-3">
-          {doneGroups.length === 0 && !isEmpty && <EmptyColumnHint text="Completed stories appear here." />}
-          {doneGroups.map((group) => (
-            <div key={group.dateKey}>
-              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{doneDateLabel(group.dateKey, todayKey)}</h3>
-              <ul className="flex flex-col gap-1.5">
-                {group.stories.map((item) => (
-                  <SortableItem key={item.id} id={item.id}>
-                    <MyWorkRow story={item.row} completedAt={item.completedAt} />
-                  </SortableItem>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </SortableContext>
-    </MyWorkColumnShell>
+      doneWindowDays={doneWindowDays}
+      todayKey={todayKey}
+    />
   );
 
   return (
