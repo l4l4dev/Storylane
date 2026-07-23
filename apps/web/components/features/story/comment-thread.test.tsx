@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionResult } from "@/lib/types";
 import { CommentThread } from "./comment-thread";
@@ -75,7 +75,11 @@ describe("CommentThread", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Story not found");
     expect(textarea).toHaveValue("Looks good");
-    expect(screen.getByRole("button", { name: "Comment" })).toBeEnabled();
+    // The alert (from setError) and the transition's pending flag flipping
+    // back to false aren't guaranteed to land in the same render tick —
+    // waitFor instead of asserting immediately avoided an intermittent
+    // failure here (TASK-169).
+    await waitFor(() => expect(screen.getByRole("button", { name: "Comment" })).toBeEnabled());
   });
 
   it("clears the draft once the comment is added", async () => {
