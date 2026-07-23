@@ -1,10 +1,11 @@
 ---
 id: TASK-173
 title: 'My Work: allow reverting a Done story back to active'
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-23 06:42'
+updated_date: '2026-07-23 13:13'
 labels: []
 milestone: m-2
 dependencies: []

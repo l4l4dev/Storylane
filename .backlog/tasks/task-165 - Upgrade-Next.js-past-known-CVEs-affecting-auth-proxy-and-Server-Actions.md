@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-23 04:01'
-updated_date: '2026-07-23 04:08'
+updated_date: '2026-07-23 05:46'
 labels: []
 milestone: m-1
 dependencies: []
@@ -25,7 +25,7 @@ Codex security review (2026-07-23) flagged next 16.2.9 in apps/web/package.json:
 - [x] #1 apps/web/package.json's next dependency (and any lockstep-required peer deps) is bumped to >=16.2.11
 - [x] #2 pnpm audit --prod from apps/web shows zero High/Critical advisories for next
 - [x] #3 pnpm test, pnpm run lint, and a production build (pnpm run build) are green from apps/web after the bump
-- [ ] #4 The dev-login / OAuth callback flow gated by proxy.ts is manually smoke-tested in a browser post-bump and documented in the final summary
+- [x] #4 The dev-login / OAuth callback flow gated by proxy.ts is manually smoke-tested in a browser post-bump and documented in the final summary
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -44,6 +44,8 @@ session and still serving the old 16.2.9 build (Next.js's own dev-lock
 prevents a second instance in the same .next dir). Deferred to the owner
 per the project's existing deferred-manual-verification precedent -- exact
 steps left in the final summary / chat handoff.
+
+AC#4 manually verified 2026-07-23: navigated to /auth/login, clicked 'Continue as dev user', reached /my-work signed in as dev_user with the board rendering (Todo/Today/Doing/Done). Confirmed under next@16.2.11 after fixing an unrelated macOS TCC (Full Disk Access) permission issue that had been blocking pnpm/node from starting a dev server in this environment.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
