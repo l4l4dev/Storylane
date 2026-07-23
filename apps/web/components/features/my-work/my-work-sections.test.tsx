@@ -195,6 +195,15 @@ describe("MyWorkSections", () => {
     expect(projectHeadings).toEqual(["Alpha", "Bravo"]);
   });
 
+  // Owner-reported: with a single project the group header just repeated the
+  // card's own project badge while pushing Todo's first card lower than
+  // Today/free columns (which have no header) — a visible top misalignment.
+  it("omits the per-project header when Todo has only one project group", () => {
+    renderSections({ assigned: [active("a1")] });
+    const todo = screen.getByRole("heading", { level: 2, name: "Todo" }).closest("section")!;
+    expect(within(todo).queryAllByRole("heading", { level: 3 })).toHaveLength(0);
+  });
+
   // Done is additive (ux-principles principle 9): a story sitting in a free
   // column can ALSO have a past completion in Done. Only the Done instance gets
   // the completion marker, so the two are distinguishable card-by-card.

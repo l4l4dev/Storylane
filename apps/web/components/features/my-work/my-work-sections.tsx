@@ -324,7 +324,15 @@ function TodoColumn({
           {groups.length === 0 && !isEmpty && <EmptyColumnHint text="Assigned stories appear here." />}
           {groups.map((group) => (
             <div key={group.projectId}>
-              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.projectName}</h3>
+              {/* Owner-reported: with a single project group this header just
+                  repeated what each card's own project badge already shows,
+                  while pushing Todo's first card lower than Today/free
+                  columns (which have no header) — a visible top misalignment.
+                  Only show it when grouping is actually disambiguating more
+                  than one project. */}
+              {groups.length > 1 && (
+                <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.projectName}</h3>
+              )}
               <ul className="flex flex-col gap-2">
                 {group.items.map((item) => (
                   <SortableItem key={item.id} id={item.id}>
