@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { MyWorkRow, type MyWorkRowData } from "./my-work-row";
 
 const baseStory: MyWorkRowData = {
@@ -15,9 +15,19 @@ const baseStory: MyWorkRowData = {
 };
 
 describe("MyWorkRow", () => {
-  it("links the title to the standalone story page", () => {
+  it("links the title to the standalone story page when onOpen is unset (the archive page)", () => {
     render(<MyWorkRow story={baseStory} />);
     expect(screen.getByRole("link", { name: /Add login/ })).toHaveAttribute("href", "/stories/s1");
+  });
+
+  // TASK-172: the main My Work board passes onOpen to open a side peek
+  // instead of navigating away, matching the project board's StoryCard.
+  it("calls onOpen instead of linking away when the caller supplies it", () => {
+    const onOpen = vi.fn();
+    render(<MyWorkRow story={baseStory} onOpen={onOpen} />);
+    expect(screen.queryByRole("link", { name: /Add login/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Add login/ }));
+    expect(onOpen).toHaveBeenCalledOnce();
   });
 
   it("shows the project chip and state badge", () => {

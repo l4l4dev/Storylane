@@ -17,7 +17,11 @@ export default async function StoryDetailPage({
   }
 
   return (
-    <main className="mx-auto max-w-2xl p-6">
+    // TASK-172: this is the peek's "expand to full view" destination, so it
+    // needs to read as more than the same narrow panel re-centered — a real
+    // two-column layout (StoryDetailPanel layout="split") rather than the
+    // peek's single column just stretched wider.
+    <main className="mx-auto max-w-5xl p-6">
       <div className="mb-6 flex items-start justify-between gap-2">
         <div>
           <Link
@@ -34,7 +38,7 @@ export default async function StoryDetailPage({
         <StoryPeekMenu key={detail.id} detail={detail} />
       </div>
 
-      <StoryDetailPanel detail={detail} />
+      <StoryDetailPanel detail={detail} layout="split" />
     </main>
   );
 }

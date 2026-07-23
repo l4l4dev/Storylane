@@ -83,6 +83,26 @@ describe("StoryDetailPanel", () => {
     expect(screen.queryByRole("button", { name: "Estimate" })).not.toBeInTheDocument();
   });
 
+  // TASK-172: layout="split" (the standalone /stories/[id] page) renders
+  // title/description via one StoryFields call and type/points/epic/
+  // assignee/labels via a second — this proves both halves still show up
+  // (i.e. nothing was dropped splitting the single "all" render into two).
+  it("renders every field when layout is split", () => {
+    render(
+      <StoryDetailPanel
+        detail={{ ...baseDetail, epicId: null, epics: [{ id: "e1", name: "Onboarding" }], labels: [{ id: "l1", name: "urgent" }] }}
+        layout="split"
+      />,
+    );
+    expect(screen.getByLabelText("Title")).toHaveValue("Add login");
+    expect(screen.getByLabelText("Description")).toHaveValue("Let users sign in");
+    expect(screen.getByLabelText("Type")).toBeInTheDocument();
+    expect(screen.getByLabelText("Points")).toBeInTheDocument();
+    expect(screen.getByLabelText("Epic")).toBeInTheDocument();
+    expect(screen.getByLabelText("Assignee")).toBeInTheDocument();
+    expect(screen.getByText("urgent")).toBeInTheDocument();
+  });
+
   it("marks agent members in the assignee picker", () => {
     render(
       <StoryDetailPanel

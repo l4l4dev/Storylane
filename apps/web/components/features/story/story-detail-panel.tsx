@@ -78,9 +78,16 @@ type SaveStatus = "saved" | "saving" | "error";
 export function StoryDetailPanel({
   detail,
   onMutated,
+  layout = "single",
 }: {
   detail: StoryDetail;
   onMutated?: () => Promise<void> | void;
+  // TASK-172: the standalone /stories/[id] page passes "split" to use its
+  // extra width as a real two-column layout (main content left, status +
+  // metadata sidebar right) instead of just a wider single column. The peek
+  // (story-peek.tsx, ~max-w-md) always leaves this at "single" — a sidebar
+  // wouldn't fit there.
+  layout?: "single" | "split";
 }) {
   const localRef = useRef<EditableFields>(toEditableFields(detail));
   const [local, setLocalState] = useState<EditableFields>(localRef.current);
@@ -305,84 +312,106 @@ export function StoryDetailPanel({
     );
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <TransitionButtons
-          storyId={detail.id}
-          projectId={detail.projectId}
-          stateId={detail.stateId}
-          states={detail.states}
-          storyType={detail.storyType}
-          points={detail.points}
-          pointScale={detail.pointScale}
-          isPersonal={detail.isPersonalProject}
-        />
-        <span
-          className={`text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}
-          aria-live="polite"
-        >
-          {status === "saving" && "Saving…"}
-          {status === "saved" && "Saved ✓"}
-          {status === "error" && (
-            <>
-              {errorMessage ?? "Failed to save"}{" "}
-              <button type="button" className="underline" onClick={() => void runSave()}>
-                Retry
-              </button>
-            </>
-          )}
-        </span>
-      </div>
-
-      <StoryFields
-        value={local}
-        onTextChange={handleTextChange}
-        onTextFocus={(field) => focusedRef.current.add(field)}
-        onTextBlur={handleTextBlur}
-        onTextKeyDown={handleTextKeyDown}
-        onDiscreteChange={handleDiscreteChange}
-        pointScale={detail.pointScale}
-        epics={detail.epics}
-        members={detail.members}
-        labels={detail.labels}
-        idPrefix="detail"
-        hidePointsAndEpic={detail.isPersonalProject}
-      />
-
-      <TaskChecklist storyId={detail.id} tasks={detail.tasks} onMutated={onMutated} />
-      <CommentThread
+  const isSplit = layout === "split";
+  const statusRow = (
+    <div className="flex items-center justify-between gap-2">
+      <TransitionButtons
         storyId={detail.id}
         projectId={detail.projectId}
-        comments={detail.comments}
-        onMutated={onMutated}
+        stateId={detail.stateId}
+        states={detail.states}
+        storyType={detail.storyType}
+        points={detail.points}
+        pointScale={detail.pointScale}
+        isPersonal={detail.isPersonalProject}
       />
+      <span
+        className={`text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}
+        aria-live="polite"
+      >
+        {status === "saving" && "Saving…"}
+        {status === "saved" && "Saved ✓"}
+        {status === "error" && (
+          <>
+            {errorMessage ?? "Failed to save"}{" "}
+            <button type="button" className="underline" onClick={() => void runSave()}>
+              Retry
+            </button>
+          </>
+        )}
+      </span>
+    </div>
+  );
 
-      {detail.history.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">History</h3>
-          <ul className="flex flex-col gap-1.5">
-            {detail.history.map((entry) => (
-              <li key={entry.id} className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span>
-                    {describeActivity({
-                      action: entry.action,
-                      payload: entry.payload,
-                      actorName: entry.actorName,
-                      storyTitle: detail.title,
-                    })}
-                  </span>
-                  {entry.actorIsAgent && <AgentIndicator />}
-                </span>
-                <time className="shrink-0" dateTime={entry.createdAt}>
-                  {formatDateTime(entry.createdAt)}
-                </time>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+  const fieldsProps = {
+    value: local,
+    onTextChange: handleTextChange,
+    onTextFocus: (field: LockableField) => focusedRef.current.add(field),
+    onTextBlur: handleTextBlur,
+    onTextKeyDown: handleTextKeyDown,
+    onDiscreteChange: handleDiscreteChange,
+    pointScale: detail.pointScale,
+    epics: detail.epics,
+    members: detail.members,
+    labels: detail.labels,
+    idPrefix: "detail",
+    hidePointsAndEpic: detail.isPersonalProject,
+  } as const;
+
+  const historySection = detail.history.length > 0 && (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-sm font-semibold">History</h3>
+      <ul className="flex flex-col gap-1.5">
+        {detail.history.map((entry) => (
+          <li key={entry.id} className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span>
+                {describeActivity({
+                  action: entry.action,
+                  payload: entry.payload,
+                  actorName: entry.actorName,
+                  storyTitle: detail.title,
+                })}
+              </span>
+              {entry.actorIsAgent && <AgentIndicator />}
+            </span>
+            <time className="shrink-0" dateTime={entry.createdAt}>
+              {formatDateTime(entry.createdAt)}
+            </time>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+
+  return (
+    <div
+      className={
+        isSplit
+          ? "flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start lg:gap-8"
+          : "flex flex-col gap-4"
+      }
+    >
+      {/* Sidebar (split only): status + metadata fields, DOM-first so they
+          still lead on a stacked mobile layout, explicitly placed in the
+          second grid column at lg+ so that stacking order doesn't dictate
+          visual column order. */}
+      <div className={isSplit ? "flex flex-col gap-4 lg:col-start-2 lg:row-start-1" : "contents"}>
+        {statusRow}
+        {isSplit && <StoryFields {...fieldsProps} section="meta" />}
+      </div>
+
+      <div className={isSplit ? "flex flex-col gap-4 lg:col-start-1 lg:row-start-1" : "contents"}>
+        <StoryFields {...fieldsProps} section={isSplit ? "title" : "all"} />
+        <TaskChecklist storyId={detail.id} tasks={detail.tasks} onMutated={onMutated} />
+        <CommentThread
+          storyId={detail.id}
+          projectId={detail.projectId}
+          comments={detail.comments}
+          onMutated={onMutated}
+        />
+        {historySection}
+      </div>
     </div>
   );
 }

@@ -22,6 +22,6 @@ vi.mock("next/headers", () => ({
 describe("MyWorkPage", () => {
   it("throws instead of rendering an empty board when the projects read fails", async () => {
     const { default: MyWorkPage } = await import("./page");
-    await expect(MyWorkPage()).rejects.toThrow("connection reset");
+    await expect(MyWorkPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("connection reset");
   });
 });

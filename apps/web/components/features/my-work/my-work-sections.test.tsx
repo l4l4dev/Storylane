@@ -7,6 +7,12 @@ import type { MyWorkRowData } from "./my-work-row";
 import { localTodayKey } from "@/lib/utils/format";
 import { resolveColumnOrder, type DoneEntry, type MyWorkFreeColumn, type MyWorkProject, type MyWorkStory } from "@/lib/utils/my-work";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/my-work",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 const saveMyWorkColumnOrder = vi.fn<(order: string[]) => Promise<ActionResult>>(async () => ({ ok: true }));
 const renameMyWorkFixedColumn = vi.fn<(slot: string, name: string) => Promise<ActionResult>>(async () => ({ ok: true }));
 const carryOverToday = vi.fn<(ids: string[], today: string) => Promise<ActionResult>>(async () => ({ ok: true }));

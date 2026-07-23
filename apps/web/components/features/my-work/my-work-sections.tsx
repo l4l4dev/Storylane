@@ -25,6 +25,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { addDays } from "@storylane/core";
 import {
@@ -257,6 +258,7 @@ function FlatColumn({
   onRename,
   freeColumn,
   emptyHint,
+  onOpenStory,
   ...move
 }: {
   id: MyWorkColumnId;
@@ -267,6 +269,7 @@ function FlatColumn({
   // undefined suppresses the hint (the whole-board empty state already
   // covers it in one message — see EmptyColumnHint's own comment).
   emptyHint?: string;
+  onOpenStory: (storyId: string) => void;
 } & ColumnMoveProps) {
   const { setNodeRef } = useDroppable({ id });
   return (
@@ -280,7 +283,7 @@ function FlatColumn({
           )}
           {items.map((item) => (
             <SortableItem key={item.id} id={item.id}>
-              <MyWorkRow story={item.row} />
+              <MyWorkRow story={item.row} onOpen={() => onOpenStory(item.row.id)} />
             </SortableItem>
           ))}
         </ul>
@@ -302,12 +305,14 @@ function TodoColumn({
   groups,
   isEmpty,
   onRename,
+  onOpenStory,
   ...move
 }: {
   title: string;
   groups: ReturnType<typeof regroupByProject<MyWorkRowData>>;
   isEmpty: boolean;
   onRename: (name: string) => Promise<void>;
+  onOpenStory: (storyId: string) => void;
 } & ColumnMoveProps) {
   const { setNodeRef } = useDroppable({ id: "todo" });
   const count = groups.reduce((sum, group) => sum + group.items.length, 0);
@@ -322,7 +327,7 @@ function TodoColumn({
               <ul className="flex flex-col gap-1.5">
                 {group.items.map((item) => (
                   <SortableItem key={item.id} id={item.id}>
-                    <MyWorkRow story={item.row} />
+                    <MyWorkRow story={item.row} onOpen={() => onOpenStory(item.row.id)} />
                   </SortableItem>
                 ))}
               </ul>
@@ -345,6 +350,7 @@ function DoneColumn({
   onRename,
   doneWindowDays,
   todayKey,
+  onOpenStory,
 }: {
   title: string;
   groups: ReturnType<typeof groupDoneByDate<MyWorkDragItem<MyWorkRowData>>>;
@@ -352,6 +358,7 @@ function DoneColumn({
   onRename: (name: string) => Promise<void>;
   doneWindowDays: number;
   todayKey: string;
+  onOpenStory: (storyId: string) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: "done" });
   const count = groups.reduce((sum, group) => sum + group.stories.length, 0);
@@ -384,7 +391,7 @@ function DoneColumn({
               <ul className="flex flex-col gap-1.5">
                 {group.stories.map((item) => (
                   <SortableItem key={item.id} id={item.id}>
-                    <MyWorkRow story={item.row} completedAt={item.completedAt} />
+                    <MyWorkRow story={item.row} completedAt={item.completedAt} onOpen={() => onOpenStory(item.row.id)} />
                   </SortableItem>
                 ))}
               </ul>
@@ -455,6 +462,18 @@ export function MyWorkSections({
   serverTodayKey: string;
 }) {
   const todayKey = useSyncExternalStore(NOOP_SUBSCRIBE, localTodayKey, () => serverTodayKey);
+
+  // Opens a row's story in the side peek (TASK-172), matching the project
+  // board's StoryCard.openPeek: sets ?story=<id> on the current URL rather
+  // than navigating away, so the board stays mounted underneath.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  function openStoryPeek(storyId: string) {
+    const params = new URLSearchParams(searchParams);
+    params.set("story", storyId);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
 
   // Keeps the "local_date" cookie fresh so next visit's SSR (page.tsx) can
   // seed serverTodayKey with it instead of UTC — closes the hydration flash
@@ -751,6 +770,7 @@ export function MyWorkSections({
       groups={todoGroups}
       isEmpty={isEmpty}
       onRename={(name) => renameFixed("todo", name)}
+      onOpenStory={openStoryPeek}
       {...moveProps("todo")}
     />
   );
@@ -764,6 +784,7 @@ export function MyWorkSections({
       onRename={(name) => renameFixed("done", name)}
       doneWindowDays={doneWindowDays}
       todayKey={todayKey}
+      onOpenStory={openStoryPeek}
     />
   );
 
@@ -877,6 +898,7 @@ export function MyWorkSections({
                   title={columnNames.today}
                   items={containers.today ?? []}
                   onRename={(name) => renameFixed("today", name)}
+                  onOpenStory={openStoryPeek}
                   emptyHint={isEmpty ? undefined : "Drag stories here to plan today."}
                   {...moveProps("today")}
                 />
@@ -891,6 +913,7 @@ export function MyWorkSections({
                 title={column.name}
                 items={containers[column.id] ?? []}
                 onRename={(name) => renameFree(column.id, name)}
+                onOpenStory={openStoryPeek}
                 freeColumn={column}
                 emptyHint={isEmpty ? undefined : "Drag stories here."}
                 {...moveProps(column.id)}

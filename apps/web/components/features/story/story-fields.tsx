@@ -39,6 +39,7 @@ export function StoryFields({
   idPrefix,
   titleAutoFocus,
   hidePointsAndEpic,
+  section = "all",
 }: {
   value: StoryFieldsValue;
   onTextChange: (field: TextField, value: string) => void;
@@ -60,135 +61,152 @@ export function StoryFields({
   // entirely rather than shown-disabled (ux-principles principle 1: no dead
   // controls).
   hidePointsAndEpic?: boolean;
+  // TASK-172: the standalone /stories/[id] page splits this into a two-column
+  // layout (title/description on the left, type/points/epic/assignee/labels
+  // in a sidebar) — every other caller (DraftStoryCard, the peek's single-
+  // column StoryDetailPanel) leaves this at the default "all" and is
+  // unaffected, since it's the same markup just rendered in one call instead
+  // of two.
+  section?: "all" | "title" | "meta";
 }) {
   const id = (field: string) => `${idPrefix}-${field}`;
+  const showTitle = section === "all" || section === "title";
+  const showMeta = section === "all" || section === "meta";
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={id("title")}>Title</Label>
-        <input
-          id={id("title")}
-          value={value.title}
-          required
-          autoFocus={titleAutoFocus}
-          onChange={(e) => onTextChange("title", e.target.value)}
-          onFocus={() => onTextFocus?.("title")}
-          onBlur={() => onTextBlur?.("title")}
-          onKeyDown={(e) => onTextKeyDown?.("title", e)}
-          className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={id("description")}>Description</Label>
-        <Textarea
-          id={id("description")}
-          value={value.description}
-          rows={4}
-          onChange={(e) => onTextChange("description", e.target.value)}
-          onFocus={() => onTextFocus?.("description")}
-          onBlur={() => onTextBlur?.("description")}
-          onKeyDown={(e) => onTextKeyDown?.("description", e)}
-        />
-      </div>
-
-      <div className="flex gap-4">
-        <div className="flex flex-1 flex-col gap-1.5">
-          <Label htmlFor={id("type")}>Type</Label>
-          <NativeSelect
-            id={id("type")}
-            value={value.storyType}
-            onChange={(e) => onDiscreteChange("storyType", e.target.value)}
-          >
-            {STORY_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-
-        {!hidePointsAndEpic && (
-          <div className="flex w-32 flex-col gap-1.5">
-            <Label htmlFor={id("points")}>Points</Label>
-            {/* Points come from the project's point scale — no free numeric
-                input (see spec/features.md). */}
-            <NativeSelect
-              id={id("points")}
-              value={value.points ?? ""}
-              onChange={(e) => onDiscreteChange("points", e.target.value === "" ? null : Number(e.target.value))}
-            >
-              <option value="">Unestimated</option>
-              {pointScale.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </NativeSelect>
+      {showTitle && (
+        <>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={id("title")}>Title</Label>
+            <input
+              id={id("title")}
+              value={value.title}
+              required
+              autoFocus={titleAutoFocus}
+              onChange={(e) => onTextChange("title", e.target.value)}
+              onFocus={() => onTextFocus?.("title")}
+              onBlur={() => onTextBlur?.("title")}
+              onKeyDown={(e) => onTextKeyDown?.("title", e)}
+              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
           </div>
-        )}
-      </div>
 
-      <div className="flex gap-4">
-        {!hidePointsAndEpic && (
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Label htmlFor={id("epic")}>Epic</Label>
-            <NativeSelect
-              id={id("epic")}
-              value={value.epicId}
-              onChange={(e) => onDiscreteChange("epicId", e.target.value)}
-            >
-              <option value="">None</option>
-              {epics.map((epic) => (
-                <option key={epic.id} value={epic.id}>
-                  {epic.name}
-                </option>
-              ))}
-            </NativeSelect>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={id("description")}>Description</Label>
+            <Textarea
+              id={id("description")}
+              value={value.description}
+              rows={4}
+              onChange={(e) => onTextChange("description", e.target.value)}
+              onFocus={() => onTextFocus?.("description")}
+              onBlur={() => onTextBlur?.("description")}
+              onKeyDown={(e) => onTextKeyDown?.("description", e)}
+            />
           </div>
-        )}
+        </>
+      )}
 
-        <div className="flex flex-1 flex-col gap-1.5">
-          <Label htmlFor={id("assignee")}>Assignee</Label>
-          <NativeSelect
-            id={id("assignee")}
-            value={value.assigneeId}
-            onChange={(e) => onDiscreteChange("assigneeId", e.target.value)}
-          >
-            <option value="">Unassigned</option>
-            {members.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name}
-                {member.isAgent ? " (agent)" : ""}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-      </div>
+      {showMeta && (
+        <>
+          <div className="flex gap-4">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor={id("type")}>Type</Label>
+              <NativeSelect
+                id={id("type")}
+                value={value.storyType}
+                onChange={(e) => onDiscreteChange("storyType", e.target.value)}
+              >
+                {STORY_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
 
-      {labels.length > 0 && (
-        <fieldset className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Labels</span>
-          <div className="flex flex-wrap gap-2">
-            {labels.map((label) => (
-              <label key={label.id} className="flex items-center gap-1.5 text-sm">
-                <input
-                  type="checkbox"
-                  checked={value.labelIds.includes(label.id)}
-                  onChange={(e) => {
-                    const next = e.target.checked
-                      ? [...value.labelIds, label.id]
-                      : value.labelIds.filter((id) => id !== label.id);
-                    onDiscreteChange("labelIds", next);
-                  }}
-                  className="accent-primary"
-                />
-                {label.name}
-              </label>
-            ))}
+            {!hidePointsAndEpic && (
+              <div className="flex w-32 flex-col gap-1.5">
+                <Label htmlFor={id("points")}>Points</Label>
+                {/* Points come from the project's point scale — no free numeric
+                    input (see spec/features.md). */}
+                <NativeSelect
+                  id={id("points")}
+                  value={value.points ?? ""}
+                  onChange={(e) => onDiscreteChange("points", e.target.value === "" ? null : Number(e.target.value))}
+                >
+                  <option value="">Unestimated</option>
+                  {pointScale.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+            )}
           </div>
-        </fieldset>
+
+          <div className="flex gap-4">
+            {!hidePointsAndEpic && (
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor={id("epic")}>Epic</Label>
+                <NativeSelect
+                  id={id("epic")}
+                  value={value.epicId}
+                  onChange={(e) => onDiscreteChange("epicId", e.target.value)}
+                >
+                  <option value="">None</option>
+                  {epics.map((epic) => (
+                    <option key={epic.id} value={epic.id}>
+                      {epic.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+            )}
+
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor={id("assignee")}>Assignee</Label>
+              <NativeSelect
+                id={id("assignee")}
+                value={value.assigneeId}
+                onChange={(e) => onDiscreteChange("assigneeId", e.target.value)}
+              >
+                <option value="">Unassigned</option>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                    {member.isAgent ? " (agent)" : ""}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          </div>
+
+          {labels.length > 0 && (
+            <fieldset className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Labels</span>
+              <div className="flex flex-wrap gap-2">
+                {labels.map((label) => (
+                  <label key={label.id} className="flex items-center gap-1.5 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={value.labelIds.includes(label.id)}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...value.labelIds, label.id]
+                          : value.labelIds.filter((id) => id !== label.id);
+                        onDiscreteChange("labelIds", next);
+                      }}
+                      className="accent-primary"
+                    />
+                    {label.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
+        </>
       )}
     </div>
   );

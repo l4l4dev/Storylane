@@ -60,6 +60,12 @@ describe("StoryPeek", () => {
     expect(screen.getByRole("heading", { name: /#43.*Add logout/ })).toBeInTheDocument();
   });
 
+  // TASK-172: JIRA-style escalation from the peek to the standalone page.
+  it("links 'expand to full view' to the story's standalone page", () => {
+    render(<StoryPeek detail={detail} />);
+    expect(screen.getByRole("link", { name: "Expand to full view" })).toHaveAttribute("href", "/stories/s1");
+  });
+
   it("closes by removing only the story query param", () => {
     render(<StoryPeek detail={detail} />);
 

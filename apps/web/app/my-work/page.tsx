@@ -19,6 +19,8 @@ import type { ProjectState } from "@/lib/types";
 import { MyWorkSections } from "@/components/features/my-work/my-work-sections";
 import type { MyWorkRowData } from "@/components/features/my-work/my-work-row";
 import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add";
+import { StoryPeekHost } from "@/components/features/board/story-peek-host";
+import { getStoryDetail } from "@/app/stories/[id]/actions";
 
 // Cross-project personal view (doc-15 "My Work redesign"): the signed-in user's
 // assigned active stories, split into Todo / Today / user-defined free columns
@@ -27,7 +29,12 @@ import { MyWorkQuickAdd } from "@/components/features/my-work/my-work-quick-add"
 // today (Today is date-scoped — a server render has no viewer timezone) and
 // renders the columns. There is no project-board mapping any more — My Work is
 // a purely personal board (doc-15).
-export default async function MyWorkPage() {
+export default async function MyWorkPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ story?: string }>;
+}) {
+  const { story: peekStoryId } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -231,6 +238,11 @@ export default async function MyWorkPage() {
     return [{ completedAt: c.completed_at, row: toRowData(story, { name: projectName, isPersonal: knownProject?.isPersonal ?? false }) }];
   });
 
+  // Side peek (TASK-172, mirrors the project board's own ?story=<id>
+  // wiring in app/projects/[id]/board/page.tsx): fetched server-side so the
+  // peek renders in the same pass as the board.
+  const peekDetail = peekStoryId ? await getStoryDetail(peekStoryId) : null;
+
   return (
     // Unconstrained width (matches the project board's own <main className="p-6">)
     // now that the columns render side by side — the header and quick-add card
@@ -279,6 +291,8 @@ export default async function MyWorkPage() {
         doneWindowDays={doneWindowDays}
         serverTodayKey={serverTodayKey}
       />
+
+      <StoryPeekHost peekStoryId={peekStoryId} detail={peekDetail} />
     </main>
   );
 }

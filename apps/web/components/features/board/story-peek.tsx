@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { X } from "lucide-react";
+import { Maximize2, X } from "lucide-react";
 import type { StoryDetail } from "@/app/stories/[id]/actions";
 import { StoryDetailPanel } from "@/components/features/story/story-detail-panel";
 import { StoryPeekMenu } from "@/components/features/story/story-peek-menu";
@@ -76,6 +77,14 @@ export function StoryPeek({ detail }: { detail: StoryDetail }) {
           {detail.title}
         </h2>
         <div className="flex items-center gap-1">
+          {/* JIRA-style peek -> full page escalation (TASK-172): a plain
+              navigation, not a peek-state change, so it lands on the same
+              /stories/[id] a direct link would. */}
+          <Button variant="ghost" size="icon-sm" asChild aria-label="Expand to full view">
+            <Link href={`/stories/${detail.id}`}>
+              <Maximize2 />
+            </Link>
+          </Button>
           <StoryPeekMenu key={detail.id} detail={detail} />
           <Button variant="ghost" size="icon-sm" onClick={close} aria-label="Close story detail">
             <X />

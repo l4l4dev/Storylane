@@ -41,9 +41,45 @@ export type MyWorkRowData = {
 // reflects the CURRENT real state, live-joined) can't tell those apart, so a
 // completion marker is required to distinguish "this is a log entry" from
 // "this is the live card" at a glance (ux-principles.md principle 9).
-export function MyWorkRow({ story, completedAt }: { story: MyWorkRowData; completedAt?: string }) {
+export function MyWorkRow({
+  story,
+  completedAt,
+  onOpen,
+}: {
+  story: MyWorkRowData;
+  completedAt?: string;
+  // The main My Work board passes this to open the story in a side peek
+  // (TASK-172), matching the project board's StoryCard. Left unset by the
+  // Done archive page (app/my-work/archive/page.tsx), which has no board
+  // underneath to peek over, so it keeps the plain full-page link.
+  onOpen?: () => void;
+}) {
   const typeMeta = STORY_TYPE_META[story.storyType as StoryType];
   const TypeIcon = STORY_TYPE_ICON[story.storyType as Exclude<StoryType, "release">];
+  const titleRowClassName = "flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-80";
+  const titleRowContent = (
+    <>
+      {typeMeta && TypeIcon && (
+        <span className={`inline-flex shrink-0 items-center rounded p-1 ${typeMeta.className}`} title={typeMeta.label}>
+          <TypeIcon className="h-3.5 w-3.5" aria-label={typeMeta.label} />
+        </span>
+      )}
+      <span className="shrink-0 text-xs text-muted-foreground">#{story.number}</span>
+      {story.isPersonal && (
+        <span
+          className="inline-flex shrink-0 items-center gap-0.5 rounded bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground"
+          title="Personal project — completes only here, in My Work"
+        >
+          <User className="h-3 w-3" aria-hidden />
+          {/* Icon stays persistent at every width (doc-17 #3); the label
+              only joins it at sm+ so it doesn't crowd out the title on
+              narrow rows. */}
+          <span className="hidden sm:inline">Personal</span>
+        </span>
+      )}
+      <span className="min-w-0 flex-1 truncate text-sm font-medium">{story.title}</span>
+    </>
+  );
 
   return (
     <div className="flex flex-col gap-1">
@@ -76,30 +112,15 @@ export function MyWorkRow({ story, completedAt }: { story: MyWorkRowData; comple
             Completed
           </span>
         )}
-        <Link
-          href={`/stories/${story.id}`}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-80"
-        >
-          {typeMeta && TypeIcon && (
-            <span className={`inline-flex shrink-0 items-center rounded p-1 ${typeMeta.className}`} title={typeMeta.label}>
-              <TypeIcon className="h-3.5 w-3.5" aria-label={typeMeta.label} />
-            </span>
-          )}
-          <span className="shrink-0 text-xs text-muted-foreground">#{story.number}</span>
-          {story.isPersonal && (
-            <span
-              className="inline-flex shrink-0 items-center gap-0.5 rounded bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground"
-              title="Personal project — completes only here, in My Work"
-            >
-              <User className="h-3 w-3" aria-hidden />
-              {/* Icon stays persistent at every width (doc-17 #3); the label
-                  only joins it at sm+ so it doesn't crowd out the title on
-                  narrow rows. */}
-              <span className="hidden sm:inline">Personal</span>
-            </span>
-          )}
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{story.title}</span>
-        </Link>
+        {onOpen ? (
+          <button type="button" onClick={onOpen} className={titleRowClassName}>
+            {titleRowContent}
+          </button>
+        ) : (
+          <Link href={`/stories/${story.id}`} className={titleRowClassName}>
+            {titleRowContent}
+          </Link>
+        )}
 
         {/* Below sm the full-name badge (right after this) hides — this
             compact initials marker keeps project identity visible at every
