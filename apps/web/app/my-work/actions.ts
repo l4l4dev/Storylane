@@ -14,14 +14,15 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
  * a purely personal board — there is no project-board mapping. Placement rules:
  *
  *   - Personal-project stories (is_personal): Todo/Done write the REAL state
- *     via set_story_state (Done → completed_at + story_completions permanent
- *     log; Todo → the lowest unstarted state, i.e. reopen). Today and free
- *     columns stay local marks. The personal project's states are category-
- *     resolvable without configuration (it's ours, template known).
+ *     via set_story_state (Done → the lowest done state, sets completed_at;
+ *     Todo → the lowest unstarted state, i.e. reopen). Today and free columns
+ *     stay local marks, EXCEPT a real-done card dragged there first reopens
+ *     (TASK-173). The personal project's states are category-resolvable without
+ *     configuration (it's ours, template known).
  *   - Team stories: every drag is a local my_work_story_state mark. Completing
- *     happens on the story's own board (Done is not writable here); the
- *     completion still lands in the viewer's Done log via the story_completions
- *     trigger.
+ *     happens on the story's own board (Done is not writable here); the story
+ *     then shows in the viewer's Done column read from its live done category
+ *     (Done is a status column now, TASK-176 — no story_completions log).
  *
  * Today overlays a card's column (it keeps its column_id) so declining a
  * carry-over next day drops it back where it was. Every other target clears the
@@ -261,6 +262,63 @@ export async function reorderMyWorkColumn(orderedStoryIds: string[], columnId: s
 }
 
 /**
+ * Persists a manual reorder WITHIN a Todo project group (TASK-177).
+ * `orderedStoryIds` is that group's list in its new order (the caller scopes it
+ * to the dragged card's own project group). Todo is "no Today date, no free
+ * column", so writing only todo_position is safe: an existing Todo row already
+ * has today_date/column_id null (CHECK my_work_story_state_todo_position_needs_
+ * todo passes), and a first-time row inserts with both defaulting to null.
+ */
+export async function reorderMyWorkTodo(orderedStoryIds: string[]): Promise<ActionResult> {
+  if (orderedStoryIds.length === 0) return { ok: true };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+  const { error } = await supabase.from("my_work_story_state").upsert(
+    orderedStoryIds.map((storyId, index) => ({
+      user_id: user.id,
+      story_id: storyId,
+      todo_position: index,
+      updated_at: new Date().toISOString(),
+    })),
+    { onConflict: "user_id,story_id" },
+  );
+  if (error) return { ok: false, message: writeErrorMessage(error, "Couldn't save the new order — refresh the page and try again.") };
+  revalidatePath("/my-work");
+  return { ok: true };
+}
+
+/**
+ * Persists a manual reorder WITHIN a Done date group (TASK-176).
+ * `orderedStoryIds` is that date's list in its new order (the caller scopes it
+ * to the dragged card's completion date). done_position has no paired
+ * discriminator (Done membership is the story's live done category, not a local
+ * field), so it's a plain nullable int — no today_date/column_id to name.
+ */
+export async function reorderMyWorkDone(orderedStoryIds: string[]): Promise<ActionResult> {
+  if (orderedStoryIds.length === 0) return { ok: true };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+  const { error } = await supabase.from("my_work_story_state").upsert(
+    orderedStoryIds.map((storyId, index) => ({
+      user_id: user.id,
+      story_id: storyId,
+      done_position: index,
+      updated_at: new Date().toISOString(),
+    })),
+    { onConflict: "user_id,story_id" },
+  );
+  if (error) return { ok: false, message: writeErrorMessage(error, "Couldn't save the new order — refresh the page and try again.") };
+  revalidatePath("/my-work");
+  return { ok: true };
+}
+
+/**
  * Adds a free column (TASK-141, doc-15: "add/rename/delete/reorder"). Lands at
  * the end of the user's own columns (`position` = current max + 1) — its place
  * in the combined display order (which also covers Todo/Today/Done) is a
@@ -442,6 +500,18 @@ async function ownsColumn(supabase: Supabase, userId: string, columnId: string):
 // Partial upsert: only the patched columns change on an existing row (supabase
 // upsert SETs just the payload's columns on conflict), so a Today write
 // preserves column_id and a free-column write preserves nothing it doesn't name.
+//
+// done_position AND todo_position are always cleared: every persistMark call
+// explicitly (re)places the card, so any manual Done/Todo slot it held is now
+// meaningless — a card re-completed or reopened later should start unordered
+// rather than inheriting a stale slot. The reset TRIGGER can't cover either
+// here: Done membership isn't a local field (no done_position discriminator to
+// key off), and a move-to-Done or move-to-Todo leaves today_date/column_id both
+// null — the same "shape" as sitting in Todo — so the trigger's
+// `today_date/column_id became non-null` condition never fires for todo_position
+// on those transitions. Clearing both here is the symmetric fix (fable-advisor /
+// rls-security-reviewer TASK-176: without this, Todo→Done→Todo kept a stale
+// todo_position, landing the reopened card at an unpredictable old slot).
 async function persistMark(
   supabase: Supabase,
   userId: string,
@@ -452,7 +522,7 @@ async function persistMark(
   const { error } = await supabase
     .from("my_work_story_state")
     .upsert(
-      { user_id: userId, story_id: storyId, updated_at: new Date().toISOString(), ...patch },
+      { user_id: userId, story_id: storyId, updated_at: new Date().toISOString(), done_position: null, todo_position: null, ...patch },
       { onConflict: "user_id,story_id" },
     );
   if (error) return { ok: false, message: writeErrorMessage(error, "You no longer have access to this story's project — refresh the page.") };

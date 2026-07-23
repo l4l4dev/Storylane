@@ -34,7 +34,9 @@ import {
   renameMyWorkColumn,
   renameMyWorkFixedColumn,
   reorderMyWorkColumn,
+  reorderMyWorkDone,
   reorderMyWorkToday,
+  reorderMyWorkTodo,
   saveMyWorkColumnOrder,
   setMyWorkColumn,
 } from "@/app/my-work/actions";
@@ -52,7 +54,6 @@ import {
   regroupByProject,
   resolveDragEndTarget,
   toDragContainers,
-  type DoneEntry,
   type MyWorkColumnId,
   type MyWorkColumnNames,
   type MyWorkDragItem,
@@ -349,9 +350,12 @@ function TodoColumn({
 }
 
 // Done's per-date grouped rendering — mirrors TodoColumn (TASK-164), same
-// useDroppable-must-be-a-DndContext-descendant reasoning. Never reorderable
-// (TASK-155 AC#2), so its move props are always the fixed no-op/disabled
-// values ColumnMoveProps requires but MyWorkColumnShell never invokes here.
+// useDroppable-must-be-a-DndContext-descendant reasoning. The Done COLUMN
+// itself never moves left/right (reorderable={false}) — Done is always the
+// fixed last column — so its ColumnMoveProps are the no-op/disabled values
+// MyWorkColumnShell requires but never invokes here. Its CARDS, though, ARE
+// now drag-reorderable within a date group (donePosition, TASK-176), via the
+// shared SortableContext + handleDragEnd path like every other column.
 function DoneColumn({
   title,
   groups,
@@ -438,7 +442,6 @@ function DoneColumn({
 // a failed save just restores the whole array.
 export function MyWorkSections({
   assigned,
-  completions,
   projects,
   freeColumns,
   order,
@@ -448,7 +451,6 @@ export function MyWorkSections({
   serverTodayKey,
 }: {
   assigned: MyWorkStory<MyWorkRowData>[];
-  completions: DoneEntry<MyWorkRowData>[];
   projects: MyWorkProject[];
   freeColumns: MyWorkFreeColumn[];
   // The viewer's full column display order (TASK-141) — resolveColumnOrder's
@@ -494,8 +496,8 @@ export function MyWorkSections({
   }, [todayKey]);
 
   const columns = useMemo(
-    () => classifyMyWork(assigned, completions, projects, freeColumns, todayKey),
-    [assigned, completions, projects, freeColumns, todayKey],
+    () => classifyMyWork(assigned, projects, freeColumns, todayKey),
+    [assigned, projects, freeColumns, todayKey],
   );
   const initialContainers = useMemo(() => toDragContainers(columns), [columns]);
   const { containers, setContainers, activeId, beginDrag, endDrag, revertToSnapshot, runDrop } =
@@ -531,11 +533,15 @@ export function MyWorkSections({
 
   const totalCount = Object.values(containers).reduce((sum, list) => sum + list.length, 0);
 
-  // Carry-over prompt (doc-15 decision 4): unfinished items whose Today mark is
+  // Carry-over prompt (doc-15 decision 4): UNFINISHED items whose Today mark is
   // from a past day. Evaluated against the viewer's local today (todayKey is the
-  // client's local date after hydration).
+  // client's local date after hydration). Done stories are excluded even if
+  // they carry a stale today mark — a team story finished on its board keeps
+  // its old today_date (My Work's write path never ran to clear it), and it
+  // now classifies to Done, so offering to "carry it over to today" would be
+  // nonsense (TASK-176).
   const staleToday = useMemo(
-    () => assigned.filter((s) => s.todayDate !== null && s.todayDate < todayKey),
+    () => assigned.filter((s) => !s.isDone && s.todayDate !== null && s.todayDate < todayKey),
     [assigned, todayKey],
   );
   // "prompting" (the yes/no choice) -> "resolved" (a brief undo window,
@@ -629,16 +635,20 @@ export function MyWorkSections({
     if (!over) return;
     const overContainer = findContainer(containers, String(over.id));
     if (!overContainer) return;
-    // Every column accepts every card (doc-15) EXCEPT Done for a team story:
-    // setMyWorkColumn rejects that write outright (a team story completes
-    // only on its own board), so letting the drag-over UI accept it first is
-    // a false affordance — the card would visibly enter Done, then snap back
-    // once the drop is rejected. Gate it here so it's never a valid target to
-    // begin with (doc-17 #10).
+    // Every column accepts every card EXCEPT a team story ENTERING Done from
+    // elsewhere: setMyWorkColumn rejects that write (a team story completes
+    // only on its own board), so accepting it in the drag-over UI first is a
+    // false affordance — the card would visibly enter Done, then snap back
+    // (doc-17 #10). A team card ALREADY in Done (real-done, dragged from the
+    // done container) is exempt: it's just being reordered within Done
+    // (TASK-176), which is allowed. `completedAt` is set iff the card is a
+    // done card, so it distinguishes "already in Done" from "entering Done".
     setContainers((prev) =>
       moveBetweenContainers(prev, String(active.id), overContainer, String(over.id), (activeId, target) => {
         if (target !== "done") return true;
-        return canDropOnDone(storyById(prev, activeId)?.row.isPersonal ?? false);
+        const dragged = storyById(prev, activeId);
+        if (dragged?.completedAt) return true; // already a done card — reordering within Done
+        return canDropOnDone(dragged?.row.isPersonal ?? false);
       }),
     );
   }
@@ -665,6 +675,33 @@ export function MyWorkSections({
     const neighborIndex = direction === "left" ? index - 1 : index + 1;
     if (neighborIndex < 0 || neighborIndex >= displayOrder.length) return;
     persistColumnOrder(reorderIds(displayOrder, id, displayOrder[neighborIndex]));
+  }
+
+  // Persists a same-container card reorder. Today and free columns re-densify
+  // the whole container; Todo and Done re-densify only the dragged card's own
+  // GROUP (its project group / its completion-date group) — a My Work card
+  // can't change project by dragging, and a Done card can't change its
+  // completion date, so a drop that visually lands in another group's block
+  // snaps back on refresh and only its own group's order is persisted
+  // (fable-advisor TASK-176/177, mirrors reorderMyWorkColumn's single-column
+  // scope). `reordered` is the full flat container in its new order; `dragged`
+  // identifies which group to slice out.
+  function persistReorder(
+    container: MyWorkColumnId,
+    reordered: MyWorkDragItem<MyWorkRowData>[],
+    dragged: MyWorkDragItem<MyWorkRowData>,
+  ) {
+    if (container === "today") return reorderMyWorkToday(reordered.map((i) => i.storyId), todayKey);
+    if (container === "todo") {
+      const ids = reordered.filter((i) => i.row.projectId === dragged.row.projectId).map((i) => i.storyId);
+      return reorderMyWorkTodo(ids);
+    }
+    if (container === "done") {
+      const dateKey = dragged.completedAt.slice(0, 10);
+      const ids = reordered.filter((i) => i.completedAt.slice(0, 10) === dateKey).map((i) => i.storyId);
+      return reorderMyWorkDone(ids);
+    }
+    return reorderMyWorkColumn(reordered.map((i) => i.storyId), container);
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -708,9 +745,7 @@ export function MyWorkSections({
       runDrop(
         draggedId,
         async () => {
-          const ids = reordered.map((i) => i.storyId);
-          const result =
-            overContainer === "today" ? await reorderMyWorkToday(ids, todayKey) : await reorderMyWorkColumn(ids, overContainer);
+          const result = await persistReorder(overContainer, reordered, item);
           if (!result.ok) throw new Error(result.message);
         },
         setDragError,

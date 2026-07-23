@@ -7,7 +7,6 @@ import {
   DEFAULT_DONE_WINDOW_DAYS,
   resolveColumnNames,
   resolveColumnOrder,
-  type DoneEntry,
   type MyWorkFreeColumn,
   type MyWorkProject,
   type MyWorkStory,
@@ -91,7 +90,6 @@ export default async function MyWorkPage({
     storyRows,
     myStateResult,
     columnResult,
-    completionRows,
     soloEpicsResult,
     soloLabelsResult,
     soloMembersResult,
@@ -103,49 +101,33 @@ export default async function MyWorkPage({
       .in("project_id", projectIds),
     // Not bounded by anything else here (an agent could easily carry more
     // than max_rows assigned stories) — page through rather than one select.
+    // Done is now a status column (owner decision 2026-07-24), so done stories
+    // come back in this same query — but bounded to the retention window
+    // (completed_at >= doneSince) so Done doesn't accumulate the user's entire
+    // lifetime of completions; older ones fall out to /my-work/archive.
     user
       ? fetchAllRows((from, to) =>
           supabase
             .from("stories")
-            .select("id, project_id, number, title, story_type, state_id, points, position")
+            .select("id, project_id, number, title, story_type, state_id, points, position, completed_at")
             .eq("assignee_id", user.id)
             .not("state_id", "is", null)
-            // Active axis only: real-done stories live in the Done log via
-            // their completion rows, never as an active card (completed_at
-            // is set the moment a story enters a done category).
-            .is("completed_at", null)
+            .or(`completed_at.is.null,completed_at.gte.${doneSince}`)
             .range(from, to),
         )
       : Promise.resolve([]),
     // The viewer's own My Work marks — column_id / today_date / today_position
-    // / column_position (TASK-150: free-column manual order).
+    // / column_position / todo_position / done_position (manual card orders).
     user
       ? supabase
           .from("my_work_story_state")
-          .select("story_id, column_id, today_date, today_position, column_position")
+          .select("story_id, column_id, today_date, today_position, column_position, todo_position, done_position")
           .eq("user_id", user.id)
       : Promise.resolve({ data: null, error: null }),
     // The viewer's free columns (doc-15). 'Doing' is pre-seeded.
     user
       ? supabase.from("my_work_columns").select("id, name, position").eq("user_id", user.id).order("position")
       : Promise.resolve({ data: null, error: null }),
-    // The Done log (doc-14): the viewer's completion history, live-joined to
-    // each story's CURRENT data so a completion survives being reassigned away
-    // or even leaving the project (stories' SELECT RLS OR-clause). Not bounded
-    // by anything but the window date filter — page through it too.
-    user
-      ? fetchAllRows((from, to) =>
-          supabase
-            .from("story_completions")
-            .select(
-              "completed_at, stories(id, project_id, number, title, story_type, points, state_id, projects(name))",
-            )
-            .eq("user_id", user.id)
-            .gte("completed_at", doneSince)
-            .order("completed_at", { ascending: false })
-            .range(from, to),
-        )
-      : Promise.resolve([]),
     soloPersonalProject
       ? supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position")
       : Promise.resolve({ data: null, error: null }),
@@ -207,36 +189,35 @@ export default async function MyWorkPage({
     };
   }
 
+  // A story's real state category is `done` (routes it to the exclusive Done
+  // column, TASK-176) — looked up from its project's states.
+  const doneStateIds = new Set(
+    (statesRows ?? []).filter((s) => s.category === "done").map((s) => s.id),
+  );
+
   const assigned: MyWorkStory<MyWorkRowData>[] = storyRows
     .filter((s) => projectIdSet.has(s.project_id))
     .map((s) => {
       const mark = myStateByStoryId.get(s.id);
       const project = projectById.get(s.project_id)!;
+      const isDone = s.state_id != null && doneStateIds.has(s.state_id);
       return {
         id: s.id,
         projectId: s.project_id,
         position: s.position,
+        isDone,
+        // completed_at is maintained by the trigger to be non-null exactly
+        // when the story is in a done category; only meaningful for Done cards.
+        completedAt: isDone ? s.completed_at : null,
         todayDate: mark?.today_date ?? null,
         todayPosition: mark?.today_position ?? null,
         columnId: mark?.column_id ?? null,
         columnPosition: mark?.column_position ?? null,
+        todoPosition: mark?.todo_position ?? null,
+        donePosition: mark?.done_position ?? null,
         row: toRowData(s, project),
       };
     });
-
-  const completions: DoneEntry<MyWorkRowData>[] = completionRows.flatMap((c) => {
-    // The embedded story/project can type as an object or a single-element
-    // array depending on the FK cardinality Supabase infers; normalize both.
-    const story = Array.isArray(c.stories) ? c.stories[0] : c.stories;
-    if (!story) return [];
-    const embeddedProject = Array.isArray(story.projects) ? story.projects[0] : story.projects;
-    const knownProject = projectById.get(story.project_id);
-    // A completion whose project the viewer has since left still reads (the
-    // stories SELECT OR-clause keeps it visible) — "Left project" reads as
-    // an expected state, not an error (doc-17 #40).
-    const projectName = knownProject?.name ?? embeddedProject?.name ?? "Left project";
-    return [{ completedAt: c.completed_at, row: toRowData(story, { name: projectName, isPersonal: knownProject?.isPersonal ?? false }) }];
-  });
 
   // Side peek (TASK-172, mirrors the project board's own ?story=<id>
   // wiring in app/projects/[id]/board/page.tsx): fetched server-side so the
@@ -282,7 +263,6 @@ export default async function MyWorkPage({
 
       <MyWorkSections
         assigned={assigned}
-        completions={completions}
         projects={projects}
         freeColumns={freeColumns}
         order={columnOrder}

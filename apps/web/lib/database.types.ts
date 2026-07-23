@@ -396,27 +396,33 @@ export type Database = {
         Row: {
           column_id: string | null
           column_position: number | null
+          done_position: number | null
           story_id: string
           today_date: string | null
           today_position: number | null
+          todo_position: number | null
           updated_at: string
           user_id: string
         }
         Insert: {
           column_id?: string | null
           column_position?: number | null
+          done_position?: number | null
           story_id: string
           today_date?: string | null
           today_position?: number | null
+          todo_position?: number | null
           updated_at?: string
           user_id: string
         }
         Update: {
           column_id?: string | null
           column_position?: number | null
+          done_position?: number | null
           story_id?: string
           today_date?: string | null
           today_position?: number | null
+          todo_position?: number | null
           updated_at?: string
           user_id?: string
         }

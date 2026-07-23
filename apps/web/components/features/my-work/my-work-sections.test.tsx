@@ -5,7 +5,7 @@ import type { ActionResult } from "@/lib/types";
 import { collisionDetectionByDragKind, MyWorkSections } from "./my-work-sections";
 import type { MyWorkRowData } from "./my-work-row";
 import { localTodayKey } from "@/lib/utils/format";
-import { resolveColumnOrder, type DoneEntry, type MyWorkFreeColumn, type MyWorkProject, type MyWorkStory } from "@/lib/utils/my-work";
+import { resolveColumnOrder, type MyWorkFreeColumn, type MyWorkProject, type MyWorkStory } from "@/lib/utils/my-work";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -34,7 +34,9 @@ vi.mock("@/app/my-work/actions", () => {
     renameMyWorkColumn: ok,
     renameMyWorkFixedColumn: (slot: string, name: string) => renameMyWorkFixedColumn(slot, name),
     reorderMyWorkColumn: ok,
+    reorderMyWorkDone: ok,
     reorderMyWorkToday: ok,
+    reorderMyWorkTodo: ok,
     saveMyWorkColumnOrder: (order: string[]) => saveMyWorkColumnOrder(order),
     setMyWorkColumn: ok,
   };
@@ -65,22 +67,26 @@ function active(id: string, over: Partial<MyWorkStory<MyWorkRowData>> = {}): MyW
     id,
     projectId: "team-a",
     position: 0,
+    isDone: false,
+    completedAt: null,
     todayDate: null,
     todayPosition: null,
     columnId: null,
     columnPosition: null,
+    todoPosition: null,
+    donePosition: null,
     row: row(id),
     ...over,
   };
 }
 
-function doneEntry(id: string, completedAt: string): DoneEntry<MyWorkRowData> {
-  return { completedAt, row: row(id, { title: `Done ${id}` }) };
+// A done-category story — routes exclusively to Done, grouped by completedAt.
+function doneStory(id: string, completedAt: string, over: Partial<MyWorkStory<MyWorkRowData>> = {}): MyWorkStory<MyWorkRowData> {
+  return active(id, { isDone: true, completedAt, row: row(id, { title: `Done ${id}` }), ...over });
 }
 
 function renderSections(props: {
   assigned?: MyWorkStory<MyWorkRowData>[];
-  completions?: DoneEntry<MyWorkRowData>[];
   projects?: MyWorkProject[];
   freeColumns?: MyWorkFreeColumn[];
   order?: string[];
@@ -91,7 +97,6 @@ function renderSections(props: {
   return render(
     <MyWorkSections
       assigned={props.assigned ?? []}
-      completions={props.completions ?? []}
       projects={props.projects ?? [TEAM_A]}
       freeColumns={freeColumns}
       order={props.order ?? resolveColumnOrder([], freeColumns)}
@@ -116,15 +121,19 @@ describe("MyWorkSections", () => {
 
   it("renders Todo, Today, the free columns, then Done", () => {
     renderSections({
-      assigned: [active("todo1"), active("today1", { todayDate: TODAY }), active("doing1", { columnId: "doing" })],
-      completions: [doneEntry("done1", `${TODAY}T12:00:00.000Z`)],
+      assigned: [
+        active("todo1"),
+        active("today1", { todayDate: TODAY }),
+        active("doing1", { columnId: "doing" }),
+        doneStory("done1", `${TODAY}T12:00:00.000Z`),
+      ],
     });
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
     expect(headings).toEqual(["Todo", "Today", "Doing", "Done"]);
   });
 
   it("labels the Done group for today as 'Today'", () => {
-    renderSections({ completions: [doneEntry("done1", `${TODAY}T12:00:00.000Z`)] });
+    renderSections({ assigned: [doneStory("done1", `${TODAY}T12:00:00.000Z`)] });
     const done = screen.getByRole("heading", { level: 2, name: "Done" }).closest("section")!;
     expect(within(done).getByRole("heading", { level: 3 })).toHaveTextContent("Today");
   });
@@ -204,16 +213,17 @@ describe("MyWorkSections", () => {
     expect(within(todo).queryAllByRole("heading", { level: 3 })).toHaveLength(0);
   });
 
-  // Done is additive (ux-principles principle 9): a story sitting in a free
-  // column can ALSO have a past completion in Done. Only the Done instance gets
-  // the completion marker, so the two are distinguishable card-by-card.
-  it("marks only the Done instance of a story that also sits in a free column", () => {
+  // TASK-176: Done is now an exclusive status column — a done story shows ONLY
+  // in Done (with its Completed marker), never also in an active column, even
+  // if it carries a stale free-column mark from before it was completed.
+  it("shows a done story only in Done, not also in the free column it was marked into", () => {
     renderSections({
-      assigned: [active("s1", { columnId: "doing" })],
-      completions: [doneEntry("s1", `${TODAY}T12:00:00.000Z`)],
+      assigned: [doneStory("s1", `${TODAY}T12:00:00.000Z`, { columnId: "doing" })],
     });
     const markers = screen.getAllByText("Completed");
     expect(markers).toHaveLength(1);
+    const doing = screen.getByRole("heading", { level: 2, name: "Doing" }).closest("section")!;
+    expect(within(doing).queryByText("Done s1")).not.toBeInTheDocument();
   });
 
   it("prompts to carry over stale Today items", () => {
@@ -268,7 +278,6 @@ describe("MyWorkSections", () => {
     const view = render(
       <MyWorkSections
         assigned={[active("stale", { todayDate: "2020-01-01" })]}
-        completions={[]}
         projects={[TEAM_A]}
         freeColumns={freeColumns}
         order={resolveColumnOrder([], freeColumns)}
@@ -285,7 +294,6 @@ describe("MyWorkSections", () => {
     view.rerender(
       <MyWorkSections
         assigned={[active("stale", { todayDate: null })]}
-        completions={[]}
         projects={[TEAM_A]}
         freeColumns={freeColumns}
         order={resolveColumnOrder([], freeColumns)}

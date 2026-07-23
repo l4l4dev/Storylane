@@ -1,18 +1,21 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// TASK-130 (doc-14) + TASK-138 (doc-15): the My Work data-model foundation —
-// the story_completions completion-log trigger, its write lockdown, the stories
-// SELECT OR-clause that keeps a completed story readable after the completer
-// leaves the project, and the my_work_columns own-rows RLS + composite-FK guard
-// that replaced the dropped project_my_work_mapping.
+// TASK-130 (doc-14) + TASK-138 (doc-15) + TASK-176 (Done-as-status): the My Work
+// data-model foundation. Done is now a plain status column read from the story's
+// live done category — NOT a story_completions log — so this covers:
+//   - maintain_story_completed_at maintains stories.completed_at on done
+//     entry/exit and writes NO story_completions row (TASK-176)
+//   - my_work_columns own-rows RLS + composite-FK guard (a card can't point at
+//     another user's column)
+//   - the position reset trigger: column_position clears when column_id clears,
+//     and todo_position clears when the row leaves Todo (gains a Today date or a
+//     free column)
 //
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/my-work-data-model.integration.test.ts
 const RUN = process.env.SUPABASE_INTEGRATION === "1";
 
-type CompletionRow = { id: string; story_id: string; user_id: string; completed_at: string };
-
-describe.skipIf(!RUN)("My Work data model (TASK-130 integration)", () => {
+describe.skipIf(!RUN)("My Work data model (TASK-130/176 integration)", () => {
   let admin: SupabaseClient;
   let owner: SupabaseClient;
   let ownerId: string;
@@ -75,87 +78,38 @@ describe.skipIf(!RUN)("My Work data model (TASK-130 integration)", () => {
     return data.id;
   }
 
-  async function completionsFor(storyId: string): Promise<CompletionRow[]> {
-    const { data } = await admin
-      .from("story_completions")
-      .select("id, story_id, user_id, completed_at")
-      .eq("story_id", storyId);
-    return (data as CompletionRow[]) ?? [];
+  async function completedAtOf(storyId: string): Promise<string | null> {
+    const { data } = await admin.from("stories").select("completed_at").eq("id", storyId).single();
+    return (data as { completed_at: string | null }).completed_at;
   }
 
-  it("logs a completion credited to the assignee when a story enters a done state", async () => {
+  // TASK-176: Done is the story's live done category, not a log. Entering done
+  // sets completed_at (Done groups by it, the window filters on it) and writes
+  // NO story_completions row.
+  it("sets completed_at and writes no completion log when a story enters a done state", async () => {
     const story = await createStory(startedStateId, ownerId);
     await admin.from("stories").update({ state_id: doneStateId }).eq("id", story);
 
-    const rows = await completionsFor(story);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].user_id).toBe(ownerId);
-    // stories.completed_at is set too (the trigger's existing effect).
-    const { data: s } = await admin.from("stories").select("completed_at").eq("id", story).single();
-    expect((s as { completed_at: string | null }).completed_at).not.toBeNull();
+    expect(await completedAtOf(story)).not.toBeNull();
+    const { data: log } = await admin.from("story_completions").select("id").eq("story_id", story);
+    expect(log ?? []).toHaveLength(0);
   });
 
-  // The FK-timing fix: a story CREATED directly into a done state must not fail
-  // (a BEFORE INSERT trigger can't FK-reference the not-yet-inserted story) and
-  // must not log a completion (born done isn't a transition from non-done).
-  it("does not fail or log when a story is created directly into a done state", async () => {
-    const story = await createStory(doneStateId, ownerId); // would throw on FK if logged on INSERT
-    expect(await completionsFor(story)).toHaveLength(0);
-  });
-
-  it("keeps the completion row and clears completed_at when the story is reopened", async () => {
+  it("clears completed_at when the story is reopened", async () => {
     const story = await createStory(startedStateId, ownerId);
     await admin.from("stories").update({ state_id: doneStateId }).eq("id", story);
     await admin.from("stories").update({ state_id: startedStateId }).eq("id", story); // reopen
-
-    expect(await completionsFor(story)).toHaveLength(1); // append-only: not deleted
-    const { data: s } = await admin.from("stories").select("completed_at").eq("id", story).single();
-    expect((s as { completed_at: string | null }).completed_at).toBeNull();
+    expect(await completedAtOf(story)).toBeNull();
   });
 
-  it("adds a second completion row on re-completion", async () => {
+  it("preserves completed_at across a done-to-done state change", async () => {
     const story = await createStory(startedStateId, ownerId);
     await admin.from("stories").update({ state_id: doneStateId }).eq("id", story);
-    await admin.from("stories").update({ state_id: startedStateId }).eq("id", story);
-    await admin.from("stories").update({ state_id: doneStateId }).eq("id", story); // redo
-
-    expect(await completionsFor(story)).toHaveLength(2);
-  });
-
-  it("does not log when an unassigned story reaches done (assignee guard)", async () => {
-    const story = await createStory(startedStateId, null);
-    await admin.from("stories").update({ state_id: doneStateId }).eq("id", story);
-    expect(await completionsFor(story)).toHaveLength(0);
-  });
-
-  // rls-security-reviewer HIGH: the completion insert must credit only a
-  // current project MEMBER. Otherwise any member could set assignee_id to an
-  // outsider's profile, move the story to done, and the forged completion row
-  // would grant that outsider permanent read access via stories' SELECT
-  // OR-clause. Here the assignee is a real profile but NOT a project member.
-  it("does not log a completion for an assignee who is not a project member", async () => {
-    const email = `mw-outsider-${Date.now()}@storylane.local`;
-    const { data: created } = await admin.auth.admin.createUser({
-      email,
-      password: "integration-test-only-password",
-      email_confirm: true,
-    });
-    const outsiderId = created!.user!.id; // a profile, but never added to the project
-    const story = await createStory(startedStateId, outsiderId);
-    await admin.from("stories").update({ state_id: doneStateId }).eq("id", story);
-
-    expect(await completionsFor(story)).toHaveLength(0); // not credited
-    // And the outsider gets no read access to the story.
-    const outsider = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-    await outsider.auth.signInWithPassword({ email, password: "integration-test-only-password" });
-    const { data: storyRow } = await outsider.from("stories").select("id").eq("id", story).maybeSingle();
-    expect(storyRow).toBeNull();
-  });
-
-  it("blocks direct client writes to story_completions (lockdown)", async () => {
-    const story = await createStory(startedStateId, ownerId);
-    const { error } = await owner.from("story_completions").insert({ story_id: story, user_id: ownerId });
-    expect(error).not.toBeNull(); // no client INSERT policy + grant revoked
+    const first = await completedAtOf(story);
+    // No second done state in the classic template, so re-set the same done
+    // state; the state_id-unchanged guard preserves completed_at either way.
+    await admin.from("stories").update({ state_id: doneStateId, title: "touched" }).eq("id", story);
+    expect(await completedAtOf(story)).toBe(first);
   });
 
   // TASK-138 (doc-15): my_work_columns replaced project_my_work_mapping. It is
@@ -163,11 +117,9 @@ describe.skipIf(!RUN)("My Work data model (TASK-130 integration)", () => {
   // my_work_story_state's composite FK — the invariant that a card can't point
   // at another user's column.
   it("scopes my_work_columns to own rows and blocks pointing a mark at a foreign column", async () => {
-    // The dev user (owner client) reads their pre-seeded 'Doing' column.
     const { data: ownCols } = await owner.from("my_work_columns").select("id, name").eq("user_id", ownerId);
     expect((ownCols ?? []).some((c) => c.name === "Doing")).toBe(true);
 
-    // A second user has their own separate columns.
     const email = `mw-col-other-${Date.now()}@storylane.local`;
     const password = "integration-test-only-password";
     const { data: created } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
@@ -176,12 +128,9 @@ describe.skipIf(!RUN)("My Work data model (TASK-130 integration)", () => {
     const other = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     await other.auth.signInWithPassword({ email, password });
 
-    // The other user cannot see the dev user's columns (own-rows SELECT).
     const { data: crossRead } = await other.from("my_work_columns").select("id").eq("user_id", ownerId);
     expect(crossRead ?? []).toHaveLength(0);
 
-    // The composite FK blocks pointing the other user's mark at the dev user's
-    // column: (other.user_id, ownColumnId) has no matching my_work_columns row.
     const foreignColumnId = (ownCols ?? []).find((c) => c.name === "Doing")!.id;
     const story = await createStory(startedStateId, otherId);
     const { error: fkErr } = await other
@@ -190,10 +139,9 @@ describe.skipIf(!RUN)("My Work data model (TASK-130 integration)", () => {
     expect(fkErr).not.toBeNull(); // FK violation — can't borrow another user's column
   });
 
-  // Regression guard: column_position must never be non-null
-  // once column_id is null — a BEFORE UPDATE trigger enforces this even when
-  // the caller (app code, or the column_fk's own ON DELETE SET NULL) only
-  // touches column_id and forgets column_position.
+  // Regression guard: column_position must never be non-null once column_id is
+  // null — a BEFORE UPDATE trigger enforces this even when the caller (app code,
+  // or the column_fk's own ON DELETE SET NULL) only touches column_id.
   it("resets column_position whenever column_id is cleared or the column is deleted", async () => {
     const { data: column, error: columnError } = await admin
       .from("my_work_columns")
@@ -207,8 +155,6 @@ describe.skipIf(!RUN)("My Work data model (TASK-130 integration)", () => {
       .from("my_work_story_state")
       .upsert({ user_id: ownerId, story_id: story, column_id: column.id, column_position: 0 });
 
-    // A caller that clears column_id but forgets column_position (the exact
-    // shape of the bug this migration fixes) — the trigger saves it.
     const { error: updateError } = await admin
       .from("my_work_story_state")
       .update({ column_id: null })
@@ -223,8 +169,6 @@ describe.skipIf(!RUN)("My Work data model (TASK-130 integration)", () => {
       .single();
     expect(afterClear).toEqual({ column_id: null, column_position: null });
 
-    // Put it back, then delete the column itself (the FK's ON DELETE SET NULL
-    // path) — must not raise a check-constraint violation.
     await admin
       .from("my_work_story_state")
       .update({ column_id: column.id, column_position: 0 })
@@ -241,33 +185,27 @@ describe.skipIf(!RUN)("My Work data model (TASK-130 integration)", () => {
     expect(afterDelete).toEqual({ column_id: null, column_position: null });
   });
 
-  // doc-14's sharpest edge: a story stays readable to whoever completed it even
-  // after they leave the project, so their Done log can live-join to it.
-  it("keeps a completed story readable to a completer who has left the project", async () => {
-    const email = `mw-leaver-${Date.now()}@storylane.local`;
-    const password = "integration-test-only-password";
-    const { data: created } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
-    const leaverId = created!.user!.id;
-    await admin.from("project_members").insert({ project_id: projectId, user_id: leaverId, role: "member" });
-    const leaver = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-    await leaver.auth.signInWithPassword({ email, password });
+  // TASK-177: todo_position is only valid while the row classifies to Todo (no
+  // Today date, no free column). The same BEFORE UPDATE trigger clears it the
+  // moment the row gains either — even if the caller forgets (the TASK-161 bug
+  // shape).
+  it("resets todo_position when the row gains a Today date or a free column", async () => {
+    const story = await createStory(startedStateId, ownerId);
+    await admin.from("my_work_story_state").upsert({ user_id: ownerId, story_id: story, todo_position: 3 });
 
-    // Assigned to the leaver, then completed (logs a completion crediting them).
-    const story = await createStory(startedStateId, leaverId);
-    await admin.from("stories").update({ state_id: doneStateId }).eq("id", story);
-
-    // Remove them from the project.
-    await owner.rpc("remove_member", { p_project_id: projectId, p_user_id: leaverId });
-
-    // They can still read the story (via the stories SELECT OR-clause) and their
-    // own completion row.
-    const { data: storyRow } = await leaver.from("stories").select("id").eq("id", story).maybeSingle();
-    expect(storyRow).not.toBeNull();
-    const { data: ownCompletion } = await leaver
-      .from("story_completions")
-      .select("id")
+    // Gains a Today date — a caller that forgets todo_position; the trigger clears it.
+    const { error: todayErr } = await admin
+      .from("my_work_story_state")
+      .update({ today_date: "2026-07-24" })
+      .eq("user_id", ownerId)
+      .eq("story_id", story);
+    expect(todayErr).toBeNull();
+    const { data: afterToday } = await admin
+      .from("my_work_story_state")
+      .select("today_date, todo_position")
+      .eq("user_id", ownerId)
       .eq("story_id", story)
-      .maybeSingle();
-    expect(ownCompletion).not.toBeNull();
+      .single();
+    expect(afterToday).toEqual({ today_date: "2026-07-24", todo_position: null });
   });
 });

@@ -4,12 +4,12 @@
 // classifyMyWork, and hands the columns to the renderer.
 //
 // doc-15 dropped the project-board mapping entirely: My Work is now a purely
-// personal board. Placement is manual (doc-15 decisions 2/5): a story lands in
-// Today (today_date = the viewer's local today), else its free column
-// (my_work_columns via column_id), else Todo. Done is the viewer's completion
-// history only (story_completions) — real-done stories are excluded upstream
-// (the page's `completed_at is null` filter), so no active card is ever
-// real-done and classification never routes by category.
+// personal board. Placement per story (classifyMyWork): Done (the story's real
+// state category is `done`) first and exclusively, else Today (today_date = the
+// viewer's local today), else its free column (my_work_columns via column_id),
+// else Todo. Done became a plain status column (owner decision 2026-07-24,
+// TASK-176) — a done story shows there and nowhere else, read straight from the
+// story's live done category, NOT a separate append-only story_completions log.
 
 export type MyWorkStructuralColumn = "todo" | "today" | "done";
 // A drag container / drop target id: one of the three structural columns, or a
@@ -29,13 +29,20 @@ export type MyWorkProject = {
   isPersonal: boolean;
 };
 
-// An assigned, non-Icebox, non-done story in the viewer's My Work base scope,
-// plus the per-viewer marks needed to place it. `S` is the render payload the
-// page attaches.
+// An assigned, non-Icebox story in the viewer's My Work base scope, plus the
+// per-viewer marks needed to place it. `S` is the render payload the page
+// attaches. Done is now an exclusive status column (owner decision 2026-07-24),
+// so a done story carries `isDone`/`completedAt` and classifies to Done and
+// nowhere else — not a separate log entry alongside a live card.
 export type MyWorkStory<S = unknown> = {
   id: string;
   projectId: string;
   position: number;
+  // Whether the story's real state category is `done` — routes it to the Done
+  // column exclusively. `completedAt` is the timestamp Done groups its date
+  // sections by (set iff isDone).
+  isDone: boolean;
+  completedAt: string | null;
   // The viewer's Today mark for a specific calendar date (doc-15 decision 4).
   // A card is in Today only when this equals the viewer's local today; a stale
   // (past) date falls back to the card's column and surfaces the carry-over
@@ -50,6 +57,11 @@ export type MyWorkStory<S = unknown> = {
   // Manual order within its free column — same role as todayPosition,
   // generalized to any user-defined column.
   columnPosition: number | null;
+  // Manual order within Todo (TASK-177) and within a Done date group
+  // (TASK-176). Each is nulls-last, falling back to board `position` (Todo) or
+  // completedAt-desc (Done) for a never-reordered card.
+  todoPosition: number | null;
+  donePosition: number | null;
   row: S;
 };
 
@@ -60,13 +72,9 @@ export type MyWorkGroup<S> = {
   stories: MyWorkStory<S>[];
 };
 
-// A Done entry — a story_completions row, live-joined to the story's current
-// data by the page so a reassigned-away completion still renders.
-export type DoneEntry<S> = { completedAt: string; row: S };
-
-// The Done log's default reach-back window (profiles.my_work_done_window_days
-// is now user-configurable; this is only the fallback when that row is
-// unavailable, e.g. no signed-in user).
+// The Done reach-back window default (profiles.my_work_done_window_days is
+// user-configurable; this is the fallback when that row is unavailable, e.g.
+// no signed-in user).
 export const DEFAULT_DONE_WINDOW_DAYS = 7;
 
 export type MyWorkFreeColumnGroup<S> = { column: MyWorkFreeColumn; stories: MyWorkStory<S>[] };
@@ -75,7 +83,10 @@ export type MyWorkColumns<S> = {
   todo: MyWorkGroup<S>[];
   today: MyWorkStory<S>[];
   free: MyWorkFreeColumnGroup<S>[];
-  done: DoneEntry<S>[];
+  // Done stories in render order: newest completion date first, then each
+  // date's manual order (donePosition), then newest-within-date. The renderer
+  // groups them into date sections with groupDoneByDate (preserving this order).
+  done: MyWorkStory<S>[];
 };
 
 function compareGroup(a: { isPersonal: boolean; name: string }, b: { isPersonal: boolean; name: string }): number {
@@ -96,16 +107,18 @@ function sortByManualPosition<S>(a: S, b: S, pa: number | null, pb: number | nul
 }
 
 /**
- * Splits the viewer's assigned active stories + their completion history into
- * My Work's columns (doc-15). Placement precedence per story: Today (today_date
- * = todayKey) > its free column (column_id) > Todo. `completions` is one entry
- * per story_completions row, live-joined by the caller. `freeColumns` are the
- * viewer's own columns, ordered; a card pointing at an unknown column falls to
- * Todo (shouldn't happen — the composite FK guarantees ownership).
+ * Splits the viewer's assigned stories into My Work's columns. Placement
+ * precedence per story: Done (real state category is done) > Today (today_date
+ * = todayKey) > its free column (column_id) > Todo. Done is checked FIRST and
+ * is exclusive (owner decision 2026-07-24): a team story completed on its own
+ * board never goes through My Work's write path, so its local today_date /
+ * column_id are NOT cleared — routing by those first would wrongly show a done
+ * story in Today or a free column. `freeColumns` are the viewer's own columns,
+ * ordered; a card pointing at an unknown column falls to Todo (shouldn't
+ * happen — the composite FK guarantees ownership).
  */
 export function classifyMyWork<S>(
   assigned: readonly MyWorkStory<S>[],
-  completions: readonly DoneEntry<S>[],
   projects: readonly MyWorkProject[],
   freeColumns: readonly MyWorkFreeColumn[],
   todayKey: string,
@@ -114,11 +127,14 @@ export function classifyMyWork<S>(
   const orderedColumns = [...freeColumns].sort((a, b) => a.position - b.position);
   const columnSet = new Set(orderedColumns.map((c) => c.id));
 
+  const done: MyWorkStory<S>[] = [];
   const today: MyWorkStory<S>[] = [];
   const byColumn = new Map<string, MyWorkStory<S>[]>();
   const rest: MyWorkStory<S>[] = [];
   for (const story of assigned) {
-    if (story.todayDate === todayKey) {
+    if (story.isDone) {
+      done.push(story);
+    } else if (story.todayDate === todayKey) {
       today.push(story);
     } else if (story.columnId && columnSet.has(story.columnId)) {
       const bucket = byColumn.get(story.columnId);
@@ -168,22 +184,38 @@ export function classifyMyWork<S>(
         // ("you left this"), not an error (doc-17 #40).
         projectName: project?.name ?? "Left project",
         isPersonal: project?.isPersonal ?? false,
-        stories: [...groupStories].sort(sortWithinGroup),
+        // Manual order within the group (TASK-177): todoPosition asc, nulls
+        // last (a never-reordered card falls back to its board position).
+        stories: [...groupStories].sort((a, b) =>
+          sortByManualPosition(a, b, a.todoPosition, b.todoPosition, sortWithinGroup),
+        ),
       };
     })
     .sort((a, b) =>
       compareGroup({ isPersonal: a.isPersonal, name: a.projectName }, { isPersonal: b.isPersonal, name: b.projectName }),
     );
 
-  return { todo, today, free, done: [...completions] };
+  // Done render order (TASK-176): newest completion date first, then within a
+  // date the manual order (donePosition, nulls last), then newest-within-date.
+  // groupDoneByDate preserves this order when it slices into date sections.
+  const doneDateKey = (s: MyWorkStory<S>) => (s.completedAt ?? "").slice(0, 10);
+  done.sort((a, b) => {
+    const da = doneDateKey(a);
+    const db = doneDateKey(b);
+    if (da !== db) return db.localeCompare(da);
+    return sortByManualPosition(a, b, a.donePosition, b.donePosition, (x, y) =>
+      (y.completedAt ?? "").localeCompare(x.completedAt ?? ""),
+    );
+  });
+
+  return { todo, today, free, done };
 }
 
-// One dnd-kit draggable card (TASK-132). Todo/Today/free columns use the bare
-// story id as the dnd-kit id — classification guarantees a story sits in at
-// most one of these at a time. Done is additive (a story can carry multiple
-// completion entries, or one alongside its own live card), so a Done item's id
-// is synthesized (index + story id) to stay unique across the whole drag
-// surface (all columns share one DndContext, which requires globally-unique ids).
+// One dnd-kit draggable card. Every column uses the bare story id as the
+// dnd-kit id — Done is now an exclusive status column (owner decision
+// 2026-07-24), so a story sits in exactly one container and ids are globally
+// unique without synthesizing (all columns share one DndContext, which
+// requires unique ids).
 //
 // `completedAt` is only meaningful on Done items ("" elsewhere, never read
 // there) — kept as a plain required field rather than a second item type so
@@ -200,25 +232,24 @@ export type MyWorkDragContainers<S> = Record<string, MyWorkDragItem<S>[]>;
 
 /**
  * Flattens classifyMyWork's output into the flat per-column item lists a
- * dnd-kit drag surface needs. Todo's per-project grouping is layered back on
- * top by `regroupByProject` — the drag container itself is one flat list per
- * column, matching how a story only ever needs ONE list membership call
- * (My Work has no persisted within-column position except Today's, which is
- * written from the drop order server-side).
+ * dnd-kit drag surface needs. Todo's per-project grouping and Done's per-date
+ * grouping are layered back on top by the renderer (regroupByProject /
+ * groupDoneByDate) — the drag container itself is one flat list per column,
+ * matching how a story only ever needs ONE list membership call.
  */
 export function toDragContainers<S extends { id: string }>(columns: MyWorkColumns<S>): MyWorkDragContainers<S> {
-  const activeItem = (s: MyWorkStory<S>): MyWorkDragItem<S> => ({ id: s.id, storyId: s.id, completedAt: "", row: s.row });
+  const item = (s: MyWorkStory<S>): MyWorkDragItem<S> => ({
+    id: s.id,
+    storyId: s.id,
+    completedAt: s.completedAt ?? "",
+    row: s.row,
+  });
   const containers: MyWorkDragContainers<S> = {
-    todo: columns.todo.flatMap((g) => g.stories.map(activeItem)),
-    today: columns.today.map(activeItem),
-    done: columns.done.map((entry, i) => ({
-      id: `done:${i}:${entry.row.id}`,
-      storyId: entry.row.id,
-      completedAt: entry.completedAt,
-      row: entry.row,
-    })),
+    todo: columns.todo.flatMap((g) => g.stories.map(item)),
+    today: columns.today.map(item),
+    done: columns.done.map(item),
   };
-  for (const group of columns.free) containers[group.column.id] = group.stories.map(activeItem);
+  for (const group of columns.free) containers[group.column.id] = group.stories.map(item);
   return containers;
 }
 
@@ -264,15 +295,15 @@ export function isTeamDoneOutRejection(startContainer: MyWorkColumnId | null, is
 }
 
 /**
- * Whether a same-container drop should persist a manual reorder: Today and
- * every free column carry their own card order (doc-15 decision 4 — "the
- * day's execution order", extended to free columns since users expect the
- * same for e.g. "Doing"); Todo/Done have no order of their own to persist,
- * matching `resolveDragEndTarget`'s null for every other same-container drop.
+ * Whether a same-container drop should persist a manual reorder. Every column
+ * now carries its own persisted card order: Today (today_position), free
+ * columns (column_position), Todo (todo_position, TASK-177), and Done
+ * (done_position, TASK-176). So any same-container drop persists a reorder —
+ * the null cases are cross-container moves (handled by resolveDragEndTarget)
+ * and drops back onto the start container (no-op).
  */
 export function isManualOrderReorder(startContainer: MyWorkColumnId | null, overContainer: MyWorkColumnId | null): boolean {
-  if (startContainer === null || startContainer !== overContainer) return false;
-  return startContainer !== "todo" && startContainer !== "done";
+  return startContainer !== null && startContainer === overContainer;
 }
 
 /**
@@ -302,9 +333,13 @@ export type DoneStory = { completedAt: string };
 export type DoneDateGroup<S> = { dateKey: string; stories: S[] };
 
 /**
- * Groups done entries by the UTC date of their `completedAt`, newest date first
- * and newest-within-date first — the Done column's date headers. `dateKey` is a
- * YYYY-MM-DD string; the caller turns it into a "Today"/"Yesterday"/date label.
+ * Groups done entries by the UTC date of their `completedAt`, newest date
+ * first, PRESERVING the caller's within-date order — the Done column's date
+ * headers. The caller (classifyMyWork, or the optimistic drag container mid-
+ * reorder) already sorts within a date by the manual donePosition (TASK-176),
+ * so this must not re-sort by completedAt or it would clobber a manual reorder.
+ * `dateKey` is a YYYY-MM-DD string; the caller turns it into a
+ * "Today"/"Yesterday"/date label.
  */
 export function groupDoneByDate<S extends DoneStory>(stories: readonly S[]): DoneDateGroup<S>[] {
   const byDate = new Map<string, S[]>();
@@ -316,17 +351,14 @@ export function groupDoneByDate<S extends DoneStory>(stories: readonly S[]): Don
   }
   return [...byDate.entries()]
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([dateKey, groupStories]) => ({
-      dateKey,
-      stories: [...groupStories].sort((a, b) => b.completedAt.localeCompare(a.completedAt)),
-    }));
+    .map(([dateKey, groupStories]) => ({ dateKey, stories: groupStories }));
 }
 
 // The three structural slots in their default relative order, interleaved with
 // free columns (by their own `position`) between Today and Done.
-// "done" is deliberately never part of this order (TASK-155 AC#2): Done is
-// an append-only log, not a column the user repositions among Todo/Today/
-// free columns, so it always renders last, fixed, outside this list.
+// "done" is deliberately never part of this order (TASK-155): Done always
+// renders last, fixed — the user reorders CARDS within it (donePosition) but
+// not the Done column's own position among Todo/Today/free columns.
 function defaultOrder(freeColumns: readonly MyWorkFreeColumn[]): string[] {
   const sortedFree = [...freeColumns].sort((a, b) => a.position - b.position).map((c) => c.id);
   return ["todo", "today", ...sortedFree];

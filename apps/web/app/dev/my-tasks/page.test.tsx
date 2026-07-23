@@ -9,7 +9,6 @@ const getUserMock = vi.fn();
 let projectRow: { id: string; name: string } | null;
 let storyRows: unknown[];
 let markRows: unknown[];
-let completionRows: unknown[];
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
@@ -32,9 +31,6 @@ vi.mock("@/lib/supabase/server", () => ({
       if (table === "my_work_story_state") {
         return { select: () => ({ eq: () => Promise.resolve({ data: markRows, error: null }) }) };
       }
-      if (table === "story_completions") {
-        return { select: () => ({ eq: () => ({ order: () => Promise.resolve({ data: completionRows, error: null }) }) }) };
-      }
       throw new Error(`unexpected table ${table}`);
     },
   }),
@@ -51,7 +47,6 @@ describe("DevMyTasksPage", () => {
     projectRow = { id: "p1", name: "My Tasks" };
     storyRows = [];
     markRows = [];
-    completionRows = [];
     getUserMock.mockResolvedValue({ data: { user: { id: "user-1" } } });
   });
 

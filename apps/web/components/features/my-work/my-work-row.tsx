@@ -44,16 +44,13 @@ export type MyWorkRowData = {
 // (the doc-17-adjacent bug this task fixes: the old single-line row's
 // trailing badges overlapped once the row got too crowded to fit them).
 //
-// `completedAt` is set only for a Done-column card (fable-advisor TASK-132):
-// Done is an additive log (lib/utils/my-work.ts classifyMyWork), so the SAME
-// story can render simultaneously as a live Doing card (no completedAt) and a
-// Done log entry (completedAt set) — the state badge alone (which always
-// reflects the CURRENT real state, live-joined) can't tell those apart, so a
-// completion marker is required to distinguish "this is a log entry" from
-// "this is the live card" at a glance (ux-principles.md principle 9). It sits
-// in the meta row (pushed to the far end via ml-auto, like the board card's
-// assignee slot), not the title row — a title row that wraps to multiple
-// lines has no stable place to anchor a shrink-0 sibling.
+// `completedAt` is set only for a Done-column card (TASK-176: Done is an
+// exclusive status column, so a card is EITHER a live active card OR a Done
+// card, never both). The marker reinforces at a glance that this card is the
+// user's completed work — it sits in the meta row (pushed to the far end via
+// ml-auto, like the board card's assignee slot), not the title row, since a
+// title row that wraps to multiple lines has no stable place to anchor a
+// shrink-0 sibling (ux-principles.md principle 9).
 export function MyWorkRow({
   story,
   completedAt,

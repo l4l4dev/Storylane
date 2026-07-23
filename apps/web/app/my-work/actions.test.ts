@@ -196,6 +196,16 @@ describe("setMyWorkColumn — personal project (real-state direct)", () => {
     expect(rpcMock).toHaveBeenCalledWith("set_story_state", { p_story_id: "s1", p_state_id: "unstarted-state" });
   });
 
+  // TASK-176/177 (fable-advisor + rls-security-reviewer): every placement clears
+  // BOTH manual-order slots that no reset trigger can catch on a Done/Todo
+  // transition (today_date/column_id stay null, so the trigger's condition never
+  // fires) — otherwise a Todo→Done→Todo round trip leaves a stale todo_position
+  // and the reopened card lands at an unpredictable old slot (principle 4).
+  it("clears done_position AND todo_position on every placement", async () => {
+    await setMyWorkColumn("s1", "todo", TODAY);
+    expect(upsertMock).toHaveBeenCalledWith(expect.objectContaining({ done_position: null, todo_position: null }));
+  });
+
   it("errors (no local write) when the project has no state of the target category", async () => {
     lowestByCategory.done = null;
     const result = await setMyWorkColumn("s1", "done", TODAY);
