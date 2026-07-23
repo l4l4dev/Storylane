@@ -325,7 +325,7 @@ function TodoColumn({
           {groups.map((group) => (
             <div key={group.projectId}>
               <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.projectName}</h3>
-              <ul className="flex flex-col gap-1.5">
+              <ul className="flex flex-col gap-2">
                 {group.items.map((item) => (
                   <SortableItem key={item.id} id={item.id}>
                     <MyWorkRow story={item.row} onOpen={() => onOpenStory(item.row.id)} />
@@ -389,7 +389,7 @@ function DoneColumn({
           {groups.map((group) => (
             <div key={group.dateKey}>
               <h3 className="mb-2 text-xs font-medium text-muted-foreground">{doneDateLabel(group.dateKey, todayKey)}</h3>
-              <ul className="flex flex-col gap-1.5">
+              <ul className="flex flex-col gap-2">
                 {group.stories.map((item) => (
                   <SortableItem key={item.id} id={item.id}>
                     <MyWorkRow story={item.row} completedAt={item.completedAt} onOpen={() => onOpenStory(item.row.id)} />

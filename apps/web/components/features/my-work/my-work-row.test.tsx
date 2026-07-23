@@ -63,6 +63,33 @@ describe("MyWorkRow", () => {
     expect(screen.getByText("Completed")).toHaveAttribute("title", expect.stringContaining("Completed"));
   });
 
+  // TASK-174: the Completed marker used to share the single dense line with
+  // the title/icon/badges and could visually overlap them. It now lives in
+  // its own meta-row element (pushed to the end via ml-auto), structurally
+  // separate from the title text — this guards against it moving back into
+  // the title's own text node, where wrapping could overlap it again.
+  it("renders the Completed marker as its own element, not part of the title text", () => {
+    render(<MyWorkRow story={baseStory} completedAt="2026-07-20T09:00:00Z" />);
+    const marker = screen.getByText("Completed");
+    const title = screen.getByText("Add login");
+    expect(marker).not.toBe(title);
+    expect(title.textContent).not.toContain("Completed");
+  });
+
+  // fable-advisor (TASK-174 closing review): an earlier version of this
+  // redesign only wrapped the title in the click target, silently shrinking
+  // the hit area vs. both the pre-redesign row (number/Personal tag were
+  // inside the link) and the board's own StoryCard (the whole card, meta row
+  // included, is one button/Link there). The whole card must stay clickable.
+  it("makes the whole card — including the meta row's badges — part of the click target", () => {
+    render(<MyWorkRow story={{ ...baseStory, isPersonal: true }} onOpen={vi.fn()} />);
+    const card = screen.getByRole("button", { name: /Add login/ });
+    expect(card).toContainElement(screen.getByText("#42"));
+    expect(card).toContainElement(screen.getByText("Personal"));
+    expect(card).toContainElement(screen.getByText("Storylane"));
+    expect(card).toContainElement(screen.getByText("In progress"));
+  });
+
   // doc-17 #3: personal-vs-team governs drag-to-Done behavior, so it must be
   // visible on the card, not just discoverable by dragging it.
   it("shows a persistent 'Personal' signifier for a personal-project story", () => {
@@ -75,10 +102,23 @@ describe("MyWorkRow", () => {
     expect(screen.queryByText("Personal")).not.toBeInTheDocument();
   });
 
-  // doc-17 #2: identity must survive even where the full name badge hides
-  // below sm — a compact initials marker carries it instead.
-  it("always renders a compact project-initials marker carrying the full name", () => {
+  // TASK-174 (doc-17 #2): the meta row wraps instead of hiding badges below
+  // sm, so the project name stays visible at every width without needing a
+  // separate compact fallback marker (the old below-sm-only initials circle
+  // this replaces).
+  it("shows the project name badge unconditionally, not just above a breakpoint", () => {
     render(<MyWorkRow story={baseStory} />);
-    expect(screen.getByText("ST")).toHaveAttribute("title", "Storylane");
+    const badge = screen.getByText("Storylane");
+    const classes = badge.className.split(/\s+/);
+    expect(classes).not.toContain("hidden");
+    expect(classes.some((c) => c.startsWith("sm:"))).toBe(false);
+  });
+
+  // TASK-174 (doc-17 #18): project identity is color-encoded once (the left
+  // border), not duplicated on the project chip's own border too.
+  it("does not tint the project badge's border (identity color lives on the left border only)", () => {
+    render(<MyWorkRow story={baseStory} />);
+    const badge = screen.getByText("Storylane");
+    expect(badge.className).not.toMatch(/--project-accent/);
   });
 });
