@@ -13,6 +13,7 @@ import {
   type MyWorkStory,
 } from "@/lib/utils/my-work";
 import { pointScaleValues, storyStateBadge } from "@/lib/utils/stories";
+import { fetchAllRows } from "@/lib/utils/supabase-pagination";
 import type { ProjectState } from "@/lib/types";
 import { MyWorkSections } from "@/components/features/my-work/my-work-sections";
 import type { MyWorkRowData } from "@/components/features/my-work/my-work-row";
@@ -78,10 +79,10 @@ export default async function MyWorkPage() {
 
   const [
     { data: statesRows },
-    { data: storyRows },
+    storyRows,
     { data: myStateRows },
     { data: columnRows },
-    { data: completionRows },
+    completionRows,
     { data: soloEpics },
     { data: soloLabels },
     { data: soloMembers },
@@ -91,17 +92,22 @@ export default async function MyWorkPage() {
       .from("project_states")
       .select("id, project_id, name, action_label, category, position, created_at")
       .in("project_id", projectIds),
+    // Not bounded by anything else here (an agent could easily carry more
+    // than max_rows assigned stories) — page through rather than one select.
     user
-      ? supabase
-          .from("stories")
-          .select("id, project_id, number, title, story_type, state_id, points, position")
-          .eq("assignee_id", user.id)
-          .not("state_id", "is", null)
-          // Active axis only: real-done stories live in the Done log via their
-          // completion rows, never as an active card (completed_at is set the
-          // moment a story enters a done category).
-          .is("completed_at", null)
-      : Promise.resolve({ data: null }),
+      ? fetchAllRows((from, to) =>
+          supabase
+            .from("stories")
+            .select("id, project_id, number, title, story_type, state_id, points, position")
+            .eq("assignee_id", user.id)
+            .not("state_id", "is", null)
+            // Active axis only: real-done stories live in the Done log via
+            // their completion rows, never as an active card (completed_at
+            // is set the moment a story enters a done category).
+            .is("completed_at", null)
+            .range(from, to),
+        )
+      : Promise.resolve([]),
     // The viewer's own My Work marks — column_id / today_date / today_position
     // / column_position (TASK-150: free-column manual order).
     user
@@ -116,17 +122,21 @@ export default async function MyWorkPage() {
       : Promise.resolve({ data: null }),
     // The Done log (doc-14): the viewer's completion history, live-joined to
     // each story's CURRENT data so a completion survives being reassigned away
-    // or even leaving the project (stories' SELECT RLS OR-clause).
+    // or even leaving the project (stories' SELECT RLS OR-clause). Not bounded
+    // by anything but the window date filter — page through it too.
     user
-      ? supabase
-          .from("story_completions")
-          .select(
-            "completed_at, stories(id, project_id, number, title, story_type, points, state_id, projects(name))",
-          )
-          .eq("user_id", user.id)
-          .gte("completed_at", doneSince)
-          .order("completed_at", { ascending: false })
-      : Promise.resolve({ data: null }),
+      ? fetchAllRows((from, to) =>
+          supabase
+            .from("story_completions")
+            .select(
+              "completed_at, stories(id, project_id, number, title, story_type, points, state_id, projects(name))",
+            )
+            .eq("user_id", user.id)
+            .gte("completed_at", doneSince)
+            .order("completed_at", { ascending: false })
+            .range(from, to),
+        )
+      : Promise.resolve([]),
     soloPersonalProject
       ? supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position")
       : Promise.resolve({ data: null }),
@@ -180,7 +190,7 @@ export default async function MyWorkPage() {
     };
   }
 
-  const assigned: MyWorkStory<MyWorkRowData>[] = (storyRows ?? [])
+  const assigned: MyWorkStory<MyWorkRowData>[] = storyRows
     .filter((s) => projectIdSet.has(s.project_id))
     .map((s) => {
       const mark = myStateByStoryId.get(s.id);
@@ -197,7 +207,7 @@ export default async function MyWorkPage() {
       };
     });
 
-  const completions: DoneEntry<MyWorkRowData>[] = (completionRows ?? []).flatMap((c) => {
+  const completions: DoneEntry<MyWorkRowData>[] = completionRows.flatMap((c) => {
     // The embedded story/project can type as an object or a single-element
     // array depending on the FK cardinality Supabase infers; normalize both.
     const story = Array.isArray(c.stories) ? c.stories[0] : c.stories;

@@ -13,6 +13,7 @@ import {
   startPlanningCapacityFetch,
 } from "@/lib/utils/planning-capacity";
 import { pointScaleValues } from "@/lib/utils/stories";
+import { fetchAllRows } from "@/lib/utils/supabase-pagination";
 import type { ProjectState } from "@/lib/types";
 import { velocityRate } from "@storylane/core";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
@@ -99,20 +100,25 @@ export default async function BoardPage({
     project.iteration_length,
   );
 
-  const [{ data: iterations }, { data: stories }, { data: labels }, { data: epics }, { data: dividers }, { data: pendingGoals }, { data: statesData }] =
+  const [{ data: iterations }, stories, { data: labels }, { data: epics }, { data: dividers }, { data: pendingGoals }, { data: statesData }] =
     await Promise.all([
       supabase
         .from("iterations")
         .select("id, number, goal, start_date, end_date, velocity, capacity, state, skipped")
         .eq("project_id", id)
         .order("number", { ascending: true }),
-      supabase
-        .from("stories")
-        .select(
-          "id, number, title, description, story_type, state_id, points, position, iteration_id, epic_id, assignee_id, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
-        )
-        .eq("project_id", id)
-        .order("position", { ascending: true }),
+      // A project's full story list isn't bounded by anything else here —
+      // page through past PostgREST's max_rows cap rather than one select.
+      fetchAllRows((from, to) =>
+        supabase
+          .from("stories")
+          .select(
+            "id, number, title, description, story_type, state_id, points, position, iteration_id, epic_id, assignee_id, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
+          )
+          .eq("project_id", id)
+          .order("position", { ascending: true })
+          .range(from, to),
+      ),
       supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
       supabase.from("epics").select("id, name, color").eq("project_id", id).order("position", { ascending: true }),
       // List view only (see components/features/board/board-list-view.tsx) —
@@ -136,7 +142,7 @@ export default async function BoardPage({
   const states: ProjectState[] = (statesData ?? []) as ProjectState[];
   const stateById = new Map(states.map((s) => [s.id, s]));
 
-  const storyPositionById = new Map((stories ?? []).map((s) => [s.id, s.position]));
+  const storyPositionById = new Map(stories.map((s) => [s.id, s.position]));
 
   const allIterations: IterationMeta[] = iterations ?? [];
   // The current iteration is whichever non-done row
@@ -154,7 +160,7 @@ export default async function BoardPage({
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
   const epicById = new Map((epics ?? []).map((e) => [e.id, e]));
 
-  const cards = (stories ?? [])
+  const cards = stories
     // Stories of finalized iterations belong to the history view
     // (/projects/[id]/iterations), not the board.
     .filter((story) => !(story.iteration_id && doneIterationIds.has(story.iteration_id)))
