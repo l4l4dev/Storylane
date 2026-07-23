@@ -185,11 +185,14 @@ my_work_columns (
 Seeded one `Doing` row per user (backfill + at signup via `handle_new_user`).
 RLS: own rows, all four ops (`user_id = auth.uid()`).
 
-### my_work_story_state (doc-14, reshaped by doc-15)
-Per-user, per-story My Work marks. Placement is manual (doc-15): a card is in
-**Today** when `today_date` = the viewer's local today (`today_position` is the
-day's manual order), else its **free column** (`column_id`), else **Todo**.
-There is no project-board mapping any more — My Work is a purely personal board.
+### my_work_story_state (doc-14, reshaped by doc-15, Done-as-status TASK-176)
+Per-user, per-story My Work marks + manual card orders. A card classifies to
+exactly ONE column by precedence: **Done** (the story's real state category is
+`done`) > **Today** (`today_date` = the viewer's local today) > its **free
+column** (`column_id`) > **Todo**. Done is read from the story's live done
+category, not a stored mark — so this table only holds the *ordering* for Done
+(`done_position`), not membership. There is no project-board mapping — My Work
+is a purely personal board.
 ```sql
 my_work_story_state (
   user_id        uuid REFERENCES profiles(id) ON DELETE CASCADE,
@@ -197,13 +200,33 @@ my_work_story_state (
   column_id      uuid,   -- free column (NULL = Todo); composite FK below
   today_date     date,   -- Today mark for a specific calendar date (NULL = not today)
   today_position int,    -- manual order within Today
+  column_position int,   -- manual order within its free column
+  todo_position  int,    -- manual order within Todo (TASK-177)
+  done_position  int,    -- manual order within a Done date group (TASK-176)
   updated_at     timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, story_id),
   CHECK (today_position IS NULL OR today_date IS NOT NULL),
+  CHECK (column_position IS NULL OR column_id IS NOT NULL),
+  CHECK (todo_position IS NULL OR (today_date IS NULL AND column_id IS NULL)),
   FOREIGN KEY (user_id, column_id) REFERENCES my_work_columns (user_id, id)
     ON DELETE SET NULL (column_id)   -- deleting a column drops its cards back to Todo
 )  -- + index on (story_id) for the reverse "who customized this" lookup
 ```
+Each position is nulls-last with a fallback (Today/free/Todo: the cross-project
+board order; Done: newest completion first). `today_position`, `column_position`,
+and `todo_position` are each valid only while the row sits in that column — a
+`BEFORE UPDATE` reset trigger (`my_work_story_state_reset_positions`) clears
+`column_position` when `column_id` changes/nulls and `todo_position` when the
+row gains a Today date or a free column, so a caller that forgets the paired
+field can't violate the CHECKs (the TASK-161 bug shape). The trigger can't catch
+a **Done↔Todo** transition (both leave `today_date`/`column_id` null — the same
+"shape" as Todo), so `persistMark` unconditionally clears `todo_position` (and
+`done_position`) on every placement instead: a card re-completed or reopened
+should start unordered, not inherit a stale slot. `done_position` has no CHECK or
+reset trigger at all (Done membership isn't a local field — a stale value on a
+since-reopened row is simply never read; `persistMark` clears it on any active
+placement).
+
 The composite FK (not a plain single-column one) enforces two invariants: a row
 can't borrow another user's column, and column deletion nulls only `column_id`,
 never `user_id` (which is part of the PK). The column-list `SET NULL` form is
@@ -216,25 +239,14 @@ SELECT/UPDATE/DELETE (`user_id = auth.uid()`); INSERT WITH CHECK
 *(`project_my_work_mapping` was removed in doc-15 — free columns never touch a
 project board, so a mapping had nothing left to do.)*
 
-### story_completions (doc-14)
-Append-only personal completion log — the source of My Work's Done column.
-One row is inserted every time a story enters a `done`-category state,
-credited to `assignee_id` at that moment; reopening/redoing adds a **new** row
-and never touches old ones (a completion, once logged, is permanent even after
-the story is reassigned or the completer leaves the project). Distinct from
-`stories.completed_at` (the current-state column, cleared on reopen).
-```sql
-story_completions (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  story_id     uuid NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
-  user_id      uuid NOT NULL REFERENCES profiles(id),
-  completed_at timestamptz NOT NULL DEFAULT now()
-)  -- + index on (user_id, completed_at DESC): the Done log's query shape
-```
-Written **only** by the `maintain_story_completed_at` SECURITY DEFINER trigger
-(gated to the UPDATE into a done category, `assignee_id` not null); no client
-write path (RLS SELECT own-rows only, INSERT/UPDATE/DELETE grants revoked). See
-spec/rls.md.
+### story_completions (doc-14 — retired by TASK-176, table pending removal)
+**No longer read or written.** Done was originally an append-only completion log
+backed by this table; the owner's 2026-07-24 decision made Done a plain status
+column read from the story's live `done` category, so `maintain_story_completed_at`
+no longer inserts here and no reader remains. The table (and the `stories` SELECT
+RLS OR-clause that referenced it) is left in place — unread — to avoid destroying
+production rows on merge; it is dropped by TASK-98's baseline squash + reset. Do
+not add new readers/writers.
 
 ### Working-day calendar (doc-8 §6)
 Two date-exception layers on top of `projects.working_weekdays`. They affect

@@ -47,14 +47,13 @@
   recreated under a new id; marks stay personal to the original); **`remove_member`
   purges the removed user's rows in that project** (prevents ghost marks reviving
   on re-invite). *(`project_my_work_mapping` removed in doc-15.)*
-- **story_completions (doc-14):** append-only completion log — gated per user.
-  SELECT `user_id = auth.uid()` only; **no client INSERT/UPDATE/DELETE policy
-  and the grants are revoked** (the TASK-110 lockdown pattern) — the
-  `maintain_story_completed_at` SECURITY DEFINER trigger is the only writer.
-  **stories' own SELECT policy carries an OR-clause for this table**
-  (`is_project_member(project_id) OR exists a story_completions row for this
-  story + auth.uid()`) so a completer keeps read access to their Done entry's
-  story even after leaving the project
+- **story_completions (doc-14 — retired by TASK-176):** no longer read or
+  written (Done is now a status column read from the story's live done
+  category). The table, its own-rows SELECT policy + revoked write grants, and
+  the `stories` SELECT OR-clause that referenced it all remain in place but
+  inert until TASK-98's baseline squash removes them. A completer who finishes
+  a story then leaves the project no longer keeps read access (there is no
+  completion row) — accepted by the owner as part of the Done-as-status change.
 - **project_calendar_exceptions:** project-scoped, standard pattern
   (members read, owner/member write per role)
 - **user_time_off (doc-8 §6):** stores **dates + kind only, no reason/notes**

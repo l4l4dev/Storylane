@@ -375,29 +375,31 @@ and there is no project-board mapping. My Work keeps its own marks per
 (user, story) in `my_work_story_state`, and each user's free columns live in
 `my_work_columns` (`Doing` pre-seeded). A collapsed-by-default "Manage
 columns" panel (TASK-141) lets the user add/rename/delete free columns.
-Column order — **every** column, the fixed Todo/Today/Done slots included —
-is set by dragging a column's own header directly on the board (TASK-148,
-a grip handle in the header is the drag surface, so it never conflicts with
-dragging a card inside the column). The full left-to-right order is one
-per-user list (`profiles.my_work_column_order`, a slot-id array) merged
-read-side against the live free-column set, so a deleted or not-yet-ordered
-column degrades gracefully with no migration needed per change.
+Column order — Todo, Today, and the free columns — is set by dragging a
+column's own header directly on the board (TASK-148, a grip handle in the
+header is the drag surface, so it never conflicts with dragging a card inside
+the column). Done is always the fixed last column and is not part of this
+order. The full left-to-right order is one per-user list
+(`profiles.my_work_column_order`, a slot-id array) merged read-side against the
+live free-column set, so a deleted or not-yet-ordered column degrades
+gracefully with no migration needed per change.
 
-Done is an **additive log**, evaluated independently:
+Each assigned story classifies to exactly ONE column by precedence — **Done**
+(its real state category is `done`) > **Today** (its `today_date` = the
+viewer's local today) > its **free column** (`column_id`) > **Todo**:
 
-- **Done** — the viewer's `story_completions` rows (append-only — reopening
-  and re-completing adds a new entry). Grouped by date (Today / Yesterday /
-  date, newest first). Entries are **live-joined** to the story's current
-  title/points/state, so they keep updating even if the story is reassigned
-  away or the viewer later leaves the project. A story active elsewhere can
-  appear in **both** Done and an active column at once. A team story that is
-  real-done but has **no** completion row for the viewer (e.g. assigned after
-  someone else finished it) shows in **no** column — it's finished work that
-  isn't the viewer's completion record.
-
-The active columns classify each assigned, non-done story by precedence —
-**Today** (its `today_date` = the viewer's local today) > its **free column**
-(`column_id`) > **Todo**:
+- **Done** — the viewer's done-category stories (owner decision 2026-07-24,
+  TASK-176: Done is a plain status column, NOT an append-only log). Read
+  straight from the story's live done category, grouped by `completed_at` date
+  (Today / Yesterday / date, newest first), bounded to the viewer's retention
+  window (older completions fall out to `/my-work/archive`). Done is checked
+  FIRST because a team story completed on its own board keeps its stale local
+  `today_date`/`column_id` (My Work's write path never ran to clear them) —
+  classifying by those first would wrongly show a done story in Today or a free
+  column. A story is in Done **or** an active column, never both. Cards within a
+  Done date group are manually orderable (`done_position`). A team story that
+  is real-done but no longer assigned to the viewer shows in no column — Done is
+  "the done work you currently own".
 
 - **Today** — date-scoped (belongs to a calendar date, the viewer's local
   wall date). On the first visit of a new day, unfinished yesterday-Today
@@ -406,20 +408,22 @@ The active columns classify each assigned, non-done story by precedence —
 - **Free columns** — user-defined personal statuses (`Doing` seeded). Local by
   definition; they never touch any project board.
 - **Todo** — everything else assigned to the viewer, grouped by project
-  (personal project first, then project name; board position order within a
-  group).
+  (personal project first, then project name). Cards within a group are
+  manually orderable (`todo_position`, TASK-177), falling back to board
+  position for a never-reordered card.
 
 **Dragging a card:**
 
 - **Team stories** — every drag is a local `my_work_story_state` mark
   (Todo / Today / free column). Completing a team story happens on **its own
-  board**, not here (a drag to Done is rejected with a visible message); it
-  still lands in the viewer's Done log automatically via the `story_completions`
-  trigger. A team story already real-done can't be dragged out of Done (an
-  explicit message, not a silent snap-back).
+  board**, not here (a drag to Done is rejected with a visible message); once
+  it's real-done it shows in the viewer's Done column, read from its live done
+  category. A team story already real-done can't be dragged out of Done from
+  My Work (an explicit message linking to its board, not a silent snap-back) —
+  reopening it happens on its board.
 - **Personal-project stories** — Todo/Done drags write the **real** state via
-  `set_story_state` (Done → `completed_at` + `story_completions`; Todo → the
-  lowest unstarted state, i.e. reopen). Today and free columns stay local —
+  `set_story_state` (Done → the lowest done state, sets `completed_at`; Todo →
+  the lowest unstarted state, i.e. reopen). Today and free columns stay local —
   except a real-done card being dragged out of Done, which first reopens to the
   lowest unstarted state via `set_story_state`, then the local mark is written
   (TASK-173: leaving it real-done would filter the card out of the next fetch
