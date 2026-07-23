@@ -15,6 +15,20 @@ const RUN = process.env.SUPABASE_INTEGRATION === "1";
 const SECOND_EMAIL = "task54-member@storylane.local";
 const SECOND_PASSWORD = "task54-local-only-password";
 
+// TASK-168: auth.admin.listUsers() only returns one page (default 50) —
+// scanning just that page to find an existing user by email works until
+// auth.users grows past it, then this silently stops finding its target.
+// Pages through instead of trusting the default page holds everyone.
+async function findUserByEmail(service: SupabaseClient, email: string) {
+  for (let page = 1; ; page++) {
+    const { data, error } = await service.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) throw new Error(`Could not list users: ${error.message}`);
+    const found = data.users.find((u) => u.email === email);
+    if (found) return found;
+    if (!data.nextPage) return null;
+  }
+}
+
 describe.skipIf(!RUN)("membership admin RPCs (integration)", () => {
   let asOwner: SupabaseClient; // dev user, project owner
   let asMember: SupabaseClient; // the second user
@@ -74,8 +88,7 @@ describe.skipIf(!RUN)("membership admin RPCs (integration)", () => {
     if (created.data.user) {
       memberId = created.data.user.id;
     } else {
-      const { data: list } = await asService.auth.admin.listUsers();
-      const existing = list.users.find((u) => u.email === SECOND_EMAIL);
+      const existing = await findUserByEmail(asService, SECOND_EMAIL);
       if (!existing) {
         throw new Error(`Could not create or find the second test user: ${created.error?.message}`);
       }
