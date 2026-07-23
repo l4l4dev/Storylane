@@ -456,6 +456,15 @@ export function MyWorkSections({
 }) {
   const todayKey = useSyncExternalStore(NOOP_SUBSCRIBE, localTodayKey, () => serverTodayKey);
 
+  // Keeps the "local_date" cookie fresh so next visit's SSR (page.tsx) can
+  // seed serverTodayKey with it instead of UTC — closes the hydration flash
+  // (TASK-163) for every reload after the first. Only re-runs when todayKey
+  // itself changes (post-hydration correction, or an open tab crossing
+  // midnight), not on every render.
+  useEffect(() => {
+    document.cookie = `local_date=${todayKey}; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+  }, [todayKey]);
+
   const columns = useMemo(
     () => classifyMyWork(assigned, completions, projects, freeColumns, todayKey),
     [assigned, completions, projects, freeColumns, todayKey],

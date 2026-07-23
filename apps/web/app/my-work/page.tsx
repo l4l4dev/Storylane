@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { addDays } from "@storylane/core";
 import { createClient } from "@/lib/supabase/server";
 import { utcTodayKey } from "@/lib/utils/format";
@@ -29,6 +30,16 @@ export default async function MyWorkPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // The viewer's local wall date, seeded server-side from a cookie the client
+  // keeps fresh (my-work-sections.tsx) whenever it differs from what SSR used
+  // last time. Falls back to UTC on a first-ever visit (no cookie yet) — the
+  // one case a server render truly can't know the viewer's timezone (TASK-163:
+  // west/east of UTC, classifying Today's cards against the wrong day for a
+  // stretch of every day caused a visible misplace-then-correct flash on every
+  // reload once hydration corrected it, not just a one-off first-load gap).
+  const localDateCookie = (await cookies()).get("local_date")?.value;
+  const serverTodayKey = localDateCookie && /^\d{4}-\d{2}-\d{2}$/.test(localDateCookie) ? localDateCookie : utcTodayKey();
 
   // RLS already scopes this to the signed-in user's memberships.
   const { data: projectRows } = await supabase
@@ -243,7 +254,7 @@ export default async function MyWorkPage() {
         columnNames={columnNames}
         hasQuickAdd={soloPersonalProject !== null}
         doneWindowDays={doneWindowDays}
-        serverTodayKey={utcTodayKey()}
+        serverTodayKey={serverTodayKey}
       />
     </main>
   );
