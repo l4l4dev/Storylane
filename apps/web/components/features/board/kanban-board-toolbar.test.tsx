@@ -1,7 +1,29 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { KanbanBoard } from "./kanban-board";
+import { KanbanBoard, type BoardStory } from "./kanban-board";
 import type { ProjectState } from "@/lib/types";
+
+function iceboxStory(id: string): BoardStory {
+  return {
+    id,
+    number: 1,
+    title: "Icebox story",
+    description: null,
+    story_type: "feature",
+    isDone: false,
+    points: null,
+    assigneeName: null,
+    labels: [],
+    epic: null,
+    state_id: null,
+    iteration_id: null,
+    position: 0,
+    assignee_id: null,
+    labelIds: [],
+    epic_id: null,
+    completed_at: null,
+  };
+}
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
@@ -130,6 +152,29 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
     expect(iceboxButton()).toBeInTheDocument();
     expect(iceboxButton()).not.toHaveAttribute("aria-hidden");
     expect(iceboxButton().className).not.toMatch(/\binvisible\b/);
+  });
+
+  // TASK-59 AC#2 (re-verified TASK-146): the count badge is always mounted,
+  // just invisible at 0 — crossing the 0/1 boundary must not remove/re-add
+  // it (that would nudge the view switcher/filters, same principle-3 concern
+  // the Icebox button itself is tested for above).
+  it("keeps the Icebox count badge mounted across the 0/1 boundary, not removed", () => {
+    const { rerender } = render(<KanbanBoard {...baseProps()} />);
+    const badge = () => screen.getByTestId("icebox-toggle").querySelector("span:last-child")!;
+
+    expect(badge()).toBeInTheDocument();
+    expect(badge()).toHaveTextContent("0");
+    expect(badge().className).toMatch(/\binvisible\b/);
+    expect(badge()).toHaveAttribute("aria-hidden", "true");
+
+    rerender(
+      <KanbanBoard {...baseProps()} initialContainers={{ ...baseProps().initialContainers, icebox: [iceboxStory("ice1")] }} />,
+    );
+
+    expect(badge()).toBeInTheDocument();
+    expect(badge()).toHaveTextContent("1");
+    expect(badge().className).not.toMatch(/\binvisible\b/);
+    expect(badge()).not.toHaveAttribute("aria-hidden");
   });
 
   it("keeps the Icebox toggle out of the tab order while hidden outside List", () => {
