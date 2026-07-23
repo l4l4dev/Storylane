@@ -1,7 +1,8 @@
+import type { CollisionDetection } from "@dnd-kit/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionResult } from "@/lib/types";
-import { MyWorkSections } from "./my-work-sections";
+import { collisionDetectionByDragKind, MyWorkSections } from "./my-work-sections";
 import type { MyWorkRowData } from "./my-work-row";
 import { localTodayKey } from "@/lib/utils/format";
 import { resolveColumnOrder, type DoneEntry, type MyWorkFreeColumn, type MyWorkProject, type MyWorkStory } from "@/lib/utils/my-work";
@@ -374,5 +375,53 @@ describe("MyWorkSections", () => {
     fireEvent.change(input, { target: { value: "Backlog" } });
     fireEvent.blur(input);
     await waitFor(() => expect(renameMyWorkFixedColumn).toHaveBeenCalledWith("todo", "Backlog"));
+  });
+});
+
+// TASK-162: cards and column headers (TASK-148) share one DndContext, so
+// plain closestCenter could resolve a card drag onto a column-header id
+// ("col:todo") that findContainer doesn't recognize, silently no-oping the
+// whole drag (reproduced live in the browser — a card dragged toward Todo
+// resolved to "col:todo" instead of "todo"). Builds minimal dnd-kit
+// CollisionDetection args directly (not a full drag simulation, which
+// jsdom/Testing Library can't drive realistically for dnd-kit anyway) to
+// prove the fix: even when a column-header id's rect is the closest one,
+// a card drag must never resolve to it, and vice versa.
+describe("collisionDetectionByDragKind", () => {
+  function rect(left: number, top: number, width: number, height: number) {
+    return { left, top, right: left + width, bottom: top + height, width, height };
+  }
+
+  function args(activeType: "card" | "column", collisionRect: ReturnType<typeof rect>): Parameters<CollisionDetection>[0] {
+    const droppableRects = new Map([
+      ["todo", rect(0, 1000, 100, 100)], // card-container droppable, far away
+      ["col:todo", rect(0, 0, 100, 20)], // column-header sortable, geometrically closest
+    ]);
+    const droppableContainers = [
+      { id: "todo", data: { current: undefined } },
+      { id: "col:todo", data: { current: { type: "column", columnId: "todo" } } },
+      // Another card in the same column — a plausible closer-than-"todo" false
+      // positive for the OTHER direction (a column drag must not land here).
+      { id: "card-2", data: { current: { type: "card" } } },
+    ] as unknown as Parameters<CollisionDetection>[0]["droppableContainers"];
+    return {
+      active: { id: "active-id", data: { current: { type: activeType } }, rect: { current: { initial: null, translated: null } } } as unknown as Parameters<CollisionDetection>[0]["active"],
+      collisionRect,
+      droppableRects,
+      droppableContainers,
+      pointerCoordinates: null,
+    };
+  }
+
+  it("never resolves a card drag onto a column-header id, even when its rect is closest", () => {
+    const result = collisionDetectionByDragKind(args("card", rect(0, 5, 100, 20)));
+    expect(result.some((c) => c.id === "col:todo")).toBe(false);
+    expect(result[0]?.id).toBe("todo");
+  });
+
+  it("never resolves a column drag onto a card id", () => {
+    const result = collisionDetectionByDragKind(args("column", rect(0, 5, 100, 20)));
+    expect(result.some((c) => c.id === "card-2" || c.id === "todo")).toBe(false);
+    expect(result[0]?.id).toBe("col:todo");
   });
 });

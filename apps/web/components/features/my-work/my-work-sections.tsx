@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransiti
 import {
   DndContext,
   DragOverlay,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -100,6 +101,23 @@ function doneDateLabel(dateKey: string, todayKey: string): string {
 function columnSortableId(id: string): string {
   return `col:${id}`;
 }
+
+// closestCenter alone picks whichever registered id is numerically nearest,
+// regardless of drag kind — with cards and column headers sharing one
+// DndContext, a card dragged toward Todo could resolve to the "col:todo"
+// column-header id instead of the "todo" card-container id (TASK-162):
+// findContainer doesn't recognize the "col:" form, so handleDragOver's
+// `if (!overContainer) return` silently no-ops the whole drag. Filter each
+// drag's collision candidates down to its own kind (card ids + untagged
+// card-container droppables vs. column-header ids) before delegating to
+// closestCenter, so the two candidate pools never cross.
+export const collisionDetectionByDragKind: CollisionDetection = (args) => {
+  const isColumnDrag = args.active.data.current?.type === "column";
+  const droppableContainers = args.droppableContainers.filter(
+    (container) => (container.data.current?.type === "column") === isColumnDrag,
+  );
+  return closestCenter({ ...args, droppableContainers });
+};
 
 // Column-move props threaded down from MyWorkSections' `displayOrder` state —
 // every column (fixed slot or free) supports left/right reordering, mirroring
@@ -686,7 +704,7 @@ export function MyWorkSections({
     <DndContext
       id="my-work-columns"
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetectionByDragKind}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
