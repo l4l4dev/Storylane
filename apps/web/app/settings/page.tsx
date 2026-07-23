@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { assertReadOk } from "@/lib/supabase/assert";
 import { appVersion } from "@/lib/utils/app-version";
 import { MyWorkDoneWindowSettings } from "@/components/features/settings/my-work-done-window-settings";
 import { ProfileSettingsForm } from "@/components/features/settings/profile-settings-form";
@@ -16,21 +17,21 @@ export default async function SettingsPage() {
     notFound();
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("username, display_name, my_work_done_window_days")
-    .eq("id", user.id)
-    .single();
+  const profile = assertReadOk(
+    await supabase
+      .from("profiles")
+      .select("username, display_name, my_work_done_window_days")
+      .eq("id", user.id)
+      .maybeSingle(),
+  );
 
   if (!profile) {
     notFound();
   }
 
-  const { data: timeOff } = await supabase
-    .from("user_time_off")
-    .select("date")
-    .eq("user_id", user.id)
-    .order("date");
+  const timeOff = assertReadOk(
+    await supabase.from("user_time_off").select("date").eq("user_id", user.id).order("date"),
+  );
 
   return (
     <main className="mx-auto max-w-lg p-6">

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { assertRowAffected } from "@/lib/supabase/assert";
+import { assertReadOk, assertRowAffected } from "@/lib/supabase/assert";
 import { updateStory } from "@/app/stories/[id]/actions";
 import type { ActionResult, ProjectState } from "@/lib/types";
 import {
@@ -604,12 +604,14 @@ export async function ensureCurrentIteration(projectId: string) {
   const supabase = await createClient();
   const today = utcTodayKey();
 
-  const { data: latestRows } = await supabase
-    .from("iterations")
-    .select("state, end_date")
-    .eq("project_id", projectId)
-    .order("number", { ascending: false })
-    .limit(1);
+  const latestRows = assertReadOk(
+    await supabase
+      .from("iterations")
+      .select("state, end_date")
+      .eq("project_id", projectId)
+      .order("number", { ascending: false })
+      .limit(1),
+  );
 
   const latest = latestRows?.[0] ?? null;
   if (latest && latest.state !== "done" && latest.end_date >= today) {

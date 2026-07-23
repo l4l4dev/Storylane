@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertAllSucceeded, assertRowAffected } from "./assert";
+import { assertAllSucceeded, assertReadOk, assertRowAffected } from "./assert";
 
 describe("assertAllSucceeded", () => {
   it("resolves without throwing when every result has no error", async () => {
@@ -40,5 +40,23 @@ describe("assertRowAffected", () => {
     await expect(
       assertRowAffected({ data: [], error: null }, "Not allowed"),
     ).rejects.toThrow("Not allowed");
+  });
+});
+
+// TASK-167: several server pages destructured only `data` from a Supabase
+// read, discarding `error` — a transient DB failure quietly became an empty
+// page (or, via a `.single()` existence check, a wrong 404) instead of
+// reaching error.tsx.
+describe("assertReadOk", () => {
+  it("returns the data when there is no error", () => {
+    expect(assertReadOk({ data: [{ id: "row-1" }], error: null })).toEqual([{ id: "row-1" }]);
+  });
+
+  it("returns null data as-is when there is no error (a maybeSingle 'not found')", () => {
+    expect(assertReadOk({ data: null, error: null })).toBeNull();
+  });
+
+  it("throws the read's error message instead of returning data alone", () => {
+    expect(() => assertReadOk({ data: null, error: { message: "connection reset" } })).toThrow("connection reset");
   });
 });

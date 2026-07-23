@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { assertReadOk } from "@/lib/supabase/assert";
 import { ITERATION_LENGTHS, POINT_SCALES, iterationLengthLabel } from "@/lib/types";
 import { IntegrationSettings, type IntegrationRow } from "@/components/features/projects/integration-settings";
 import { InviteMemberForm } from "@/components/features/projects/invite-member-form";
@@ -31,48 +32,44 @@ export default async function ProjectSettingsPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", id)
-    .single();
+  const project = assertReadOk(await supabase.from("projects").select("*").eq("id", id).maybeSingle());
 
   if (!project) {
     notFound();
   }
 
-  const { data: members } = await supabase
-    .from("project_members")
-    .select("user_id, role, profiles(display_name, avatar_url, is_agent)")
-    .eq("project_id", id);
+  const members = assertReadOk(
+    await supabase
+      .from("project_members")
+      .select("user_id, role, profiles(display_name, avatar_url, is_agent)")
+      .eq("project_id", id),
+  );
 
   const myRole = members?.find((m) => m.user_id === user?.id)?.role;
   const isOwner = myRole === "owner";
   const isMember = myRole === "owner" || myRole === "member";
 
-  const { data: labels } = await supabase
-    .from("labels")
-    .select("id, name, color")
-    .eq("project_id", id)
-    .order("name");
+  const labels = assertReadOk(
+    await supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
+  );
 
-  const { data: statesData } = await supabase
-    .from("project_states")
-    .select("id, project_id, name, action_label, category, position, created_at")
-    .eq("project_id", id)
-    .order("position");
+  const statesData = assertReadOk(
+    await supabase
+      .from("project_states")
+      .select("id, project_id, name, action_label, category, position, created_at")
+      .eq("project_id", id)
+      .order("position"),
+  );
   const states = (statesData ?? []) as ProjectState[];
 
-  const { data: calendarExceptions } = await supabase
-    .from("project_calendar_exceptions")
-    .select("id, date, kind")
-    .eq("project_id", id)
-    .order("date");
+  const calendarExceptions = assertReadOk(
+    await supabase.from("project_calendar_exceptions").select("id, date, kind").eq("project_id", id).order("date"),
+  );
 
   // RLS returns integrations only to owners — empty for everyone else.
-  const { data: integrations } = isOwner
-    ? await supabase.from("integrations").select("id, provider, config, is_active").eq("project_id", id)
-    : { data: null };
+  const integrations = isOwner
+    ? assertReadOk(await supabase.from("integrations").select("id, provider, config, is_active").eq("project_id", id))
+    : null;
 
   return (
     <main className="mx-auto max-w-2xl p-6">

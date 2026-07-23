@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { assertReadOk } from "@/lib/supabase/assert";
 import { groupStoriesByIteration } from "@/lib/utils/board";
 import { formatDate } from "@/lib/utils/format";
 import { iterationLabel } from "@/lib/utils/iterations";
@@ -18,11 +19,13 @@ export default async function IterationsPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, name, iteration_length, iteration_term")
-    .eq("id", id)
-    .single();
+  const project = assertReadOk(
+    await supabase
+      .from("projects")
+      .select("id, name, iteration_length, iteration_term")
+      .eq("id", id)
+      .maybeSingle(),
+  );
 
   if (!project) {
     notFound();
@@ -32,17 +35,19 @@ export default async function IterationsPage({
   // shows up here instead of lingering on the board (spec/velocity.md).
   await ensureCurrentIteration(project.id);
 
-  const { data: iterations } = await supabase
-    .from("iterations")
-    .select("id, number, goal, start_date, end_date, velocity, capacity, state, skipped")
-    .eq("project_id", id)
-    .eq("state", "done")
-    .order("number", { ascending: false });
+  const iterations = assertReadOk(
+    await supabase
+      .from("iterations")
+      .select("id, number, goal, start_date, end_date, velocity, capacity, state, skipped")
+      .eq("project_id", id)
+      .eq("state", "done")
+      .order("number", { ascending: false }),
+  );
 
   const doneIterations = iterations ?? [];
   const doneIds = doneIterations.map((iteration) => iteration.id);
 
-  const [{ data: stories }, { data: labels }, { data: epics }, { data: states }] =
+  const [storiesResult, labelsResult, epicsResult, statesResult] =
     doneIds.length > 0
       ? await Promise.all([
           supabase
@@ -56,7 +61,11 @@ export default async function IterationsPage({
           supabase.from("epics").select("id, name, color").eq("project_id", id),
           supabase.from("project_states").select("id, category").eq("project_id", id),
         ])
-      : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
+      : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }, { data: [], error: null }];
+  const stories = assertReadOk(storiesResult);
+  const labels = assertReadOk(labelsResult);
+  const epics = assertReadOk(epicsResult);
+  const states = assertReadOk(statesResult);
 
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
   const epicById = new Map((epics ?? []).map((e) => [e.id, e]));

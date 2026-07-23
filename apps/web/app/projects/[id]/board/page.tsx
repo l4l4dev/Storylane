@@ -14,6 +14,7 @@ import {
 } from "@/lib/utils/planning-capacity";
 import { pointScaleValues } from "@/lib/utils/stories";
 import { fetchAllRows } from "@/lib/utils/supabase-pagination";
+import { assertReadOk } from "@/lib/supabase/assert";
 import type { ProjectState } from "@/lib/types";
 import { velocityRate } from "@storylane/core";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
@@ -64,13 +65,15 @@ export default async function BoardPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select(
-      "id, name, velocity_window, iteration_length, iteration_term, point_scale, custom_points, working_weekdays",
-    )
-    .eq("id", id)
-    .single();
+  const project = assertReadOk(
+    await supabase
+      .from("projects")
+      .select(
+        "id, name, velocity_window, iteration_length, iteration_term, point_scale, custom_points, working_weekdays",
+      )
+      .eq("id", id)
+      .maybeSingle(),
+  );
 
   if (!project) {
     notFound();
@@ -80,13 +83,14 @@ export default async function BoardPage({
   // `members` doesn't depend on ensureCurrentIteration and is needed early to
   // scope the planning-capacity fetch below (TASK-99) — run it alongside
   // instead of inside the later batch, so it doesn't add its own round trip.
-  const [, { data: members }] = await Promise.all([
+  const [, membersResult] = await Promise.all([
     // Lazily creates/rolls over the current iteration before reading it (see
     // spec/velocity.md "Automatic scheduling & rollover") — must run before
     // the iterations query below.
     ensureCurrentIteration(project.id),
     supabase.from("project_members").select("user_id, role, profiles(display_name, is_agent)").eq("project_id", id),
   ]);
+  const members = assertReadOk(membersResult);
 
   const capacityMembers = (members ?? []).map((m) => ({ userId: m.user_id, role: m.role }));
   // Fired now, on an estimated range (project.iteration_length + today are
@@ -100,7 +104,7 @@ export default async function BoardPage({
     project.iteration_length,
   );
 
-  const [{ data: iterations }, stories, { data: labels }, { data: epics }, { data: dividers }, { data: pendingGoals }, { data: statesData }] =
+  const [iterationsResult, stories, labelsResult, epicsResult, dividersResult, pendingGoalsResult, statesResult] =
     await Promise.all([
       supabase
         .from("iterations")
@@ -138,6 +142,12 @@ export default async function BoardPage({
         .eq("project_id", id)
         .order("position", { ascending: true }),
     ]);
+  const iterations = assertReadOk(iterationsResult);
+  const labels = assertReadOk(labelsResult);
+  const epics = assertReadOk(epicsResult);
+  const dividers = assertReadOk(dividersResult);
+  const pendingGoals = assertReadOk(pendingGoalsResult);
+  const statesData = assertReadOk(statesResult);
 
   const states: ProjectState[] = (statesData ?? []) as ProjectState[];
   const stateById = new Map(states.map((s) => [s.id, s]));

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { assertReadOk } from "@/lib/supabase/assert";
 import { epicProgress } from "@/lib/utils/epics";
 import type { StateCategory } from "@storylane/core";
 import { EpicDeleteMenu } from "@/components/features/epics/epic-delete-menu";
@@ -15,13 +16,13 @@ export default async function EpicsPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: project } = await supabase.from("projects").select("id, name").eq("id", id).single();
+  const project = assertReadOk(await supabase.from("projects").select("id, name").eq("id", id).maybeSingle());
 
   if (!project) {
     notFound();
   }
 
-  const [{ data: epics }, { data: stories }, { data: states }] = await Promise.all([
+  const [epicsResult, storiesResult, statesResult] = await Promise.all([
     supabase
       .from("epics")
       .select("id, name, description, color, position")
@@ -30,6 +31,9 @@ export default async function EpicsPage({
     supabase.from("stories").select("epic_id, state_id").eq("project_id", id),
     supabase.from("project_states").select("id, category").eq("project_id", id),
   ]);
+  const epics = assertReadOk(epicsResult);
+  const stories = assertReadOk(storiesResult);
+  const states = assertReadOk(statesResult);
 
   const categoryByStateId = new Map((states ?? []).map((s) => [s.id, s.category as StateCategory]));
   const storiesByEpic = new Map<string, { category: StateCategory | null }[]>();

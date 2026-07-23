@@ -33,3 +33,19 @@ export async function assertRowAffected(
     throw new Error(message);
   }
 }
+
+/**
+ * Throws when a Supabase read's `error` is set, instead of the common
+ * `const { data } = await supabase...` pattern that discards it — that
+ * silently turns a transient DB failure into an empty page, or (via a
+ * `.single()`/`.maybeSingle()` existence check) a wrong 404, instead of
+ * reaching error.tsx. Existence checks should use `.maybeSingle()` (not
+ * `.single()`) so a genuine zero-row "not found" still resolves with
+ * `data: null, error: null` rather than tripping this.
+ */
+export function assertReadOk<T>(result: { data: T; error: { message: string } | null }): T {
+  if (result.error) {
+    throw new Error(result.error.message);
+  }
+  return result.data;
+}

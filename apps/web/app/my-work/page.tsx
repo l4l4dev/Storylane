@@ -14,6 +14,7 @@ import {
 } from "@/lib/utils/my-work";
 import { pointScaleValues, storyStateBadge } from "@/lib/utils/stories";
 import { fetchAllRows } from "@/lib/utils/supabase-pagination";
+import { assertReadOk } from "@/lib/supabase/assert";
 import type { ProjectState } from "@/lib/types";
 import { MyWorkSections } from "@/components/features/my-work/my-work-sections";
 import type { MyWorkRowData } from "@/components/features/my-work/my-work-row";
@@ -43,10 +44,9 @@ export default async function MyWorkPage() {
   const serverTodayKey = localDateCookie && /^\d{4}-\d{2}-\d{2}$/.test(localDateCookie) ? localDateCookie : utcTodayKey();
 
   // RLS already scopes this to the signed-in user's memberships.
-  const { data: projectRows } = await supabase
-    .from("projects")
-    .select("id, name, is_personal, created_by")
-    .is("archived_at", null);
+  const projectRows = assertReadOk(
+    await supabase.from("projects").select("id, name, is_personal, created_by").is("archived_at", null),
+  );
   const projects: MyWorkProject[] = (projectRows ?? []).map((p) => ({
     id: p.id,
     name: p.name,
@@ -64,13 +64,15 @@ export default async function MyWorkPage() {
 
   // Fetched ahead of the batch below since doneSince (used by the
   // completions query in that same batch) depends on the configured window.
-  const { data: profileRow } = user
-    ? await supabase
-        .from("profiles")
-        .select("my_work_column_order, my_work_column_names, my_work_done_window_days")
-        .eq("id", user.id)
-        .single()
-    : { data: null };
+  const profileRow = user
+    ? assertReadOk(
+        await supabase
+          .from("profiles")
+          .select("my_work_column_order, my_work_column_names, my_work_done_window_days")
+          .eq("id", user.id)
+          .maybeSingle(),
+      )
+    : null;
   const doneWindowDays = profileRow?.my_work_done_window_days ?? DEFAULT_DONE_WINDOW_DAYS;
 
   // An explicit UTC timestamp (not a bare date) so the comparison below is
@@ -78,15 +80,15 @@ export default async function MyWorkPage() {
   const doneSince = `${addDays(utcTodayKey(), -doneWindowDays)}T00:00:00.000Z`;
 
   const [
-    { data: statesRows },
+    statesResult,
     storyRows,
-    { data: myStateRows },
-    { data: columnRows },
+    myStateResult,
+    columnResult,
     completionRows,
-    { data: soloEpics },
-    { data: soloLabels },
-    { data: soloMembers },
-    { data: soloProject },
+    soloEpicsResult,
+    soloLabelsResult,
+    soloMembersResult,
+    soloProjectResult,
   ] = await Promise.all([
     supabase
       .from("project_states")
@@ -115,11 +117,11 @@ export default async function MyWorkPage() {
           .from("my_work_story_state")
           .select("story_id, column_id, today_date, today_position, column_position")
           .eq("user_id", user.id)
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     // The viewer's free columns (doc-15). 'Doing' is pre-seeded.
     user
       ? supabase.from("my_work_columns").select("id, name, position").eq("user_id", user.id).order("position")
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     // The Done log (doc-14): the viewer's completion history, live-joined to
     // each story's CURRENT data so a completion survives being reassigned away
     // or even leaving the project (stories' SELECT RLS OR-clause). Not bounded
@@ -139,20 +141,28 @@ export default async function MyWorkPage() {
       : Promise.resolve([]),
     soloPersonalProject
       ? supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position")
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     soloPersonalProject
       ? supabase.from("labels").select("id, name").eq("project_id", soloPersonalProject.id).order("name")
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     soloPersonalProject
       ? supabase
           .from("project_members")
           .select("user_id, profiles(display_name, is_agent)")
           .eq("project_id", soloPersonalProject.id)
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     soloPersonalProject
-      ? supabase.from("projects").select("point_scale, custom_points").eq("id", soloPersonalProject.id).single()
-      : Promise.resolve({ data: null }),
+      ? supabase.from("projects").select("point_scale, custom_points").eq("id", soloPersonalProject.id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
+
+  const statesRows = assertReadOk(statesResult);
+  const myStateRows = assertReadOk(myStateResult);
+  const columnRows = assertReadOk(columnResult);
+  const soloEpics = assertReadOk(soloEpicsResult);
+  const soloLabels = assertReadOk(soloLabelsResult);
+  const soloMembers = assertReadOk(soloMembersResult);
+  const soloProject = assertReadOk(soloProjectResult);
 
   const statesByProject = new Map<string, ProjectState[]>();
   for (const state of (statesRows ?? []) as ProjectState[]) {
