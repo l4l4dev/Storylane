@@ -50,12 +50,11 @@ export async function setMyWorkColumn(
   const project = Array.isArray(story.projects) ? story.projects[0] : story.projects;
   const isPersonal = project?.is_personal ?? false;
 
-  // Personal Todo/Done: write the real state (single source of truth), then
-  // clear local marks — the card's home is now the real board's category.
-  if (isPersonal && (target === "todo" || target === "done")) {
-    const category = target === "done" ? "done" : "unstarted";
-    const stateId = await lowestStateOfCategory(supabase, story.project_id, category);
-    if (!stateId) return { ok: false, message: `This project has no ${category} state to move the story into.` };
+  // Personal Done: write the real done state (single source of truth), then
+  // clear local marks — the card's home is now the real board's done category.
+  if (isPersonal && target === "done") {
+    const stateId = await lowestStateOfCategory(supabase, story.project_id, "done");
+    if (!stateId) return { ok: false, message: "This project has no done state to move the story into." };
     const { error } = await supabase.rpc("set_story_state", { p_story_id: storyId, p_state_id: stateId });
     if (error) return { ok: false, message: writeErrorMessage(error, "You don't have permission to change this story's state.") };
     return persistMark(
@@ -75,15 +74,48 @@ export async function setMyWorkColumn(
     };
   }
 
+  // Personal Todo: doc-15 maps My Work's Todo to the real unstarted state, so
+  // write it (single source of truth) — this also reopens a card dragged out
+  // of Done — then clear local marks.
+  if (isPersonal && target === "todo") {
+    const stateId = await lowestStateOfCategory(supabase, story.project_id, "unstarted");
+    if (!stateId) return { ok: false, message: "This project has no unstarted state to move the story into." };
+    const { error } = await supabase.rpc("set_story_state", { p_story_id: storyId, p_state_id: stateId });
+    if (error) return { ok: false, message: writeErrorMessage(error, "You don't have permission to change this story's state.") };
+    return persistMark(
+      supabase,
+      user.id,
+      storyId,
+      { column_id: null, column_position: null, today_date: null, today_position: null },
+      story.project_id,
+    );
+  }
+
+  // Personal Today / free column: these are normally local overlays that DON'T
+  // touch real state (doc-15). But a real-done card dragged here would keep
+  // completed_at = 'done', so the page's `completed_at is null` filter drops it
+  // from the next fetch and the card silently vanishes (ux-principles principle
+  // 2). Reopen it to the lowest unstarted state FIRST, then fall through to
+  // write the overlay mark. A personal card that isn't real-done skips this
+  // untouched — its overlay is a pure local mark as before (TASK-173).
+  if (isPersonal && (await isRealCategoryDone(supabase, story.state_id))) {
+    const stateId = await lowestStateOfCategory(supabase, story.project_id, "unstarted");
+    if (!stateId) return { ok: false, message: "This project has no unstarted state to reopen the story into." };
+    const { error } = await supabase.rpc("set_story_state", { p_story_id: storyId, p_state_id: stateId });
+    if (error) return { ok: false, message: writeErrorMessage(error, "You don't have permission to change this story's state.") };
+    // fall through — the target's mark write below places the reopened card.
+  }
+
   // A team story already real-done can't be moved out of Done via a local mark:
   // classification excludes real-done from active columns, so the card would
   // snap back to Done on the next refresh with no explanation (ux-principles
-  // principle 2). Personal real-done is handled by the Todo branch above (it
-  // reopens the real state).
+  // principle 2). Personal real-done is reopened by the branch above; this is
+  // team-only. The client turns this rejection into a link to the story's own
+  // board (principle 8: offer a way out, don't dead-end).
   if (!isPersonal && (await isRealCategoryDone(supabase, story.state_id))) {
     return {
       ok: false,
-      message: "This story is already completed on its project board — reopen it there to move it out of Done.",
+      message: "This story is completed on its project board — reopen it there to move it out of Done.",
     };
   }
 

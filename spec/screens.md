@@ -419,9 +419,12 @@ The active columns classify each assigned, non-done story by precedence —
   explicit message, not a silent snap-back).
 - **Personal-project stories** — Todo/Done drags write the **real** state via
   `set_story_state` (Done → `completed_at` + `story_completions`; Todo → the
-  lowest unstarted state, i.e. reopen). Today and free columns stay local.
-  Personal projects are exempt from the estimation gate and iteration
-  auto-assign (`set_story_state` reads `projects.is_personal`).
+  lowest unstarted state, i.e. reopen). Today and free columns stay local —
+  except a real-done card being dragged out of Done, which first reopens to the
+  lowest unstarted state via `set_story_state`, then the local mark is written
+  (TASK-173: leaving it real-done would filter the card out of the next fetch
+  and make it silently vanish). Personal projects are exempt from the estimation
+  gate and iteration auto-assign (`set_story_state` reads `projects.is_personal`).
 
 Every row shows the story's type icon/title (linking to the standalone
 `/stories/[id]` page — My Work has no side peek of its own), its project as

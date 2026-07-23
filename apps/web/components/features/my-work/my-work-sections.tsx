@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -48,6 +48,7 @@ import {
   DEFAULT_DONE_WINDOW_DAYS,
   groupDoneByDate,
   isManualOrderReorder,
+  isTeamDoneOutRejection,
   regroupByProject,
   resolveDragEndTarget,
   toDragContainers,
@@ -491,7 +492,9 @@ export function MyWorkSections({
   const initialContainers = useMemo(() => toDragContainers(columns), [columns]);
   const { containers, setContainers, activeId, beginDrag, endDrag, revertToSnapshot, runDrop } =
     useOptimisticBoardOrder(initialContainers);
-  const [dragError, setDragError] = useState<string | null>(null);
+  // ReactNode, not string: a team story rejected out of Done carries a link to
+  // its board (TASK-173, principle 8); every other setter still passes a string.
+  const [dragError, setDragError] = useState<ReactNode>(null);
 
   // TASK-148: the column display order, tracked separately from `containers`
   // (card placement). Synced from the `order` prop whenever it changes AND no
@@ -713,6 +716,23 @@ export function MyWorkSections({
       return;
     }
     setDragError(null);
+    // A team story pulled OUT of Done can only be reopened on its own board —
+    // setMyWorkColumn rejects it. Surface that with a link to the story rather
+    // than a dead-end message (principle 8). A team story completes only on its
+    // board, so a team card in Done is always this case; personal Done cards
+    // reopen in-place above and never reach this branch.
+    const onDropError = isTeamDoneOutRejection(startContainer, item.row.isPersonal)
+      ? (message: ReactNode) => {
+          setDragError(
+            <span>
+              {message}{" "}
+              <Link href={`/stories/${item.storyId}`} className="underline">
+                Open the story
+              </Link>
+            </span>,
+          );
+        }
+      : setDragError;
     // Deliberately NOT gated the way handleDragOver gates entering Done
     // (canDropOnDone): a team card can still be DROPPED on Done here (it just
     // never visually entered it during the hover) so setMyWorkColumn's
@@ -725,7 +745,7 @@ export function MyWorkSections({
         const result = await setMyWorkColumn(item.storyId, target, todayKey);
         if (!result.ok) throw new Error(result.message);
       },
-      setDragError,
+      onDropError,
     );
   }
 

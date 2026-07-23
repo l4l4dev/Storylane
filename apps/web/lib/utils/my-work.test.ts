@@ -4,6 +4,7 @@ import {
   classifyMyWork,
   groupDoneByDate,
   isManualOrderReorder,
+  isTeamDoneOutRejection,
   regroupByProject,
   resolveColumnNames,
   resolveColumnOrder,
@@ -332,6 +333,22 @@ describe("canDropOnDone", () => {
 
   it("is not droppable for a team card", () => {
     expect(canDropOnDone(false)).toBe(false);
+  });
+});
+
+describe("isTeamDoneOutRejection", () => {
+  it("is true only for a team card dragged out of Done", () => {
+    expect(isTeamDoneOutRejection("done", false)).toBe(true);
+  });
+
+  it("is false for a personal card out of Done (it reopens in place, never rejected)", () => {
+    expect(isTeamDoneOutRejection("done", true)).toBe(false);
+  });
+
+  it("is false for a team card dragged out of any other column", () => {
+    expect(isTeamDoneOutRejection("todo", false)).toBe(false);
+    expect(isTeamDoneOutRejection("today", false)).toBe(false);
+    expect(isTeamDoneOutRejection(null, false)).toBe(false);
   });
 });
 

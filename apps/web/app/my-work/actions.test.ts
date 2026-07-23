@@ -212,6 +212,40 @@ describe("setMyWorkColumn — personal project (real-state direct)", () => {
       expect.objectContaining({ column_id: "col-doing", column_position: null, today_date: null }),
     );
   });
+
+  // TASK-173: a real-done personal card dragged OUT of Done into Today or a
+  // free column must reopen the real state first — otherwise completed_at stays
+  // 'done', the page filters it out of the next fetch, and the card silently
+  // vanishes (principle 2). Todo already reopened (test above); Today/free
+  // used to skip the reopen entirely.
+  it("To Today reopens a real-done card to unstarted, THEN writes the Today mark", async () => {
+    categoryByStateId["story-state"] = "done";
+    maxTodayPosition = 0;
+    const result = await setMyWorkColumn("s1", "today", TODAY);
+    expect(result).toEqual({ ok: true });
+    expect(rpcMock).toHaveBeenCalledWith("set_story_state", { p_story_id: "s1", p_state_id: "unstarted-state" });
+    expect(upsertMock).toHaveBeenCalledWith(expect.objectContaining({ today_date: TODAY, today_position: 1 }));
+  });
+
+  it("To a free column reopens a real-done card to unstarted, THEN writes the column mark", async () => {
+    categoryByStateId["story-state"] = "done";
+    const result = await setMyWorkColumn("s1", "col-doing", TODAY);
+    expect(result).toEqual({ ok: true });
+    expect(rpcMock).toHaveBeenCalledWith("set_story_state", { p_story_id: "s1", p_state_id: "unstarted-state" });
+    expect(upsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ column_id: "col-doing", column_position: null, today_date: null }),
+    );
+  });
+
+  // A personal card that is NOT real-done keeps the pure-local-overlay behavior
+  // for Today/free (no spurious state write).
+  it("To Today for a non-done personal card writes only the local mark (no reopen)", async () => {
+    categoryByStateId["story-state"] = "unstarted";
+    const result = await setMyWorkColumn("s1", "today", TODAY);
+    expect(result).toEqual({ ok: true });
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(upsertMock).toHaveBeenCalledWith(expect.objectContaining({ today_date: TODAY }));
+  });
 });
 
 describe("setMyWorkColumn — team story (local marks only)", () => {

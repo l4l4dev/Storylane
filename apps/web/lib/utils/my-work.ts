@@ -252,6 +252,18 @@ export function canDropOnDone(isPersonal: boolean): boolean {
 }
 
 /**
+ * Whether a rejected drop should offer a link to the story's own board rather
+ * than a dead-end message (TASK-173, ux-principles principle 8): only when a
+ * TEAM card is dragged OUT of Done — that's the one case setMyWorkColumn
+ * rejects because the story can only be reopened on its board. A personal Done
+ * card reopens in place (never rejected), and a team card dragged anywhere but
+ * out of Done fails for other reasons that a board link wouldn't fix.
+ */
+export function isTeamDoneOutRejection(startContainer: MyWorkColumnId | null, isPersonal: boolean): boolean {
+  return startContainer === "done" && !isPersonal;
+}
+
+/**
  * Whether a same-container drop should persist a manual reorder: Today and
  * every free column carry their own card order (doc-15 decision 4 — "the
  * day's execution order", extended to free columns since users expect the
