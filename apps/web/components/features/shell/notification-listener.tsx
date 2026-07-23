@@ -31,7 +31,10 @@ export function NotificationListener() {
     let cancelled = false;
     const supabase = createClient();
 
-    void supabase.auth.getUser().then(async ({ data: { user } }) => {
+    async function loadUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (cancelled || !user) {
         return;
       }
@@ -45,7 +48,8 @@ export function NotificationListener() {
       if (!cancelled && profile) {
         setUsername(profile.username);
       }
-    });
+    }
+    void loadUser();
 
     return () => {
       cancelled = true;

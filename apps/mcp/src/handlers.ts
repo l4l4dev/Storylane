@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { pointScaleValues, velocityRate, shouldAssignCurrentIteration, type StateCategory } from "@storylane/core";
+import { formatDateOnly, pointScaleValues, velocityRate, shouldAssignCurrentIteration, type StateCategory } from "@storylane/core";
 
 // The MCP server talks to Supabase as an untyped client (it does not import
 // apps/web's generated Database type — that would couple the packages). Rows
@@ -9,17 +9,14 @@ type Db = SupabaseClient;
 const NOT_MEMBER =
   "The agent is not a member of this project, or it does not exist. Invite the agent user to the project (role member) first — see apps/mcp/README.md.";
 
-/** UTC date key (YYYY-MM-DD), matching Web's ensureCurrentIteration / iterations.end_date. */
-function utcTodayKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 /**
  * Lazy rollover before any tool that reads or writes the current iteration
  * (spec/mcp.md write-path rules "Lazy rollover first"). Mirrors Web's
  * ensureCurrentIteration: a cheap pre-check, then finalize_iteration only when
- * the latest iteration is finalized or past its end date. No Slack notify —
- * that stays with the Next.js actions until TASK-24 (spec/mcp.md).
+ * the latest iteration is finalized or past its end date. Slack notification
+ * is driven entirely by DB triggers on the resulting row writes (see
+ * architecture notes "Slack notifications ⇄ DB trigger → Edge Function"), so
+ * this tool never sends one itself.
  */
 export async function ensureCurrentIteration(supabase: Db, projectId: string): Promise<void> {
   const { data, error } = await supabase
@@ -31,7 +28,7 @@ export async function ensureCurrentIteration(supabase: Db, projectId: string): P
   if (error) throw new Error(`Could not read iterations: ${error.message}`);
 
   const latest = data?.[0] ?? null;
-  if (latest && latest.state !== "done" && latest.end_date >= utcTodayKey()) return;
+  if (latest && latest.state !== "done" && latest.end_date >= formatDateOnly(Date.now())) return;
 
   const { error: rpcError } = await supabase.rpc("finalize_iteration", {
     p_project_id: projectId,
@@ -129,10 +126,10 @@ async function storyProjectId(supabase: Db, storyId: string): Promise<string> {
 
 /**
  * Explicit error for a write RLS-filtered to zero rows (spec/mcp.md
- * "Row-count verification everywhere"): since TASK-70, member-role RLS allows
- * writing any story in the project, so a 0-row UPDATE past the existence
- * check is a residual race — the story was deleted, or the bot's role was
- * revoked, between the read and this write — not an ownership denial.
+ * "Row-count verification everywhere"): member-role RLS allows writing any
+ * story in the project, so a 0-row UPDATE past the existence check is a
+ * residual race — the story was deleted, or the bot's role was revoked,
+ * between the read and this write — not an ownership denial.
  */
 function storyNoLongerWritable(): Error {
   return new Error("Not allowed: this story no longer exists or the agent can no longer write to it.");
@@ -140,11 +137,11 @@ function storyNoLongerWritable(): Error {
 
 /**
  * Resolves label names to ids within a project, creating any that don't
- * exist. One upsert per name against labels_project_id_name_key
- * (TASK-97) rather than a select-then-insert: two concurrent calls
- * resolving the same new name both land on the same row (the second's
- * INSERT becomes a same-value UPDATE under the conflict, so an existing
- * label's color is never touched) instead of racing to create duplicates.
+ * exist. One upsert per name against labels_project_id_name_key rather than a
+ * select-then-insert: two concurrent calls resolving the same new name both
+ * land on the same row (the second's INSERT becomes a same-value UPDATE
+ * under the conflict, so an existing label's color is never touched) instead
+ * of racing to create duplicates.
  */
 async function resolveLabelIds(supabase: Db, projectId: string, names: string[]): Promise<string[]> {
   const ids: string[] = [];
@@ -165,7 +162,7 @@ async function resolveLabelIds(supabase: Db, projectId: string, names: string[])
 /**
  * Replaces a story's labels with exactly `names`. The name->id resolve stays
  * here (creating any missing labels); the DELETE+INSERT replace is one atomic
- * RPC so a failure can't leave the story half-relabeled (TASK-71).
+ * RPC so a failure can't leave the story half-relabeled.
  */
 async function setLabels(supabase: Db, storyId: string, projectId: string, names: string[]): Promise<void> {
   const ids = await resolveLabelIds(supabase, projectId, names);
@@ -215,11 +212,9 @@ export async function boardSummary(supabase: Db, args: { project_id: string }) {
     .gt("capacity", 0)
     .order("number", { ascending: false })
     .limit(project.velocity_window);
-  // TASK-101: named for its unit, not just renamed off the old per-sprint
-  // 'velocity' point total this replaced (TASK-86) — a fraction usually
-  // below 1 misreads badly under the old field's name/wording, and no
-  // compatibility key is worth shipping for a value a stale reader could
-  // only ever misinterpret, never correctly reuse.
+  // Named for its unit (points per person-day, spec/velocity.md), not a raw
+  // per-sprint point total — a stale caller matching on field name would
+  // otherwise misread this as the old total rather than a rate.
   const velocity_points_per_person_day = velocityRate(doneIters ?? [], project.velocity_window);
 
   const pointsByStateId: Record<string, number> = {};
@@ -475,9 +470,9 @@ export async function createStory(supabase: Db, args: CreateStoryArgs) {
   }
 
   // create_story_tracker inserts the story and its labels in one transaction,
-  // so a label failure rolls the story back too (TASK-71). Always routed
-  // through the RPC (not just when labels exist) — one insert path to keep in
-  // sync with the columns.
+  // so a label failure rolls the story back too. Always routed through the
+  // RPC (not just when labels exist) — one insert path to keep in sync with
+  // the columns.
   const { data, error } = await supabase.rpc("create_story_tracker", {
     p_project_id: args.project_id,
     p_title: args.title,
@@ -535,9 +530,8 @@ export async function updateStory(supabase: Db, args: UpdateStoryArgs) {
   }
 
   // ponytail: labels-only edits are governed by story_labels RLS (any project
-  // member) — the same "any member" rule the stories UPDATE above now uses
-  // too (TASK-70), matched to the Web behaviour. Note it rather than adding
-  // a bespoke check.
+  // member) — the same "any member" rule the stories UPDATE above uses,
+  // matched to the Web behaviour. Note it rather than adding a bespoke check.
   if (args.labels !== undefined) await setLabels(supabase, args.story_id, projectId, args.labels);
 
   return { story_id: args.story_id, updated: true };
@@ -577,8 +571,8 @@ export async function setStoryState(supabase: Db, args: { story_id: string; stat
   // The RPC raises self-explanatory messages (bad target, unestimated
   // feature, no active iteration) — surface them verbatim. Its own "not
   // allowed to change this story's state" denial only fires for a viewer or
-  // a mid-request role-revocation race (TASK-70 relaxed the underlying RLS
-  // policy so any member may write any story).
+  // a mid-request role-revocation race, since member-role RLS otherwise
+  // allows any member to write any story.
   if (error) throw new Error(error.message);
   return data;
 }
@@ -656,7 +650,7 @@ export async function setStoryTasks(supabase: Db, args: { story_id: string; task
   await assertWritableProject(supabase, projectId);
 
   // One RPC does the DELETE+INSERT atomically (a failed INSERT can't wipe the
-  // checklist) and lets tasks_position_seq assign position (TASK-71).
+  // checklist) and lets tasks_position_seq assign position.
   const { data, error } = await supabase.rpc("set_story_tasks", {
     p_story_id: args.story_id,
     p_tasks: args.tasks.map((t) => ({ title: t.title, is_done: t.done ?? false })),

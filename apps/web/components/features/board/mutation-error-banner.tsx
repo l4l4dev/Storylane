@@ -1,9 +1,8 @@
 // A rejected/failed board mutation (stale-board drag, RLS-filtered write,
 // etc. — spec/screens.md "Conflict & failure rules" sibling for the board
-// itself) surfaces here instead of silently leaving the UI
-// diverged from the server. Shared by the three board views (List, Kanban,
-// Free mode) that each own their own drag state and so each need their own
-// error slot.
+// itself) surfaces here instead of silently leaving the UI diverged from the
+// server. Shared by the board's two views (List, Kanban), each of which owns
+// its own drag state and so needs its own error slot.
 export function MutationErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
     <div
