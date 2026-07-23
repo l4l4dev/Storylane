@@ -28,7 +28,7 @@ import { Label } from "@/components/ui/label";
 export function ColumnNameField({ name, onRename }: { name: string; onRename: (name: string) => Promise<void> }) {
   const { buttonRef, editor } = useInlineEdit({
     initialValue: name,
-    fallbackError: "Failed to save",
+    fallbackError: "Couldn't save the new name.",
     shouldCommit: (value) => Boolean(value),
     onCommit: onRename,
   });

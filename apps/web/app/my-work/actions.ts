@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import type { ActionResult } from "@/lib/types";
 import type { MyWorkColumnId } from "@/lib/utils/my-work";
+import { writeErrorMessage } from "@/lib/utils/write-error";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -56,7 +57,7 @@ export async function setMyWorkColumn(
     const stateId = await lowestStateOfCategory(supabase, story.project_id, category);
     if (!stateId) return { ok: false, message: `This project has no ${category} state to move the story into.` };
     const { error } = await supabase.rpc("set_story_state", { p_story_id: storyId, p_state_id: stateId });
-    if (error) return { ok: false, message: error.message };
+    if (error) return { ok: false, message: writeErrorMessage(error, "You don't have permission to change this story's state.") };
     return persistMark(
       supabase,
       user.id,
@@ -136,7 +137,7 @@ export async function carryOverToday(storyIds: string[], clientToday: string): P
     .update({ today_date: clientToday, updated_at: new Date().toISOString() })
     .eq("user_id", user.id)
     .in("story_id", storyIds);
-  if (error) return { ok: false, message: error.message };
+  if (error) return { ok: false, message: writeErrorMessage(error, "You no longer have access to one of these stories — refresh the page.") };
   revalidatePath("/my-work");
   return { ok: true };
 }
@@ -153,7 +154,7 @@ export async function dismissCarryOver(storyIds: string[]): Promise<ActionResult
     .update({ today_date: null, today_position: null, updated_at: new Date().toISOString() })
     .eq("user_id", user.id)
     .in("story_id", storyIds);
-  if (error) return { ok: false, message: error.message };
+  if (error) return { ok: false, message: writeErrorMessage(error, "You no longer have access to one of these stories — refresh the page.") };
   revalidatePath("/my-work");
   return { ok: true };
 }
@@ -192,7 +193,7 @@ export async function reorderMyWorkToday(orderedStoryIds: string[], clientToday:
     })),
     { onConflict: "user_id,story_id" },
   );
-  if (error) return { ok: false, message: error.message };
+  if (error) return { ok: false, message: writeErrorMessage(error, "Couldn't save the new order — refresh the page and try again.") };
   revalidatePath("/my-work");
   return { ok: true };
 }
@@ -222,7 +223,7 @@ export async function reorderMyWorkColumn(orderedStoryIds: string[], columnId: s
     })),
     { onConflict: "user_id,story_id" },
   );
-  if (error) return { ok: false, message: error.message };
+  if (error) return { ok: false, message: writeErrorMessage(error, "Couldn't save the new order — refresh the page and try again.") };
   revalidatePath("/my-work");
   return { ok: true };
 }
@@ -253,7 +254,7 @@ export async function createMyWorkColumn(name: string): Promise<ActionResult> {
   const position = (maxRow?.position ?? -1) + 1;
 
   const { error } = await supabase.from("my_work_columns").insert({ user_id: user.id, name: trimmed, position });
-  if (error) return { ok: false, message: error.message };
+  if (error) return { ok: false, message: writeErrorMessage(error, "Couldn't create the column.") };
   revalidatePath("/my-work");
   return { ok: true };
 }
@@ -422,7 +423,7 @@ async function persistMark(
       { user_id: userId, story_id: storyId, updated_at: new Date().toISOString(), ...patch },
       { onConflict: "user_id,story_id" },
     );
-  if (error) return { ok: false, message: error.message };
+  if (error) return { ok: false, message: writeErrorMessage(error, "You no longer have access to this story's project — refresh the page.") };
   revalidatePaths(projectId, storyId);
   return { ok: true };
 }

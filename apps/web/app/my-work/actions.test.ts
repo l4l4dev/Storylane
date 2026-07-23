@@ -267,6 +267,31 @@ describe("setMyWorkColumn — team story (local marks only)", () => {
   });
 });
 
+// doc-17 #37: an RLS refusal (42501) used to reach the user as a raw
+// Postgres string ('new row violates row-level security policy for
+// table ...') via a bare error.message passthrough — writeErrorMessage
+// (already used elsewhere in the app) swaps it for an actionable message;
+// any other error code still surfaces its own (usually actionable) text.
+describe("error message translation (TASK-158)", () => {
+  it("persistMark (via setMyWorkColumn) swaps an RLS refusal for a friendly message", async () => {
+    upsertMock.mockReturnValueOnce({ error: { code: "42501", message: "new row violates row-level security policy" } });
+    const result = await setMyWorkColumn("s1", "col-doing", TODAY);
+    expect(result).toEqual({ ok: false, message: "You no longer have access to this story's project — refresh the page." });
+  });
+
+  it("persistMark keeps a non-RLS error's own message", async () => {
+    upsertMock.mockReturnValueOnce({ error: { code: "23514", message: "violates check constraint" } });
+    const result = await setMyWorkColumn("s1", "col-doing", TODAY);
+    expect(result).toEqual({ ok: false, message: "violates check constraint" });
+  });
+
+  it("createMyWorkColumn swaps an RLS refusal for a friendly message", async () => {
+    insertColumnMock.mockReturnValueOnce({ error: { code: "42501", message: "new row violates row-level security policy" } });
+    const result = await createMyWorkColumn("Doing");
+    expect(result).toEqual({ ok: false, message: "Couldn't create the column." });
+  });
+});
+
 describe("carry-over", () => {
   it("carryOverToday bulk-updates the given stories to today", async () => {
     const result = await carryOverToday(["s1", "s2"], TODAY);
