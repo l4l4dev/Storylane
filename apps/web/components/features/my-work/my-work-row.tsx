@@ -72,7 +72,7 @@ export function MyWorkRow({ story, completedAt }: { story: MyWorkRowData; comple
             className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground"
             title={`Completed ${formatDate(completedAt)}`}
           >
-            <CircleCheckBig className="h-3 w-3 text-green-600 dark:text-green-400" aria-hidden />
+            <CircleCheckBig className="h-3 w-3 text-success" aria-hidden />
             Completed
           </span>
         )}

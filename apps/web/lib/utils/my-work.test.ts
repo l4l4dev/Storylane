@@ -131,6 +131,13 @@ describe("classifyMyWork", () => {
     expect(todo[2].stories.map((s) => s.id)).toEqual(["b1", "b2"]);
   });
 
+  // doc-17 #40: a project the caller couldn't resolve (e.g. the viewer left
+  // it) reads as an expected state, not an error.
+  it("labels a group whose project can't be resolved as 'Left project', not an error", () => {
+    const { todo } = classifyMyWork([story({ id: "g1", projectId: "gone" })], [], [TEAM_A], [], TODAY);
+    expect(todo.find((g) => g.projectId === "gone")?.projectName).toBe("Left project");
+  });
+
   it("Done = completion rows (incl. one per repeat) live-joined, newest first", () => {
     const { done } = classifyMyWork(
       [],

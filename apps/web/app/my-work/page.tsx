@@ -204,7 +204,10 @@ export default async function MyWorkPage() {
     if (!story) return [];
     const embeddedProject = Array.isArray(story.projects) ? story.projects[0] : story.projects;
     const knownProject = projectById.get(story.project_id);
-    const projectName = knownProject?.name ?? embeddedProject?.name ?? "Unknown project";
+    // A completion whose project the viewer has since left still reads (the
+    // stories SELECT OR-clause keeps it visible) — "Left project" reads as
+    // an expected state, not an error (doc-17 #40).
+    const projectName = knownProject?.name ?? embeddedProject?.name ?? "Left project";
     return [{ completedAt: c.completed_at, row: toRowData(story, { name: projectName, isPersonal: knownProject?.isPersonal ?? false }) }];
   });
 

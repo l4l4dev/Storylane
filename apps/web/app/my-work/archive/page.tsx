@@ -56,7 +56,9 @@ export default async function MyWorkArchivePage() {
     if (!story) return [];
     const embeddedProject = Array.isArray(story.projects) ? story.projects[0] : story.projects;
     const known = projectById.get(story.project_id);
-    const projectName = known?.name ?? embeddedProject?.name ?? "Unknown project";
+    // A project the viewer has since left reads as an expected state, not an
+    // error (doc-17 #40) — matches the main page's own wording.
+    const projectName = known?.name ?? embeddedProject?.name ?? "Left project";
     const row: MyWorkRowData = {
       id: story.id,
       number: story.number,

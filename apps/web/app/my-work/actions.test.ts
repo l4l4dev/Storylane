@@ -20,13 +20,16 @@ let profileRowFound: boolean;
 let columnNamesRow: Record<string, string>;
 let columnNamesReadError: { message: string } | null;
 
-const rpcMock = vi.fn<(name: string, args: unknown) => { error: { message: string } | null }>(() => ({ error: null }));
+// `code` is optional — only the writeErrorMessage (TASK-158) tests set it,
+// to exercise the RLS-refusal (42501) translation branch.
+type MockDbError = { message: string; code?: string } | null;
+const rpcMock = vi.fn<(name: string, args: unknown) => { error: MockDbError }>(() => ({ error: null }));
 // A single row (most marks) or a batch (reorderMyWorkToday's array upsert).
-const upsertMock = vi.fn<(row: Record<string, unknown> | Record<string, unknown>[]) => { error: { message: string } | null }>(
+const upsertMock = vi.fn<(row: Record<string, unknown> | Record<string, unknown>[]) => { error: MockDbError }>(
   () => ({ error: null }),
 );
-const updateMock = vi.fn<(row: Record<string, unknown>) => { error: { message: string } | null }>(() => ({ error: null }));
-const insertColumnMock = vi.fn<(row: Record<string, unknown>) => { error: { message: string } | null }>(() => ({ error: null }));
+const updateMock = vi.fn<(row: Record<string, unknown>) => { error: MockDbError }>(() => ({ error: null }));
+const insertColumnMock = vi.fn<(row: Record<string, unknown>) => { error: MockDbError }>(() => ({ error: null }));
 const updateColumnMock = vi.fn<(row: Record<string, unknown>) => void>(() => {});
 const deleteColumnMock = vi.fn<() => void>(() => {});
 const updateProfileMock = vi.fn<(row: Record<string, unknown>) => void>(() => {});

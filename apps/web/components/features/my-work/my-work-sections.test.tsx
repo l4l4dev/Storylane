@@ -206,6 +206,19 @@ describe("MyWorkSections", () => {
     expect(screen.getByText(/marked Today on an earlier day/)).toBeInTheDocument();
   });
 
+  // doc-17 #35: subject-verb agreement — "1 item were marked..." was wrong.
+  it("agrees the carry-over prompt's verb with a singular vs plural count", () => {
+    renderSections({ assigned: [active("stale", { todayDate: "2020-01-01" })] });
+    expect(screen.getByText(/1 item was marked/)).toBeInTheDocument();
+  });
+
+  it("uses the plural verb for more than one stale item", () => {
+    renderSections({
+      assigned: [active("stale1", { todayDate: "2020-01-01" }), active("stale2", { todayDate: "2020-01-01" })],
+    });
+    expect(screen.getByText(/2 items were marked/)).toBeInTheDocument();
+  });
+
   // doc-17 #11: a misclick on either carry-over choice used to drop the
   // whole day's plan with no way back — resolving now offers a brief Undo
   // that reverses the same action instead of a permanent one-shot choice.

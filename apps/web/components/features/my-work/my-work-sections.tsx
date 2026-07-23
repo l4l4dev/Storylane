@@ -824,8 +824,8 @@ export function MyWorkSections({
               ) : (
                 <>
                   <span>
-                    {staleToday.length} item{staleToday.length === 1 ? "" : "s"} were marked Today on an earlier day.
-                    Carry them over to today?
+                    {staleToday.length} item{staleToday.length === 1 ? "" : "s"} {staleToday.length === 1 ? "was" : "were"} marked
+                    Today on an earlier day. Carry them over to today?
                   </span>
                   <div className="flex shrink-0 gap-2">
                     <button

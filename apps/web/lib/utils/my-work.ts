@@ -164,7 +164,9 @@ export function classifyMyWork<S>(
       const project = projectById.get(projectId);
       return {
         projectId,
-        projectName: project?.name ?? "Unknown project",
+        // A project the viewer has since left reads as an expected state
+        // ("you left this"), not an error (doc-17 #40).
+        projectName: project?.name ?? "Left project",
         isPersonal: project?.isPersonal ?? false,
         stories: [...groupStories].sort(sortWithinGroup),
       };
