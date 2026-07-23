@@ -174,8 +174,10 @@ async function setLabels(supabase: Db, storyId: string, projectId: string, names
 
 export async function boardSummary(supabase: Db, args: { project_id: string }) {
   const { project_id } = args;
-  await ensureCurrentIteration(supabase, project_id);
 
+  // Checked before ensureCurrentIteration so a non-member gets the standard
+  // NOT_MEMBER message instead of finalize_iteration's own internal
+  // authorization error leaking through first.
   const { data: project, error: pErr } = await supabase
     .from("projects")
     .select("velocity_window")
@@ -183,6 +185,8 @@ export async function boardSummary(supabase: Db, args: { project_id: string }) {
     .maybeSingle();
   if (pErr) throw new Error(`Could not read project: ${pErr.message}`);
   if (!project) throw new Error(NOT_MEMBER);
+
+  await ensureCurrentIteration(supabase, project_id);
 
   const { data: states, error: sErr } = await supabase
     .from("project_states")
