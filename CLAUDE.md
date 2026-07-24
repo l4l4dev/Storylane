@@ -106,10 +106,10 @@ Every Backlog task MUST have an assignee — set it at creation time, never leav
 - Tasks a model implements: assign the model best matched to the task's content:
   - `@claude-haiku-4-5` — mechanical, low-risk edits (renames, copy tweaks, config)
   - `@claude-sonnet-5` — standard feature/bugfix implementation (default choice)
-  - `@claude-opus-4-8` — architecture-sensitive work: new tables/RLS, concurrency,
+  - `@claude-opus-5` — architecture-sensitive work: new tables/RLS, concurrency,
     cross-cutting refactors, notification/event paths
   - `@claude-fable-5` — design review, planning, and final review passes (fable-advisor).
-    When Fable is unavailable (plan window closed), these duties fall to `@claude-opus-4-8`
+    When Fable is unavailable (plan window closed), these duties fall to `@claude-opus-5`
     and the fable-advisor agent runs with `model: opus` (the /advisor skill already says so)
   - `@gpt-5.6-sol` — (Codex CLI, ChatGPT quota) full implementation tasks when Claude
     quota is exhausted, EXCEPT new-table RLS design and the state-model core; any

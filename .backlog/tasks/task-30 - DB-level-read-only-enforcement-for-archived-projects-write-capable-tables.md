@@ -3,9 +3,9 @@ id: TASK-30
 title: DB-level read-only enforcement for archived projects (write-capable tables)
 status: To Do
 assignee:
-  - '@claude-opus-4-8'
+  - '@claude-opus-5'
 created_date: '2026-07-10 14:57'
-updated_date: '2026-07-22 11:24'
+updated_date: '2026-07-24 17:35'
 labels:
   - web
   - db

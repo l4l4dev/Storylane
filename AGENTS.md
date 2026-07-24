@@ -37,7 +37,7 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
 - When any review pass reports findings, hold the merge and surface them to the owner
   before merging.
 - `@codex-gpt-5` second-opinion reviews (Codex CLI) remain a separate, optional lane —
-  they run on the ChatGPT quota, not Codex tokens.
+  they run on the ChatGPT quota, not Claude tokens.
 
 ## Token Economy
 
@@ -104,20 +104,20 @@ Every Backlog task MUST have an assignee — set it at creation time, never leav
 
 - Tasks the owner performs herself (interactive auth, manual verification, deploys): `@l4l4dev`
 - Tasks a model implements: assign the model best matched to the task's content:
-  - `@Codex-haiku-4-5` — mechanical, low-risk edits (renames, copy tweaks, config)
-  - `@Codex-sonnet-5` — standard feature/bugfix implementation (default choice)
-  - `@Codex-opus-4-8` — architecture-sensitive work: new tables/RLS, concurrency,
+  - `@claude-haiku-4-5` — mechanical, low-risk edits (renames, copy tweaks, config)
+  - `@claude-sonnet-5` — standard feature/bugfix implementation (default choice)
+  - `@claude-opus-5` — architecture-sensitive work: new tables/RLS, concurrency,
     cross-cutting refactors, notification/event paths
-  - `@Codex-fable-5` — design review, planning, and final review passes (fable-advisor).
-    When Fable is unavailable (plan window closed), these duties fall to `@Codex-opus-4-8`
+  - `@claude-fable-5` — design review, planning, and final review passes (fable-advisor).
+    When Fable is unavailable (plan window closed), these duties fall to `@claude-opus-5`
     and the fable-advisor agent runs with `model: opus` (the /advisor skill already says so)
-  - `@gpt-5.6-sol` — (Codex CLI, ChatGPT quota) full implementation tasks when Codex
+  - `@gpt-5.6-sol` — (Codex CLI, ChatGPT quota) full implementation tasks when Claude
     quota is exhausted, EXCEPT new-table RLS design and the state-model core; any
     migration it writes is held from deploy until a deferred `rls-security-reviewer`
-    pass once Codex quota returns
+    pass once Claude quota returns
   - `@codex-gpt-5` — precisely-scoped, behavior-preserving refactors/cleanups and
     second-opinion review passes, run via the Codex CLI (executes on the ChatGPT quota,
-    not Codex tokens). Not for architecture-sensitive or RLS/concurrency work
+    not Claude tokens). Not for architecture-sensitive or RLS/concurrency work
 
 Workflow rules:
 
