@@ -653,6 +653,7 @@ export type Database = {
           created_by: string
           description: string | null
           epic_color: string | null
+          epic_pinned: boolean
           id: string
           is_container: boolean
           iteration_id: string | null
@@ -673,6 +674,7 @@ export type Database = {
           created_by?: string
           description?: string | null
           epic_color?: string | null
+          epic_pinned?: boolean
           id?: string
           is_container?: boolean
           iteration_id?: string | null
@@ -693,6 +695,7 @@ export type Database = {
           created_by?: string
           description?: string | null
           epic_color?: string | null
+          epic_pinned?: boolean
           id?: string
           is_container?: boolean
           iteration_id?: string | null
@@ -921,6 +924,15 @@ export type Database = {
         Args: { p_story_id: string; p_target_project_id: string }
         Returns: Json
       }
+      create_epic: {
+        Args: {
+          p_description?: string
+          p_epic_color?: string
+          p_project_id: string
+          p_title: string
+        }
+        Returns: string
+      }
       create_project_state: {
         Args: {
           p_action_label?: string
@@ -1050,6 +1062,10 @@ export type Database = {
       }
       seed_project_states: {
         Args: { p_project_id: string; p_template: string }
+        Returns: undefined
+      }
+      set_epic_pinned: {
+        Args: { p_pinned: boolean; p_story_id: string }
         Returns: undefined
       }
       set_story_labels: {
