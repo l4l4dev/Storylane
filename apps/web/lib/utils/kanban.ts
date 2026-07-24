@@ -10,6 +10,54 @@ import type { ProjectState } from "@/lib/types";
 export const BACKLOG_COLUMN_ID = "backlog";
 export const ICEBOX_COLUMN_ID = "icebox";
 
+// A container's nested Icebox children (doc-18 §9) get their own dnd-kit
+// drag container in the List view, keyed off the container's story id — kept
+// separate from ListZoneId (below), which stays a closed 3-value union since
+// a container is off the board and never in a zone (spec/data-model.md).
+const EPIC_ICEBOX_PREFIX = "epic:";
+export function epicIceboxZoneId(containerId: string): string {
+  return `${EPIC_ICEBOX_PREFIX}${containerId}`;
+}
+export function isEpicIceboxZone(zoneId: string): boolean {
+  return zoneId.startsWith(EPIC_ICEBOX_PREFIX);
+}
+
+/**
+ * A container's nested Icebox children accept only a same-container reorder
+ * for now — crossing in from elsewhere (a different container's nest, or the
+ * flat Icebox/Current/Backlog) is TASK-187 scope, which needs a
+ * parent_id-writing RPC that doesn't exist yet. `activeContainerId` is
+ * whichever dnd-kit container the dragged item currently sits in
+ * (findContainer's result) — undefined means it wasn't found at all.
+ */
+export function isAllowedEpicNestDrop(activeContainerId: string | undefined, targetZone: string): boolean {
+  return activeContainerId === targetZone;
+}
+
+/**
+ * A nested Icebox child (its origin is an epic nest) must not move onto the
+ * FLAT Icebox list either — parent_id stays untouched either way, so the flat
+ * list's own parentId===null filter would exclude it again on the next
+ * refresh, making the move look like it silently reverted itself. Detaching
+ * a child from its epic is TASK-187 scope (needs a parent_id-writing RPC).
+ */
+export function isDisallowedEpicNestEscape(activeContainerId: string | undefined, targetZone: string): boolean {
+  return activeContainerId !== undefined && isEpicIceboxZone(activeContainerId) && targetZone === ICEBOX_COLUMN_ID;
+}
+
+/**
+ * dropStoryInList only understands the 3 canonical ListZoneId strings — a
+ * same-nest reorder (allowed by isAllowedEpicNestDrop) must never send the
+ * raw dnd-kit container key ("epic:<id>") as target_zone, or the server casts
+ * it, fails to match ICEBOX_COLUMN_ID/BACKLOG_COLUMN_ID, and falls through to
+ * its "current" branch — actually scheduling the story instead of leaving it
+ * in place. An epic nest is semantically Icebox for this purpose (parent_id
+ * is never touched; only position changes).
+ */
+export function toServerZone(dndContainerId: string): string {
+  return isEpicIceboxZone(dndContainerId) ? ICEBOX_COLUMN_ID : dndContainerId;
+}
+
 // A state column's id IS the project_states row's id — the column set is
 // per-project and data-driven (TASK-91), not a fixed 6-value list.
 export type StateColumnId = string;

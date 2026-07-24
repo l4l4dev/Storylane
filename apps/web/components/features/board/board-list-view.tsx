@@ -35,9 +35,14 @@ import { isImeComposing } from "@/lib/utils/keyboard";
 import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
+  epicIceboxZoneId,
   evaluateListDrop,
   flattenCurrentZone,
+  isAllowedEpicNestDrop,
+  isDisallowedEpicNestEscape,
+  isEpicIceboxZone,
   toGateStates,
+  toServerZone,
   zoneForStory,
   type ListZoneId,
 } from "@/lib/utils/kanban";
@@ -142,8 +147,9 @@ function toListItemContainers(
   source: Record<string, BoardStory[]>,
   backlogItems: ReadonlyArray<BacklogRowItem<BoardStory>>,
   states: ReadonlyArray<ProjectState>,
+  containerAccordionRows: ReadonlyArray<ContainerAccordionRow>,
 ): Record<string, ListItem[]> {
-  return {
+  const result: Record<string, ListItem[]> = {
     // A container's own Icebox children (parentId set) nest under its
     // accordion row instead (doc-18 §9 "a child never also appears
     // top-level") — the container structurally only ever lives in Icebox
@@ -161,6 +167,19 @@ function toListItemContainers(
       item.kind === "story" ? wrapStory(item.story) : { kind: "divider", id: item.divider.id, divider: item.divider },
     ),
   };
+  // Each container gets its own dnd-kit drag container (keyed by
+  // epicIceboxZoneId) holding exactly its nested Icebox children, so they're
+  // real drag sources (findContainer/moveBetweenContainers key off these)
+  // instead of being fully absent from the containers/SortableContext model.
+  // Order follows iceboxChildIds (already position-sorted, epics-list.ts).
+  const iceboxById = new Map((source[ICEBOX_COLUMN_ID] ?? []).map((s) => [s.id, s] as const));
+  for (const row of containerAccordionRows) {
+    result[epicIceboxZoneId(row.id)] = row.iceboxChildIds
+      .map((id) => iceboxById.get(id))
+      .filter((s): s is BoardStory => s != null)
+      .map(wrapStory);
+  }
+  return result;
 }
 
 // The whole row is the drag handle, same convention as the Kanban view's
@@ -173,11 +192,15 @@ function SortableListRow({
   projectId,
   states,
   pointScale,
+  hideEpicLink,
 }: {
   item: ListItem;
   projectId: string;
   states: ProjectState[];
   pointScale: number[];
+  // Threaded through for EpicAccordionRow's nested children — see
+  // StoryListRow's own doc comment.
+  hideEpicLink?: boolean;
 }) {
   return (
     <SortableItem id={item.id}>
@@ -188,7 +211,7 @@ function SortableListRow({
         // for a branch that never renders.
         <DividerRow projectId={projectId} divider={item.divider} onError={() => {}} />
       ) : (
-        <StoryListRow story={item.story} projectId={projectId} states={states} pointScale={pointScale} />
+        <StoryListRow story={item.story} projectId={projectId} states={states} pointScale={pointScale} hideEpicLink={hideEpicLink} />
       )}
     </SortableItem>
   );
@@ -1082,7 +1105,7 @@ function IceboxColumn({
   members,
   labels,
   containerAccordionRows,
-  accordionChildrenById,
+  containers,
   collapsedGroups,
   onToggleGroup,
 }: {
@@ -1095,7 +1118,10 @@ function IceboxColumn({
   // doc-18 §9: every container in the project — structurally only ever
   // rendered here (a container's state_id is always NULL, doc-18 §4).
   containerAccordionRows: ContainerAccordionRow[];
-  accordionChildrenById: Map<string, BoardStory>;
+  // The full dnd-kit containers map — each row's own nested Icebox children
+  // live under `epicIceboxZoneId(row.id)`, so they're real SortableContext
+  // items rather than a read-only display-only lookup.
+  containers: Record<string, ListItem[]>;
   collapsedGroups: Set<string>;
   onToggleGroup: (key: string) => void;
 }) {
@@ -1128,9 +1154,7 @@ function IceboxColumn({
               <li key={row.id}>
                 <EpicAccordionRow
                   row={row}
-                  iceboxChildren={row.iceboxChildIds
-                    .map((id) => accordionChildrenById.get(id))
-                    .filter((s): s is BoardStory => s != null)}
+                  iceboxChildren={containers[epicIceboxZoneId(row.id)] ?? []}
                   expanded={!collapsedGroups.has(`epic:${row.id}`)}
                   onToggle={() => onToggleGroup(`epic:${row.id}`)}
                   projectId={projectId}
@@ -1155,10 +1179,15 @@ function IceboxColumn({
 
 // A container's row in the Icebox accordion (doc-18 §9): top-level (parent_id
 // IS NULL), collapsible, expanding to its Icebox children ordered by position.
-// Read-only (no drag) — reordering the container itself or its children is a
-// follow-up, not required by the accordion's display requirement. A child
-// with a state stays in its own Current/Backlog zone instead (never nested
-// here), each carrying a "part of Epic" link back (StoryListRow).
+// The container's own row reorder is still a follow-up (TASK-188 — a new
+// position scope, since containers share stories.position with every other
+// top-level row but must dense-rank independently of the flat Icebox splice).
+// Its nested children ARE real drag sources: dragging one out to
+// Current/Backlog is wired via the epicIceboxZoneId dnd-kit container below;
+// dropping one back in is TASK-187 (needs a parent_id-writing RPC), so
+// isAllowedMove rejects that direction for now. A child with a state stays in
+// its own Current/Backlog zone instead (never nested here), carrying a "part
+// of Epic" link back (StoryListRow).
 function EpicAccordionRow({
   row,
   iceboxChildren,
@@ -1169,7 +1198,7 @@ function EpicAccordionRow({
   pointScale,
 }: {
   row: ContainerAccordionRow;
-  iceboxChildren: BoardStory[];
+  iceboxChildren: ListItem[];
   expanded: boolean;
   onToggle: () => void;
   projectId: string;
@@ -1180,6 +1209,7 @@ function EpicAccordionRow({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const color = row.epicColor ?? DEFAULT_EPIC_COLOR;
+  const { setNodeRef: setNestedDropRef } = useDroppable({ id: epicIceboxZoneId(row.id) });
 
   function openPeek() {
     const params = new URLSearchParams(searchParams);
@@ -1212,15 +1242,24 @@ function EpicAccordionRow({
       <EpicProgressBar rollup={row.rollup} color={color} />
       {expanded &&
         (iceboxChildren.length > 0 ? (
-          <ul className="flex flex-col gap-1.5 pl-6">
-            {iceboxChildren.map((child) => (
-              <li key={child.id}>
-                <StoryListRow story={child} projectId={projectId} states={states} pointScale={pointScale} />
-              </li>
-            ))}
-          </ul>
+          <SortableContext items={iceboxChildren.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+            <ul ref={setNestedDropRef} className="flex flex-col gap-1.5 pl-6">
+              {iceboxChildren.map((item) => (
+                <SortableListRow
+                  key={item.id}
+                  item={item}
+                  projectId={projectId}
+                  states={states}
+                  pointScale={pointScale}
+                  hideEpicLink
+                />
+              ))}
+            </ul>
+          </SortableContext>
         ) : (
-          <p className="pl-6 text-xs text-muted-foreground">No unstarted children yet.</p>
+          <p ref={setNestedDropRef} className="pl-6 text-xs text-muted-foreground">
+            No unstarted children yet.
+          </p>
         ))}
     </div>
   );
@@ -1289,24 +1328,9 @@ export function BoardListView({
   // it doubles as the change token. Optimistic order, realtime-safe reconcile,
   // and per-drag reverts all live in the hook (TASK-113).
   const serverContainers = useMemo(
-    () => toListItemContainers(initialContainers, initialBacklogItems, states),
-    [initialContainers, initialBacklogItems, states],
+    () => toListItemContainers(initialContainers, initialBacklogItems, states, containerAccordionRows),
+    [initialContainers, initialBacklogItems, states, containerAccordionRows],
   );
-  // Full BoardStory objects for each accordion row's Icebox children — looked
-  // up once here (storyById already searches every zone) rather than passed
-  // as a separate prop from the server; read-only nested display, no drag
-  // (doc-18 §9 scope: reordering a container's own row or its children is a
-  // follow-up, not required by the accordion's display requirement).
-  const accordionChildrenById = useMemo(() => {
-    const map = new Map<string, BoardStory>();
-    for (const row of containerAccordionRows) {
-      for (const childId of row.iceboxChildIds) {
-        const story = storyById(initialContainers, childId);
-        if (story) map.set(childId, story);
-      }
-    }
-    return map;
-  }, [containerAccordionRows, initialContainers]);
   const { containers, setContainers, activeId, beginDrag, endDrag, revertToSnapshot, runDrop } =
     useOptimisticBoardOrder(serverContainers);
   // Shared by drag failures and each row's insert-menu failures (TASK-42) —
@@ -1332,6 +1356,22 @@ export function BoardListView({
     if (item.kind === "divider") {
       return targetZone === BACKLOG_COLUMN_ID;
     }
+    // A nested Icebox child may cross OUT to Current/Backlog, or reorder
+    // among its OWN siblings (no parent_id write either way — move_story_board
+    // scopes Icebox position regardless of parent_id). Crossing IN from
+    // elsewhere (a different epic's nest, or detaching to the flat Icebox
+    // list) needs a parent_id-writing RPC that doesn't exist yet — rejected
+    // here rather than letting either path silently no-op or misfire.
+    const activeContainer = findContainer(containers, itemId);
+    if (isEpicIceboxZone(targetZone)) {
+      return isAllowedEpicNestDrop(activeContainer, targetZone);
+    }
+    if (isDisallowedEpicNestEscape(activeContainer, targetZone)) {
+      return false;
+    }
+    // The nested container's own zone reads as "icebox" here regardless —
+    // zoneForStory derives it from the story's own state_id (always NULL for
+    // an Icebox child), not from which dnd-kit container currently holds it.
     const from = zoneForStory(item.story, currentIteration?.id ?? null);
     return evaluateListDrop(item.story, from, targetZone as ListZoneId, toGateStates(states)).ok;
   }
@@ -1384,7 +1424,9 @@ export function BoardListView({
     formData.set("project_id", projectId);
     formData.set("item_kind", activeItem?.kind ?? "story");
     formData.set("item_id", String(active.id));
-    formData.set("target_zone", overContainer);
+    // Never the raw dnd-kit container key — dropStoryInList only understands
+    // the 3 canonical ListZoneId strings (an epic nest reads as Icebox here).
+    formData.set("target_zone", toServerZone(overContainer));
     // Intent, not a full sequence: the neighbour ("story:<id>"/"divider:<id>")
     // the item now sits before (or nothing = append to the zone's end). The
     // server re-derives dense positions across both tables from current DB
@@ -1408,6 +1450,9 @@ export function BoardListView({
   // iteration bar's committed points must not shift with the active filter.
   const currentStoryItems = currentItems.filter((item): item is Extract<ListItem, { kind: "story" }> => item.kind === "story");
   const activeItem = activeId ? storyById(containers, activeId) : undefined;
+  // Matches the resting row's own hideEpicLink so the drag ghost doesn't
+  // flash a badge the row didn't show a moment before grabbing it.
+  const activeItemIsNested = activeId !== null && isEpicIceboxZone(findContainer(containers, activeId) ?? "");
 
   // Rendered (visible) views only — passed to the presentational sections
   // below; `containers` itself (above) stays the full, unfiltered set.
@@ -1503,7 +1548,7 @@ export function BoardListView({
             members={members}
             labels={labels}
             containerAccordionRows={containerAccordionRows}
-            accordionChildrenById={accordionChildrenById}
+            containers={containers}
             collapsedGroups={collapsedGroups}
             onToggleGroup={onToggleGroup}
           />
@@ -1516,7 +1561,13 @@ export function BoardListView({
             {activeItem.kind === "divider" ? (
               <DividerRow projectId={projectId} divider={activeItem.divider} onError={setMutationError} />
             ) : (
-              <StoryListRow story={activeItem.story} projectId={projectId} states={states} pointScale={pointScale} />
+              <StoryListRow
+                story={activeItem.story}
+                projectId={projectId}
+                states={states}
+                pointScale={pointScale}
+                hideEpicLink={activeItemIsNested}
+              />
             )}
           </div>
         )}

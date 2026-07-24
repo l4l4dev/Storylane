@@ -4,9 +4,14 @@ import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
   columnForStory,
+  epicIceboxZoneId,
   evaluateDrop,
   evaluateListDrop,
   flattenCurrentZone,
+  isAllowedEpicNestDrop,
+  isDisallowedEpicNestEscape,
+  isEpicIceboxZone,
+  toServerZone,
   zoneForStory,
   type KanbanStory,
 } from "./kanban";
@@ -27,6 +32,86 @@ const STATES: GateState[] = toGateStates(stateTemplates.classic.states);
 function story(overrides: Partial<KanbanStory> = {}): KanbanStory {
   return { state_id: "Unstarted", story_type: "feature", points: 2, iteration_id: null, ...overrides };
 }
+
+// A container's nested Icebox children live in their own dnd-kit drag
+// container (board-list-view.tsx), keyed off the container's story id —
+// distinct from the 3 semantic ListZoneId values, which stay a closed union
+// (a container is off the board and never in a zone, spec/data-model.md).
+describe("epicIceboxZoneId / isEpicIceboxZone", () => {
+  it("builds a zone id isEpicIceboxZone recognizes", () => {
+    expect(isEpicIceboxZone(epicIceboxZoneId("e1"))).toBe(true);
+  });
+
+  it("does not recognize a plain ListZoneId or story id as an epic zone", () => {
+    expect(isEpicIceboxZone(ICEBOX_COLUMN_ID)).toBe(false);
+    expect(isEpicIceboxZone(BACKLOG_COLUMN_ID)).toBe(false);
+    expect(isEpicIceboxZone("current")).toBe(false);
+    expect(isEpicIceboxZone("e1")).toBe(false);
+  });
+});
+
+// fable-advisor (post-implementation review): a sibling reorder within the
+// SAME container's nest needs no parent_id write (move_story_board
+// already scopes Icebox position regardless of parent_id) and must not be
+// blanket-rejected alongside crossing IN from elsewhere (still TASK-187 scope,
+// which needs a parent_id-writing RPC that doesn't exist yet) — else every
+// nested row renders fully draggable (cursor-grab, real SortableContext) but
+// dragging one anywhere always fails, a dead control (ux-principles principle 1).
+describe("isAllowedEpicNestDrop", () => {
+  it("allows reordering within the same container's nest", () => {
+    expect(isAllowedEpicNestDrop(epicIceboxZoneId("e1"), epicIceboxZoneId("e1"))).toBe(true);
+  });
+
+  it("rejects crossing in from a different container's nest, or from outside", () => {
+    expect(isAllowedEpicNestDrop(epicIceboxZoneId("e2"), epicIceboxZoneId("e1"))).toBe(false);
+    expect(isAllowedEpicNestDrop(ICEBOX_COLUMN_ID, epicIceboxZoneId("e1"))).toBe(false);
+    expect(isAllowedEpicNestDrop(undefined, epicIceboxZoneId("e1"))).toBe(false);
+  });
+});
+
+// Found via manual browser verification: a nested child dragged onto the
+// FLAT Icebox list (not its own or another epic's nest) fell through to the
+// ordinary icebox->icebox no-op path (evaluateListDrop sees
+// from===to==="icebox" and allows it) since isEpicIceboxZone(targetZone) is
+// false for the plain ICEBOX_COLUMN_ID. dropStoryInList would persist a
+// position change while parent_id (never touched) stays put, so the next
+// refresh re-nests it under its epic again — the move silently self-reverts
+// and misleads the user into thinking they detached the story.
+describe("isDisallowedEpicNestEscape", () => {
+  it("blocks a nested child from moving onto the flat Icebox list", () => {
+    expect(isDisallowedEpicNestEscape(epicIceboxZoneId("e1"), ICEBOX_COLUMN_ID)).toBe(true);
+  });
+
+  it("allows a non-nested story to move onto the flat Icebox list", () => {
+    expect(isDisallowedEpicNestEscape(ICEBOX_COLUMN_ID, ICEBOX_COLUMN_ID)).toBe(false);
+    expect(isDisallowedEpicNestEscape("current", ICEBOX_COLUMN_ID)).toBe(false);
+    expect(isDisallowedEpicNestEscape(undefined, ICEBOX_COLUMN_ID)).toBe(false);
+  });
+
+  it("does not block a nested child moving to Current or Backlog", () => {
+    expect(isDisallowedEpicNestEscape(epicIceboxZoneId("e1"), "current")).toBe(false);
+    expect(isDisallowedEpicNestEscape(epicIceboxZoneId("e1"), BACKLOG_COLUMN_ID)).toBe(false);
+  });
+});
+
+// Found via manual browser verification: a same-nest reorder, allowed by
+// isAllowedEpicNestDrop, was sending the raw dnd-kit container key
+// ("epic:<id>") to dropStoryInList as target_zone — the server action only
+// understands the 3 canonical ListZoneId strings and silently fell through to
+// its "current" branch for anything else, actually SCHEDULING the story
+// instead of just reordering it within Icebox. The dnd-kit container key must
+// be translated to the semantic zone before it ever reaches the server.
+describe("toServerZone", () => {
+  it("translates an epic nest's dnd-kit container key to the icebox zone", () => {
+    expect(toServerZone(epicIceboxZoneId("e1"))).toBe(ICEBOX_COLUMN_ID);
+  });
+
+  it("passes a canonical ListZoneId through unchanged", () => {
+    expect(toServerZone(ICEBOX_COLUMN_ID)).toBe(ICEBOX_COLUMN_ID);
+    expect(toServerZone(BACKLOG_COLUMN_ID)).toBe(BACKLOG_COLUMN_ID);
+    expect(toServerZone("current")).toBe("current");
+  });
+});
 
 describe("columnForStory", () => {
   it("puts Icebox stories (state_id null) in the icebox regardless of iteration", () => {

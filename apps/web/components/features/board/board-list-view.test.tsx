@@ -397,6 +397,38 @@ describe("Panel draft-story triggers", () => {
     expect(screen.getByText("Story s2")).toBeInTheDocument();
   });
 
+  // A container's nested Icebox child must be a real drag source (jsdom
+  // can't simulate an actual pointer-distance drag — see split-studio's tests
+  // for the same limitation — so this only asserts the SortableItem wiring
+  // landed, not the drop outcome; that's manual-browser-verified).
+  it("wires a container's nested Icebox child as a draggable row", () => {
+    const child = { ...backlogStory("s2", 2), state_id: null, parentId: "e1" };
+    const props = boardProps([]);
+    render(
+      <BoardListView
+        {...props}
+        initialContainers={{ ...props.initialContainers, icebox: [child] }}
+        containerAccordionRows={[
+          {
+            id: "e1",
+            number: 5,
+            title: "Big Epic",
+            epicColor: null,
+            rollup: {
+              headline: "unstarted",
+              points: 2,
+              breakdown: { unstarted: 1, in_progress: 0, done: 0, rejected: 0, icebox: 0 },
+            },
+            iceboxChildIds: ["s2"],
+          },
+        ]}
+        showIcebox
+      />,
+    );
+
+    expect(screen.getByText("Story s2").closest("li")).toHaveClass("cursor-grab");
+  });
+
   it("Icebox panel's trigger creates with target icebox when shown", async () => {
     render(<BoardListView {...boardProps([])} showIcebox />);
 

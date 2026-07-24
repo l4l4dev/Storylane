@@ -161,4 +161,23 @@ describe("StoryListRow", () => {
     render(<StoryListRow story={baseStory} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
+
+  // Found during manual browser verification: a story already rendered
+  // nested under ITS OWN epic's Icebox accordion row doesn't need
+  // this badge repeated — it's redundant there, and the badge's fixed
+  // (non-shrinking) width was squeezing the title down to 1-2 characters in
+  // the accordion's narrow sidebar column (the only place a title-bearing
+  // row and this badge previously combined).
+  it("omits the epic link when hideEpicLink is set, even with a parent", () => {
+    render(
+      <StoryListRow
+        story={{ ...baseStory, parentId: "e1", parentEpicTitle: "Big epic" }}
+        projectId="p1"
+        states={CLASSIC_STATES}
+        pointScale={fibonacci}
+        hideEpicLink
+      />,
+    );
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
 });
