@@ -337,6 +337,48 @@ export async function copyStoryToProject(storyId: string, targetProjectId: strin
   return transferStoryToProject("copy", storyId, targetProjectId);
 }
 
+export type SplitChildInput = {
+  title: string;
+  description: string;
+  storyType: string;
+  points: number | null;
+  taskIds: string[];
+};
+
+export type SplitStoryResult =
+  | { ok: true; parentId: string; childIds: string[] }
+  | { ok: false; message: string };
+
+/**
+ * Splits a story into child stories (Split Studio, doc-18 §6-§7) via the
+ * `split_story` RPC — landing state/iteration, position, and points-scale
+ * validation are all decided server-side; see the RPC's migration.
+ */
+export async function splitStory(storyId: string, children: SplitChildInput[]): Promise<SplitStoryResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("split_story", {
+    p_story_id: storyId,
+    p_children: children.map((c) => ({
+      title: c.title,
+      description: c.description,
+      story_type: c.storyType,
+      points: c.points,
+      task_ids: c.taskIds,
+    })),
+  });
+
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+
+  const result = data as { parent_id: string; child_ids: string[] } | null;
+  if (!result) {
+    return { ok: false, message: "Split failed" };
+  }
+
+  return { ok: true, parentId: result.parent_id, childIds: result.child_ids };
+}
+
 export async function addComment(formData: FormData): Promise<ActionResult> {
   const storyId = String(formData.get("story_id"));
   const projectId = String(formData.get("project_id"));

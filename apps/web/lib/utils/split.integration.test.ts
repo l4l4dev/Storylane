@@ -157,6 +157,20 @@ describe.skipIf(!RUN)("split_story RPC + container move/copy guards (integration
     expect(remaining.data).toHaveLength(1); // t3 stays on the container
   });
 
+  // /code-review (TASK-183): split_story is an authenticated RPC any member
+  // can call directly with arbitrary task_ids — the same id listed under two
+  // children must not silently drop the second child's request.
+  it("rejects a task_id listed under more than one child", async () => {
+    const source = await createStory({ title: "DupeTask", state_id: unstartedId });
+    const t1 = await createTask(source, "shared task");
+
+    const { error } = await owner.rpc("split_story", {
+      p_story_id: source,
+      p_children: [child({ title: "A", task_ids: [t1] }), child({ title: "B", task_ids: [t1] })],
+    });
+    expect(error?.message).toMatch(/task.*more than one|duplicate/i);
+  });
+
   it("lands children in the first unstarted state when the source is in an in_progress state", async () => {
     const source = await createStory({ title: "WIP", state_id: inProgressId, points: 2 });
     const { data } = await owner.rpc("split_story", { p_story_id: source, p_children: [child()] });

@@ -54,7 +54,9 @@ describe.skipIf(!RUN)("parent_id hierarchy triggers (integration)", () => {
 
   async function createStory(
     project: string,
-    fields: { title: string; points?: number | null; parent_id?: string | null } = { title: "s" },
+    fields: { title: string; points?: number | null; parent_id?: string | null; epic_color?: string | null } = {
+      title: "s",
+    },
   ): Promise<{ id: string; error: string | null }> {
     const { data, error } = await owner
       .from("stories")
@@ -94,6 +96,27 @@ describe.skipIf(!RUN)("parent_id hierarchy triggers (integration)", () => {
     await owner.from("stories").update({ parent_id: null }).eq("id", child.id);
     const reverted = await admin.from("stories").select("is_container").eq("id", parent.id).single();
     expect(reverted.data?.is_container).toBe(false);
+  });
+
+  // fable-advisor (TASK-183 review): a normal story has no epic_color, so
+  // containerizing it via split_story or the Parent picker left epics
+  // colorless — a regression vs. the old promote flow's default. Fixed on
+  // the false->true flip itself (the single authority for containerization,
+  // regardless of which path triggered it).
+  it("defaults epic_color to #6366f1 on containerization when the story had none", async () => {
+    const parent = await createStory(projectId, { title: "Colorless" });
+    await createStory(projectId, { title: "Child2", parent_id: parent.id });
+
+    const row = await admin.from("stories").select("epic_color").eq("id", parent.id).single();
+    expect(row.data?.epic_color).toBe("#6366f1");
+  });
+
+  it("never overwrites an existing epic_color on containerization", async () => {
+    const parent = await createStory(projectId, { title: "AlreadyColored", epic_color: "#ff0000" });
+    await createStory(projectId, { title: "Child3", parent_id: parent.id });
+
+    const row = await admin.from("stories").select("epic_color").eq("id", parent.id).single();
+    expect(row.data?.epic_color).toBe("#ff0000");
   });
 
   it("rejects a grandchild (max depth 1)", async () => {

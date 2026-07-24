@@ -1,11 +1,11 @@
 ---
 id: TASK-184
 title: List accordion + /epics container list + story-detail Parent picker
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-24 04:08'
-updated_date: '2026-07-24 10:56'
+updated_date: '2026-07-24 11:28'
 labels: []
 milestone: m-6
 dependencies:

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "@/lib/utils/toast-store";
+import { withoutSearchParams } from "@/lib/utils/url";
 
 const RESHAPE_NOTE_MESSAGE: Record<string, string> = {
   already_finished: "Project updated — the current iteration had already finished, so its length wasn't changed.",
@@ -28,7 +29,7 @@ export function SettingsSaveToast() {
     }
     toast(RESHAPE_NOTE_MESSAGE[reshapeNote ?? ""] ?? "Project updated");
     // Strips the params so a manual refresh doesn't re-fire the toast.
-    router.replace(pathname, { scroll: false });
+    router.replace(withoutSearchParams(pathname, searchParams, ["updated", "reshape_note"]), { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updated, reshapeNote]);
 

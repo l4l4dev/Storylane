@@ -25,10 +25,14 @@ function iceboxStory(id: string): BoardStory {
   };
 }
 
+const { routerReplaceMock, searchParamsValue } = vi.hoisted(() => ({
+  routerReplaceMock: vi.fn(),
+  searchParamsValue: { current: new URLSearchParams() },
+}));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: routerReplaceMock }),
   usePathname: () => "/projects/p1/board",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => searchParamsValue.current,
 }));
 
 vi.mock("@/lib/supabase/realtime", () => ({
@@ -105,6 +109,8 @@ Object.defineProperty(window, "localStorage", {
 describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    searchParamsValue.current = new URLSearchParams();
+    routerReplaceMock.mockClear();
   });
 
   it("shows the iteration end date once and keeps committed points beside velocity", () => {
@@ -221,6 +227,57 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
 
     expect(screen.getByRole("button", { name: "Kanban" })).toHaveAttribute("aria-pressed", "true");
     expect(window.localStorage.getItem("storylane:board-view:p-quota")).toBeNull();
+  });
+
+  // TASK-183: split_story's post-commit redirect (a new container only ever
+  // shows in the List view's Icebox — doc-18 §9) forces List + Icebox open
+  // for this one navigation via one-shot query params, without persisting
+  // the choice (a Kanban-preferring user's saved toggle must survive it).
+  it("forces List view from a one-shot ?view=list param, without persisting it", async () => {
+    window.localStorage.setItem("storylane:board-view:p1", "kanban");
+    searchParamsValue.current = new URLSearchParams("view=list");
+    render(<KanbanBoard {...baseProps()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+    });
+    expect(window.localStorage.getItem("storylane:board-view:p1")).toBe("kanban");
+  });
+
+  // fable-advisor: the one-shot ?view=list override must release the moment
+  // the user explicitly clicks either toggle — otherwise it permanently wins
+  // over `writeBoardView` for the rest of this mount (a dead Kanban button).
+  it("releases the one-shot view override once the user clicks Kanban", async () => {
+    searchParamsValue.current = new URLSearchParams("view=list");
+    render(<KanbanBoard {...baseProps()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
+
+    expect(screen.getByRole("button", { name: "Kanban" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("opens Icebox from a one-shot ?icebox=1 param", () => {
+    searchParamsValue.current = new URLSearchParams("icebox=1");
+    render(<KanbanBoard {...baseProps()} />);
+
+    // "secondary" variant is the active/pressed styling this toggle uses
+    // (no aria-pressed on this particular button).
+    expect(screen.getByTestId("icebox-toggle")).toHaveAttribute("data-variant", "secondary");
+  });
+
+  it("strips the one-shot view/icebox params after consuming them, preserving other params", () => {
+    searchParamsValue.current = new URLSearchParams("view=list&icebox=1&type=bug");
+    render(<KanbanBoard {...baseProps()} />);
+
+    expect(routerReplaceMock).toHaveBeenCalledWith("/projects/p1/board?type=bug", { scroll: false });
+  });
+
+  it("does not call router.replace when there is nothing one-shot to strip", () => {
+    searchParamsValue.current = new URLSearchParams("type=bug");
+    render(<KanbanBoard {...baseProps()} />);
+
+    expect(routerReplaceMock).not.toHaveBeenCalled();
   });
 
   it("explains filtered totals and distinguishes an empty match from an empty project", () => {

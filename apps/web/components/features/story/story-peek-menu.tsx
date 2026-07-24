@@ -30,14 +30,21 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 
 // The peek header's overflow (⋯) menu (spec/screens.md "Story detail
-// editing"): hosts Move/Copy and Delete. Each dialog's open state is owned
-// here, outside the DropdownMenu tree — nesting a DialogTrigger inside a
-// DropdownMenuItem would unmount the dialog the instant the menu closes.
-// (The Split entry lands with the Split Studio — TASK-183/184, doc-18 §7.)
+// editing"): hosts Split, Move/Copy, and Delete. Each dialog's open state is
+// owned here, outside the DropdownMenu tree — nesting a DialogTrigger inside
+// a DropdownMenuItem would unmount the dialog the instant the menu closes.
 export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
+  const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
+
+  // A container is already split (no board state to split from) and a child
+  // can't be split (single-level nesting, doc-18 §3) — split_story rejects
+  // both server-side too. A personal-project story never offers Split at all
+  // (owner decision: splitting would containerize it, dropping it out of My
+  // Work with unassigned children also invisible there).
+  const canSplit = !detail.isContainer && detail.parentId === null && !detail.isPersonalProject;
 
   return (
     <>
@@ -48,6 +55,16 @@ export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {canSplit && (
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                router.push(`/stories/${detail.id}/split`);
+              }}
+            >
+              Split…
+            </DropdownMenuItem>
+          )}
           {/* A container is rejected server-side by both RPCs (doc-18 §8 —
               deleting the source to complete a Move would orphan its
               children) — hidden rather than offered and left to fail. */}

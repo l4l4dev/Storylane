@@ -1,13 +1,14 @@
 "use client";
 
-import { type ReactNode, useState, useSyncExternalStore, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { type ReactNode, useEffect, useState, useSyncExternalStore, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { LayoutGrid, List as ListIcon, Pencil, Snowflake } from "lucide-react";
 import { finishIteration, overrideIterationLength, updateIterationGoal } from "@/app/projects/[id]/board/actions";
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { sumPoints } from "@/lib/utils/board";
 import { ICEBOX_COLUMN_ID } from "@/lib/utils/kanban";
 import { isImeComposing } from "@/lib/utils/keyboard";
+import { withoutSearchParams } from "@/lib/utils/url";
 import { addDays } from "@storylane/core";
 import { iterationLabel, iterationSpanLabel, type BacklogRowItem } from "@/lib/utils/iterations";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
@@ -199,13 +200,43 @@ export function KanbanBoard({
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
 }) {
-  const view = useSyncExternalStore<BoardView>(
+  const syncedView = useSyncExternalStore<BoardView>(
     subscribeBoardView,
     () => readBoardView(projectId),
     () => "list",
   );
-  const [showIcebox, setShowIcebox] = useState(false);
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
   const router = useRouter();
+  // One-shot redirect override (TASK-183: split_story's post-commit redirect
+  // forces List + Icebox open for this one navigation — a container only
+  // ever shows there, doc-18 §9 — without persisting over the user's own
+  // saved Kanban/List choice, hence a plain useState seed rather than
+  // writeBoardView). Read only in the useState initializer, so it only takes
+  // effect on a fresh mount of this component — true here because the only
+  // caller (split-studio's post-commit redirect) always navigates in from a
+  // different route. Stripped from the URL below once consumed. Cleared the
+  // moment the user explicitly clicks either toggle — it must release then,
+  // or it permanently wins over writeBoardView for the rest of this mount,
+  // making a Kanban click visibly do nothing.
+  const [forcedView, setForcedView] = useState<BoardView | null>(() =>
+    searchParams.get("view") === "list" ? "list" : null,
+  );
+  const view = forcedView ?? syncedView;
+  const [showIcebox, setShowIcebox] = useState(() => searchParams.get("icebox") === "1");
+
+  function selectView(next: BoardView) {
+    setForcedView(null);
+    writeBoardView(projectId, next);
+  }
+
+  useEffect(() => {
+    if (!searchParams.has("view") && !searchParams.has("icebox")) {
+      return;
+    }
+    router.replace(withoutSearchParams(pathname, searchParams, ["view", "icebox"]), { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Other users' story/divider changes arrive here and re-fetch the
   // board's Server Component, which flows back in as `initialContainers` /
@@ -296,7 +327,7 @@ export function KanbanBoard({
               type="button"
               variant={view === "list" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => writeBoardView(projectId, "list")}
+              onClick={() => selectView("list")}
               aria-pressed={view === "list"}
             >
               <ListIcon />
@@ -306,7 +337,7 @@ export function KanbanBoard({
               type="button"
               variant={view === "kanban" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => writeBoardView(projectId, "kanban")}
+              onClick={() => selectView("kanban")}
               aria-pressed={view === "kanban"}
             >
               <LayoutGrid />

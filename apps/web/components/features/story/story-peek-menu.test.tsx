@@ -4,9 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StoryDetail } from "@/app/stories/[id]/actions";
 import { StoryPeekMenu } from "./story-peek-menu";
 
-// The overflow menu hosts Move/Copy/Delete. (The Split entry lands with the
-// Split Studio in TASK-183/184.) split_story's own correctness is covered by
-// lib/utils/split.integration.test.ts.
+// The overflow menu hosts Split/Move/Copy/Delete. split_story's own
+// correctness is covered by lib/utils/split.integration.test.ts.
 const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
@@ -118,6 +117,45 @@ describe("StoryPeekMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Move to project…" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Copy to project…" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete story" })).toBeInTheDocument();
+  });
+
+  // doc-18 §7: Split navigates to the Split Studio.
+  it("navigates to the Split Studio from the Split menu item", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={baseDetail} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Split…" }));
+
+    expect(pushMock).toHaveBeenCalledWith("/stories/s1/split");
+  });
+
+  // A container is already split; a child can't be split (single-level
+  // nesting, doc-18 §3) — split_story rejects both server-side too.
+  it("hides Split for a container story", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={{ ...baseDetail, isContainer: true }} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Split…" })).not.toBeInTheDocument();
+  });
+
+  it("hides Split for a child story", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={{ ...baseDetail, parentId: "parent-1" }} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Split…" })).not.toBeInTheDocument();
+  });
+
+  // Owner decision (TASK-181/184 notes): splitting a personal task would
+  // containerize it — dropping it out of My Work with unassigned children
+  // also invisible there — so Split is never offered in a personal project.
+  it("hides Split for a personal-project story", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={{ ...baseDetail, isPersonalProject: true }} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Split…" })).not.toBeInTheDocument();
   });
 
   // doc-18 §8: deleting a container SET NULLs its children's parent_id
