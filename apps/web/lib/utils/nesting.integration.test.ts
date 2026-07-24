@@ -1,0 +1,126 @@
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+// Exercises the REAL doc-18 hierarchy triggers (enforce_single_level_nesting,
+// maintain_is_container) against the local stack — the unit suite mocks the DB,
+// so trigger logic can only be validated here.
+//
+//   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/nesting.integration.test.ts
+const RUN = process.env.SUPABASE_INTEGRATION === "1";
+
+describe.skipIf(!RUN)("parent_id hierarchy triggers (integration)", () => {
+  let admin: SupabaseClient;
+  let owner: SupabaseClient;
+  let projectId: string;
+  let otherProjectId: string;
+
+  beforeAll(async () => {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      try {
+        process.loadEnvFile(`${process.cwd()}/.env.local`);
+      } catch {
+        // fall through; missing env fails loudly below.
+      }
+    }
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !anonKey || !serviceKey) {
+      throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
+    }
+    admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+    owner = createClient(url, anonKey);
+    const ownerAuth = await owner.auth.signInWithPassword({
+      email: "dev@storylane.local",
+      password: "dev-local-only-password",
+    });
+    if (ownerAuth.error || !ownerAuth.data.user) {
+      throw new Error(`Dev-user sign-in failed (is 'supabase start' running?): ${ownerAuth.error?.message}`);
+    }
+
+    const p1 = await owner.from("projects").insert({ name: "nesting test" }).select("id").single();
+    const p2 = await owner.from("projects").insert({ name: "nesting test other" }).select("id").single();
+    if (p1.error || !p1.data || p2.error || !p2.data) {
+      throw new Error(`Project setup failed: ${p1.error?.message ?? p2.error?.message}`);
+    }
+    projectId = p1.data.id;
+    otherProjectId = p2.data.id;
+  });
+
+  afterAll(async () => {
+    if (projectId) await admin.from("projects").delete().eq("id", projectId);
+    if (otherProjectId) await admin.from("projects").delete().eq("id", otherProjectId);
+  });
+
+  async function createStory(
+    project: string,
+    fields: { title: string; points?: number | null; parent_id?: string | null } = { title: "s" },
+  ): Promise<{ id: string; error: string | null }> {
+    const { data, error } = await owner
+      .from("stories")
+      .insert({ project_id: project, story_type: "feature", ...fields })
+      .select("id")
+      .single();
+    return { id: data?.id ?? "", error: error?.message ?? null };
+  }
+
+  it("auto-containerizes a parent when a child is added, and reverts when it is removed", async () => {
+    const parent = await createStory(projectId, { title: "Parent", points: 3 });
+    const child = await createStory(projectId, { title: "Child", parent_id: parent.id });
+    expect(child.error).toBeNull();
+
+    const containerized = await admin
+      .from("stories")
+      .select("is_container, points, state_id, iteration_id")
+      .eq("id", parent.id)
+      .single();
+    expect(containerized.data).toMatchObject({
+      is_container: true,
+      points: null,
+      state_id: null,
+      iteration_id: null,
+    });
+
+    // The lost points are audited (doc-18 §4).
+    const log = await admin
+      .from("activity_logs")
+      .select("action, payload")
+      .eq("story_id", parent.id)
+      .eq("action", "story.containerized")
+      .single();
+    expect(log.data?.payload).toMatchObject({ old_points: 3 });
+
+    // Remove the only child -> parent reverts to a normal story.
+    await owner.from("stories").update({ parent_id: null }).eq("id", child.id);
+    const reverted = await admin.from("stories").select("is_container").eq("id", parent.id).single();
+    expect(reverted.data?.is_container).toBe(false);
+  });
+
+  it("rejects a grandchild (max depth 1)", async () => {
+    const parent = await createStory(projectId, { title: "P" });
+    const child = await createStory(projectId, { title: "C", parent_id: parent.id });
+    const grandchild = await createStory(projectId, { title: "G", parent_id: child.id });
+    expect(grandchild.error).toMatch(/max depth = 1/i);
+  });
+
+  it("rejects a story with children from becoming a child itself", async () => {
+    const parent = await createStory(projectId, { title: "P2" });
+    await createStory(projectId, { title: "C2", parent_id: parent.id });
+    const other = await createStory(projectId, { title: "Other" });
+    const { error } = await owner.from("stories").update({ parent_id: other.id }).eq("id", parent.id);
+    expect(error?.message).toMatch(/with children cannot become a child/i);
+  });
+
+  it("rejects a cross-project parent", async () => {
+    const here = await createStory(projectId, { title: "Here" });
+    const there = await createStory(otherProjectId, { title: "There" });
+    const { error } = await owner.from("stories").update({ parent_id: there.id }).eq("id", here.id);
+    expect(error?.message).toMatch(/same project/i);
+  });
+
+  it("rejects a self-parent", async () => {
+    const s = await createStory(projectId, { title: "Self" });
+    const { error } = await owner.from("stories").update({ parent_id: s.id }).eq("id", s.id);
+    expect(error?.message).toMatch(/its own parent/i);
+  });
+});
