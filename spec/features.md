@@ -38,39 +38,45 @@
     RPC and board-move deltas reject entry into any `in_progress` / `done` /
     `rejected` state
 - Task (checklist) management within stories
-- Assignee, label, and epic associations
+- Assignee, label, and parent ("epic") associations (parent = `stories.parent_id`, doc-18)
 - **Autosave (2026-07-07):** story detail fields save automatically as the
   user edits — there is no Save button (see spec/screens.md "Story detail
   editing")
-- **Promote to Epic (2026-07-07):** a story that has grown too big can be
-  promoted from the story detail menu. The story is converted into a new
-  epic and its tasks are expanded into new stories:
-  - The new epic takes the story's title and description.
-  - Each task becomes a new story (type `feature`, unestimated,
-    backlog position inherited from the original story's spot, preserving
-    task order) linked to the new epic. The original story's labels are
-    copied to each new story.
-  - **State (2026-07-10, advisor-reviewed; category terms since doc-8 §2):**
-    new stories never inherit an `in_progress`-or-later state — an
-    unestimated feature can't be started. If the original was in the Icebox
-    (`state_id IS NULL`) the new stories stay in the Icebox; otherwise they
-    land in the project's first `unstarted`-category state. `iteration_id` is
-    copied from the original except when that iteration is already `done`
-    (an accepted story keeps `iteration_id` after finalization), in which
-    case the new stories drop back to the backlog instead of raising the
-    done-iteration-assignment guard. Assignee is never inherited (new
-    stories start unassigned); task completion state (`is_done`) is not
-    carried over either.
-  - The original story is deleted. A confirmation dialog spells out the
-    conversion; if the story has comments it warns that they will be
-    deleted with the story. Points and assignee are discarded (epics carry
-    neither). The promotion is recorded in the activity log (single RPC,
-    see ARCHITECTURE.md).
+- **Split a story (doc-18, replaces the removed Promote to Epic):** a story
+  that has grown too big is **split**, in place, into child stories via the
+  Split Studio (`/stories/[id]/split`, from the story detail "⋯" menu — see
+  spec/screens.md "Split Studio"). Unlike the old promote flow, **the source
+  story is never deleted**: it stays and becomes a **container** (an "epic" =
+  `is_container = true`, doc-18 §1).
+  - Each right-pane card becomes a new child story (`parent_id` = the source,
+    `epic_color` inherited); the user assigns each child a title, description,
+    type, and tentative points, and drags source tasks onto the child that
+    should inherit them.
+  - On commit (`split_story` RPC, doc-18 §6): children are inserted with
+    `position` from the sequence (gap opened per the position invariant), the
+    source's `points` are cleared and `is_container` flips true (maintenance
+    trigger, doc-18 §4, which logs the old points to the activity log).
+    **Comments and activity stay on the source (the container)**; each child
+    links back to its parent.
+  - A container is off the board: its progress (aggregate child state + point
+    sum) is a **read-side roll-up** (doc-18 §5); its children are ordinary board
+    items that carry their own state/iteration/points and count in velocity.
+  - You can also nest an existing story under an existing container directly
+    from the story-detail **Parent** picker (sets `parent_id`; the single-level
+    trigger, doc-18 §3, rejects an illegal choice) — no RPC needed for the
+    single-child case.
 - **Move / Copy to another project (2026-07-07):** from the story detail
-  menu, targeting any project the user is a member of (either mode):
+  menu, targeting any project the user is a member of (either mode).
+  **Containers are excluded (doc-18 §8):** a story with `is_container = true`
+  cannot be Moved/Copied — the RPCs reject it and the menu items are
+  hidden/disabled — because deleting the source would `SET NULL` its children's
+  `parent_id` and silently explode the epic. Move/regroup the children instead;
+  the emptied container auto-reverts to a normal story. A **child** (a story
+  with a `parent_id`) still moves normally, dropping its parent link on landing:
   - **Move** carries title, description, type, tasks, labels (recreated by
     name+color in the target if missing) and comments; the story receives a
-    new per-project number in the target. Epic link is dropped; iteration
+    new per-project number in the target. Parent ("epic") link is dropped
+    (`parent_id` cleared, doc-18); iteration
     link is dropped (story lands in the target's Icebox, `state_id IS NULL`);
     points are kept only if the value exists in the target's point scale,
     otherwise cleared; assignee is kept only if they are a member of the
@@ -123,8 +129,13 @@
 - Manual story movement between iterations
 
 #### Epics & Labels
-- Create epics with color settings and progress display (completed / total stories)
-- Create labels with colors and apply multiple labels to stories
+- **Epics are container stories (doc-18):** an epic is a story with children
+  (`is_container = true`), created by splitting a story or nesting stories under
+  it — not a separate record. `epic_color` sets its color; progress is a
+  read-side roll-up of its children's state and point sum (doc-18 §5). The
+  `/epics` view lists all containers with their roll-up progress.
+- Create labels with colors and apply multiple labels to stories (orthogonal to
+  the parent hierarchy — labels are cross-cutting tags, doc-18 §1)
 
 #### Team Collaboration
 - **Invite members by user search (2026-07-07, replaces email invite):**

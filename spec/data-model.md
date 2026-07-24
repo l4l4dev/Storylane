@@ -72,19 +72,10 @@ project_members (
 )
 ```
 
-### epics
-```sql
-epics (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
-  name        text NOT NULL,
-  description text,
-  color       text DEFAULT '#6366f1',
-  position    int  NOT NULL DEFAULT 0,
-  created_at  timestamptz DEFAULT now(),
-  updated_at  timestamptz DEFAULT now()
-)
-```
+### epics (removed — doc-18)
+Unified into `stories`: an epic is now a **story with children**
+(`is_container = true`), grouped by `stories.parent_id` and colored by
+`stories.epic_color`. See `stories` below and doc-18 (§1–§2).
 
 ### labels
 ```sql
@@ -143,7 +134,9 @@ replaces the removed fixed-verb `transition_story`. SECURITY INVOKER, `FOR
 UPDATE` on the story row, and it owns the shared guards: the estimation gate
 (unestimated `feature` only into NULL/`unstarted`), the **done-iteration
 guard** (reject writes onto a story in a `done`-state iteration, shared with
-the finalization path — see spec/velocity.md "Finalization concurrency"), and
+the finalization path — see spec/velocity.md "Finalization concurrency"),
+the **container guard** (reject if `is_container = true` — a container has no
+board state; doc-18 §4), and
 **auto-assign to the current iteration on entering an `in_progress` state**.
 The DB permits **any → any** within the project; ordering discipline is
 UI-only (the advance button / Accept-Reject pair, a `packages/core` pure
@@ -360,9 +353,18 @@ stories (
                                           -- iterations(id, project_id) ON DELETE SET NULL (iteration_id)
                                           -- (TASK-18) — prevents a story from pointing at another
                                           -- project's iteration; only iteration_id is nulled on delete
-  epic_id      uuid,                      -- Composite FK (epic_id, project_id) REFERENCES epics(id,
-                                          -- project_id) ON DELETE SET NULL (epic_id) (TASK-18) — same
-                                          -- cross-project protection, epic_id only
+  parent_id    uuid REFERENCES stories(id) ON DELETE SET NULL,
+                                          -- doc-18: self-referencing 1-level hierarchy. NULL = top-level.
+                                          -- A non-NULL parent_id makes this a child; its parent becomes a
+                                          -- container (is_container = true, auto-maintained). Depth is
+                                          -- capped at 1 by enforce_single_level_nesting (doc-18 §3).
+  is_container boolean NOT NULL DEFAULT false,
+                                          -- doc-18 §4: trigger-maintained (true iff ≥1 child). APP-LAYER
+                                          -- READ-ONLY — never written by clients. On false→true the trigger
+                                          -- also NULLs points/state_id/iteration_id (a container is off the
+                                          -- board) and logs the old points to activity_logs.
+  epic_color   text,                      -- doc-18: display color, meaningful only when is_container = true
+                                          -- (folds in the removed epics.color)
   state_id     uuid,                      -- doc-8 §2: the story's project_state (board column).
                                           -- Composite FK (state_id, project_id) REFERENCES
                                           -- project_states(id, project_id) ON DELETE RESTRICT —
@@ -388,6 +390,28 @@ stories (
   updated_at   timestamptz DEFAULT now()
 )
 ```
+
+**Container stories & roll-up (doc-18 §1–§5):** a story with children is a
+**container** (an "epic"); a story with a `parent_id` is a **child**. `parent_id`
+is 1-to-many hierarchy; `labels` stay the orthogonal many-to-many tag — they
+coexist. Board model (owner decision 2026-07-24): **children are the real board
+items** (their own state/iteration/points, counted in velocity as terminal
+stories); a **container never sits in a Kanban column or sprint** — its
+state/iteration/points are NULL and its progress (aggregate state + point sum)
+is **derived on read from its children, never stored** (roll-up rule in doc-18
+§5, a shared `packages/core` pure function with golden fixtures). Children reuse
+their single `stories.position` for order under the parent — no separate
+"epic-internal" position scope (doc-18 §2). Containers are excluded from board /
+velocity / My Work paths by one `is_container = false` filter (doc-18 §5);
+`split_story` (doc-18 §6) is the only bulk create-children path. A container's
+off-the-board property is a **permanent DB invariant, not a one-time clear**
+(decision-1): `CHECK (NOT is_container OR (points IS NULL AND state_id IS NULL
+AND iteration_id IS NULL))` on `stories`, plus an `is_container` reject guard in
+`set_story_state`, so no later direct UPDATE can re-populate a container's board
+fields (doc-18 §4). A **container itself cannot be Move/Copied** — the RPCs
+reject `is_container = true` (moving it would `SET NULL` its children's
+`parent_id` and explode the epic); relocate an epic by moving its children
+(doc-18 §8).
 
 ### story_labels (join table)
 ```sql
@@ -455,7 +479,7 @@ integrations (
 
 ## Position ordering invariant
 
-`position` columns (stories, backlog_dividers, tasks, epics, project_states)
+`position` columns (stories, backlog_dividers, tasks, project_states)
 are an **ordering** key, not a dense index. Readers sort by it; no
 one reads it as an array index, and gaps are legal.
 
@@ -471,12 +495,12 @@ Two rules keep it consistent (TASK-58's position-sequence + splice RPCs):
 2. **Rewrites (reorder/splice/compaction) only ever lower a position** to a
    dense rank `0..n-1` within a scope. A rank is always `< n ≤` the sequence
    frontier, so a subsequent default insert still lands last. Upward shifts are
-   forbidden — `promote_story_to_epic` opens its gap by inserting from the
-   sequence and then lowering, never by pushing existing rows past the frontier
-   (the bug that motivated rule 1).
+   forbidden — `split_story` (doc-18 §6) opens its gap by inserting its child
+   rows from the sequence and then lowering, never by pushing existing rows past
+   the frontier (the bug that motivated rule 1).
 
 DB-enforced where the scope is flat: `UNIQUE(project_id, position)` on
-project_states / epics and `UNIQUE(story_id, position)` on tasks,
+project_states and `UNIQUE(story_id, position)` on tasks,
 both `DEFERRABLE INITIALLY DEFERRED` (a rewrite collides mid-statement and
 reconciles at commit). `stories` and `backlog_dividers` are **not** constrained:
 their position is scoped by zone, not by a single column, and the two tables
@@ -485,8 +509,10 @@ share one backlog order space, so no single-column UNIQUE expresses it.
 ### Backlog zone predicate (canonical)
 
 A story belongs to the **backlog zone** when `iteration_id is null and
-state_id is not null` (doc-8 §2 advisor: NULL-safe, and deleting states can
-never strand a story out of the Icebox). The canonical definition lives in
+state_id is not null and is_container = false` (doc-8 §2 advisor: NULL-safe, and
+deleting states can never strand a story out of the Icebox; doc-18: a container
+is off the board and never in a zone — its state/iteration are NULL anyway, but
+the predicate says so explicitly). The canonical definition lives in
 the DB, in `_splice_backlog` (TASK-51); `move_story_board`, the board's `buildBacklogRows`, and
 `lib/utils/kanban.ts` `zoneForStory` all mirror it and must be changed together
 with it. (decision-1: invariants are authoritative server-side.)

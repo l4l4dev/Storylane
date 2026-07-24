@@ -52,14 +52,17 @@ Read:
   transition period by TASK-86, carried exactly this ambiguity, which is why
   the field is named for its unit now instead of shipping a compatibility key
   a stale reader could only ever misinterpret), backlog/icebox counts.
-- `list_stories(project_id, filter?)` — by state, iteration, epic, label, or text.
-  Returns compact rows (id, title, type, state, points, epic, labels).
+- `list_stories(project_id, filter?)` — by state, iteration, parent (container),
+  label, or text. Returns compact rows (id, title, type, state, points,
+  parent_id, is_container, labels — doc-18).
 - `get_story(story_id)` — full story: description, tasks, comments, labels,
   recent activity entries.
 
 Write:
-- `create_story(project_id, title, {description, story_type, points, epic_id,
-  labels, destination})` — destination: `backlog_bottom | icebox |
+- `create_story(project_id, title, {description, story_type, points, parent_id,
+  labels, destination})` — `parent_id` nests the new story under a container
+  (doc-18; the single-level trigger rejects an illegal parent). destination:
+  `backlog_bottom | icebox |
   current_iteration` (default `backlog_bottom`, matching spec/ux-principles.md
   principle 4's "predictable landing spot"). No `backlog_top` / arbitrary
   positions: an arbitrary insert would rewrite the dense `position` sequence
@@ -71,8 +74,9 @@ Write:
   client-side loop of individual UPDATEs. Zone-bottom is `max(position)+1`
   and touches no other row. If arbitrary placement is ever needed, it
   becomes a SECURITY DEFINER resequence RPC in a later phase.
-- `update_story(story_id, fields)` — title, description, points, labels, epic,
-  assignee. Partial UPDATE of exactly the passed fields (field-level
+- `update_story(story_id, fields)` — title, description, points, labels,
+  parent_id, assignee (`is_container` is read-only, never a writable field —
+  doc-18). Partial UPDATE of exactly the passed fields (field-level
   last-write-wins per spec/screens.md), never a full-record write.
 - `set_story_state(story_id, state_id)` — move a story to one of the project's
   `project_states` (doc-8 §2). **State-id addressing**, not lifecycle verbs: the

@@ -25,7 +25,7 @@ This file is an index. Read only the section file relevant to the task at hand â
 
 | File | Contents | Read when... |
 |---|---|---|
-| [spec/data-model.md](spec/data-model.md) | Full table definitions (profiles, projects, epics, labels, iterations, stories, tasks, comments, activity_logs, integrations) | Writing migrations, queries, or any Repository-layer code |
+| [spec/data-model.md](spec/data-model.md) | Full table definitions (profiles, projects, labels, iterations, stories incl. parent_id/is_container hierarchy, tasks, comments, activity_logs, integrations) | Writing migrations, queries, or any Repository-layer code |
 | [spec/rls.md](spec/rls.md) | RLS policy guidelines by role (owner/member/viewer) | Writing or reviewing RLS policies |
 | [spec/velocity.md](spec/velocity.md) | Velocity calculation formula and auto-assignment rule | Implementing Task 6 (Iterations) or Task 8 (Velocity) |
 | [spec/features.md](spec/features.md) | Full Phase 1 / Phase 2 feature list | Scoping a new feature or checking what's in/out of Phase 1 |

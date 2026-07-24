@@ -20,8 +20,10 @@
   `move_story_board` (SECURITY DEFINER) already enforced independently — all
   three write paths now agree. `set_story_state` (TASK-91) is designed
   against this relaxed model. **Unchanged, out of scope:** `stories` DELETE
-  and `promote_story_to_epic` stay owner-only — decision (a) is about board
-  operations, not deletion
+  stays owner-only — decision (a) is about board operations, not deletion.
+  `split_story` (doc-18 §6) is **owner+member**, not owner-only: splitting is a
+  board operation and is no longer destructive (the parent survives as a
+  container), unlike the removed `promote_story_to_epic` which deleted the story
 - Every new table with a `project_id` column gets its own policy set following
   the pattern above — policies are never inherited
 - **project_states (doc-8 §2):** members SELECT/UPDATE, **owner-only DELETE**;
@@ -87,9 +89,10 @@
   `grant-lockdown` integration test is the backstop
 - activity_logs (2026-07-15, TASK-55): the client INSERT policy was **dropped** —
   all writers are SECURITY DEFINER now (the `log_*` triggers, the move/copy RPCs,
-  and `promote_story_to_epic`, converted to SECURITY DEFINER for this), so a
-  direct client insert is denied. A composite FK `(story_id, project_id) →
-  stories(id, project_id)` makes a cross-project story reference impossible
+  `split_story` (doc-18 §6), and the `is_container` maintenance trigger that logs
+  a container's cleared points — doc-18 §4), so a direct client insert is denied.
+  A composite FK `(story_id, project_id) → stories(id, project_id)` makes a
+  cross-project story reference impossible
 - iterations INSERT (2026-07-21, TASK-110): the client INSERT policy was
   **dropped** and the table-level INSERT grant revoked from `authenticated` —
   every new iteration row is created by the `finalize_iteration` SECURITY

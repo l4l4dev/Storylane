@@ -17,12 +17,15 @@
                           Projects page header
 /projects/[id]            Redirects to the board (see below) — the board is the project's home view
 /projects/[id]/board      Board (List / Kanban view, toggled in place — see "Board layout" below)
-/projects/[id]/epics      Epic list
+/projects/[id]/epics      Container ("epic") list — every is_container story with
+                          roll-up progress (doc-18 §9; was the epics-table list)
 /projects/[id]/iterations Iteration history (past/done iterations with velocity and their stories)
 /projects/[id]/activity   Project activity log (read-only feed of recent story/comment changes)
 /projects/[id]/settings   Project settings (members, integrations, point scale, etc.)
 /stories/[id]             Story detail (standalone deep-link page; primary editing happens
                           in the board's side peek — see "Board layout" below)
+/stories/[id]/split       Split Studio — split an oversized story into child stories
+                          (doc-18 §7; Web-first focus screen)
 ```
 
 ### Onboarding (doc-8 §4, TASK-93)
@@ -34,9 +37,10 @@ owned by the new user (`handle_new_user` trigger). It is flagged
 owner's own projects list (`/dashboard`) and sidebar switcher** — the owner
 works with it through My Work, so personal tasks and team projects don't mix
 in the list. **Invites are blocked** (`invite_member` rejects `is_personal`
-projects — TASK-147 reverses this half of doc-11 D1; a Promote-to-Epic
-data-loss incident showed the hidden project needs to stay single-user
-forever, since My Work's whole model assumes it). It still **stays a move/copy
+projects — TASK-147 reverses this half of doc-11 D1; the hidden project stays
+single-user forever because My Work's whole model assumes it — a lesson a
+Promote-to-Epic data-loss incident first surfaced, though that flow is since
+replaced by the non-destructive Split model, doc-18). It still **stays a move/copy
 target** (unchanged, doc-11 D1). Every `/projects/[id]/*` page (board,
 iterations, epics, activity, settings) redirects the owner to `/my-work`
 instead of rendering (TASK-147) — a dev-only `/dev/my-tasks` debug view is
@@ -248,6 +252,16 @@ a physical column.
     draggable to a new spot — delete it via its header badge and re-insert
     at the new spot instead (still exact, via the insert-between
     affordance below).
+- **Container accordion (doc-18 §1, §9):** top-level list rows are stories with
+  `parent_id IS NULL`. A **container** (`is_container = true`) renders as a
+  collapsible parent row showing its `epic_color` and a roll-up progress bar
+  (aggregate child state + point sum, doc-18 §5); expanding it reveals its
+  **children** indented one level, ordered by `position`. A child renders only
+  under its parent here — never also as a top-level row. This is the whole
+  hierarchy UI: a flat list plus one accordion level, no tree widget (doc-18
+  §3). On the Kanban view, children appear individually in their own state
+  columns and containers do not appear (a container is off the board); use the
+  `/epics` view or List accordion to see a container as a whole.
 - **Indent distinction (2026-07-07):** note labels start flush at the
   list's left edge and span full width; story rows are indented slightly
   to the right, so structure rows and work rows are distinguishable at a
@@ -325,10 +339,16 @@ Applies to the side peek and `/stories/[id]`; there are no Save buttons.
 - **Text fields** (title, description): autosave after the user stops
   typing (~800 ms debounce) and on blur. Esc reverts the field to its last
   saved value.
-- **Discrete fields** (type, points, assignee, epic, labels): save
-  immediately on change, as most already do. State changes go through the
-  advance button / Accept-Reject pair (`set_story_state`), not a free-form
-  dropdown.
+- **Discrete fields** (type, points, assignee, parent, labels): save
+  immediately on change, as most already do. The former "epic" field is now a
+  **Parent** picker — choose an existing container to nest this story under,
+  setting `parent_id` (doc-18 §9); the single-level trigger (doc-18 §3) rejects
+  an illegal choice. If the chosen parent is **not yet** a container, nesting
+  flips it into one and clears its points/state/iteration (doc-18 §4) — so the
+  picker confirms first ("X will become an epic and leave the board…") in that
+  case; nesting under an already-container parent needs no confirmation. State
+  changes go through the advance button / Accept-Reject pair (`set_story_state`),
+  not a free-form dropdown.
 - A small **"Saving… / Saved ✓"** indicator in the peek header reflects
   in-flight state; a failed save keeps the local value, shows an error,
   and offers retry. Realtime updates from other users must not clobber a
@@ -358,9 +378,52 @@ Conflict & failure rules (2026-07-08):
   not produce a row per save — and Slack notifications stay
   state-change-only. Verify this against the existing trigger before
   shipping.
-- The overflow (⋯) menu in the peek header hosts **Promote to Epic** and
+- The overflow (⋯) menu in the peek header hosts **Split** (opens the Split
+  Studio, doc-18 §7 — labelled "分割する"/"Split", never "convert to epic") and
   **Move / Copy to another project** (behavior in spec/features.md
   "Story Management"), alongside Delete.
+
+### Split Studio (`/stories/[id]/split` — doc-18 §7)
+
+A Web-first focus screen for splitting an oversized story into child stories.
+Entry: the story-detail "⋯" menu's **Split** item. The user's mental task is
+*splitting*, not *converting to an epic* — the label says so.
+
+Two panes:
+
+- **Left — source (read-only):** the source story's title, description, and its
+  existing `tasks` checklist. Never edited here.
+- **Right — new child cards:** a dynamic list. "+ new story" appends an empty
+  card; each card has title / description / `story_type` / tentative points.
+
+Interactions:
+
+- **Text-selection cut-out:** selecting text in the left description and
+  choosing "extract as a new story" appends a right-pane card seeded with the
+  selection as its description.
+- **Task reassignment:** drag left-pane checklist items onto right-pane cards to
+  choose which child inherits each task.
+- **Points total:** the sum of the right cards' tentative points is shown
+  against the source's old points.
+- **Preview & commit:** a pre-commit preview lists the children to be created;
+  "Split" runs the `split_story` RPC (doc-18 §6) — each right card becomes a new
+  child story (`parent_id` = source, `epic_color` inherited), `position` from
+  the sequence with a gap opened per the position invariant, reassigned tasks
+  moved to their target child, then the source's `points` cleared and
+  `is_container` flipped true by the maintenance trigger (doc-18 §4).
+  **Comments and activity stay on the source (the container)**; each child links
+  back to the parent ("view parent") permanently.
+- **Where children land (doc-18 §6–§7):** children take the source's
+  `state_id`/`iteration_id` (captured before the source is cleared), so they
+  appear where the split story was — except: a `done` source iteration sends
+  children to the backlog instead (never assign into a done iteration), and a
+  non-`unstarted` source state resolves to the project's first
+  `unstarted`-category state (Icebox stays Icebox). Children take their tentative
+  points; assignee is never inherited.
+
+After commit the user returns to the board / List with the new container
+expanded (children visible) — no teleport elsewhere (spec/ux-principles.md §8,
+§10).
 
 ### My Work (`/my-work`, replaces the per-project Focus view — doc-8 §9, doc-14/doc-15, TASK-89/131/138–141)
 

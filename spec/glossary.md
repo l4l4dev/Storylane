@@ -15,7 +15,9 @@
 | Capacity | Σ over members of their working days in a sprint (calendar-aware, minus personal time off). Snapshotted onto `iterations.capacity` at finalization |
 | Rollover | Lazy finalization of an iteration when its end date passes: capacity/velocity are snapshotted and stories not in a done-category state move to the next iteration |
 | Velocity | Person-day rate: Σ done-category points ÷ Σ capacity over the last N non-skipped, capacity>0 done iterations (see spec/velocity.md) |
-| Epic | A large feature grouping that spans multiple stories |
+| Epic / Container | A story that has children (`is_container = true`, doc-18). Grouping is `stories.parent_id`, not a separate table; a container is off the board and its progress is a read-side roll-up of its children |
+| Child story | A story with a non-NULL `parent_id` — an ordinary board item nested under a container. Max nesting depth is 1 (doc-18 §3) |
+| Split | Breaking an oversized story into child stories via the Split Studio (doc-18 §7); the source stays and becomes the container. Replaces the removed "Promote to Epic" |
 | Points | A numeric estimate of a story's scope, chosen from the project's point scale |
 | Virtual iteration | A future iteration shown as a numbered backlog group — computed from velocity × planned capacity at render time, no DB row |
 | My Work | Cross-project personal Kanban of all stories assigned to the signed-in user (Todo / Today / user-defined free columns / Done; own status via `my_work_story_state` + `my_work_columns`, no project-board mapping — doc-15, replaces the per-project Focus view) |

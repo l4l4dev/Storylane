@@ -19,7 +19,11 @@ forecast(sprint) = rate × sprint.capacity      (planned capacity for a future s
   and over-weighting tiny sprints (doc-8 §7 advisor).
 - **Points counted** = stories that entered a **`done`-category** state
   (`project_states.category = 'done'`, spec/data-model.md), still excluding
-  `story_type = 'chore'` / `'release'` via the existing type filter.
+  `story_type = 'chore'` / `'release'` via the existing type filter, and
+  excluding containers (`is_container = false`, doc-18 §5 — a container carries
+  NULL points and is off the board; only its terminal children count). The
+  read-side roll-up of a container's state is display-only and never feeds
+  velocity.
 - **Capacity** = Σ over members of their working days in the sprint
   (calendar-aware, minus personal time off). It is **snapshotted onto
   `iterations.capacity` by the finalization RPC** and never recomputed, so
@@ -30,7 +34,9 @@ forecast(sprint) = rate × sprint.capacity      (planned capacity for a future s
   capacity-0 iterations (e.g. an empty `done` row auto-created on a
   neglected 1-day project) are excluded, so neither drags the rate.
 - Auto-assignment: stories are pulled from the top of the backlog to fill
-  the next iteration up to `rate × planned capacity`.
+  the next iteration up to `rate × planned capacity`. Containers
+  (`is_container = true`) are never pulled — they are not board items; their
+  children are pulled individually (doc-18 §5).
 
 ### Where the capacity formula lives (TASK-86)
 
@@ -94,8 +100,9 @@ Replaces the manual "Generate next iteration" / "Mark as done" operations from T
   same TS↔Swift parity requirement as the state advance-button computation
   (doc-8 §2).
 - Walk the backlog top-down accumulating points (`chore` / `release` /
-  unestimated stories consume 0); when adding the next story would exceed the
-  remaining capacity, close the group and start the next one.
+  unestimated stories consume 0; containers are not in the walk at all —
+  `is_container = false`, doc-18 §5); when adding the next story would exceed
+  the remaining capacity, close the group and start the next one.
 - A single story larger than the full capacity occupies a virtual iteration
   by itself.
 - A manual `iteration_break` divider (spec/data-model.md) closes the group
