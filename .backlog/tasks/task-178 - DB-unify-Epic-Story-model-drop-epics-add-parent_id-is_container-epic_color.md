@@ -1,11 +1,11 @@
 ---
 id: TASK-178
 title: 'DB: unify Epic/Story model (drop epics, add parent_id/is_container/epic_color)'
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-24 04:07'
-updated_date: '2026-07-24 04:22'
+updated_date: '2026-07-24 04:37'
 labels: []
 milestone: m-6
 dependencies: []
@@ -30,3 +30,15 @@ Replace the separate epics table + stories.epic_id label model with a self-refer
 - [ ] #5 matches spec/data-model.md + SPEC.md + spec/rls.md (already updated in the doc-18 spec pass)
 - [ ] #6 CHECK (NOT is_container OR (points IS NULL AND state_id IS NULL AND iteration_id IS NULL)) on stories makes the container off-the-board property a permanent invariant, not a one-time trigger clear (doc-18 §4, decision-1)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Migration supabase/migrations/<ts>_epic_story_unification_schema.sql: ALTER stories ADD parent_id (self-ref ON DELETE SET NULL), is_container bool NOT NULL DEFAULT false, epic_color text; ADD CHECK(NOT is_container OR points/state_id/iteration_id all NULL); DROP stories.epic_id + composite FK; DROP TABLE epics CASCADE (policies go with it). is_container non-client-writable via column-level GRANT UPDATE (writable cols only) to authenticated. DOWN section. 2. Regenerate lib/database.types.ts. 3. Make Web compile: strip epic_id from story queries/types (stories.ts, board/page, my-work, iterations, story-detail-panel, story-fields, realtime, activity), temporarily neuter epics UI (epics/page, epic-form-dialog etc.) — real container UI deferred to TASK-184; keep promote_story_to_epic removal for TASK-181. 4. Update/remove affected tests. 5. pnpm test + lint from apps/web. iOS Story model: minimal (deferred per Web-first) — flag if AC#4 iOS scope should move to the iOS port task. Verify locally with supabase db reset first.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Slice 1 done on feat/epic-story-unification: migration 20260724043408_epic_story_unification_schema.sql (add parent_id/is_container/epic_color + off-board CHECK; drop stories.epic_id + epics table CASCADE). Verified via supabase db reset (all migrations + seed apply clean). Regenerated database.types.ts (epics gone, new cols present). SCOPE DISCOVERY: update_story RPC (20260708000003) and mcp atomic-write RPC (20260719000003) still take p_epic_id and write stories.epic_id -> now broken. These need redefining to parent_id within TASK-178 to keep the DB coherent (swap epic->parent). Remaining: RPC epic_id->parent_id swap, ~24 TS files compile sweep, test updates, pnpm test+lint. iOS Story model deferred (Web-first).
+<!-- SECTION:NOTES:END -->

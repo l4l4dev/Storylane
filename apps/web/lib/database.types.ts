@@ -170,47 +170,6 @@ export type Database = {
           },
         ]
       }
-      epics: {
-        Row: {
-          color: string
-          created_at: string
-          description: string | null
-          id: string
-          name: string
-          position: number
-          project_id: string
-          updated_at: string
-        }
-        Insert: {
-          color?: string
-          created_at?: string
-          description?: string | null
-          id?: string
-          name: string
-          position?: number
-          project_id: string
-          updated_at?: string
-        }
-        Update: {
-          color?: string
-          created_at?: string
-          description?: string | null
-          id?: string
-          name?: string
-          position?: number
-          project_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "epics_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       integrations: {
         Row: {
           config: Json
@@ -693,10 +652,12 @@ export type Database = {
           created_at: string
           created_by: string
           description: string | null
-          epic_id: string | null
+          epic_color: string | null
           id: string
+          is_container: boolean
           iteration_id: string | null
           number: number
+          parent_id: string | null
           points: number | null
           position: number
           project_id: string
@@ -711,10 +672,12 @@ export type Database = {
           created_at?: string
           created_by?: string
           description?: string | null
-          epic_id?: string | null
+          epic_color?: string | null
           id?: string
+          is_container?: boolean
           iteration_id?: string | null
           number?: number
+          parent_id?: string | null
           points?: number | null
           position?: number
           project_id: string
@@ -729,10 +692,12 @@ export type Database = {
           created_at?: string
           created_by?: string
           description?: string | null
-          epic_id?: string | null
+          epic_color?: string | null
           id?: string
+          is_container?: boolean
           iteration_id?: string | null
           number?: number
+          parent_id?: string | null
           points?: number | null
           position?: number
           project_id?: string
@@ -757,18 +722,18 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "stories_epic_project_fkey"
-            columns: ["epic_id", "project_id"]
-            isOneToOne: false
-            referencedRelation: "epics"
-            referencedColumns: ["id", "project_id"]
-          },
-          {
             foreignKeyName: "stories_iteration_project_fkey"
             columns: ["iteration_id", "project_id"]
             isOneToOne: false
             referencedRelation: "iterations"
             referencedColumns: ["id", "project_id"]
+          },
+          {
+            foreignKeyName: "stories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "stories_project_id_fkey"
@@ -968,9 +933,9 @@ export type Database = {
       create_story_tracker: {
         Args: {
           p_description: string
-          p_epic_id: string
           p_iteration_id: string
           p_label_ids: string[]
+          p_parent_id: string
           p_points: number
           p_project_id: string
           p_state_id: string
@@ -1124,8 +1089,8 @@ export type Database = {
         Args: {
           p_assignee_id: string
           p_description: string
-          p_epic_id: string
           p_label_ids?: string[]
+          p_parent_id: string
           p_points: number
           p_story_id: string
           p_story_type: string
@@ -1134,10 +1099,10 @@ export type Database = {
         Returns: {
           assignee_id: string
           description: string
-          epic_id: string
           id: string
           label_ids: string[]
           number: number
+          parent_id: string
           points: number
           project_id: string
           state_id: string
