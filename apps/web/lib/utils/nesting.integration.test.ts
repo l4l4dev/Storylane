@@ -140,4 +140,37 @@ describe.skipIf(!RUN)("parent_id hierarchy triggers (integration)", () => {
     const { error } = await owner.rpc("set_story_state", { p_story_id: parent.id, p_state_id: state.data!.id });
     expect(error?.message).toMatch(/container has no board state/i);
   });
+
+  // TASK-182 (rls-security-reviewer): is_container is trigger-derived from
+  // actual child membership, so a raw client UPDATE cannot forge it and route
+  // around the off-board CHECK / set_story_state guard.
+  it("neutralizes a raw client attempt to un-containerize a real epic", async () => {
+    const parent = await createStory(projectId, { title: "Epic", points: 3 });
+    await createStory(projectId, { title: "Kid", parent_id: parent.id });
+
+    await owner.from("stories").update({ is_container: false }).eq("id", parent.id);
+
+    const row = await admin.from("stories").select("is_container").eq("id", parent.id).single();
+    expect(row.data!.is_container).toBe(true); // forced back to the truth (has a child)
+  });
+
+  it("rejects the combined un-containerize + re-estimate attack via the off-board CHECK", async () => {
+    const parent = await createStory(projectId, { title: "Epic2", points: 3 });
+    await createStory(projectId, { title: "Kid2", parent_id: parent.id });
+
+    // is_container is forced true (has a child), so points=5 violates the CHECK.
+    const { error } = await owner.from("stories").update({ is_container: false, points: 5 }).eq("id", parent.id);
+    expect(error).not.toBeNull();
+
+    const row = await admin.from("stories").select("is_container, points").eq("id", parent.id).single();
+    expect(row.data).toMatchObject({ is_container: true, points: null });
+  });
+
+  it("neutralizes forging a plain story into a container", async () => {
+    const leaf = await createStory(projectId, { title: "Leaf" });
+    await owner.from("stories").update({ is_container: true }).eq("id", leaf.id);
+
+    const row = await admin.from("stories").select("is_container").eq("id", leaf.id).single();
+    expect(row.data!.is_container).toBe(false); // no children -> stays a plain story
+  });
 });

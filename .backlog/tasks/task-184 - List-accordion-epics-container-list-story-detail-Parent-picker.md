@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-24 04:08'
-updated_date: '2026-07-24 07:39'
+updated_date: '2026-07-24 08:09'
 labels: []
 milestone: m-6
 dependencies:
@@ -37,4 +37,6 @@ The remaining container-viewing surfaces (doc-18 §9): List-view 1-level accordi
 
 <!-- SECTION:NOTES:BEGIN -->
 Owner decision 2026-07-24 (from TASK-181 /code-review #5): the Split entry (AC#3) is HIDDEN for personal-project stories — option A. Splitting a personal task would containerize it (drops from My Work) with unassigned children (also absent from My Work), so it appears to vanish. So the overflow Split item shows only for non-personal, non-child, non-container stories. (Personal projects keep no Split affordance, mirroring the old Promote-hidden behavior — but for a UX reason now, not the promote data-loss reason.)
+
+From TASK-181 /code-review (#5): the story-detail Delete confirmation should be container-aware. Deleting a container ungroups its children (parent_id ON DELETE SET NULL -> children become top-level; no data loss), but the dialog only warns about comments. Add an 'its N child stories will be ungrouped' notice when detail.is_container. Pairs with the container-aware Move/Copy hide already noted for this task.
 <!-- SECTION:NOTES:END -->
