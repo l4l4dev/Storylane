@@ -47,10 +47,11 @@ const STALE_MOVE_MESSAGE = "This story changed on the board. Refresh and try aga
 // Every zone-determining column, snapshotted from the action's trusted read.
 // The RPC re-reads these FOR UPDATE and rejects (P0001 "stale") if any moved
 // between this read and the locked write — closing that TOCTOU window.
-function moveExpected(row: { state_id: string | null; iteration_id: string | null }) {
+function moveExpected(row: { state_id: string | null; iteration_id: string | null; parent_id: string | null }) {
   return {
     state_id: row.state_id,
     iteration_id: row.iteration_id,
+    parent_id: row.parent_id,
   };
 }
 
@@ -169,7 +170,8 @@ export async function createDraftStory(input: DraftStoryInput): Promise<ActionRe
         p_project_id: input.projectId,
         p_item: { kind: "story", id: storyId },
         p_view: input.target === "icebox" ? "list" : (input.view ?? "list"),
-        p_expected: moveExpected({ state_id: stateId, iteration_id: iterationId }),
+        // Freshly inserted above, so it cannot have a parent yet.
+        p_expected: moveExpected({ state_id: stateId, iteration_id: iterationId, parent_id: null }),
         p_deltas: {},
         p_anchor: moveAnchor(input.beforeItemId),
       });
@@ -215,7 +217,7 @@ export async function dropStory(formData: FormData) {
   const [{ data: story, error: fetchError }, { data: currentRows }, states] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, state_id, story_type, points, iteration_id")
+      .select("number, title, state_id, story_type, points, iteration_id, parent_id")
       .eq("id", storyId)
       .eq("project_id", projectId)
       .single(),
@@ -305,6 +307,11 @@ export async function dropStoryInList(formData: FormData) {
   const itemId = String(formData.get("item_id"));
   const targetZone = String(formData.get("target_zone")) as ListZoneId;
   const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
+  // Present only when the drop landed inside a container's Icebox accordion
+  // (doc-18 §9) — the one List drop that also re-parents. Absent for every
+  // other target, which leaves parent_id alone (a container's child dragged
+  // out to the board keeps its epic, doc-18 §1).
+  const attachToParentId = String(formData.get("parent_id") ?? "") || null;
 
   const supabase = await createClient();
 
@@ -336,7 +343,7 @@ export async function dropStoryInList(formData: FormData) {
   const [{ data: story, error: fetchError }, { data: currentRows }, states] = await Promise.all([
     supabase
       .from("stories")
-      .select("number, title, state_id, story_type, points, iteration_id")
+      .select("number, title, state_id, story_type, points, iteration_id, parent_id")
       .eq("id", itemId)
       .eq("project_id", projectId)
       .single(),
@@ -366,12 +373,38 @@ export async function dropStoryInList(formData: FormData) {
     throw new Error(evaluation.reason);
   }
 
+  // Only an EXISTING container may be dropped into. The accordion never offers
+  // anything else, but this is a form post: without the check, a forged
+  // parent_id would containerize an ordinary story — the maintain_is_container
+  // trigger would clear its points/state/iteration, the very loss the Parent
+  // picker demands a confirmation for (doc-18 §9). The triggers own the
+  // hierarchy rules (single-level, cross-project, self-parent) and are left to
+  // it; is_container is the one thing none of them assert. Doubles as the
+  // malformed-uuid guard — a non-uuid simply matches no row here rather than
+  // surfacing a raw 22P02 cast error from the RPC.
+  if (attachToParentId) {
+    const { data: parent } = await supabase
+      .from("stories")
+      .select("id")
+      .eq("id", attachToParentId)
+      .eq("project_id", projectId)
+      .eq("is_container", true)
+      .maybeSingle();
+    if (!parent) {
+      throw new Error("That epic no longer exists. Refresh and try again.");
+    }
+  }
+
+  const deltas = attachToParentId
+    ? { ...trackerDeltas(evaluation), parent_id: attachToParentId }
+    : trackerDeltas(evaluation);
+
   const { error } = await supabase.rpc("move_story_board", {
     p_project_id: projectId,
     p_item: { kind: "story", id: itemId },
     p_view: "list",
     p_expected: moveExpected(story),
-    p_deltas: trackerDeltas(evaluation),
+    p_deltas: deltas,
     p_anchor: moveAnchor(beforeItemId),
   });
   if (error) {
@@ -380,6 +413,9 @@ export async function dropStoryInList(formData: FormData) {
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/stories/${itemId}`);
+  // An attach clears state_id/iteration_id, so the story drops out of My Work
+  // the same way createDraftStory's icebox target does.
+  revalidatePath("/my-work");
 }
 
 /**

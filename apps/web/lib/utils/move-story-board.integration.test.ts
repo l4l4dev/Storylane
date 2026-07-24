@@ -120,7 +120,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: c },
       p_view: "tracker",
-      p_expected: { state_id: states.Started, iteration_id: iterationId },
+      p_expected: { state_id: states.Started, iteration_id: iterationId, parent_id: null },
       p_deltas: {},
       p_anchor: { before: { kind: "story", id: a } },
     });
@@ -137,7 +137,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state_id: states.Started, iteration_id: iterationId },
+      p_expected: { state_id: states.Started, iteration_id: iterationId, parent_id: null },
       p_deltas: { state_id: states.Finished },
       p_anchor: {}, // append to the finished column
     });
@@ -152,7 +152,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state_id: states.Unstarted, iteration_id: iterationId },
+      p_expected: { state_id: states.Unstarted, iteration_id: iterationId, parent_id: null },
       p_deltas: { state_id: states.Finished },
       p_anchor: {},
     });
@@ -164,7 +164,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
 
   it("rejects the loser of two competing transitions (AC #4)", async () => {
     const [a] = await seedCurrentIteration([{ stateId: states.Started, position: 0 }]);
-    const expected = { state_id: states.Started, iteration_id: iterationId };
+    const expected = { state_id: states.Started, iteration_id: iterationId, parent_id: null };
     const first = await asOwner.rpc("move_story_board", {
       p_project_id: projectId, p_item: { kind: "story", id: a }, p_view: "tracker",
       p_expected: expected, p_deltas: { state_id: states.Finished }, p_anchor: {},
@@ -186,7 +186,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state_id: states.Unstarted, iteration_id: null },
+      p_expected: { state_id: states.Unstarted, iteration_id: null, parent_id: null },
       p_deltas: { state_id: states.Started, iteration: "current" },
       p_anchor: {},
     });
@@ -213,7 +213,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: s1!.id },
       p_view: "list",
-      p_expected: { state_id: states.Unstarted, iteration_id: null },
+      p_expected: { state_id: states.Unstarted, iteration_id: null, parent_id: null },
       p_deltas: {},
       p_anchor: { before: { kind: "divider", id: d!.id } },
     });
@@ -256,7 +256,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: sb1!.id },
       p_view: "list",
-      p_expected: { state_id: states.Unstarted, iteration_id: null },
+      p_expected: { state_id: states.Unstarted, iteration_id: null, parent_id: null },
       p_deltas: {},
       p_anchor: { before: { kind: "divider", id: d!.id } },
     });
@@ -320,7 +320,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: sA1 },
       p_view: "tracker",
-      p_expected: { state_id: states.Started, iteration_id: iterationId },
+      p_expected: { state_id: states.Started, iteration_id: iterationId, parent_id: null },
       p_deltas: {},
       p_anchor: { before: { kind: "story", id: sA0 } },
     });
@@ -344,7 +344,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: sF0 },
       p_view: "tracker",
-      p_expected: { state_id: states.Finished, iteration_id: iterationId },
+      p_expected: { state_id: states.Finished, iteration_id: iterationId, parent_id: null },
       p_deltas: { state_id: states.Started },
       p_anchor: {},
     });
@@ -374,7 +374,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_view: "tracker",
       // The story's own state/iteration are unchanged, so p_expected matches and
       // the existing staleness check can't catch this.
-      p_expected: { state_id: states.Accepted, iteration_id: staleIterationId },
+      p_expected: { state_id: states.Accepted, iteration_id: staleIterationId, parent_id: null },
       p_deltas: {},
       p_anchor: {},
     });
@@ -400,7 +400,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "sneaky-forged-view",
-      p_expected: { state_id: states.Accepted, iteration_id: staleIterationId },
+      p_expected: { state_id: states.Accepted, iteration_id: staleIterationId, parent_id: null },
       p_deltas: {},
       p_anchor: {},
     });
@@ -424,7 +424,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a2 },
       p_view: "tracker",
-      p_expected: { state_id: states.Started, iteration_id: iterationId },
+      p_expected: { state_id: states.Started, iteration_id: iterationId, parent_id: null },
       p_deltas: {},
       p_anchor: { before: { kind: "story", id: a1 } },
     });
@@ -449,7 +449,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a0 },
       p_view: "tracker",
-      p_expected: { state_id: states.Started, iteration_id: iterationId },
+      p_expected: { state_id: states.Started, iteration_id: iterationId, parent_id: null },
       p_deltas: { state_id: states.Finished },
       p_anchor: {},
     });
@@ -472,7 +472,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: a },
       p_view: "tracker",
-      p_expected: { state_id: states.Started, iteration_id: iterationId },
+      p_expected: { state_id: states.Started, iteration_id: iterationId, parent_id: null },
       p_deltas: {},
       p_anchor: { before: { kind: "story", id: c } },
     });
@@ -499,7 +499,7 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: m!.id },
       p_view: "list",
-      p_expected: { state_id: states.Unstarted, iteration_id: null },
+      p_expected: { state_id: states.Unstarted, iteration_id: null, parent_id: null },
       p_deltas: { iteration: "current" },
       p_anchor: { before: { kind: "story", id: y } },
     });
@@ -527,11 +527,135 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_project_id: projectId,
       p_item: { kind: "story", id: i1!.id },
       p_view: "list",
-      p_expected: { state_id: null, iteration_id: null },
+      p_expected: { state_id: null, iteration_id: null, parent_id: null },
       p_deltas: {},
       p_anchor: { before: { kind: "story", id: i0!.id } },
     });
     expect(error).toBeNull();
     expect(await positionsOf([i1!.id, i0!.id])).toEqual([0, 1]);
+  });
+
+  // Attaching a board story to a container's Icebox nest is the one board move
+  // that must also write parent_id (doc-18 §9). The position side needs no new
+  // scope: the 'single' zone's Icebox predicate keys on state_id alone, so the
+  // flat Icebox rows and every container's nested children already share one
+  // dense sequence.
+  // Positions come from stories_position_seq (no literals) so this fixture
+  // can't collide with, or be perturbed by, any other state_id-null row —
+  // they all share one dense Icebox sequence.
+  async function seedContainerWithIceboxChild(): Promise<{ containerId: string; childId: string }> {
+    // points omitted: containerizing a POINTED story makes recompute_is_container
+    // write an activity_logs audit row with auth.uid() as actor_id, which is
+    // NULL under the service-role client seeding this fixture.
+    const { data: parent } = await asService
+      .from("stories")
+      .insert({ project_id: projectId, title: "epic", state_id: null, iteration_id: null, created_by: ownerId })
+      .select("id")
+      .single();
+    const { data: child } = await asService
+      .from("stories")
+      .insert({
+        project_id: projectId,
+        title: "nested",
+        state_id: null,
+        iteration_id: null,
+        parent_id: parent!.id,
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    return { containerId: parent!.id, childId: child!.id };
+  }
+
+  /** The state_id-null (Icebox) rows of this project, in position order. */
+  async function iceboxOrder(): Promise<string[]> {
+    const { data } = await asService
+      .from("stories")
+      .select("id, position")
+      .eq("project_id", projectId)
+      .is("state_id", null)
+      .order("position");
+    return (data as StoryRow[]).map((r) => r.id);
+  }
+
+  it("attaches a current-iteration story to a container's Icebox nest (parent_id delta)", async () => {
+    const [dragged] = await seedCurrentIteration([{ stateId: states.Unstarted, position: 0 }]);
+    const { containerId, childId } = await seedContainerWithIceboxChild();
+
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: dragged },
+      p_view: "list",
+      p_expected: { state_id: states.Unstarted, iteration_id: iterationId, parent_id: null },
+      p_deltas: { state_id: null, iteration: "none", parent_id: containerId },
+      p_anchor: { before: { kind: "story", id: childId } },
+    });
+    expect(error).toBeNull();
+
+    const { data: row } = await asService
+      .from("stories")
+      .select("parent_id, state_id, iteration_id")
+      .eq("id", dragged)
+      .single();
+    expect(row).toMatchObject({ parent_id: containerId, state_id: null, iteration_id: null });
+
+    // AC#2: lands immediately before its anchor sibling in the shared Icebox
+    // sequence — asserted relatively, since the absolute values come from the
+    // sequence and every other Icebox row shares the same space.
+    const order = await iceboxOrder();
+    expect(order.indexOf(dragged)).toBe(order.indexOf(childId) - 1);
+  });
+
+  it("rejects a move whose parent_id snapshot no longer matches (stale)", async () => {
+    const [dragged] = await seedCurrentIteration([{ stateId: states.Unstarted, position: 0 }]);
+    const { containerId } = await seedContainerWithIceboxChild();
+
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: dragged },
+      p_view: "list",
+      // The story's real parent_id is null; a concurrent reparent is simulated
+      // by the caller believing it already sits under the container.
+      p_expected: { state_id: states.Unstarted, iteration_id: iterationId, parent_id: containerId },
+      p_deltas: { state_id: null, iteration: "none", parent_id: containerId },
+      p_anchor: {},
+    });
+    expect(error?.message).toMatch(/stale/i);
+  });
+
+  // The hierarchy invariants stay with the triggers (doc-18 §3) rather than
+  // being re-implemented inside the RPC.
+  it("rejects nesting under a story that is itself a child (single-level)", async () => {
+    const [dragged] = await seedCurrentIteration([{ stateId: states.Unstarted, position: 0 }]);
+    const { childId } = await seedContainerWithIceboxChild();
+
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: dragged },
+      p_view: "list",
+      p_expected: { state_id: states.Unstarted, iteration_id: iterationId, parent_id: null },
+      p_deltas: { state_id: null, iteration: "none", parent_id: childId },
+      p_anchor: {},
+    });
+    expect(error?.message).toMatch(/max depth = 1/i);
+  });
+
+  it("leaves parent_id untouched when p_deltas carries no parent_id", async () => {
+    await seedCurrentIteration([]);
+    const { containerId, childId } = await seedContainerWithIceboxChild();
+
+    // TASK-186's drag-out: a nested child leaving for the board keeps its epic.
+    const { error } = await asOwner.rpc("move_story_board", {
+      p_project_id: projectId,
+      p_item: { kind: "story", id: childId },
+      p_view: "list",
+      p_expected: { state_id: null, iteration_id: null, parent_id: containerId },
+      p_deltas: { state_id: states.Unstarted, iteration: "current" },
+      p_anchor: {},
+    });
+    expect(error).toBeNull();
+
+    const { data: row } = await asService.from("stories").select("parent_id, state_id").eq("id", childId).single();
+    expect(row).toMatchObject({ parent_id: containerId, state_id: states.Unstarted });
   });
 });

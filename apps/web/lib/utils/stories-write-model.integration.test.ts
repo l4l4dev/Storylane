@@ -151,7 +151,7 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
         p_project_id: projectId,
         p_item: { kind: "story", id: story.id },
         p_view: "tracker",
-        p_expected: { state_id: story.state_id, iteration_id: activeIterationId },
+        p_expected: { state_id: story.state_id, iteration_id: activeIterationId, parent_id: null },
         p_deltas: {},
         p_anchor: {},
       });
@@ -180,7 +180,7 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
         p_project_id: projectId,
         p_item: { kind: "story", id: story.id },
         p_view: "tracker",
-        p_expected: { state_id: story.state_id, iteration_id: story.iteration_id },
+        p_expected: { state_id: story.state_id, iteration_id: story.iteration_id, parent_id: null },
         p_deltas: {},
         p_anchor: {},
       });

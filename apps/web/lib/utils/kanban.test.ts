@@ -3,13 +3,13 @@ import type { GateState } from "@storylane/core";
 import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
+  classifyNestDrop,
   columnForStory,
   epicIceboxZoneId,
+  epicIdFromZone,
   evaluateDrop,
   evaluateListDrop,
   flattenCurrentZone,
-  isAllowedEpicNestDrop,
-  isDisallowedEpicNestEscape,
   isEpicIceboxZone,
   toServerZone,
   zoneForStory,
@@ -48,49 +48,66 @@ describe("epicIceboxZoneId / isEpicIceboxZone", () => {
     expect(isEpicIceboxZone("current")).toBe(false);
     expect(isEpicIceboxZone("e1")).toBe(false);
   });
-});
 
-// fable-advisor (post-implementation review): a sibling reorder within the
-// SAME container's nest needs no parent_id write (move_story_board
-// already scopes Icebox position regardless of parent_id) and must not be
-// blanket-rejected alongside crossing IN from elsewhere (still TASK-187 scope,
-// which needs a parent_id-writing RPC that doesn't exist yet) — else every
-// nested row renders fully draggable (cursor-grab, real SortableContext) but
-// dragging one anywhere always fails, a dead control (ux-principles principle 1).
-describe("isAllowedEpicNestDrop", () => {
-  it("allows reordering within the same container's nest", () => {
-    expect(isAllowedEpicNestDrop(epicIceboxZoneId("e1"), epicIceboxZoneId("e1"))).toBe(true);
+  // The container id has to survive the round trip: it becomes move_story_board's
+  // parent_id delta when a board story is dropped into that nest (doc-18 §9).
+  it("round-trips the container id back out of the zone key", () => {
+    expect(epicIdFromZone(epicIceboxZoneId("e1"))).toBe("e1");
   });
 
-  it("rejects crossing in from a different container's nest, or from outside", () => {
-    expect(isAllowedEpicNestDrop(epicIceboxZoneId("e2"), epicIceboxZoneId("e1"))).toBe(false);
-    expect(isAllowedEpicNestDrop(ICEBOX_COLUMN_ID, epicIceboxZoneId("e1"))).toBe(false);
-    expect(isAllowedEpicNestDrop(undefined, epicIceboxZoneId("e1"))).toBe(false);
+  it("returns null for a zone key that is not an epic nest", () => {
+    expect(epicIdFromZone(ICEBOX_COLUMN_ID)).toBeNull();
+    expect(epicIdFromZone("current")).toBeNull();
   });
 });
 
-// Found via manual browser verification: a nested child dragged onto the
-// FLAT Icebox list (not its own or another epic's nest) fell through to the
-// ordinary icebox->icebox no-op path (evaluateListDrop sees
-// from===to==="icebox" and allows it) since isEpicIceboxZone(targetZone) is
-// false for the plain ICEBOX_COLUMN_ID. dropStoryInList would persist a
-// position change while parent_id (never touched) stays put, so the next
-// refresh re-nests it under its epic again — the move silently self-reverts
-// and misleads the user into thinking they detached the story.
-describe("isDisallowedEpicNestEscape", () => {
-  it("blocks a nested child from moving onto the flat Icebox list", () => {
-    expect(isDisallowedEpicNestEscape(epicIceboxZoneId("e1"), ICEBOX_COLUMN_ID)).toBe(true);
+// One decision for every List drop that touches a container's Icebox nest
+// (doc-18 §9), replacing three overlapping predicates that each re-tested the
+// same zone-key prefix.
+//
+// Keyed on the story's OWN parent_id, never on the zone the drag came from:
+// onDragOver relocates the item optimistically, so any origin-derived answer
+// reports wherever the pointer has been, and a drag routed through Current
+// would launder a nested child past these rules. parent_id travels with the
+// row from the server and no reorder touches it.
+//
+// "rejected" covers the two shapes that would leave parent_id saying something
+// the board doesn't show: putting a story that HAS a parent into the flat
+// Icebox list (which only renders parentless rows, so it would re-nest itself
+// on the next refresh — a silent self-revert), and moving between containers.
+// An attach still has to clear the Icebox crossing rule via evaluateListDrop.
+describe("classifyNestDrop", () => {
+  const e1 = epicIceboxZoneId("e1");
+
+  it("is not a nest drop at all when no nest and no parent are involved", () => {
+    expect(classifyNestDrop(null, BACKLOG_COLUMN_ID)).toEqual({ kind: "none" });
+    expect(classifyNestDrop(null, "current")).toEqual({ kind: "none" });
+    expect(classifyNestDrop(null, ICEBOX_COLUMN_ID)).toEqual({ kind: "none" });
   });
 
-  it("allows a non-nested story to move onto the flat Icebox list", () => {
-    expect(isDisallowedEpicNestEscape(ICEBOX_COLUMN_ID, ICEBOX_COLUMN_ID)).toBe(false);
-    expect(isDisallowedEpicNestEscape("current", ICEBOX_COLUMN_ID)).toBe(false);
-    expect(isDisallowedEpicNestEscape(undefined, ICEBOX_COLUMN_ID)).toBe(false);
+  it("is a reorder within the story's own container nest", () => {
+    expect(classifyNestDrop("e1", e1)).toEqual({ kind: "reorder" });
   });
 
-  it("does not block a nested child moving to Current or Backlog", () => {
-    expect(isDisallowedEpicNestEscape(epicIceboxZoneId("e1"), "current")).toBe(false);
-    expect(isDisallowedEpicNestEscape(epicIceboxZoneId("e1"), BACKLOG_COLUMN_ID)).toBe(false);
+  it("is an attach when a parentless story lands in a nest", () => {
+    expect(classifyNestDrop(null, e1)).toEqual({ kind: "attach", parentId: "e1" });
+  });
+
+  it("rejects moving a child into a different container", () => {
+    expect(classifyNestDrop("other-epic", e1)).toEqual({ kind: "rejected" });
+  });
+
+  // The flat list filters to parentless rows, so a still-parented story
+  // dropped there vanishes back into its epic on the next server render.
+  it("rejects putting a parented story into the flat Icebox list", () => {
+    expect(classifyNestDrop("e1", ICEBOX_COLUMN_ID)).toEqual({ kind: "rejected" });
+  });
+
+  // Regardless of how the drag got there: a nested child dragged up through
+  // Current and back down is judged on its parent_id, not on that detour.
+  it("still lets a parented story move to Current or Backlog", () => {
+    expect(classifyNestDrop("e1", "current")).toEqual({ kind: "none" });
+    expect(classifyNestDrop("e1", BACKLOG_COLUMN_ID)).toEqual({ kind: "none" });
   });
 });
 

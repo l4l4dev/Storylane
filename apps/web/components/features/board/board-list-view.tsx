@@ -35,11 +35,10 @@ import { isImeComposing } from "@/lib/utils/keyboard";
 import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
+  classifyNestDrop,
   epicIceboxZoneId,
   evaluateListDrop,
   flattenCurrentZone,
-  isAllowedEpicNestDrop,
-  isDisallowedEpicNestEscape,
   isEpicIceboxZone,
   toGateStates,
   toServerZone,
@@ -1182,12 +1181,12 @@ function IceboxColumn({
 // The container's own row reorder is still a follow-up (TASK-188 — a new
 // position scope, since containers share stories.position with every other
 // top-level row but must dense-rank independently of the flat Icebox splice).
-// Its nested children ARE real drag sources: dragging one out to
-// Current/Backlog is wired via the epicIceboxZoneId dnd-kit container below;
-// dropping one back in is TASK-187 (needs a parent_id-writing RPC), so
-// isAllowedMove rejects that direction for now. A child with a state stays in
-// its own Current/Backlog zone instead (never nested here), carrying a "part
-// of Epic" link back (StoryListRow).
+// Its nested children ARE real drag sources, via the epicIceboxZoneId dnd-kit
+// container below: one can be dragged out to Current/Backlog, reordered among
+// its siblings, or — coming the other way — a board story can be dropped in to
+// attach it (isEpicNestAttach, which sends move_story_board a parent_id delta).
+// A child with a state stays in its own Current/Backlog zone instead (never
+// nested here), carrying a "part of Epic" link back (StoryListRow).
 function EpicAccordionRow({
   row,
   iceboxChildren,
@@ -1356,23 +1355,23 @@ export function BoardListView({
     if (item.kind === "divider") {
       return targetZone === BACKLOG_COLUMN_ID;
     }
-    // A nested Icebox child may cross OUT to Current/Backlog, or reorder
-    // among its OWN siblings (no parent_id write either way — move_story_board
-    // scopes Icebox position regardless of parent_id). Crossing IN from
-    // elsewhere (a different epic's nest, or detaching to the flat Icebox
-    // list) needs a parent_id-writing RPC that doesn't exist yet — rejected
-    // here rather than letting either path silently no-op or misfire.
-    const activeContainer = findContainer(containers, itemId);
-    if (isEpicIceboxZone(targetZone)) {
-      return isAllowedEpicNestDrop(activeContainer, targetZone);
-    }
-    if (isDisallowedEpicNestEscape(activeContainer, targetZone)) {
-      return false;
-    }
     // The nested container's own zone reads as "icebox" here regardless —
     // zoneForStory derives it from the story's own state_id (always NULL for
     // an Icebox child), not from which dnd-kit container currently holds it.
     const from = zoneForStory(item.story, currentIteration?.id ?? null);
+
+    const nest = classifyNestDrop(item.story.parentId, targetZone);
+    if (nest.kind === "rejected") {
+      return false;
+    }
+    if (nest.kind === "reorder") {
+      return true;
+    }
+    if (nest.kind === "attach") {
+      // Still subject to the ordinary Icebox crossing rule: an in-progress
+      // story cannot be parked inside an epic.
+      return evaluateListDrop(item.story, from, ICEBOX_COLUMN_ID, toGateStates(states)).ok;
+    }
     return evaluateListDrop(item.story, from, targetZone as ListZoneId, toGateStates(states)).ok;
   }
 
@@ -1427,6 +1426,14 @@ export function BoardListView({
     // Never the raw dnd-kit container key — dropStoryInList only understands
     // the 3 canonical ListZoneId strings (an epic nest reads as Icebox here).
     formData.set("target_zone", toServerZone(overContainer));
+    // Only a genuine attach carries a parent delta. A same-nest reorder is a
+    // position-only move, so leaving parent_id out keeps it clear of the RPC's
+    // parent staleness check.
+    const nestDrop =
+      activeItem?.kind === "story" ? classifyNestDrop(activeItem.story.parentId, overContainer) : { kind: "none" as const };
+    if (nestDrop.kind === "attach") {
+      formData.set("parent_id", nestDrop.parentId);
+    }
     // Intent, not a full sequence: the neighbour ("story:<id>"/"divider:<id>")
     // the item now sits before (or nothing = append to the zone's end). The
     // server re-derives dense positions across both tables from current DB

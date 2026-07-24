@@ -12,6 +12,10 @@ const fixtures: Record<
   string,
   {
     single?: { data: unknown; error: unknown };
+    // Falls back to `single` when unset — set it only when one action makes
+    // BOTH a .single() and a .maybeSingle() call on the same table and the two
+    // need different answers (dropStoryInList: the story, then its new epic).
+    maybeSingle?: { data: unknown; error: unknown };
     list?: { data: unknown; error: unknown };
     insertResult?: { data: unknown; error: unknown };
     writeResult?: { data: unknown; error: unknown };
@@ -38,7 +42,8 @@ function chainable(table: string): {
     order: () => chainable(table),
     limit: () => chainable(table),
     single: () => Promise.resolve(fixtures[table]?.single ?? { data: null, error: null }),
-    maybeSingle: () => Promise.resolve(fixtures[table]?.single ?? { data: null, error: null }),
+    maybeSingle: () =>
+      Promise.resolve(fixtures[table]?.maybeSingle ?? fixtures[table]?.single ?? { data: null, error: null }),
     then: (
       onFulfilled?: ((value: { data: unknown; error: unknown }) => unknown) | null,
       onRejected?: ((reason: unknown) => unknown) | null,
@@ -459,7 +464,7 @@ describe("createDraftStory", () => {
       p_project_id: "project-1",
       p_item: { kind: "story", id: "new-story-id" },
       p_view: "tracker",
-      p_expected: { state_id: "unstarted", iteration_id: CURRENT_ITERATION },
+      p_expected: { state_id: "unstarted", iteration_id: CURRENT_ITERATION, parent_id: null },
       p_deltas: {},
       p_anchor: { before: { kind: "story", id: "top" } },
     });
@@ -603,6 +608,7 @@ describe("board drop actions -> move_story_board", () => {
             story_type: "feature",
             points: 3,
             iteration_id: CURRENT_ITERATION,
+            parent_id: null,
           },
           error: null,
         },
@@ -632,6 +638,9 @@ describe("board drop actions -> move_story_board", () => {
         p_expected: {
           state_id: "unstarted",
           iteration_id: CURRENT_ITERATION,
+          // move_story_board writes parent_id, so a concurrent reparent has to
+          // invalidate the move exactly as a state/iteration change does.
+          parent_id: null,
         },
         p_deltas: { state_id: "started" },
         p_anchor: { before: { kind: "story", id: "neighbour" } },
@@ -732,6 +741,72 @@ describe("board drop actions -> move_story_board", () => {
       expect(call.p_view).toBe("list");
       expect(call.p_deltas).toEqual({});
       expect(call.p_anchor).toEqual({ before: { kind: "divider", id: "d1" } });
+    });
+
+    // Dropping into a container's Icebox accordion is the one List drop that
+    // also re-parents (doc-18 §9): the zone still travels as plain "icebox",
+    // the epic travels beside it as a parent_id delta.
+    function iceboxDrop(parentId?: string): FormData {
+      fixtures.stories = {
+        single: {
+          data: {
+            number: 4,
+            title: "Backlog story",
+            state_id: "unstarted",
+            story_type: "feature",
+            points: 1,
+            iteration_id: null,
+            parent_id: null,
+          },
+          error: null,
+        },
+        maybeSingle: { data: { id: "epic-1" }, error: null },
+      };
+      const data = new FormData();
+      data.set("project_id", "project-1");
+      data.set("item_kind", "story");
+      data.set("item_id", "story-4");
+      data.set("target_zone", "icebox");
+      if (parentId !== undefined) {
+        data.set("parent_id", parentId);
+      }
+      return data;
+    }
+
+    it("sends the epic as a parent_id delta when the drop lands in a nest", async () => {
+      const { dropStoryInList } = await import("./actions");
+
+      await dropStoryInList(iceboxDrop("epic-1"));
+
+      expect(moveCall().p_deltas).toEqual({ state_id: null, iteration: "none", parent_id: "epic-1" });
+    });
+
+    it("omits parent_id for a drop outside any nest", async () => {
+      const { dropStoryInList } = await import("./actions");
+
+      await dropStoryInList(iceboxDrop());
+
+      expect(moveCall().p_deltas).toEqual({ state_id: null, iteration: "none" });
+    });
+
+    it("treats an empty parent_id field as no attach at all", async () => {
+      const { dropStoryInList } = await import("./actions");
+
+      await dropStoryInList(iceboxDrop(""));
+
+      expect(moveCall().p_deltas).toEqual({ state_id: null, iteration: "none" });
+    });
+
+    // Without this the form post could name any top-level story, and the
+    // maintain_is_container trigger would containerize it — silently clearing
+    // the points/state the Parent picker demands a confirmation for.
+    it("refuses to attach to something that is not a container, without calling the RPC", async () => {
+      const data = iceboxDrop("not-an-epic");
+      fixtures.stories!.maybeSingle = { data: null, error: null };
+      const { dropStoryInList } = await import("./actions");
+
+      await expect(dropStoryInList(data)).rejects.toThrow("That epic no longer exists. Refresh and try again.");
+      expect(rpcMock).not.toHaveBeenCalled();
     });
   });
 

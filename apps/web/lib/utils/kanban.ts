@@ -22,37 +22,56 @@ export function isEpicIceboxZone(zoneId: string): boolean {
   return zoneId.startsWith(EPIC_ICEBOX_PREFIX);
 }
 
+/** The container id inside an epic-nest zone key, or null for any other zone. */
+export function epicIdFromZone(zoneId: string): string | null {
+  return isEpicIceboxZone(zoneId) ? zoneId.slice(EPIC_ICEBOX_PREFIX.length) : null;
+}
+
+/** What a List drop means when a container's Icebox nest is on either side. */
+export type NestDrop =
+  /** No nest involved — the caller applies the ordinary zone rules. */
+  | { kind: "none" }
+  /** Within the story's own nest: position only, no parent write. */
+  | { kind: "reorder" }
+  /** Into a nest from outside every nest: writes parent_id (doc-18 §9). */
+  | { kind: "attach"; parentId: string }
+  | { kind: "rejected" };
+
 /**
- * A container's nested Icebox children accept only a same-container reorder
- * for now — crossing in from elsewhere (a different container's nest, or the
- * flat Icebox/Current/Backlog) is TASK-187 scope, which needs a
- * parent_id-writing RPC that doesn't exist yet. `activeContainerId` is
- * whichever dnd-kit container the dragged item currently sits in
- * (findContainer's result) — undefined means it wasn't found at all.
+ * Classifies a drop from the story's OWN parent_id and the target zone —
+ * deliberately not from the zone the drag started in. onDragOver relocates the
+ * item optimistically, so anything derived from the live drag state reports
+ * wherever the pointer has been, and a nested child routed up through Current
+ * and back down would launder itself past these rules. parent_id comes from
+ * the server row and no reorder touches it.
+ *
+ * Two shapes are rejected because both would leave parent_id saying something
+ * the board doesn't show: a story that still HAS a parent landing in the flat
+ * Icebox list (which renders parentless rows only, so the next server render
+ * pulls it back into its epic — a silent self-revert), and a child moving
+ * between two different containers. An attach still has to clear the ordinary
+ * Icebox crossing rule, which stays with evaluateListDrop.
  */
-export function isAllowedEpicNestDrop(activeContainerId: string | undefined, targetZone: string): boolean {
-  return activeContainerId === targetZone;
+export function classifyNestDrop(storyParentId: string | null, targetZone: string): NestDrop {
+  const targetEpic = epicIdFromZone(targetZone);
+
+  if (targetEpic === null) {
+    return storyParentId !== null && targetZone === ICEBOX_COLUMN_ID ? { kind: "rejected" } : { kind: "none" };
+  }
+  if (storyParentId === targetEpic) {
+    return { kind: "reorder" };
+  }
+  return storyParentId === null ? { kind: "attach", parentId: targetEpic } : { kind: "rejected" };
 }
 
 /**
- * A nested Icebox child (its origin is an epic nest) must not move onto the
- * FLAT Icebox list either — parent_id stays untouched either way, so the flat
- * list's own parentId===null filter would exclude it again on the next
- * refresh, making the move look like it silently reverted itself. Detaching
- * a child from its epic is TASK-187 scope (needs a parent_id-writing RPC).
- */
-export function isDisallowedEpicNestEscape(activeContainerId: string | undefined, targetZone: string): boolean {
-  return activeContainerId !== undefined && isEpicIceboxZone(activeContainerId) && targetZone === ICEBOX_COLUMN_ID;
-}
-
-/**
- * dropStoryInList only understands the 3 canonical ListZoneId strings — a
- * same-nest reorder (allowed by isAllowedEpicNestDrop) must never send the
- * raw dnd-kit container key ("epic:<id>") as target_zone, or the server casts
- * it, fails to match ICEBOX_COLUMN_ID/BACKLOG_COLUMN_ID, and falls through to
- * its "current" branch — actually scheduling the story instead of leaving it
- * in place. An epic nest is semantically Icebox for this purpose (parent_id
- * is never touched; only position changes).
+ * dropStoryInList only understands the 3 canonical ListZoneId strings — a drop
+ * inside a nest must never send the raw dnd-kit container key ("epic:<id>") as
+ * target_zone, or the server casts it, fails to match
+ * ICEBOX_COLUMN_ID/BACKLOG_COLUMN_ID, and falls through to its "current" branch
+ * — actually scheduling the story instead of leaving it in place. A nest is
+ * semantically Icebox for zone purposes; the parent it implies travels
+ * separately, as classifyNestDrop's "attach" delta.
  */
 export function toServerZone(dndContainerId: string): string {
   return isEpicIceboxZone(dndContainerId) ? ICEBOX_COLUMN_ID : dndContainerId;
