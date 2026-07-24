@@ -3,7 +3,7 @@ id: TASK-187
 title: >-
   Icebox accordion: drag a Current/Backlog story back into a container's Icebox
   nest
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-24 13:48'

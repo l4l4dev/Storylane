@@ -658,4 +658,77 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
     const { data: row } = await asService.from("stories").select("parent_id, state_id").eq("id", childId).single();
     expect(row).toMatchObject({ parent_id: containerId, state_id: states.Unstarted });
   });
+
+  // Containers, flat Icebox rows and every container's nested children share
+  // ONE dense sequence (move_story_board's 'single' zone scopes on state_id
+  // alone; spec/data-model.md: "no separate 'epic-internal' position scope").
+  // Reordering within that sequence is a BOUNDED range shift, so what must
+  // hold is relative-order invariance outside the moved range — absolute
+  // integers legitimately move by ±1. Proven in both directions here so no
+  // separate container position scope is ever introduced on the belief that
+  // one is needed.
+  describe("shared Icebox sequence keeps unrelated rows in relative order", () => {
+    async function seedTwoContainersAndFlatRows() {
+      await asService.from("stories").delete().eq("project_id", projectId);
+      const first = await seedContainerWithIceboxChild();
+      const second = await seedContainerWithIceboxChild();
+      const { data: flatA } = await asService
+        .from("stories")
+        .insert({ project_id: projectId, title: "flatA", state_id: null, iteration_id: null, created_by: ownerId })
+        .select("id")
+        .single();
+      const { data: flatB } = await asService
+        .from("stories")
+        .insert({ project_id: projectId, title: "flatB", state_id: null, iteration_id: null, created_by: ownerId })
+        .select("id")
+        .single();
+      return { first, second, flatA: flatA!.id, flatB: flatB!.id };
+    }
+
+    /** Relative order of `ids` within the whole state_id-null sequence. */
+    async function relativeOrder(ids: string[]): Promise<string[]> {
+      const all = await iceboxOrder();
+      return all.filter((id) => ids.includes(id));
+    }
+
+    it("reordering two containers leaves flat rows and nested children in place", async () => {
+      const { first, second, flatA, flatB } = await seedTwoContainersAndFlatRows();
+      const othersBefore = await relativeOrder([flatA, flatB, first.childId, second.childId]);
+
+      // Move the second container ahead of the first.
+      const { error } = await asOwner.rpc("move_story_board", {
+        p_project_id: projectId,
+        p_item: { kind: "story", id: second.containerId },
+        p_view: "list",
+        p_expected: { state_id: null, iteration_id: null, parent_id: null },
+        p_deltas: {},
+        p_anchor: { before: { kind: "story", id: first.containerId } },
+      });
+      expect(error).toBeNull();
+
+      expect(await relativeOrder([first.containerId, second.containerId])).toEqual([
+        second.containerId,
+        first.containerId,
+      ]);
+      expect(await relativeOrder([flatA, flatB, first.childId, second.childId])).toEqual(othersBefore);
+    });
+
+    it("reordering a flat Icebox row leaves the containers in place", async () => {
+      const { first, second, flatA, flatB } = await seedTwoContainersAndFlatRows();
+      const containersBefore = await relativeOrder([first.containerId, second.containerId]);
+
+      const { error } = await asOwner.rpc("move_story_board", {
+        p_project_id: projectId,
+        p_item: { kind: "story", id: flatB },
+        p_view: "list",
+        p_expected: { state_id: null, iteration_id: null, parent_id: null },
+        p_deltas: {},
+        p_anchor: { before: { kind: "story", id: flatA } },
+      });
+      expect(error).toBeNull();
+
+      expect(await relativeOrder([flatA, flatB])).toEqual([flatB, flatA]);
+      expect(await relativeOrder([first.containerId, second.containerId])).toEqual(containersBefore);
+    });
+  });
 });

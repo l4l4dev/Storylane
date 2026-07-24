@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { GateState } from "@storylane/core";
 import {
   BACKLOG_COLUMN_ID,
+  CONTAINER_ROWS_ZONE_ID,
   ICEBOX_COLUMN_ID,
   classifyNestDrop,
   columnForStory,
   epicIceboxZoneId,
   epicIdFromZone,
+  isContainerBlockDroppable,
+  isDisallowedContainerRowDrop,
   evaluateDrop,
   evaluateListDrop,
   flattenCurrentZone,
@@ -108,6 +111,75 @@ describe("classifyNestDrop", () => {
   it("still lets a parented story move to Current or Backlog", () => {
     expect(classifyNestDrop("e1", "current")).toEqual({ kind: "none" });
     expect(classifyNestDrop("e1", BACKLOG_COLUMN_ID)).toEqual({ kind: "none" });
+  });
+});
+
+// The container ("epic") rows render in their own block above the flat Icebox
+// list, so they get their own dnd-kit zone — but they share the SAME server
+// zone and position sequence as everything else state-null (spec/data-model.md:
+// no separate epic-internal position scope). The block is exclusive in both
+// directions: a container never leaves it, and nothing else may enter.
+describe("container-row zone", () => {
+  it("maps the container block to the plain icebox zone for the server", () => {
+    expect(toServerZone(CONTAINER_ROWS_ZONE_ID)).toBe(ICEBOX_COLUMN_ID);
+  });
+
+  it("allows a container row to reorder within the container block", () => {
+    expect(isDisallowedContainerRowDrop(true, CONTAINER_ROWS_ZONE_ID)).toBe(false);
+  });
+
+  it("rejects a container row leaving the block for any other zone", () => {
+    expect(isDisallowedContainerRowDrop(true, ICEBOX_COLUMN_ID)).toBe(true);
+    expect(isDisallowedContainerRowDrop(true, "current")).toBe(true);
+    expect(isDisallowedContainerRowDrop(true, epicIceboxZoneId("e1"))).toBe(true);
+  });
+
+  it("rejects an ordinary story entering the container block", () => {
+    expect(isDisallowedContainerRowDrop(false, CONTAINER_ROWS_ZONE_ID)).toBe(true);
+  });
+
+  it("leaves ordinary story drops elsewhere alone", () => {
+    expect(isDisallowedContainerRowDrop(false, ICEBOX_COLUMN_ID)).toBe(false);
+    expect(isDisallowedContainerRowDrop(false, epicIceboxZoneId("e1"))).toBe(false);
+  });
+
+  // An expanded container row's droppable rect encloses its own nest and every
+  // nested child row, and closestCenter has no notion of nesting — so the
+  // collision set has to be narrowed to the same exclusivity the drop gate
+  // enforces, or the two steal each other's drops at pixel-dependent points.
+  describe("collision filtering", () => {
+    const rowIds = new Set(["c1", "c2"]);
+
+    it("counts the block and its rows as the container block, nothing else", () => {
+      expect(isContainerBlockDroppable(CONTAINER_ROWS_ZONE_ID, rowIds)).toBe(true);
+      expect(isContainerBlockDroppable("c1", rowIds)).toBe(true);
+      expect(isContainerBlockDroppable("c2", rowIds)).toBe(true);
+    });
+
+    it("excludes an epic's nest and its children even though they render inside a container row", () => {
+      expect(isContainerBlockDroppable(epicIceboxZoneId("c1"), rowIds)).toBe(false);
+      expect(isContainerBlockDroppable("child-of-c1", rowIds)).toBe(false);
+      expect(isContainerBlockDroppable(ICEBOX_COLUMN_ID, rowIds)).toBe(false);
+      expect(isContainerBlockDroppable("current", rowIds)).toBe(false);
+    });
+
+    it("leaves a container drag only container-block targets to land on", () => {
+      const targets = [CONTAINER_ROWS_ZONE_ID, "c1", "c2", epicIceboxZoneId("c2"), "child-of-c2", ICEBOX_COLUMN_ID];
+      expect(targets.filter((id) => isContainerBlockDroppable(id, rowIds) === true)).toEqual([
+        CONTAINER_ROWS_ZONE_ID,
+        "c1",
+        "c2",
+      ]);
+    });
+
+    it("hides every container-block target from an ordinary story drag", () => {
+      const targets = [CONTAINER_ROWS_ZONE_ID, "c1", epicIceboxZoneId("c1"), "child-of-c1", ICEBOX_COLUMN_ID];
+      expect(targets.filter((id) => isContainerBlockDroppable(id, rowIds) === false)).toEqual([
+        epicIceboxZoneId("c1"),
+        "child-of-c1",
+        ICEBOX_COLUMN_ID,
+      ]);
+    });
   });
 });
 

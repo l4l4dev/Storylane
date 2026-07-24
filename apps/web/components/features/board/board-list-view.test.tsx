@@ -429,6 +429,35 @@ describe("Panel draft-story triggers", () => {
     expect(screen.getByText("Story s2").closest("li")).toHaveClass("cursor-grab");
   });
 
+  // TASK-188: the container ("epic") row itself is now a drag source too, so it
+  // can be reordered among other containers. Same jsdom limitation as above —
+  // this asserts the SortableItem wiring, the reorder is manual-browser-verified.
+  it("wires a container's own accordion row as a draggable row", () => {
+    const props = boardProps([]);
+    render(
+      <BoardListView
+        {...props}
+        containerAccordionRows={[
+          {
+            id: "e1",
+            number: 5,
+            title: "Draggable Epic",
+            epicColor: null,
+            rollup: {
+              headline: "unstarted",
+              points: 0,
+              breakdown: { unstarted: 0, in_progress: 0, done: 0, rejected: 0, icebox: 0 },
+            },
+            iceboxChildIds: [],
+          },
+        ]}
+        showIcebox
+      />,
+    );
+
+    expect(screen.getByText("Draggable Epic").closest("li")).toHaveClass("cursor-grab");
+  });
+
   it("Icebox panel's trigger creates with target icebox when shown", async () => {
     render(<BoardListView {...boardProps([])} showIcebox />);
 

@@ -22,6 +22,42 @@ export function isEpicIceboxZone(zoneId: string): boolean {
   return zoneId.startsWith(EPIC_ICEBOX_PREFIX);
 }
 
+// The container ("epic") rows render as their own block above the flat Icebox
+// list, so they need their own dnd-kit zone to be reorderable — but they are
+// NOT a separate position space: like every state-null row they live in the one
+// shared Icebox sequence (spec/data-model.md, doc-18 §2), which is why
+// toServerZone maps this straight back to the plain Icebox zone.
+export const CONTAINER_ROWS_ZONE_ID = "container-rows";
+
+/**
+ * The container block is exclusive in both directions: a container row only
+ * ever reorders among other containers (it is off the board and has nowhere
+ * else to be, doc-18 §4), and no ordinary story may be dropped into it.
+ */
+export function isDisallowedContainerRowDrop(isContainerRow: boolean, targetZone: string): boolean {
+  return isContainerRow !== (targetZone === CONTAINER_ROWS_ZONE_ID);
+}
+
+/**
+ * Whether a dnd-kit droppable id belongs to the container block — the block
+ * itself or one of the container rows inside it.
+ *
+ * Needed because an expanded container row's droppable rect ENCLOSES that
+ * epic's nest droppable and every nested child row, and closestCenter ranks
+ * purely by centre distance with no notion of nesting: past one child the
+ * enclosing row's centre sits among the children's and wins at random pixels,
+ * hijacking a nest drop (and, the other way, a container dragged over another
+ * expanded epic resolves to that epic's nest). Both drops are already
+ * forbidden by isDisallowedContainerRowDrop; the caller applies the same rule
+ * at collision time so the pointer can only ever resolve to a zone the drop
+ * could actually land in. Why not a nesting-aware collision algorithm: the
+ * block is exclusive both ways, so there is no legal cross-boundary drop for
+ * one to disambiguate.
+ */
+export function isContainerBlockDroppable(droppableId: string, containerRowIds: ReadonlySet<string>): boolean {
+  return droppableId === CONTAINER_ROWS_ZONE_ID || containerRowIds.has(droppableId);
+}
+
 /** The container id inside an epic-nest zone key, or null for any other zone. */
 export function epicIdFromZone(zoneId: string): string | null {
   return isEpicIceboxZone(zoneId) ? zoneId.slice(EPIC_ICEBOX_PREFIX.length) : null;
@@ -74,7 +110,9 @@ export function classifyNestDrop(storyParentId: string | null, targetZone: strin
  * separately, as classifyNestDrop's "attach" delta.
  */
 export function toServerZone(dndContainerId: string): string {
-  return isEpicIceboxZone(dndContainerId) ? ICEBOX_COLUMN_ID : dndContainerId;
+  return isEpicIceboxZone(dndContainerId) || dndContainerId === CONTAINER_ROWS_ZONE_ID
+    ? ICEBOX_COLUMN_ID
+    : dndContainerId;
 }
 
 // A state column's id IS the project_states row's id — the column set is

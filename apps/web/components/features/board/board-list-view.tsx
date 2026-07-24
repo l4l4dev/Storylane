@@ -11,6 +11,7 @@ import {
   PointerSensor,
   KeyboardSensor,
   closestCenter,
+  type CollisionDetection,
   useDroppable,
   useSensor,
   useSensors,
@@ -34,8 +35,11 @@ import { formatDate } from "@/lib/utils/format";
 import { isImeComposing } from "@/lib/utils/keyboard";
 import {
   BACKLOG_COLUMN_ID,
+  CONTAINER_ROWS_ZONE_ID,
   ICEBOX_COLUMN_ID,
   classifyNestDrop,
+  isContainerBlockDroppable,
+  isDisallowedContainerRowDrop,
   epicIceboxZoneId,
   evaluateListDrop,
   flattenCurrentZone,
@@ -136,7 +140,11 @@ function useCollapsedGroups(projectId: string) {
 // (from lib/utils/board, shared with the Kanban view) work uniformly.
 type ListItem =
   | { kind: "story"; id: string; story: BoardStory }
-  | { kind: "divider"; id: string; divider: BacklogDivider };
+  | { kind: "divider"; id: string; divider: BacklogDivider }
+  // A container ("epic") row. It carries no BoardStory: containers are fetched
+  // separately and excluded from the board's cards (doc-18 §1), and everything
+  // the row renders comes off ContainerAccordionRow.
+  | { kind: "container"; id: string; row: ContainerAccordionRow };
 
 function wrapStory(story: BoardStory): ListItem {
   return { kind: "story", id: story.id, story };
@@ -178,6 +186,9 @@ function toListItemContainers(
       .filter((s): s is BoardStory => s != null)
       .map(wrapStory);
   }
+  // The container rows are their own drag zone (they render as a block above
+  // the flat list), already in position order from the server.
+  result[CONTAINER_ROWS_ZONE_ID] = containerAccordionRows.map((row) => ({ kind: "container", id: row.id, row }));
   return result;
 }
 
@@ -203,15 +214,15 @@ function SortableListRow({
 }) {
   return (
     <SortableItem id={item.id}>
-      {item.kind === "divider" ? (
+      {item.kind === "story" ? (
+        <StoryListRow story={item.story} projectId={projectId} states={states} pointScale={pointScale} hideEpicLink={hideEpicLink} />
+      ) : item.kind === "divider" ? (
         // Unreachable in practice — Current/Icebox ListItems are always
         // stories (see the doc comment above) — kept type-correct with a
         // no-op rather than threading onError through two more prop layers
         // for a branch that never renders.
         <DividerRow projectId={projectId} divider={item.divider} onError={() => {}} />
-      ) : (
-        <StoryListRow story={item.story} projectId={projectId} states={states} pointScale={pointScale} hideEpicLink={hideEpicLink} />
-      )}
+      ) : null}
     </SortableItem>
   );
 }
@@ -963,9 +974,11 @@ function BacklogSection({
   const { setNodeRef } = useDroppable({ id: BACKLOG_COLUMN_ID });
   const [draftOpen, setDraftOpen] = useState(false);
 
-  const rowItems: BacklogRowItem<BoardStory>[] = items.map((item) =>
-    item.kind === "story" ? { kind: "story", story: item.story } : { kind: "divider", divider: item.divider },
-  );
+  const rowItems: BacklogRowItem<BoardStory>[] = items.flatMap<BacklogRowItem<BoardStory>>((item) => {
+    if (item.kind === "story") return [{ kind: "story", story: item.story }];
+    if (item.kind === "divider") return [{ kind: "divider", divider: item.divider }];
+    return []; // containers live in their own Icebox block, never the Backlog
+  });
   const rows = buildBacklogRows(rowItems, backlogBudgets, startingIterationNumber);
   const hasHiddenStories = rowItems.some(
     (item) => item.kind === "story" && !matchesStoryFilter(item.story, filter),
@@ -1125,6 +1138,9 @@ function IceboxColumn({
   onToggleGroup: (key: string) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: ICEBOX_COLUMN_ID });
+  // Empty-block droppable so findContainer can resolve a container dropped onto
+  // the block when it holds only one row (mirrors the flat list's setNodeRef).
+  const { setNodeRef: setContainerBlockRef } = useDroppable({ id: CONTAINER_ROWS_ZONE_ID });
   const [draftOpen, setDraftOpen] = useState(false);
 
   return (
@@ -1148,21 +1164,31 @@ function IceboxColumn({
           />
         )}
         {containerAccordionRows.length > 0 && (
-          <ul className="mb-1.5 flex flex-col gap-1.5">
-            {containerAccordionRows.map((row) => (
-              <li key={row.id}>
-                <EpicAccordionRow
-                  row={row}
-                  iceboxChildren={containers[epicIceboxZoneId(row.id)] ?? []}
-                  expanded={!collapsedGroups.has(`epic:${row.id}`)}
-                  onToggle={() => onToggleGroup(`epic:${row.id}`)}
-                  projectId={projectId}
-                  states={states}
-                  pointScale={pointScale}
-                />
-              </li>
-            ))}
-          </ul>
+          // The container rows are their own drag zone (CONTAINER_ROWS_ZONE_ID):
+          // reorderable among themselves, but nothing enters or leaves the
+          // block (isAllowedMove). The whole row is the drag handle, same as a
+          // story row — the collapse/peek buttons still fire on an
+          // under-threshold click (PointerSensor activation distance).
+          <SortableContext
+            items={containerAccordionRows.map((row) => row.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul ref={setContainerBlockRef} className="mb-1.5 flex flex-col gap-1.5">
+              {containerAccordionRows.map((row) => (
+                <SortableItem key={row.id} id={row.id}>
+                  <EpicAccordionRow
+                    row={row}
+                    iceboxChildren={containers[epicIceboxZoneId(row.id)] ?? []}
+                    expanded={!collapsedGroups.has(`epic:${row.id}`)}
+                    onToggle={() => onToggleGroup(`epic:${row.id}`)}
+                    projectId={projectId}
+                    states={states}
+                    pointScale={pointScale}
+                  />
+                </SortableItem>
+              ))}
+            </ul>
+          </SortableContext>
         )}
         <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-1.5">
@@ -1176,17 +1202,37 @@ function IceboxColumn({
   );
 }
 
+// The drag ghost for a container row. Deliberately a static copy of the
+// accordion row's identity strip rather than a shared component: the row
+// itself interleaves the collapse chevron and the peek button through the same
+// strip, and factoring those out into props to share this markup costs more
+// than the duplication it removes.
+function ContainerRowHeader({ row }: { row: ContainerAccordionRow }) {
+  const color = row.epicColor ?? DEFAULT_EPIC_COLOR;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-xs">
+      <div className="flex items-center gap-2">
+        <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <span className="shrink-0 text-xs text-muted-foreground">#{row.number}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{row.title}</span>
+      </div>
+      <EpicProgressBar rollup={row.rollup} color={color} />
+    </div>
+  );
+}
+
 // A container's row in the Icebox accordion (doc-18 §9): top-level (parent_id
 // IS NULL), collapsible, expanding to its Icebox children ordered by position.
-// The container's own row reorder is still a follow-up (TASK-188 — a new
-// position scope, since containers share stories.position with every other
-// top-level row but must dense-rank independently of the flat Icebox splice).
-// Its nested children ARE real drag sources, via the epicIceboxZoneId dnd-kit
-// container below: one can be dragged out to Current/Backlog, reordered among
-// its siblings, or — coming the other way — a board story can be dropped in to
-// attach it (isEpicNestAttach, which sends move_story_board a parent_id delta).
-// A child with a state stays in its own Current/Backlog zone instead (never
-// nested here), carrying a "part of Epic" link back (StoryListRow).
+// The row is itself draggable to reorder among the other containers (its own
+// CONTAINER_ROWS_ZONE_ID dnd-kit block); server-side that shares the one Icebox
+// position sequence with the flat rows and every nested child (no separate
+// scope — spec/data-model.md, doc-18 §2). Its nested children ARE real drag
+// sources too, via the epicIceboxZoneId dnd-kit container below: one can be
+// dragged out to Current/Backlog, reordered among its siblings, or — coming the
+// other way — a board story can be dropped in to attach it (isEpicNestAttach,
+// which sends move_story_board a parent_id delta). A child with a state stays
+// in its own Current/Backlog zone instead (never nested here), carrying a "part
+// of Epic" link back (StoryListRow).
 function EpicAccordionRow({
   row,
   iceboxChildren,
@@ -1355,6 +1401,14 @@ export function BoardListView({
     if (item.kind === "divider") {
       return targetZone === BACKLOG_COLUMN_ID;
     }
+    // The container block is exclusive both ways — checked before anything
+    // story-shaped, since a container row carries no BoardStory to evaluate.
+    if (isDisallowedContainerRowDrop(item.kind === "container", targetZone)) {
+      return false;
+    }
+    if (item.kind === "container") {
+      return true; // reordering among its own block; no state/iteration to gate
+    }
     // The nested container's own zone reads as "icebox" here regardless —
     // zoneForStory derives it from the story's own state_id (always NULL for
     // an Icebox child), not from which dnd-kit container currently holds it.
@@ -1421,10 +1475,13 @@ export function BoardListView({
     const activeItem = storyById(containers, String(active.id));
     const formData = new FormData();
     formData.set("project_id", projectId);
-    formData.set("item_kind", activeItem?.kind ?? "story");
+    // A "container" is a story row server-side (is_container = true) — only the
+    // client models it as its own kind. The server RPC knows only story/divider.
+    formData.set("item_kind", activeItem?.kind === "divider" ? "divider" : "story");
     formData.set("item_id", String(active.id));
     // Never the raw dnd-kit container key — dropStoryInList only understands
-    // the 3 canonical ListZoneId strings (an epic nest reads as Icebox here).
+    // the 3 canonical ListZoneId strings (an epic nest, and the container
+    // block, both read as Icebox here — one shared position sequence).
     formData.set("target_zone", toServerZone(overContainer));
     // Only a genuine attach carries a parent delta. A same-nest reorder is a
     // position-only move, so leaving parent_id out keeps it clear of the RPC's
@@ -1437,8 +1494,12 @@ export function BoardListView({
     // Intent, not a full sequence: the neighbour ("story:<id>"/"divider:<id>")
     // the item now sits before (or nothing = append to the zone's end). The
     // server re-derives dense positions across both tables from current DB
-    // order, so a stale client can't overwrite a concurrent drag (TASK-56).
-    const beforeId = beforeAnchorId(reordered, String(active.id));
+    // order, so a stale client can't overwrite a concurrent drag (TASK-56). A
+    // container neighbour anchors as a story for the same reason as item_kind.
+    const beforeId = beforeAnchorId(
+      reordered.map((it) => (it.kind === "container" ? { ...it, kind: "story" } : it)),
+      String(active.id),
+    );
     if (beforeId) {
       formData.set("before_item_id", beforeId);
     }
@@ -1449,6 +1510,27 @@ export function BoardListView({
     // flight (TASK-113).
     runDrop(String(active.id), () => dropStoryInList(formData), setMutationError);
   }
+
+  // Rendered from the optimistic zone rather than the prop so a container
+  // reorder lands immediately, like every other zone here — the prop only
+  // catches up on the server's revalidatePath.
+  const containerRows = (containers[CONTAINER_ROWS_ZONE_ID] ?? []).flatMap((item) =>
+    item.kind === "container" ? [item.row] : [],
+  );
+  const containerRowIds = new Set(containerRows.map((row) => row.id));
+  // See isContainerBlockDroppable: closestCenter alone lets an expanded
+  // container row's enclosing rect and its own nested children steal each
+  // other's drops, so each drag only competes against the droppables its
+  // block-exclusivity rule would accept anyway.
+  const collisionDetection: CollisionDetection = (args) => {
+    const draggingContainerRow = containerRowIds.has(String(args.active.id));
+    return closestCenter({
+      ...args,
+      droppableContainers: args.droppableContainers.filter(
+        (droppable) => isContainerBlockDroppable(String(droppable.id), containerRowIds) === draggingContainerRow,
+      ),
+    });
+  };
 
   const iceboxItems = containers[ICEBOX_COLUMN_ID] ?? [];
   const currentItems = containers.current ?? [];
@@ -1489,7 +1571,7 @@ export function BoardListView({
     <DndContext
       id="board-list-view"
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -1554,7 +1636,7 @@ export function BoardListView({
             pointScale={pointScale}
             members={members}
             labels={labels}
-            containerAccordionRows={containerAccordionRows}
+            containerAccordionRows={containerRows}
             containers={containers}
             collapsedGroups={collapsedGroups}
             onToggleGroup={onToggleGroup}
@@ -1567,6 +1649,8 @@ export function BoardListView({
           <div className="max-w-3xl rotate-1 cursor-grabbing">
             {activeItem.kind === "divider" ? (
               <DividerRow projectId={projectId} divider={activeItem.divider} onError={setMutationError} />
+            ) : activeItem.kind === "container" ? (
+              <ContainerRowHeader row={activeItem.row} />
             ) : (
               <StoryListRow
                 story={activeItem.story}
