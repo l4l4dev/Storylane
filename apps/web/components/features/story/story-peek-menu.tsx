@@ -48,22 +48,29 @@ export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onSelect={(event) => {
-              event.preventDefault();
-              setMoveOpen(true);
-            }}
-          >
-            Move to project…
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={(event) => {
-              event.preventDefault();
-              setCopyOpen(true);
-            }}
-          >
-            Copy to project…
-          </DropdownMenuItem>
+          {/* A container is rejected server-side by both RPCs (doc-18 §8 —
+              deleting the source to complete a Move would orphan its
+              children) — hidden rather than offered and left to fail. */}
+          {!detail.isContainer && (
+            <>
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault();
+                  setMoveOpen(true);
+                }}
+              >
+                Move to project…
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault();
+                  setCopyOpen(true);
+                }}
+              >
+                Copy to project…
+              </DropdownMenuItem>
+            </>
+          )}
           <DropdownMenuItem
             variant="destructive"
             onSelect={(event) => {
@@ -105,6 +112,13 @@ function DeleteStoryDialog({
               ? `, including its ${commentCount} comment${commentCount === 1 ? "" : "s"}.`
               : "."}{" "}
             This can&apos;t be undone.
+            {detail.isContainer && detail.childCount > 0 && (
+              <>
+                {" "}
+                Its {detail.childCount} child {detail.childCount === 1 ? "story" : "stories"} will be ungrouped (they
+                become top-level stories, not deleted).
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 

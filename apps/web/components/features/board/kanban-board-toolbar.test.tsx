@@ -20,6 +20,8 @@ function iceboxStory(id: string): BoardStory {
     assignee_id: null,
     labelIds: [],
     completed_at: null,
+    parentId: null,
+    parentEpicTitle: null,
   };
 }
 
@@ -72,6 +74,7 @@ function baseProps() {
       rejected: [],
     },
     initialBacklogItems: [],
+    containerAccordionRows: [],
     currentBudget: 1,
     backlogBudgets: [],
     nextVirtualIterationNumber: 1,
@@ -238,6 +241,8 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
       labelIds: [],
       focus: null,
       completed_at: null,
+      parentId: null,
+      parentEpicTitle: null,
     };
     render(
       <KanbanBoard
@@ -271,6 +276,8 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
       labelIds: [],
       focus: null,
       completed_at: null,
+      parentId: null,
+      parentEpicTitle: null,
     };
     const backlogStory = {
       ...currentStory,

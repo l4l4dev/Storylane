@@ -1,11 +1,11 @@
 ---
 id: TASK-178
 title: 'DB: unify Epic/Story model (drop epics, add parent_id/is_container/epic_color)'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-24 04:07'
-updated_date: '2026-07-24 05:44'
+updated_date: '2026-07-24 09:50'
 labels: []
 milestone: m-6
 dependencies: []

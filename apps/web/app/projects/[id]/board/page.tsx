@@ -13,6 +13,7 @@ import {
   startPlanningCapacityFetch,
 } from "@/lib/utils/planning-capacity";
 import { pointScaleValues } from "@/lib/utils/stories";
+import { buildContainerAccordionRows } from "@/lib/utils/epics-list";
 import { fetchAllRows } from "@/lib/utils/supabase-pagination";
 import { assertReadOk } from "@/lib/supabase/assert";
 import type { ProjectState } from "@/lib/types";
@@ -88,7 +89,7 @@ export default async function BoardPage({
     project.iteration_length,
   );
 
-  const [iterationsResult, stories, labelsResult, dividersResult, pendingGoalsResult, statesResult] =
+  const [iterationsResult, stories, labelsResult, dividersResult, pendingGoalsResult, statesResult, containersResult] =
     await Promise.all([
       supabase
         .from("iterations")
@@ -101,7 +102,7 @@ export default async function BoardPage({
         supabase
           .from("stories")
           .select(
-            "id, number, title, description, story_type, state_id, points, position, iteration_id, assignee_id, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
+            "id, number, title, description, story_type, state_id, points, position, iteration_id, assignee_id, completed_at, parent_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
           )
           .eq("project_id", id)
           // Containers are off the board (doc-18 §1/§5): with NULL state they
@@ -128,12 +129,25 @@ export default async function BoardPage({
         .select("id, project_id, name, action_label, category, position, created_at")
         .eq("project_id", id)
         .order("position", { ascending: true }),
+      // Containers, fetched separately from the board's story list (doc-18
+      // §9): the List view's Icebox accordion + every child's "part of
+      // Epic" link (ux-principles principle 8) both need them. Ordered by
+      // position (not number) — doc-18 §2: a container shares the single
+      // stories.position space like any top-level story, so its relative
+      // order among other containers must follow that, not creation order.
+      supabase
+        .from("stories")
+        .select("id, number, title, epic_color")
+        .eq("project_id", id)
+        .eq("is_container", true)
+        .order("position", { ascending: true }),
     ]);
   const iterations = assertReadOk(iterationsResult);
   const labels = assertReadOk(labelsResult);
   const dividers = assertReadOk(dividersResult);
   const pendingGoals = assertReadOk(pendingGoalsResult);
   const statesData = assertReadOk(statesResult);
+  const containerRows = assertReadOk(containersResult);
 
   const states: ProjectState[] = (statesData ?? []) as ProjectState[];
   const stateById = new Map(states.map((s) => [s.id, s]));
@@ -154,6 +168,7 @@ export default async function BoardPage({
     allIterations.filter((iteration) => iteration.state === "done").map((iteration) => iteration.id),
   );
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
+  const containerById = new Map((containerRows ?? []).map((c) => [c.id, c]));
 
   const cards = stories
     // Stories of finalized iterations belong to the history view
@@ -182,9 +197,32 @@ export default async function BoardPage({
           .filter((l): l is NonNullable<typeof l> => l != null)
           .map((l) => ({ id: l.id, name: l.name, color: l.color })),
         labelIds,
+        parentId: story.parent_id,
+        parentEpicTitle: story.parent_id ? (containerById.get(story.parent_id)?.title ?? null) : null,
       };
       return card;
     });
+
+  // The List view's Icebox accordion (doc-18 §9): each container's full
+  // roll-up (every child, any zone, doc-18 §5) plus just its Icebox
+  // children's ids for nesting under the row — see epics-list.ts. Built from
+  // the RAW `stories` fetch, not `cards`: `cards` already excludes stories in
+  // a finalized iteration (line above), which would silently drop a
+  // "done and rolled off" child from the roll-up (a real disagreement vs
+  // /epics, which queries every child directly with no such filter).
+  const containerAccordionRows = buildContainerAccordionRows(
+    (containerRows ?? []).map((c) => ({ id: c.id, number: c.number, title: c.title, epicColor: c.epic_color })),
+    stories
+      .filter((s) => s.parent_id !== null)
+      .map((s) => ({
+        id: s.id,
+        parentId: s.parent_id as string,
+        stateId: s.state_id,
+        position: s.position,
+        category: s.state_id ? (stateById.get(s.state_id)?.category ?? null) : null,
+        points: s.points,
+      })),
+  );
 
   // Containers are built from every card, unfiltered — filters only hide
   // rows visually (applied client-side — see KanbanBoard/BoardListView).
@@ -311,6 +349,7 @@ export default async function BoardPage({
         states={states}
         initialContainers={initialContainers}
         initialBacklogItems={initialBacklogItems}
+        containerAccordionRows={containerAccordionRows}
         currentBudget={currentBudget}
         backlogBudgets={backlogBudgets}
         nextVirtualIterationNumber={nextVirtualIterationNumber}

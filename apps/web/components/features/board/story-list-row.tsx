@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bug, Star, Wrench, type LucideIcon } from "lucide-react";
 import { formatPoints, storyStateBadge, STORY_TYPE_META, type StoryType } from "@/lib/utils/stories";
@@ -29,8 +30,12 @@ export function StoryListRow({
   insertMenu,
 }: {
   // StoryCardData plus state_id — the row needs it for the badge and
-  // transition buttons; the physical card (isDone only) doesn't.
-  story: StoryCardData & { state_id: string | null };
+  // transition buttons; the physical card (isDone only) doesn't. parentId/
+  // parentEpicTitle: this row still renders in its own zone even when it's a
+  // container's child (only an Icebox child nests under the accordion
+  // instead, doc-18 §9) — the link keeps the relation visible here too
+  // (ux-principles principle 8: never make a membership invisible).
+  story: StoryCardData & { state_id: string | null; parentId: string | null; parentEpicTitle: string | null };
   projectId: string;
   states: ProjectState[];
   pointScale: number[];
@@ -93,6 +98,16 @@ export function StoryListRow({
         >
           {formatPoints(story.points)}
         </Badge>
+      )}
+      {story.parentId && story.parentEpicTitle && (
+        <Link
+          href={`/stories/${story.parentId}`}
+          onClick={(e) => e.stopPropagation()}
+          className="hidden shrink-0 truncate rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground hover:underline sm:inline"
+          title={`Part of epic: ${story.parentEpicTitle}`}
+        >
+          {story.parentEpicTitle}
+        </Link>
       )}
       {story.labels.map((label) => (
         <span

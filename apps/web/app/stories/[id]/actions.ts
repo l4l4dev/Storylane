@@ -26,6 +26,14 @@ export type StoryDetail = {
   states: ProjectState[];
   points: number | null;
   parentId: string | null;
+  // Trigger-derived (doc-18 §4) — a container has no board state and is
+  // never itself nestable (single-level, §3): the Parent picker, Points
+  // field, and Move/Copy/Split menu items are all hidden when true.
+  isContainer: boolean;
+  // Count of this story's own children — only meaningful when isContainer;
+  // used for the Delete confirmation's "N child stories will be ungrouped"
+  // notice (deleting a container SET NULLs their parent_id, doc-18 §8).
+  childCount: number;
   assigneeId: string | null;
   labelIds: string[];
   pointScale: number[];
@@ -36,6 +44,11 @@ export type StoryDetail = {
   // Chronological status/column history from activity_logs (newest first).
   // `payload` is the raw activity_logs payload, shaped for describeActivity.
   history: { id: string; action: string; payload: unknown; actorName: string; actorIsAgent?: boolean; createdAt: string }[];
+  // Candidate containers for the Parent picker (doc-18 §9): every other
+  // top-level story in the project (parent_id IS NULL — a child can't be
+  // re-parented onto, single-level nesting, §3). Picking a candidate whose
+  // isContainer is false containerizes it (needs confirmation, §4/§9).
+  parentCandidates: { id: string; number: number; title: string; isContainer: boolean }[];
 };
 
 /**
@@ -57,8 +70,17 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     return null;
   }
 
-  const [{ data: project }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: history }, { data: statesData }] =
-    await Promise.all([
+  const [
+    { data: project },
+    { data: labels },
+    { data: members },
+    { data: comments },
+    { data: tasks },
+    { data: history },
+    { data: statesData },
+    { count: childCount },
+    { data: parentCandidateRows },
+  ] = await Promise.all([
       supabase
         .from("projects")
         .select("point_scale, custom_points, is_personal")
@@ -90,6 +112,20 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .select("id, project_id, name, action_label, category, position, created_at")
         .eq("project_id", story.project_id)
         .order("position"),
+      // Only meaningful when this story is a container (doc-18 §8's Delete
+      // ungroup notice) — cheap to always fetch alongside everything else.
+      supabase.from("stories").select("id", { count: "exact", head: true }).eq("parent_id", storyId),
+      // Parent picker candidates (doc-18 §9): every other top-level story in
+      // the project — a story with its own parent is rejected by the
+      // single-level trigger, so it's excluded here rather than surfaced as
+      // an option that always errors.
+      supabase
+        .from("stories")
+        .select("id, number, title, is_container")
+        .eq("project_id", story.project_id)
+        .is("parent_id", null)
+        .neq("id", storyId)
+        .order("number"),
     ]);
 
   return {
@@ -104,10 +140,18 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     states: (statesData ?? []) as ProjectState[],
     points: story.points,
     parentId: story.parent_id,
+    isContainer: story.is_container,
+    childCount: childCount ?? 0,
     assigneeId: story.assignee_id,
     labelIds: story.story_labels.map((sl) => sl.label_id),
     pointScale: pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points),
     labels: labels ?? [],
+    parentCandidates: (parentCandidateRows ?? []).map((row) => ({
+      id: row.id,
+      number: row.number,
+      title: row.title,
+      isContainer: row.is_container,
+    })),
     members: (members ?? []).map((m) => {
       const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
       return {

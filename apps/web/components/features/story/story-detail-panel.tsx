@@ -13,7 +13,8 @@ import { CommentThread } from "./comment-thread";
 import { TaskChecklist } from "./task-checklist";
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 import { TransitionButtons } from "./transition-buttons";
-import { StoryFields } from "./story-fields";
+import { StoryFields, type StoryFieldsValue } from "./story-fields";
+import { ParentPicker } from "./story-parent-picker";
 
 // The story fields this panel edits inline — everything else on
 // `StoryDetail` (comments, tasks, epics/labels/members lists,
@@ -24,6 +25,7 @@ type EditableFields = {
   description: string;
   storyType: string;
   points: number | null;
+  parentId: string | null;
   assigneeId: string;
   labelIds: string[];
 };
@@ -33,6 +35,7 @@ const LOCKABLE_FIELDS = [
   "description",
   "storyType",
   "points",
+  "parentId",
   "assigneeId",
   "labelIds",
 ] as const;
@@ -44,6 +47,7 @@ function toEditableFields(detail: StoryDetail): EditableFields {
     description: detail.description ?? "",
     storyType: detail.storyType,
     points: detail.points,
+    parentId: detail.parentId,
     assigneeId: detail.assigneeId ?? "",
     labelIds: detail.labelIds,
   };
@@ -55,6 +59,7 @@ function toEditableFieldsFromRealtime(row: StoryRealtimeRow): EditableFields {
     description: row.description ?? "",
     storyType: row.story_type,
     points: row.points,
+    parentId: row.parent_id,
     assigneeId: row.assignee_id ?? "",
     // Realtime doesn't carry the joined story_labels rows — labels only
     // ever change through this panel's own save, so they're never merged
@@ -150,11 +155,11 @@ export function StoryDetailPanel({
       description: snapshot.description.trim() ? snapshot.description : null,
       storyType: snapshot.storyType,
       points: snapshot.points,
-      // doc-18: the parent (nesting) link is preserved unchanged here — there
-      // is no parent editor in the detail form yet (the Parent picker lands in
-      // TASK-184). Sending the story's current parent keeps update_story's
-      // p_parent_id from wiping it on every autosave.
-      parentId: detail.parentId ?? null,
+      // Reads the locally-tracked value (like every other field), not the
+      // initial `detail` prop — a stale prop here would resend an outdated
+      // parent and revert a server-side reparent (Parent picker, split_story,
+      // or a concurrent session) on the next autosave (doc-18 §9 AC#6).
+      parentId: snapshot.parentId,
       assigneeId: snapshot.assigneeId || null,
       labelIds: snapshot.labelIds,
     });
@@ -234,12 +239,24 @@ export function StoryDetailPanel({
     event.currentTarget.blur();
   }
 
-  function handleDiscreteChange<F extends Exclude<LockableField, "title" | "description">>(
+  // Generic over exactly the fields StoryFields itself edits (its own
+  // StoryFieldsValue's discrete fields) — parentId is deliberately excluded
+  // and handled by handleParentChange below instead, so this generic's
+  // domain stays identical to StoryFields' own `onDiscreteChange` prop type
+  // and the two remain assignable without a cast.
+  function handleDiscreteChange<F extends Exclude<LockableField, "title" | "description" | "parentId">>(
     field: F,
     value: EditableFields[F],
   ) {
     setLocal({ [field]: value } as Partial<EditableFields>);
     dirtyRef.current.add(field);
+    setStatus("saving");
+    void runSave();
+  }
+
+  function handleParentChange(parentId: string | null) {
+    setLocal({ parentId });
+    dirtyRef.current.add("parentId");
     setStatus("saving");
     void runSave();
   }
@@ -349,13 +366,40 @@ export function StoryDetailPanel({
     onTextFocus: (field: LockableField) => focusedRef.current.add(field),
     onTextBlur: handleTextBlur,
     onTextKeyDown: handleTextKeyDown,
-    onDiscreteChange: handleDiscreteChange,
+    // Cast: handleDiscreteChange's generic domain (storyType/points/
+    // assigneeId/labelIds) is already identical to StoryFieldsValue's own
+    // DiscreteField set — same field names, same value types — but TS's
+    // generic indexed-access check can't prove `StoryFieldsValue[F]`
+    // assignable to `EditableFields[F]` across two separately-declared
+    // object types, even though every concrete field matches. Safe: this
+    // stays true as long as EditableFields' 4 shared fields keep the same
+    // value types as StoryFieldsValue's (parentId, the one extra field, is
+    // handled separately by handleParentChange and never routes through
+    // this prop).
+    onDiscreteChange: handleDiscreteChange as <F extends Exclude<keyof StoryFieldsValue, "title" | "description">>(
+      field: F,
+      value: StoryFieldsValue[F],
+    ) => void,
     pointScale: detail.pointScale,
     members: detail.members,
     labels: detail.labels,
     idPrefix: "detail",
-    hidePoints: detail.isPersonalProject,
+    // A container never carries points (doc-18 §4, the off-board CHECK) —
+    // the field is omitted entirely, same "no dead controls" rule as the
+    // personal-project case, not shown-disabled.
+    hidePoints: detail.isPersonalProject || detail.isContainer,
   } as const;
+
+  // A container already has children and can't itself become a child
+  // (single-level nesting, doc-18 §3) — no Parent picker for one.
+  const parentPicker = !detail.isContainer && (
+    <ParentPicker
+      idPrefix="detail"
+      value={local.parentId}
+      candidates={detail.parentCandidates}
+      onChange={handleParentChange}
+    />
+  );
 
   const historySection = detail.history.length > 0 && (
     <section className="flex flex-col gap-2">
@@ -398,10 +442,12 @@ export function StoryDetailPanel({
       <div className={isSplit ? "flex flex-col gap-4 lg:col-start-2 lg:row-start-1" : "contents"}>
         {statusRow}
         {isSplit && <StoryFields {...fieldsProps} section="meta" />}
+        {isSplit && parentPicker}
       </div>
 
       <div className={isSplit ? "flex flex-col gap-4 lg:col-start-1 lg:row-start-1" : "contents"}>
         <StoryFields {...fieldsProps} section={isSplit ? "title" : "all"} />
+        {!isSplit && parentPicker}
         <TaskChecklist storyId={detail.id} tasks={detail.tasks} onMutated={onMutated} />
         <CommentThread
           storyId={detail.id}

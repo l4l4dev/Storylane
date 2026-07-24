@@ -252,16 +252,30 @@ a physical column.
     draggable to a new spot — delete it via its header badge and re-insert
     at the new spot instead (still exact, via the insert-between
     affordance below).
-- **Container accordion (doc-18 §1, §9):** top-level list rows are stories with
-  `parent_id IS NULL`. A **container** (`is_container = true`) renders as a
-  collapsible parent row showing its `epic_color` and a roll-up progress bar
-  (aggregate child state + point sum, doc-18 §5); expanding it reveals its
-  **children** indented one level, ordered by `position`. A child renders only
-  under its parent here — never also as a top-level row. This is the whole
+- **Container accordion (doc-18 §1, §9):** a **container** (`is_container =
+  true`) has a permanently NULL `state_id` (doc-18 §4), so it structurally only
+  ever belongs to the Icebox zone — it renders there as a collapsible parent
+  row showing its `epic_color` and a roll-up progress bar (aggregate child
+  state + point sum across *every* child regardless of zone, doc-18 §5).
+  Expanding it reveals only its **Icebox children** (`parent_id` = the
+  container, `state_id IS NULL`) indented one level, ordered by `position` — a
+  child never also appears as its own top-level Icebox row. This is the whole
   hierarchy UI: a flat list plus one accordion level, no tree widget (doc-18
-  §3). On the Kanban view, children appear individually in their own state
-  columns and containers do not appear (a container is off the board); use the
-  `/epics` view or List accordion to see a container as a whole.
+  §3). Container rows sit in their own block above the Icebox's plain items
+  (ordered by `position` among themselves) — reordering a container, or
+  dragging its nested children, is not yet supported (v1 scope; the accordion
+  is display-only).
+  - **A child that has its own state (in Current or Backlog) is unaffected**:
+    doc-18 §1 makes children "normal board items... exactly like any story
+    today", so it keeps rendering as a flat row in its own zone, unchanged —
+    it is never pulled into the Icebox accordion. Its row instead carries a
+    small link back to its parent epic (ux-principles principle 8: a
+    relationship must stay visible, not disappear once the item leaves
+    Icebox).
+  - On the Kanban view, children appear individually in their own state
+    columns and containers do not appear (a container is off the board); use
+    the `/epics` view or the List's Icebox accordion to see a container as a
+    whole.
 - **Indent distinction (2026-07-07):** note labels start flush at the
   list's left edge and span full width; story rows are indented slightly
   to the right, so structure rows and work rows are distinguishable at a

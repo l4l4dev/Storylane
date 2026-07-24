@@ -32,6 +32,8 @@ const baseDetail: StoryDetail = {
   states: [],
   points: 3,
   parentId: null,
+  isContainer: false,
+  childCount: 0,
   assigneeId: null,
   labelIds: [],
   pointScale: [0, 1, 2, 3, 5, 8, 13],
@@ -40,6 +42,7 @@ const baseDetail: StoryDetail = {
   comments: [],
   tasks: [],
   history: [],
+  parentCandidates: [],
 };
 
 describe("StoryPeekMenu", () => {
@@ -102,5 +105,39 @@ describe("StoryPeekMenu", () => {
 
     expect(await screen.findByText(/not an owner or member of any other project/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Move story" })).toBeDisabled();
+  });
+
+  // doc-18 §8: move_story_to_project/copy_story_to_project reject a container
+  // server-side (deleting the source would orphan its children) — the menu
+  // hides the dead actions instead of offering them.
+  it("hides Move/Copy for a container story", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={{ ...baseDetail, isContainer: true }} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Move to project…" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy to project…" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete story" })).toBeInTheDocument();
+  });
+
+  // doc-18 §8: deleting a container SET NULLs its children's parent_id
+  // (ungrouped, not deleted) — the confirmation must say so, since the
+  // existing wording only ever mentioned comments.
+  it("warns that child stories will be ungrouped when deleting a container", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={{ ...baseDetail, isContainer: true, childCount: 3 }} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete story" }));
+
+    expect(screen.getByText(/its 3 child stories will be ungrouped/i)).toBeInTheDocument();
+  });
+
+  it("does not mention ungrouping when deleting a non-container story", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={baseDetail} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete story" }));
+
+    expect(screen.queryByText(/ungrouped/i)).not.toBeInTheDocument();
   });
 });

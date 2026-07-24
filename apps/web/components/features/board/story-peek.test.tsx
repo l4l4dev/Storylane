@@ -31,6 +31,8 @@ const detail: StoryDetail = {
   states: [],
   points: null,
   parentId: null,
+  isContainer: false,
+  childCount: 0,
   assigneeId: null,
   labelIds: [],
   pointScale: [],
@@ -39,6 +41,7 @@ const detail: StoryDetail = {
   comments: [],
   tasks: [],
   history: [],
+  parentCandidates: [],
 };
 
 describe("StoryPeek", () => {

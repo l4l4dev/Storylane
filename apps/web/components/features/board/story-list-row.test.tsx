@@ -25,7 +25,7 @@ const CLASSIC_STATES: ProjectState[] = stateTemplates.classic.states.map((s) => 
   created_at: "",
 }));
 
-const baseStory: StoryCardData & { state_id: string | null } = {
+const baseStory: StoryCardData & { state_id: string | null; parentId: string | null; parentEpicTitle: string | null } = {
   id: "s1",
   number: 42,
   title: "Add login",
@@ -36,6 +36,8 @@ const baseStory: StoryCardData & { state_id: string | null } = {
   points: 3,
   assigneeName: null,
   labels: [],
+  parentId: null,
+  parentEpicTitle: null,
 };
 
 describe("StoryListRow", () => {
@@ -136,5 +138,27 @@ describe("StoryListRow", () => {
     expect(screen.getByText(/A very long feature title/)).toHaveClass("min-w-0", "flex-1", "truncate");
     expect(screen.getByRole("button", { name: "Estimate" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Estimate: 1 point/ })).not.toBeInTheDocument();
+  });
+
+  // doc-18 §9 / ux-principles principle 8: a child still renders in its own
+  // Current/Backlog zone (unlike its Icebox siblings, which nest under the
+  // Icebox accordion instead) — this badge is how its epic membership stays
+  // visible without teleporting the user out of the zone they're working in.
+  it("shows a link back to the parent epic when the story has one", () => {
+    render(
+      <StoryListRow
+        story={{ ...baseStory, parentId: "e1", parentEpicTitle: "Big epic" }}
+        projectId="p1"
+        states={CLASSIC_STATES}
+        pointScale={fibonacci}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "Big epic" });
+    expect(link).toHaveAttribute("href", "/stories/e1");
+  });
+
+  it("omits the epic link for a story with no parent", () => {
+    render(<StoryListRow story={baseStory} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });

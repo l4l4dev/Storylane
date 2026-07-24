@@ -11,6 +11,7 @@ import { isImeComposing } from "@/lib/utils/keyboard";
 import { addDays } from "@storylane/core";
 import { iterationLabel, iterationSpanLabel, type BacklogRowItem } from "@/lib/utils/iterations";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
+import type { ContainerAccordionRow } from "@/lib/utils/epics-list";
 import type { ProjectState } from "@/lib/types";
 import { useProjectBoardRealtime } from "@/lib/supabase/realtime";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,13 @@ export type BoardStory = StoryCardData & {
   assignee_id: string | null;
   labelIds: string[];
   completed_at: string | null;
+  // doc-18 §9: a container's own children carry parentId; the board fetch
+  // still excludes containers themselves (TASK-180) so this only ever
+  // points at one. parentEpicTitle is precomputed at fetch time (board/
+  // page.tsx) rather than looked up client-side, so StoryListRow's "part of
+  // Epic" link needs no extra prop threading through the row wrappers.
+  parentId: string | null;
+  parentEpicTitle: string | null;
 };
 
 export type IterationMeta = {
@@ -116,6 +124,7 @@ export function KanbanBoard({
   states,
   initialContainers,
   initialBacklogItems,
+  containerAccordionRows,
   currentBudget,
   backlogBudgets,
   nextVirtualIterationNumber,
@@ -144,6 +153,10 @@ export function KanbanBoard({
   // Backlog stories + freeform planning dividers, pre-merged/ordered
   // server-side — List-view-only (see BoardListView).
   initialBacklogItems: BacklogRowItem<BoardStory>[];
+  // The List view's Icebox accordion rows (doc-18 §9) — every container in
+  // the project with its full roll-up + its Icebox children's ids. Never
+  // read by the Kanban view (containers never appear there, doc-18 §1).
+  containerAccordionRows: ContainerAccordionRow[];
   // `rate x planned capacity` for the current iteration (spec/velocity.md) —
   // the commitment target shown in the Current panel's header.
   currentBudget: number;
@@ -202,6 +215,12 @@ export function KanbanBoard({
   useProjectBoardRealtime(projectId, () => router.refresh());
 
   const iceboxStories = initialContainers[ICEBOX_COLUMN_ID] ?? [];
+  // Top-level Icebox rows only (doc-18 §9): a container's own Icebox children
+  // nest under its accordion row instead of also counting as their own flat
+  // row, so the toggle's badge must match what's actually visible when
+  // expanded — `iceboxStories.length` alone would double-count them.
+  const iceboxRowCount =
+    containerAccordionRows.length + iceboxStories.filter((s) => s.parentId === null).length;
   const sortedStateIds = [...states].sort((a, b) => a.position - b.position).map((s) => s.id);
   const iterationStories = sortedStateIds.flatMap((column) => initialContainers[column] ?? []);
   const backlogStories = initialBacklogItems
@@ -322,10 +341,10 @@ export function KanbanBoard({
                 nudges the view-switcher and filters (spec/ux-principles.md
                 principle 3). */}
             <span
-              className={iceboxStories.length > 0 ? "text-xs text-muted-foreground" : "invisible"}
-              aria-hidden={iceboxStories.length === 0 || undefined}
+              className={iceboxRowCount > 0 ? "text-xs text-muted-foreground" : "invisible"}
+              aria-hidden={iceboxRowCount === 0 || undefined}
             >
-              {iceboxStories.length}
+              {iceboxRowCount}
             </span>
           </Button>
           {toolbar}
@@ -379,6 +398,7 @@ export function KanbanBoard({
           states={states}
           initialContainers={initialContainers}
           initialBacklogItems={initialBacklogItems}
+          containerAccordionRows={containerAccordionRows}
           backlogBudgets={backlogBudgets}
           nextVirtualIterationNumber={nextVirtualIterationNumber}
           iterationLength={iterationLength}

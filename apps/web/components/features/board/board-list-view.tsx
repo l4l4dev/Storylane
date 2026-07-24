@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -49,6 +50,8 @@ import {
   type BacklogRowItem,
 } from "@/lib/utils/iterations";
 import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
+import { DEFAULT_EPIC_COLOR, type ContainerAccordionRow } from "@/lib/utils/epics-list";
+import { EpicProgressBar } from "@/components/features/epics/epic-progress-bar";
 import type { ProjectState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -141,7 +144,14 @@ function toListItemContainers(
   states: ReadonlyArray<ProjectState>,
 ): Record<string, ListItem[]> {
   return {
-    [ICEBOX_COLUMN_ID]: (source[ICEBOX_COLUMN_ID] ?? []).map(wrapStory),
+    // A container's own Icebox children (parentId set) nest under its
+    // accordion row instead (doc-18 §9 "a child never also appears
+    // top-level") — the container structurally only ever lives in Icebox
+    // (its state_id is always NULL, doc-18 §4), so this is the one zone
+    // where the exclusion is needed; Current/Backlog children keep
+    // rendering in their own zone unchanged (ux-principles principle 8: the
+    // "part of Epic" link on StoryListRow keeps that membership visible).
+    [ICEBOX_COLUMN_ID]: (source[ICEBOX_COLUMN_ID] ?? []).filter((s) => s.parentId === null).map(wrapStory),
     // Flattened by `position`, not by state — the List view's
     // current zone is one flat, priority-ordered list spanning every state
     // (see spec/screens.md "List view"); concatenating the physical Kanban
@@ -1071,6 +1081,10 @@ function IceboxColumn({
   pointScale,
   members,
   labels,
+  containerAccordionRows,
+  accordionChildrenById,
+  collapsedGroups,
+  onToggleGroup,
 }: {
   items: ListItem[];
   projectId: string;
@@ -1078,6 +1092,12 @@ function IceboxColumn({
   pointScale: number[];
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
+  // doc-18 §9: every container in the project — structurally only ever
+  // rendered here (a container's state_id is always NULL, doc-18 §4).
+  containerAccordionRows: ContainerAccordionRow[];
+  accordionChildrenById: Map<string, BoardStory>;
+  collapsedGroups: Set<string>;
+  onToggleGroup: (key: string) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: ICEBOX_COLUMN_ID });
   const [draftOpen, setDraftOpen] = useState(false);
@@ -1102,6 +1122,25 @@ function IceboxColumn({
             onClose={() => setDraftOpen(false)}
           />
         )}
+        {containerAccordionRows.length > 0 && (
+          <ul className="mb-1.5 flex flex-col gap-1.5">
+            {containerAccordionRows.map((row) => (
+              <li key={row.id}>
+                <EpicAccordionRow
+                  row={row}
+                  iceboxChildren={row.iceboxChildIds
+                    .map((id) => accordionChildrenById.get(id))
+                    .filter((s): s is BoardStory => s != null)}
+                  expanded={!collapsedGroups.has(`epic:${row.id}`)}
+                  onToggle={() => onToggleGroup(`epic:${row.id}`)}
+                  projectId={projectId}
+                  states={states}
+                  pointScale={pointScale}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
         <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-1.5">
             {items.map((item) => (
@@ -1111,6 +1150,79 @@ function IceboxColumn({
         </SortableContext>
       </div>
     </section>
+  );
+}
+
+// A container's row in the Icebox accordion (doc-18 §9): top-level (parent_id
+// IS NULL), collapsible, expanding to its Icebox children ordered by position.
+// Read-only (no drag) — reordering the container itself or its children is a
+// follow-up, not required by the accordion's display requirement. A child
+// with a state stays in its own Current/Backlog zone instead (never nested
+// here), each carrying a "part of Epic" link back (StoryListRow).
+function EpicAccordionRow({
+  row,
+  iceboxChildren,
+  expanded,
+  onToggle,
+  projectId,
+  states,
+  pointScale,
+}: {
+  row: ContainerAccordionRow;
+  iceboxChildren: BoardStory[];
+  expanded: boolean;
+  onToggle: () => void;
+  projectId: string;
+  states: ProjectState[];
+  pointScale: number[];
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const color = row.epicColor ?? DEFAULT_EPIC_COLOR;
+
+  function openPeek() {
+    const params = new URLSearchParams(searchParams);
+    params.set("story", row.id);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-xs">
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={expanded ? `Collapse ${row.title}` : `Expand ${row.title}`}
+          className="shrink-0 rounded p-0.5 hover:bg-muted"
+        >
+          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+        </button>
+        <button
+          type="button"
+          onClick={openPeek}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-80"
+        >
+          <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+          <span className="shrink-0 text-xs text-muted-foreground">#{row.number}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{row.title}</span>
+        </button>
+      </div>
+      <EpicProgressBar rollup={row.rollup} color={color} />
+      {expanded &&
+        (iceboxChildren.length > 0 ? (
+          <ul className="flex flex-col gap-1.5 pl-6">
+            {iceboxChildren.map((child) => (
+              <li key={child.id}>
+                <StoryListRow story={child} projectId={projectId} states={states} pointScale={pointScale} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="pl-6 text-xs text-muted-foreground">No unstarted children yet.</p>
+        ))}
+    </div>
   );
 }
 
@@ -1126,6 +1238,7 @@ export function BoardListView({
   states,
   initialContainers,
   initialBacklogItems,
+  containerAccordionRows,
   backlogBudgets,
   nextVirtualIterationNumber,
   iterationLength,
@@ -1147,6 +1260,10 @@ export function BoardListView({
   // server-side (see board/page.tsx) since only the server has both tables'
   // raw `position` values needed to interleave them correctly.
   initialBacklogItems: BacklogRowItem<BoardStory>[];
+  // The Icebox accordion rows (doc-18 §9) — one per container in the
+  // project, structurally only ever shown here (a container's state_id is
+  // always NULL, doc-18 §4, so it can never belong to any other zone).
+  containerAccordionRows: ContainerAccordionRow[];
   backlogBudgets: number[];
   nextVirtualIterationNumber: number;
   // Projected dates and draft goals for the Backlog's virtual-iteration
@@ -1175,6 +1292,21 @@ export function BoardListView({
     () => toListItemContainers(initialContainers, initialBacklogItems, states),
     [initialContainers, initialBacklogItems, states],
   );
+  // Full BoardStory objects for each accordion row's Icebox children — looked
+  // up once here (storyById already searches every zone) rather than passed
+  // as a separate prop from the server; read-only nested display, no drag
+  // (doc-18 §9 scope: reordering a container's own row or its children is a
+  // follow-up, not required by the accordion's display requirement).
+  const accordionChildrenById = useMemo(() => {
+    const map = new Map<string, BoardStory>();
+    for (const row of containerAccordionRows) {
+      for (const childId of row.iceboxChildIds) {
+        const story = storyById(initialContainers, childId);
+        if (story) map.set(childId, story);
+      }
+    }
+    return map;
+  }, [containerAccordionRows, initialContainers]);
   const { containers, setContainers, activeId, beginDrag, endDrag, revertToSnapshot, runDrop } =
     useOptimisticBoardOrder(serverContainers);
   // Shared by drag failures and each row's insert-menu failures (TASK-42) —
@@ -1370,6 +1502,10 @@ export function BoardListView({
             pointScale={pointScale}
             members={members}
             labels={labels}
+            containerAccordionRows={containerAccordionRows}
+            accordionChildrenById={accordionChildrenById}
+            collapsedGroups={collapsedGroups}
+            onToggleGroup={onToggleGroup}
           />
         )}
       </div>

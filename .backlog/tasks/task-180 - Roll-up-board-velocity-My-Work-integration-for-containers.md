@@ -1,11 +1,11 @@
 ---
 id: TASK-180
 title: Roll-up + board/velocity/My Work integration for containers
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-24 04:07'
-updated_date: '2026-07-24 06:38'
+updated_date: '2026-07-24 09:50'
 labels: []
 milestone: m-6
 dependencies:

@@ -1,11 +1,11 @@
 ---
 id: TASK-181
 title: 'RPC: split_story + drop promote_story_to_epic and its UI/tests'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-24 04:07'
-updated_date: '2026-07-24 09:43'
+updated_date: '2026-07-24 09:50'
 labels: []
 milestone: m-6
 dependencies:

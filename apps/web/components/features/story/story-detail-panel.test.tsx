@@ -50,6 +50,8 @@ const baseDetail: StoryDetail = {
   states: CLASSIC_STATES,
   points: 3,
   parentId: null,
+  isContainer: false,
+  childCount: 0,
   assigneeId: null,
   labelIds: [],
   pointScale: [0, 1, 2, 3, 5, 8, 13],
@@ -58,6 +60,7 @@ const baseDetail: StoryDetail = {
   comments: [],
   tasks: [],
   history: [],
+  parentCandidates: [],
 };
 
 describe("StoryDetailPanel", () => {
@@ -158,6 +161,28 @@ describe("StoryDetailPanel", () => {
     render(<StoryDetailPanel detail={baseDetail} />);
     expect(screen.getByText("Tasks")).toBeInTheDocument();
     expect(screen.getByText("Comments")).toBeInTheDocument();
+  });
+
+  // doc-18 §9: the former Epic dropdown becomes a Parent picker.
+  it("renders the Parent picker with the story's candidates", () => {
+    render(
+      <StoryDetailPanel
+        detail={{
+          ...baseDetail,
+          parentCandidates: [{ id: "e1", number: 5, title: "Big epic", isContainer: true }],
+        }}
+      />,
+    );
+    expect(screen.getByLabelText("Parent")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "#5 Big epic" })).toBeInTheDocument();
+  });
+
+  // doc-18 §3/§4: a container already has children and can't itself become a
+  // child, and has no board state — Points is never offered on one either.
+  it("hides the Parent picker and Points for a container story", () => {
+    render(<StoryDetailPanel detail={{ ...baseDetail, isContainer: true, points: null }} />);
+    expect(screen.queryByLabelText("Parent")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Points")).not.toBeInTheDocument();
   });
 
 });
@@ -335,5 +360,48 @@ describe("StoryDetailPanel autosave", () => {
     expect(title).toHaveValue("My in-progress edit");
     // Unlocked: description picked up the remote value immediately.
     expect(screen.getByLabelText("Description")).toHaveValue("Someone else's description");
+  });
+
+  // doc-18 §9: picking a Parent candidate autosaves it like any other
+  // discrete field — no blur needed.
+  it("autosaves parentId immediately when a Parent candidate is picked", async () => {
+    render(
+      <StoryDetailPanel
+        detail={{
+          ...baseDetail,
+          parentCandidates: [{ id: "e1", number: 5, title: "Big epic", isContainer: true }],
+        }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Parent"), { target: { value: "e1" } });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(updateStoryMock).toHaveBeenCalledWith(expect.objectContaining({ parentId: "e1" }));
+  });
+
+  // TASK-180/184 (doc-18 §9 AC#6): a server-side reparent (Parent picker,
+  // split_story, or a concurrent session) must survive a later autosave — the
+  // save must resend the LATEST known parentId, not a stale initial prop.
+  it("does not revert a realtime-reconciled parentId on the next autosave", async () => {
+    render(<StoryDetailPanel detail={baseDetail} />);
+
+    act(() => {
+      latestOnFieldsChanged?.({
+        title: "Add login",
+        description: "Let users sign in",
+        story_type: "feature",
+        points: 3,
+        parent_id: "server-set-parent",
+        assignee_id: null,
+      });
+    });
+
+    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "chore" } });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(updateStoryMock).toHaveBeenCalledWith(expect.objectContaining({ parentId: "server-set-parent" }));
   });
 });

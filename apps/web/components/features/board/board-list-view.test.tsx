@@ -238,6 +238,8 @@ function backlogStory(id: string, points: number): BoardStory {
     assignee_id: null,
     labelIds: [],
     completed_at: null,
+    parentId: null,
+    parentEpicTitle: null,
   };
 }
 
@@ -266,6 +268,7 @@ function boardProps(stories: BoardStory[]) {
       rejected: [],
     },
     initialBacklogItems: stories.map((story) => ({ kind: "story" as const, story })),
+    containerAccordionRows: [],
     backlogBudgets: [5],
     nextVirtualIterationNumber: 4,
     iterationLength: 14,
@@ -327,6 +330,71 @@ describe("Panel draft-story triggers", () => {
     const call = createDraftStoryMock.mock.calls[0]?.[0] as { target: string; view?: string };
     expect(call.target).toBe("unstarted");
     expect(call.view).toBe("list");
+  });
+
+  // doc-18 §9: the Icebox accordion. A container's own row structurally only
+  // ever lives here (its state_id is always NULL, doc-18 §4).
+  it("shows a container's row with its epic_color, progress bar, and its Icebox children nested under it", () => {
+    const child = { ...backlogStory("s2", 2), state_id: null, parentId: "e1" };
+    const props = boardProps([]);
+    render(
+      <BoardListView
+        {...props}
+        initialContainers={{ ...props.initialContainers, icebox: [child] }}
+        containerAccordionRows={[
+          {
+            id: "e1",
+            number: 5,
+            title: "Big Epic",
+            epicColor: "#ff0000",
+            rollup: {
+              headline: "unstarted",
+              points: 2,
+              breakdown: { unstarted: 1, in_progress: 0, done: 0, rejected: 0, icebox: 0 },
+            },
+            iceboxChildIds: ["s2"],
+          },
+        ]}
+        showIcebox
+      />,
+    );
+
+    expect(screen.getByText("Big Epic")).toBeInTheDocument();
+    expect(screen.getByText("0 / 1 done")).toBeInTheDocument();
+    // The child renders once, nested — never also as its own flat Icebox row.
+    expect(screen.getAllByText("Story s2")).toHaveLength(1);
+  });
+
+  it("collapses a container's row to hide its nested children, and expands it back", async () => {
+    const child = { ...backlogStory("s2", 2), state_id: null, parentId: "e1" };
+    const props = boardProps([]);
+    render(
+      <BoardListView
+        {...props}
+        initialContainers={{ ...props.initialContainers, icebox: [child] }}
+        containerAccordionRows={[
+          {
+            id: "e1",
+            number: 5,
+            title: "Big Epic",
+            epicColor: null,
+            rollup: {
+              headline: "unstarted",
+              points: 2,
+              breakdown: { unstarted: 1, in_progress: 0, done: 0, rejected: 0, icebox: 0 },
+            },
+            iceboxChildIds: ["s2"],
+          },
+        ]}
+        showIcebox
+      />,
+    );
+
+    expect(screen.getByText("Story s2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Big Epic" }));
+    expect(screen.queryByText("Story s2")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Big Epic" }));
+    expect(screen.getByText("Story s2")).toBeInTheDocument();
   });
 
   it("Icebox panel's trigger creates with target icebox when shown", async () => {
