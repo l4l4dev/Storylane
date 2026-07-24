@@ -29,7 +29,11 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
 
 - End every implementation task with `/code-review` before proposing a commit. Default
   effort `medium`; use `high` for migrations, RLS, concurrency, or board-algorithm work.
-  Repo-specific review rules live in `REVIEW.md`.
+  Repo-specific review rules live in `REVIEW.md`. A model cannot start it — ask the owner
+  to type the command and wait. It runs as a background subagent, so the findings arrive
+  after the owner's turn; hold the commit proposal until they do. `/code-review ultra`
+  (cloud, multi-agent, billed) is the owner's call too; `/ultrareview` is a deprecated
+  alias for it.
 - Migrations additionally require an `rls-security-reviewer` agent pass (deeper than the
   generic review), and user-facing UI still ends with the fable-advisor design review
   (see Critical Rules). `/security-review` runs once before each deploy.

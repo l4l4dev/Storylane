@@ -1,11 +1,11 @@
 ---
 id: TASK-188
 title: 'Icebox accordion: allow reordering container (epic) rows'
-status: In Progress
+status: Done
 assignee:
-  - '@claude-opus-4-8'
+  - '@claude-opus-5'
 created_date: '2026-07-24 13:48'
-updated_date: '2026-07-24 17:55'
+updated_date: '2026-07-24 18:12'
 labels: []
 milestone: m-6
 dependencies:
