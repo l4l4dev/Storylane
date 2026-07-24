@@ -1014,6 +1014,7 @@ export type Database = {
       }
       project_role: { Args: { p_project_id: string }; Returns: string }
       promote_story_to_epic: { Args: { p_story_id: string }; Returns: Json }
+      recompute_is_container: { Args: { p_parent: string }; Returns: undefined }
       remove_member: {
         Args: { p_project_id: string; p_user_id: string }
         Returns: undefined

@@ -1,0 +1,126 @@
+{
+  "_comment": "Golden fixture for the container (epic) roll-up rule (doc-18 §5), cross-checked by packages/core/src/container-rollup.test.ts (rollupContainer) for Web/iOS parity. A container's progress is derived on read from its children — never stored. `category` is the child's project_states category, or null for a child in the Icebox (state_id IS NULL). `points` is the child's points (null = unestimated, counts as 0 in the sum). `headline` is the container's aggregate state (never `rejected` — a bounce is not terminal); `breakdown` is the per-category child count for the progress bar. Swift consumption deferred (iOS work on hold).",
+  "cases": [
+    {
+      "label": "all children done -> done",
+      "children": [
+        { "category": "done", "points": 3 },
+        { "category": "done", "points": 5 }
+      ],
+      "expected": {
+        "headline": "done",
+        "points": 8,
+        "breakdown": { "unstarted": 0, "in_progress": 0, "done": 2, "rejected": 0, "icebox": 0 }
+      }
+    },
+    {
+      "label": "partial completion (3 done + 2 unstarted) -> in_progress, never unstarted",
+      "children": [
+        { "category": "done", "points": 1 },
+        { "category": "done", "points": 1 },
+        { "category": "done", "points": 1 },
+        { "category": "unstarted", "points": 2 },
+        { "category": "unstarted", "points": 2 }
+      ],
+      "expected": {
+        "headline": "in_progress",
+        "points": 7,
+        "breakdown": { "unstarted": 2, "in_progress": 0, "done": 3, "rejected": 0, "icebox": 0 }
+      }
+    },
+    {
+      "label": "one in_progress child -> in_progress",
+      "children": [
+        { "category": "in_progress", "points": 5 },
+        { "category": "unstarted", "points": 3 }
+      ],
+      "expected": {
+        "headline": "in_progress",
+        "points": 8,
+        "breakdown": { "unstarted": 1, "in_progress": 1, "done": 0, "rejected": 0, "icebox": 0 }
+      }
+    },
+    {
+      "label": "all children rejected -> in_progress (headline never rolls to rejected), rejected count shown in breakdown",
+      "children": [
+        { "category": "rejected", "points": 2 },
+        { "category": "rejected", "points": 3 }
+      ],
+      "expected": {
+        "headline": "in_progress",
+        "points": 5,
+        "breakdown": { "unstarted": 0, "in_progress": 0, "done": 0, "rejected": 2, "icebox": 0 }
+      }
+    },
+    {
+      "label": "done + rejected + unstarted mix -> in_progress; breakdown carries the rejected count",
+      "children": [
+        { "category": "done", "points": 3 },
+        { "category": "rejected", "points": 2 },
+        { "category": "unstarted", "points": 1 }
+      ],
+      "expected": {
+        "headline": "in_progress",
+        "points": 6,
+        "breakdown": { "unstarted": 1, "in_progress": 0, "done": 1, "rejected": 1, "icebox": 0 }
+      }
+    },
+    {
+      "label": "every child unstarted -> unstarted",
+      "children": [
+        { "category": "unstarted", "points": 2 },
+        { "category": "unstarted", "points": 3 }
+      ],
+      "expected": {
+        "headline": "unstarted",
+        "points": 5,
+        "breakdown": { "unstarted": 2, "in_progress": 0, "done": 0, "rejected": 0, "icebox": 0 }
+      }
+    },
+    {
+      "label": "every child in the Icebox (state_id null) -> icebox",
+      "children": [
+        { "category": null, "points": null },
+        { "category": null, "points": 3 }
+      ],
+      "expected": {
+        "headline": "icebox",
+        "points": 3,
+        "breakdown": { "unstarted": 0, "in_progress": 0, "done": 0, "rejected": 0, "icebox": 2 }
+      }
+    },
+    {
+      "label": "mix of unstarted and Icebox children (no work started) -> unstarted",
+      "children": [
+        { "category": "unstarted", "points": 2 },
+        { "category": null, "points": null }
+      ],
+      "expected": {
+        "headline": "unstarted",
+        "points": 2,
+        "breakdown": { "unstarted": 1, "in_progress": 0, "done": 0, "rejected": 0, "icebox": 1 }
+      }
+    },
+    {
+      "label": "null child points count as 0 in the sum",
+      "children": [
+        { "category": "done", "points": null },
+        { "category": "in_progress", "points": 5 }
+      ],
+      "expected": {
+        "headline": "in_progress",
+        "points": 5,
+        "breakdown": { "unstarted": 0, "in_progress": 1, "done": 1, "rejected": 0, "icebox": 0 }
+      }
+    },
+    {
+      "label": "no children (defensive — a childless story is not a container per §4) -> icebox, 0 points",
+      "children": [],
+      "expected": {
+        "headline": "icebox",
+        "points": 0,
+        "breakdown": { "unstarted": 0, "in_progress": 0, "done": 0, "rejected": 0, "icebox": 0 }
+      }
+    }
+  ]
+}

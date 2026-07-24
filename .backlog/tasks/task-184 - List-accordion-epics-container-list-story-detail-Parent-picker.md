@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-24 04:08'
-updated_date: '2026-07-24 04:22'
+updated_date: '2026-07-24 06:57'
 labels: []
 milestone: m-6
 dependencies:
@@ -29,4 +29,5 @@ The remaining container-viewing surfaces (doc-18 §9): List-view 1-level accordi
 - [ ] #3 story detail: former Epic dropdown becomes a Parent picker (lists containers; sets parent_id; single-level trigger rejects illegal choice), overflow menu Promote item replaced by Split entry
 - [ ] #4 ends with a fable-advisor design review against spec/ux-principles.md before manual verification
 - [ ] #5 Parent picker confirms before nesting under a not-yet-container target (that target becomes an epic and loses points/state/iteration, doc-18 §4/§9); no confirmation when the target is already a container
+- [ ] #6 Parent picker writes parent_id through local+synced state (not just the DB) so a field autosave never resends a stale detail.parentId, and realtime reconciliation includes parentId — a server-side reparent (Parent picker, split_story, or a concurrent session) must not be reverted by a subsequent autosave (found in TASK-180 /code-review; story-detail-panel.tsx:157 + realtime mergeRemote LOCKABLE_FIELDS)
 <!-- AC:END -->

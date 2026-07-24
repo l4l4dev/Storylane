@@ -123,4 +123,21 @@ describe.skipIf(!RUN)("parent_id hierarchy triggers (integration)", () => {
     const { error } = await owner.from("stories").update({ parent_id: s.id }).eq("id", s.id);
     expect(error?.message).toMatch(/its own parent/i);
   });
+
+  it("set_story_state rejects a container with an actionable message (doc-18 §4)", async () => {
+    const parent = await createStory(projectId, { title: "Container" });
+    await createStory(projectId, { title: "Kid", parent_id: parent.id });
+
+    const state = await owner
+      .from("project_states")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("category", "in_progress")
+      .order("position")
+      .limit(1)
+      .single();
+
+    const { error } = await owner.rpc("set_story_state", { p_story_id: parent.id, p_state_id: state.data!.id });
+    expect(error?.message).toMatch(/container has no board state/i);
+  });
 });

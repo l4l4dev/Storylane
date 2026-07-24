@@ -110,6 +110,8 @@ export default async function MyWorkPage({
             .from("stories")
             .select("id, project_id, number, title, story_type, state_id, points, position, completed_at")
             .eq("assignee_id", user.id)
+            // Containers are excluded here too (doc-18 §5) — the state_id filter
+            // does it: a container always has NULL state_id (off-board CHECK).
             .not("state_id", "is", null)
             .or(`completed_at.is.null,completed_at.gte.${doneSince}`)
             .range(from, to),

@@ -118,6 +118,10 @@ export default async function BoardPage({
             "id, number, title, description, story_type, state_id, points, position, iteration_id, assignee_id, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
           )
           .eq("project_id", id)
+          // Containers are off the board (doc-18 §1/§5): with NULL state they
+          // would otherwise bucket into the Icebox via columnForStory. The List
+          // accordion / /epics list fetch them separately (doc-18 §9).
+          .eq("is_container", false)
           .order("position", { ascending: true })
           .range(from, to),
       ),
