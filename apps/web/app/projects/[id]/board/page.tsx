@@ -22,7 +22,6 @@ import { BoardFilters } from "@/components/features/board/board-filters";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { StoryPeekHost } from "@/components/features/board/story-peek-host";
 import { InviteFailedBanner, parseInviteFailedCount } from "@/components/features/projects/invite-failed-banner";
-import { parsePromotedEpic, PromotedEpicBanner } from "@/components/features/board/promoted-epic-banner";
 import { ensureCurrentIteration } from "./actions";
 
 export default async function BoardPage({
@@ -36,27 +35,14 @@ export default async function BoardPage({
     label?: string;
     story?: string;
     invite_failed?: string;
-    promoted_epic?: string;
-    promoted_epic_name?: string;
   }>;
 }) {
   const { id } = await params;
-  const {
-    type,
-    assignee,
-    label,
-    story: peekStoryId,
-    invite_failed,
-    promoted_epic,
-    promoted_epic_name,
-  } = await searchParams;
+  const { type, assignee, label, story: peekStoryId, invite_failed } = await searchParams;
   // TASK-32: project creation now redirects straight to the new project's
   // board instead of /dashboard, so this is where a partial invite failure
   // from that flow must surface instead — never silently.
   const inviteFailedCount = parseInviteFailedCount(invite_failed);
-  // TASK-41: "Promote to Epic" (story-peek-menu.tsx) redirects here instead
-  // of jumping to /epics, so this is where its confirmation banner surfaces.
-  const promotedEpic = parsePromotedEpic(promoted_epic, promoted_epic_name);
   const supabase = await createClient();
 
   const {
@@ -317,9 +303,6 @@ export default async function BoardPage({
 
       {inviteFailedCount !== null && (
         <InviteFailedBanner count={inviteFailedCount} settingsHref={`/projects/${project.id}/settings`} />
-      )}
-      {promotedEpic && (
-        <PromotedEpicBanner projectId={project.id} epicId={promotedEpic.id} epicName={promotedEpic.name} />
       )}
 
       <KanbanBoard

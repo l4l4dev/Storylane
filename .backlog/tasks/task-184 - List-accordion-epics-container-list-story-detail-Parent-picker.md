@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-24 04:08'
-updated_date: '2026-07-24 06:57'
+updated_date: '2026-07-24 07:39'
 labels: []
 milestone: m-6
 dependencies:
@@ -30,4 +30,11 @@ The remaining container-viewing surfaces (doc-18 §9): List-view 1-level accordi
 - [ ] #4 ends with a fable-advisor design review against spec/ux-principles.md before manual verification
 - [ ] #5 Parent picker confirms before nesting under a not-yet-container target (that target becomes an epic and loses points/state/iteration, doc-18 §4/§9); no confirmation when the target is already a container
 - [ ] #6 Parent picker writes parent_id through local+synced state (not just the DB) so a field autosave never resends a stale detail.parentId, and realtime reconciliation includes parentId — a server-side reparent (Parent picker, split_story, or a concurrent session) must not be reverted by a subsequent autosave (found in TASK-180 /code-review; story-detail-panel.tsx:157 + realtime mergeRemote LOCKABLE_FIELDS)
+- [ ] #7 Story-detail overflow menu is container-aware: a container hides/disables Move to project / Copy to project (the split_story/move/copy RPCs reject containers server-side, doc-18 §8) and Split; StoryDetail must surface is_container for this (found in TASK-181 /code-review)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Owner decision 2026-07-24 (from TASK-181 /code-review #5): the Split entry (AC#3) is HIDDEN for personal-project stories — option A. Splitting a personal task would containerize it (drops from My Work) with unassigned children (also absent from My Work), so it appears to vanish. So the overflow Split item shows only for non-personal, non-child, non-container stories. (Personal projects keep no Split affordance, mirroring the old Promote-hidden behavior — but for a UX reason now, not the promote data-loss reason.)
+<!-- SECTION:NOTES:END -->

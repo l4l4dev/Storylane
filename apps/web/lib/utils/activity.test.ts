@@ -43,24 +43,34 @@ describe("describeActivity", () => {
     expect(text).toBe('Dev User commented on "Add welcome tour"');
   });
 
-  it("describes a story being promoted to an epic", () => {
+  it("describes a story being split into children", () => {
     const text = describeActivity({
-      action: "story.promoted_to_epic",
-      payload: { epic_id: "e1", title: "Big story to split", task_count: 2, new_story_ids: ["s1", "s2"] },
+      action: "story.split",
+      payload: { child_ids: ["s1", "s2"], child_count: 2 },
       actorName: "Dev User",
-      storyTitle: null,
+      storyTitle: "Big story to split",
     });
-    expect(text).toBe('Dev User promoted "Big story to split" to an epic with 2 new stories');
+    expect(text).toBe('Dev User split "Big story to split" into 2 stories');
   });
 
-  it("uses singular wording for a single-task promotion", () => {
+  it("uses singular wording for a single-child split", () => {
     const text = describeActivity({
-      action: "story.promoted_to_epic",
-      payload: { epic_id: "e1", title: "Small story", task_count: 1, new_story_ids: ["s1"] },
+      action: "story.split",
+      payload: { child_ids: ["s1"], child_count: 1 },
       actorName: "Dev User",
-      storyTitle: null,
+      storyTitle: "Small story",
     });
-    expect(text).toBe('Dev User promoted "Small story" to an epic with 1 new story');
+    expect(text).toBe('Dev User split "Small story" into 1 story');
+  });
+
+  it("describes a story becoming a container", () => {
+    const text = describeActivity({
+      action: "story.containerized",
+      payload: { old_points: 5 },
+      actorName: "Dev User",
+      storyTitle: "Grew too big",
+    });
+    expect(text).toBe('Dev User turned "Grew too big" into an epic');
   });
 
   it("describes a story moved out to another project", () => {

@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { MoreVertical } from "lucide-react";
 import {
   copyStoryToProject,
   deleteStory,
   getMoveTargetProjects,
   moveStoryToProject,
-  promoteStoryToEpic,
   type MoveCopyTargetProject,
   type StoryDetail,
 } from "@/app/stories/[id]/actions";
@@ -31,11 +30,11 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 
 // The peek header's overflow (⋯) menu (spec/screens.md "Story detail
-// editing"): hosts Promote to Epic and Delete. Each dialog's open state is
-// owned here, outside the DropdownMenu tree — nesting a DialogTrigger inside
-// a DropdownMenuItem would unmount the dialog the instant the menu closes.
+// editing"): hosts Move/Copy and Delete. Each dialog's open state is owned
+// here, outside the DropdownMenu tree — nesting a DialogTrigger inside a
+// DropdownMenuItem would unmount the dialog the instant the menu closes.
+// (The Split entry lands with the Split Studio — TASK-183/184, doc-18 §7.)
 export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
-  const [promoteOpen, setPromoteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
@@ -65,19 +64,6 @@ export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
           >
             Copy to project…
           </DropdownMenuItem>
-          {/* TASK-147: hidden for the hidden personal project — promote_story_to_epic
-              itself also rejects is_personal server-side (the DELETE it does
-              would cascade-lose my_work_story_state + story_completions). */}
-          {!detail.isPersonalProject && (
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.preventDefault();
-                setPromoteOpen(true);
-              }}
-            >
-              Promote to Epic
-            </DropdownMenuItem>
-          )}
           <DropdownMenuItem
             variant="destructive"
             onSelect={(event) => {
@@ -90,94 +76,10 @@ export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <PromoteToEpicDialog detail={detail} open={promoteOpen} onOpenChange={setPromoteOpen} />
       <DeleteStoryDialog detail={detail} open={deleteOpen} onOpenChange={setDeleteOpen} />
       <MoveCopyDialog detail={detail} mode="move" open={moveOpen} onOpenChange={setMoveOpen} />
       <MoveCopyDialog detail={detail} mode="copy" open={copyOpen} onOpenChange={setCopyOpen} />
     </>
-  );
-}
-
-function PromoteToEpicDialog({
-  detail,
-  open,
-  onOpenChange,
-}: {
-  detail: StoryDetail;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const taskCount = detail.tasks.length;
-  const commentCount = detail.comments.length;
-
-  // Resets stale state on reopen (TASK-121, doc-13 finding #13) — otherwise a
-  // failed attempt's error stayed visible the next time this dialog opened,
-  // even for an unrelated later attempt. React's "adjusting state when a prop
-  // changes" pattern (during render, not a useEffect — this dialog's `open`
-  // is flipped from outside, not via its own trigger, so there's no local
-  // event handler to hook the transition into either).
-  const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) {
-      setError(null);
-      setPending(false);
-    }
-  }
-
-  async function handlePromote() {
-    setPending(true);
-    setError(null);
-    const result = await promoteStoryToEpic(detail.id);
-    if (!result.ok) {
-      setError(result.message);
-      setPending(false);
-      return;
-    }
-    // Promotion removes the source story, so both entry points return to the
-    // board. Preserve active board filters when promotion starts from its peek.
-    const boardPath = `/projects/${detail.projectId}/board`;
-    const params = pathname === boardPath ? new URLSearchParams(searchParams) : new URLSearchParams();
-    params.delete("story");
-    params.set("promoted_epic", result.epicId);
-    params.set("promoted_epic_name", detail.title);
-    router.push(`${boardPath}?${params.toString()}`);
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Promote to epic?</DialogTitle>
-          <DialogDescription>
-            &ldquo;{detail.title}&rdquo; becomes a new epic.{" "}
-            {taskCount > 0
-              ? `Its ${taskCount} task${taskCount === 1 ? "" : "s"} become unestimated feature ${taskCount === 1 ? "story" : "stories"} linked to the new epic, in order — task completion state isn't carried over.`
-              : "It has no tasks, so the epic starts empty."}{" "}
-            Points and assignee are discarded. This story is then deleted
-            {commentCount > 0
-              ? ` — including its ${commentCount} comment${commentCount === 1 ? "" : "s"}, which cannot be recovered.`
-              : "."}
-          </DialogDescription>
-        </DialogHeader>
-
-        {error && <p className="text-sm text-destructive">{error}</p>}
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={() => void handlePromote()} disabled={pending}>
-            {pending ? "Promoting…" : "Promote to epic"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

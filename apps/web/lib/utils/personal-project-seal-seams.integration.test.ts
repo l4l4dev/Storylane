@@ -1,10 +1,11 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // TASK-147 (owner decision 2026-07-22): the hidden personal project's
-// remaining seams — promote_story_to_epic and invite_member both must reject
-// is_personal projects (migration 20260722000014_personal_project_seal_seams.sql),
-// and project_members' direct client INSERT is locked to RPC-only.
+// remaining seams — invite_member must reject is_personal projects, and
+// project_members' direct client INSERT is locked to RPC-only. (The
+// promote_story_to_epic seal is gone: promote was dropped for split_story,
+// which is non-destructive and allowed in personal projects — doc-18 §6.)
 //
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/personal-project-seal-seams.integration.test.ts
 const RUN = process.env.SUPABASE_INTEGRATION === "1";
@@ -15,7 +16,6 @@ describe.skipIf(!RUN)("personal project seal-the-seams (TASK-147 integration)", 
   let ownerId: string;
   let personalProjectId: string;
   let teamProjectId: string;
-  const createdStoryIds: string[] = [];
 
   beforeAll(async () => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -63,55 +63,8 @@ describe.skipIf(!RUN)("personal project seal-the-seams (TASK-147 integration)", 
     teamProjectId = team.id;
   });
 
-  afterEach(async () => {
-    for (const id of createdStoryIds.splice(0)) {
-      await admin.from("stories").delete().eq("id", id);
-    }
-  });
-
   afterAll(async () => {
     if (teamProjectId) await admin.from("projects").delete().eq("id", teamProjectId);
-  });
-
-  async function createPersonalStory(): Promise<string> {
-    const { data, error } = await admin
-      .from("stories")
-      .insert({ project_id: personalProjectId, title: "Personal task", story_type: "feature", created_by: ownerId })
-      .select("id")
-      .single();
-    if (error || !data) throw new Error(`Failed to seed personal story: ${error?.message}`);
-    createdStoryIds.push(data.id);
-    return data.id;
-  }
-
-  describe("promote_story_to_epic", () => {
-    it("rejects promoting a personal-project story", async () => {
-      const storyId = await createPersonalStory();
-      const { error } = await supabase.rpc("promote_story_to_epic", { p_story_id: storyId });
-      expect(error).not.toBeNull();
-      expect(error!.message).toMatch(/cannot be promoted to an epic/i);
-
-      // Nothing happened: the story is untouched, no epic was created.
-      const { data: stillThere } = await admin.from("stories").select("id").eq("id", storyId).maybeSingle();
-      expect(stillThere).not.toBeNull();
-    });
-
-    it("still allows promoting a normal team-project story", async () => {
-      const { data: unstarted } = await admin
-        .from("project_states")
-        .select("id")
-        .eq("project_id", teamProjectId)
-        .eq("category", "unstarted")
-        .single();
-      const { data: story } = await admin
-        .from("stories")
-        .insert({ project_id: teamProjectId, title: "Team story", story_type: "feature", state_id: unstarted!.id, created_by: ownerId })
-        .select("id")
-        .single();
-      const { error, data } = await supabase.rpc("promote_story_to_epic", { p_story_id: story!.id });
-      expect(error).toBeNull();
-      expect((data as { epic_id: string }).epic_id).toBeTruthy();
-    });
   });
 
   describe("invite_member", () => {

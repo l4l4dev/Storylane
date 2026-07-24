@@ -31,7 +31,7 @@ const AUTHENTICATED_ALLOWLIST = new Set([
   "finalize_iteration",
   "override_iteration_length",
   "reshape_current_iteration",
-  "promote_story_to_epic",
+  "split_story",
   "move_story_to_project",
   "copy_story_to_project",
   "search_users_for_invite",

@@ -1,30 +1,21 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StoryDetail } from "@/app/stories/[id]/actions";
 import { StoryPeekMenu } from "./story-peek-menu";
 
-// TASK-13 AC #1/#4: wording variations for the promote confirmation dialog
-// (task count / empty-epic / comment-deletion warning). Routing and the RPC
-// action itself are stubbed — the RPC's own correctness is covered by
-// lib/utils/promote.integration.test.ts.
-const { pushMock, pathnameMock, searchParamsMock } = vi.hoisted(() => ({
-  pushMock: vi.fn(),
-  pathnameMock: vi.fn<() => string>(() => "/projects/p1/board"),
-  searchParamsMock: vi.fn<() => URLSearchParams>(() => new URLSearchParams()),
-}));
+// The overflow menu hosts Move/Copy/Delete. (The Split entry lands with the
+// Split Studio in TASK-183/184.) split_story's own correctness is covered by
+// lib/utils/split.integration.test.ts.
+const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
-  usePathname: () => pathnameMock(),
-  useSearchParams: () => searchParamsMock(),
 }));
 const getMoveTargetProjectsMock = vi.fn();
-const promoteStoryToEpicMock = vi.fn();
 vi.mock("@/app/stories/[id]/actions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/app/stories/[id]/actions")>();
   return {
     ...actual,
-    promoteStoryToEpic: (...args: unknown[]) => promoteStoryToEpicMock(...args),
     getMoveTargetProjects: (...args: unknown[]) => getMoveTargetProjectsMock(...args),
   };
 });
@@ -51,136 +42,9 @@ const baseDetail: StoryDetail = {
   history: [],
 };
 
-async function openPromoteDialog() {
-  const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "Story actions" }));
-  await user.click(screen.getByRole("menuitem", { name: "Promote to Epic" }));
-}
-
 describe("StoryPeekMenu", () => {
   beforeEach(() => {
     pushMock.mockClear();
-    pathnameMock.mockReturnValue("/projects/p1/board");
-    searchParamsMock.mockReturnValue(new URLSearchParams());
-    promoteStoryToEpicMock.mockReset();
-    promoteStoryToEpicMock.mockResolvedValue({ ok: true, epicId: "e1" });
-  });
-
-  it("warns the epic starts empty when the story has no tasks", async () => {
-    render(<StoryPeekMenu detail={baseDetail} />);
-    await openPromoteDialog();
-
-    expect(screen.getByText(/it has no tasks, so the epic starts empty/i)).toBeInTheDocument();
-  });
-
-  // TASK-121 (doc-13 finding #13): the dialog's error/pending state used to
-  // persist across a close+reopen, so a failed attempt's error kept showing
-  // even for an unrelated later attempt.
-  it("does not show a stale error from a previous failed attempt on reopen", async () => {
-    promoteStoryToEpicMock.mockResolvedValueOnce({ ok: false, message: "Promotion failed" });
-    render(<StoryPeekMenu detail={baseDetail} />);
-    const user = userEvent.setup();
-
-    await openPromoteDialog();
-    await user.click(screen.getByRole("button", { name: "Promote to epic" }));
-    expect(await screen.findByText("Promotion failed")).toBeInTheDocument();
-
-    // Each DropdownMenuItem's onSelect calls preventDefault() so the menu
-    // itself never auto-closes (story-peek-menu.tsx's own top comment: each
-    // dialog's open state is owned outside the DropdownMenu tree) — so
-    // "Promote to Epic" stays clickable directly, without re-opening "Story
-    // actions" first. Radix unmounts the dialog's own content on Cancel, so
-    // the error is trivially gone right after Cancel regardless of this fix
-    // — the real assertion is that reopening doesn't bring the old error
-    // back (it would if `error` state had never been reset).
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    await user.click(screen.getByRole("menuitem", { name: "Promote to Epic" }));
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    expect(screen.queryByText("Promotion failed")).not.toBeInTheDocument();
-  });
-
-  // TASK-147: promote_story_to_epic DELETEs the story, cascading
-  // my_work_story_state + story_completions — permanent Done-log loss for a
-  // personal task. The server rejects it too; this just keeps the menu from
-  // ever offering an action guaranteed to fail with data-loss framing.
-  it("hides Promote to Epic for a personal-project story", async () => {
-    const user = userEvent.setup();
-    render(<StoryPeekMenu detail={{ ...baseDetail, isPersonalProject: true }} />);
-    await user.click(screen.getByRole("button", { name: "Story actions" }));
-
-    expect(screen.queryByRole("menuitem", { name: "Promote to Epic" })).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Move to project…" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Delete story" })).toBeInTheDocument();
-  });
-
-  it("mentions the task count and that task completion isn't carried over", async () => {
-    render(
-      <StoryPeekMenu
-        detail={{
-          ...baseDetail,
-          tasks: [
-            { id: "t1", title: "a", is_done: false },
-            { id: "t2", title: "b", is_done: true },
-          ],
-        }}
-      />,
-    );
-    await openPromoteDialog();
-
-    expect(screen.getByText(/its 2 tasks become unestimated feature stories/i)).toBeInTheDocument();
-    expect(screen.getByText(/task completion state isn't carried over/i)).toBeInTheDocument();
-  });
-
-  it("warns comments will be deleted when the story has comments", async () => {
-    render(
-      <StoryPeekMenu
-        detail={{
-          ...baseDetail,
-          comments: [{ id: "c1", body: "hi", createdAt: "2026-07-10", authorName: "Dev" }],
-        }}
-      />,
-    );
-    await openPromoteDialog();
-
-    expect(screen.getByText(/including its 1 comment, which cannot be recovered/i)).toBeInTheDocument();
-  });
-
-  it("does not mention comments when the story has none", async () => {
-    render(<StoryPeekMenu detail={baseDetail} />);
-    await openPromoteDialog();
-
-    expect(screen.queryByText(/comment/i)).not.toBeInTheDocument();
-  });
-
-  // fable-advisor review: redirecting to a bare board URL after promoting
-  // used to silently drop any active Type/Assignee/Label/Epic filter when
-  // promoting from the board's own peek — the same "preserve other params"
-  // convention BoardFilters.setParam and StoryCard.openPeek already follow.
-  it("preserves the board's active filters when promoting from the board peek", async () => {
-    pathnameMock.mockReturnValue("/projects/p1/board");
-    searchParamsMock.mockReturnValue(new URLSearchParams("type=feature&story=s1"));
-    const user = userEvent.setup();
-    render(<StoryPeekMenu detail={baseDetail} />);
-    await openPromoteDialog();
-    await user.click(screen.getByRole("button", { name: "Promote to epic" }));
-
-    expect(pushMock).toHaveBeenCalledWith(
-      "/projects/p1/board?type=feature&promoted_epic=e1&promoted_epic_name=Big+story+to+split",
-    );
-  });
-
-  it("redirects to a bare board URL when promoting from the standalone story page", async () => {
-    pathnameMock.mockReturnValue("/stories/s1");
-    searchParamsMock.mockReturnValue(new URLSearchParams());
-    const user = userEvent.setup();
-    render(<StoryPeekMenu detail={baseDetail} />);
-    await openPromoteDialog();
-    await user.click(screen.getByRole("button", { name: "Promote to epic" }));
-
-    expect(pushMock).toHaveBeenCalledWith(
-      "/projects/p1/board?promoted_epic=e1&promoted_epic_name=Big+story+to+split",
-    );
   });
 
   it("shows a delete confirmation naming the story and its comment count", async () => {

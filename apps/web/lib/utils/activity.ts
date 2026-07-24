@@ -27,11 +27,12 @@ export function describeActivity(log: ActivityLog): string {
     }
     case "comment.added":
       return `${log.actorName} commented on ${story}`;
-    case "story.promoted_to_epic": {
-      const title = payload.title ? `"${String(payload.title)}"` : story;
-      const taskCount = Number(payload.task_count ?? 0);
-      return `${log.actorName} promoted ${title} to an epic with ${taskCount} new ${taskCount === 1 ? "story" : "stories"}`;
+    case "story.split": {
+      const count = Number(payload.child_count ?? 0);
+      return `${log.actorName} split ${story} into ${count} ${count === 1 ? "story" : "stories"}`;
     }
+    case "story.containerized":
+      return `${log.actorName} turned ${story} into an epic`;
     case "story.moved_out": {
       const title = payload.title ? `"${String(payload.title)}"` : story;
       return `${log.actorName} moved ${title} to another project`;

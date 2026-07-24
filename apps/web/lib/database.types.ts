@@ -1013,7 +1013,6 @@ export type Database = {
         Returns: number
       }
       project_role: { Args: { p_project_id: string }; Returns: string }
-      promote_story_to_epic: { Args: { p_story_id: string }; Returns: Json }
       recompute_is_container: { Args: { p_parent: string }; Returns: undefined }
       remove_member: {
         Args: { p_project_id: string; p_user_id: string }
@@ -1081,6 +1080,10 @@ export type Database = {
       shares_project_with: {
         Args: { p_target_user_id: string }
         Returns: boolean
+      }
+      split_story: {
+        Args: { p_children: Json; p_story_id: string }
+        Returns: Json
       }
       toggle_project_favorite: {
         Args: { p_favorite: boolean; p_project_id: string }
