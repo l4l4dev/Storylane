@@ -1,11 +1,11 @@
 ---
 id: TASK-183
 title: Split Studio screen (Web)
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-24 04:08'
-updated_date: '2026-07-24 12:47'
+updated_date: '2026-07-24 12:48'
 labels: []
 milestone: m-6
 dependencies:
