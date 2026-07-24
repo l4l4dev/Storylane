@@ -228,6 +228,30 @@ describe.skipIf(!RUN)("split_story RPC + container move/copy guards (integration
     expect(new Set(positions).size).toBe(positions.length); // no collisions
   });
 
+  it("clamps off-scale child points to NULL (server-side scale validation, like move/copy)", async () => {
+    const source = await createStory({ title: "Scale", state_id: unstartedId, points: 2 });
+    const { data } = await owner.rpc("split_story", {
+      p_story_id: source,
+      p_children: [child({ title: "Valid", points: 2 }), child({ title: "OffScale", points: 999 })],
+    });
+    const kids = await admin.from("stories").select("title, points").in("id", data.child_ids).order("title");
+    expect(kids.data).toMatchObject([
+      { title: "OffScale", points: null }, // 999 is off any scale -> clamped
+      { title: "Valid", points: 2 },
+    ]);
+  });
+
+  it("clamps a non-numeric child points value to NULL instead of aborting the split", async () => {
+    const source = await createStory({ title: "BadPts", state_id: unstartedId, points: 1 });
+    const { data, error } = await owner.rpc("split_story", {
+      p_story_id: source,
+      p_children: [{ title: "Kid", description: "", story_type: "feature", points: "abc", task_ids: [] }],
+    });
+    expect(error).toBeNull();
+    const kid = await admin.from("stories").select("points").eq("id", data.child_ids[0]).single();
+    expect(kid.data!.points).toBeNull();
+  });
+
   it("move_story_to_project and copy_story_to_project reject a container (doc-18 §8)", async () => {
     const parent = await createStory({ title: "Epic", state_id: unstartedId });
     await createStory({ title: "kid", parent_id: parent, state_id: unstartedId });

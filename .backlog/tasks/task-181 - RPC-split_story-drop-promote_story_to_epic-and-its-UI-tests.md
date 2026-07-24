@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-24 04:07'
-updated_date: '2026-07-24 07:37'
+updated_date: '2026-07-24 09:43'
 labels: []
 milestone: m-6
 dependencies:
@@ -48,6 +48,10 @@ Official /code-review (high): 5 findings, all UI-scope.
 - #4 (Move/Copy shown on containers): RPC guards protect data; UI hiding is doc-18 §8 and needs is_container on StoryDetail -> added as a TASK-184 AC.
 - #5 (personal-project split UX): splitting a personal task containerizes it (drops from My Work) and its children start unassigned (also not in My Work) -> the task appears to vanish. Surfaced to owner as an open design question for the Split entry (TASK-183/184).
 Re-verified after revert: tsc + eslint clean, apps/web 693 unit pass. Integration unchanged (RPC/migration untouched by the revert).
+
+Follow-up (migration 20260724081029, from TASK-182 /code-review #1): split_story now clamps each child's tentative points to NULL when off the project's point_scale, matching update_story/move/copy — the RPC is a trust boundary and previously stored client points verbatim (velocity/roll-up corruption risk). create-or-replace, grants preserved. TDD: off-scale (999) -> NULL, valid (2) -> kept. Findings #2-#5 deferred to TASK-183/184 (notes added there).
+
+Also hardened in the same migration (TASK-182 /code-review 2nd pass #3): the child points cast is now guarded by jsonb_typeof(...)='number', so a non-numeric value in p_children clamps to NULL instead of aborting the whole split with a raw 22P02 cast error. Test added.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
