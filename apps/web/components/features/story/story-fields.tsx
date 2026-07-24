@@ -11,7 +11,6 @@ export type StoryFieldsValue = {
   description: string;
   storyType: string;
   points: number | null;
-  epicId: string;
   assigneeId: string;
   labelIds: string[];
 };
@@ -33,12 +32,11 @@ export function StoryFields({
   onTextKeyDown,
   onDiscreteChange,
   pointScale,
-  epics,
   members,
   labels,
   idPrefix,
   titleAutoFocus,
-  hidePointsAndEpic,
+  hidePoints,
   section = "all",
 }: {
   value: StoryFieldsValue;
@@ -48,19 +46,18 @@ export function StoryFields({
   onTextKeyDown?: (field: TextField, event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   onDiscreteChange: <F extends DiscreteField>(field: F, value: StoryFieldsValue[F]) => void;
   pointScale: number[];
-  epics: { id: string; name: string }[];
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
   // Distinguishes ids between the detail panel and a draft card that could
   // both be mounted at once (e.g. a draft open while the peek is too).
   idPrefix: string;
   titleAutoFocus?: boolean;
-  // TASK-147: the hidden personal project has no epics and never estimates
-  // (doc-8 §10 "title only, defaults for everything else"; set_story_state
-  // also skips the estimation gate for it server-side, TASK-139) — omitted
-  // entirely rather than shown-disabled (ux-principles principle 1: no dead
-  // controls).
-  hidePointsAndEpic?: boolean;
+  // TASK-147: the hidden personal project never estimates (doc-8 §10 "title
+  // only, defaults for everything else"; set_story_state also skips the
+  // estimation gate for it server-side, TASK-139) — the points field is
+  // omitted entirely rather than shown-disabled (ux-principles principle 1: no
+  // dead controls).
+  hidePoints?: boolean;
   // TASK-172: the standalone /stories/[id] page splits this into a two-column
   // layout (title/description on the left, type/points/epic/assignee/labels
   // in a sidebar) — every other caller (DraftStoryCard, the peek's single-
@@ -125,7 +122,7 @@ export function StoryFields({
               </NativeSelect>
             </div>
 
-            {!hidePointsAndEpic && (
+            {!hidePoints && (
               <div className="flex w-32 flex-col gap-1.5">
                 <Label htmlFor={id("points")}>Points</Label>
                 {/* Points come from the project's point scale — no free numeric
@@ -147,24 +144,6 @@ export function StoryFields({
           </div>
 
           <div className="flex gap-4">
-            {!hidePointsAndEpic && (
-              <div className="flex flex-1 flex-col gap-1.5">
-                <Label htmlFor={id("epic")}>Epic</Label>
-                <NativeSelect
-                  id={id("epic")}
-                  value={value.epicId}
-                  onChange={(e) => onDiscreteChange("epicId", e.target.value)}
-                >
-                  <option value="">None</option>
-                  {epics.map((epic) => (
-                    <option key={epic.id} value={epic.id}>
-                      {epic.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </div>
-            )}
-
             <div className="flex flex-1 flex-col gap-1.5">
               <Label htmlFor={id("assignee")}>Assignee</Label>
               <NativeSelect

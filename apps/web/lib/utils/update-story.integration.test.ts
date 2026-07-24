@@ -83,7 +83,7 @@ describe.skipIf(!RUN)("update_story RPC (integration)", () => {
       p_description: "edited via RPC" as string,
       p_story_type: "bug",
       p_points: 3,
-      p_epic_id: null as unknown as string,
+      p_parent_id: null as unknown as string,
       p_assignee_id: null as unknown as string,
       p_label_ids: [label!.id],
     });
@@ -105,7 +105,7 @@ describe.skipIf(!RUN)("update_story RPC (integration)", () => {
       p_description: null as unknown as string,
       p_story_type: "feature",
       p_points: 4,
-      p_epic_id: null as unknown as string,
+      p_parent_id: null as unknown as string,
       p_assignee_id: null as unknown as string,
       p_label_ids: [],
     });
@@ -120,7 +120,7 @@ describe.skipIf(!RUN)("update_story RPC (integration)", () => {
       p_description: null as unknown as string,
       p_story_type: "feature",
       p_points: null as unknown as number,
-      p_epic_id: null as unknown as string,
+      p_parent_id: null as unknown as string,
       p_assignee_id: null as unknown as string,
       p_label_ids: [],
     });

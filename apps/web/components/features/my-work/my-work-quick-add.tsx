@@ -12,7 +12,6 @@ export function MyWorkQuickAdd({
   projectId,
   currentUserId,
   pointScale,
-  epics,
   members,
   labels,
 }: {
@@ -23,7 +22,6 @@ export function MyWorkQuickAdd({
   // anywhere the user could find it again.
   currentUserId: string;
   pointScale: number[];
-  epics: { id: string; name: string }[];
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
 }) {
@@ -47,11 +45,10 @@ export function MyWorkQuickAdd({
             view="list"
             beforeItemId={null}
             pointScale={pointScale}
-            epics={epics}
             members={members}
             labels={labels}
             defaultAssigneeId={currentUserId}
-            hidePointsAndEpic
+            hidePoints
             onClose={() => setOpen(false)}
           />
         </div>

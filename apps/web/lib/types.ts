@@ -6,7 +6,6 @@ type Tables = Database["public"]["Tables"];
 export type Project = Tables["projects"]["Row"];
 export type Profile = Tables["profiles"]["Row"];
 export type Story = Tables["stories"]["Row"];
-export type Epic = Tables["epics"]["Row"];
 export type Label = Tables["labels"]["Row"];
 export type Iteration = Tables["iterations"]["Row"];
 // `category` is a generic `string` in the generated Row type (the DB CHECK

@@ -233,12 +233,10 @@ function backlogStory(id: string, points: number): BoardStory {
     points,
     assigneeName: null,
     labels: [],
-    epic: null,
     iteration_id: null,
     position: Number(id.slice(1)),
     assignee_id: null,
     labelIds: [],
-    epic_id: null,
     completed_at: null,
   };
 }
@@ -277,7 +275,6 @@ function boardProps(stories: BoardStory[]) {
     showIcebox: false,
     filter: {},
     pointScale: [0, 1, 2, 3, 5, 8, 13],
-    epics: [],
     members: [],
     labels: [],
   };

@@ -90,7 +90,6 @@ export default async function MyWorkPage({
     storyRows,
     myStateResult,
     columnResult,
-    soloEpicsResult,
     soloLabelsResult,
     soloMembersResult,
     soloProjectResult,
@@ -129,9 +128,6 @@ export default async function MyWorkPage({
       ? supabase.from("my_work_columns").select("id, name, position").eq("user_id", user.id).order("position")
       : Promise.resolve({ data: null, error: null }),
     soloPersonalProject
-      ? supabase.from("epics").select("id, name").eq("project_id", soloPersonalProject.id).order("position")
-      : Promise.resolve({ data: null, error: null }),
-    soloPersonalProject
       ? supabase.from("labels").select("id, name").eq("project_id", soloPersonalProject.id).order("name")
       : Promise.resolve({ data: null, error: null }),
     soloPersonalProject
@@ -148,7 +144,6 @@ export default async function MyWorkPage({
   const statesRows = assertReadOk(statesResult);
   const myStateRows = assertReadOk(myStateResult);
   const columnRows = assertReadOk(columnResult);
-  const soloEpics = assertReadOk(soloEpicsResult);
   const soloLabels = assertReadOk(soloLabelsResult);
   const soloMembers = assertReadOk(soloMembersResult);
   const soloProject = assertReadOk(soloProjectResult);
@@ -247,7 +242,6 @@ export default async function MyWorkPage({
             projectId={soloPersonalProject.id}
             currentUserId={user!.id}
             pointScale={pointScaleValues(soloProject?.point_scale ?? "fibonacci", soloProject?.custom_points)}
-            epics={(soloEpics ?? []).map((e) => ({ id: e.id, name: e.name }))}
             labels={(soloLabels ?? []).map((l) => ({ id: l.id, name: l.name }))}
             members={(soloMembers ?? []).map((m) => {
               const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;

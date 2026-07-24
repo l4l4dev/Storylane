@@ -33,8 +33,8 @@ import { useInlineEdit } from "./use-inline-edit";
 // lib/utils/kanban, lib/utils/stories "matchesStoryFilter"). `position` is
 // the shared cross-state ordinal the List view's current zone sorts on —
 // it's meaningless for the Kanban view's own per-column order,
-// which never reads it. `assignee_id`/`labelIds`/`epic_id` are the raw ids
-// filters match on, alongside `assigneeName`/`labels`/`epic` (from
+// which never reads it. `assignee_id`/`labelIds` are the raw ids
+// filters match on, alongside `assigneeName`/`labels` (from
 // `StoryCardData`), which are only ever used for display.
 export type BoardStory = StoryCardData & {
   state_id: string | null;
@@ -42,7 +42,6 @@ export type BoardStory = StoryCardData & {
   position: number;
   assignee_id: string | null;
   labelIds: string[];
-  epic_id: string | null;
   completed_at: string | null;
 };
 
@@ -129,7 +128,6 @@ export function KanbanBoard({
   filter,
   toolbar,
   pointScale,
-  epics,
   members,
   labels,
 }: {
@@ -183,9 +181,8 @@ export function KanbanBoard({
   // estimation picker (TASK-37). The Kanban columns view never needs it —
   // state changes there are drag-only, no transition buttons render.
   pointScale: number[];
-  // The draft story card's Epic/Assignee/Labels fields (TASK-82) — same
-  // shapes StoryDetail uses, so StoryFields renders identically either way.
-  epics: { id: string; name: string }[];
+  // The draft story card's Assignee/Labels fields (TASK-82) — same shapes
+  // StoryDetail uses, so StoryFields renders identically either way.
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
 }) {
@@ -372,7 +369,6 @@ export function KanbanBoard({
           filter={filter}
           canManageStates={canManageStates}
           pointScale={pointScale}
-          epics={epics}
           members={members}
           labels={labels}
         />
@@ -392,7 +388,6 @@ export function KanbanBoard({
           showIcebox={showIcebox}
           filter={filter}
           pointScale={pointScale}
-          epics={epics}
           members={members}
           labels={labels}
         />

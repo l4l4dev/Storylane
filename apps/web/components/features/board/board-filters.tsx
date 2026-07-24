@@ -25,11 +25,9 @@ type Option = { id: string; name: string };
 export function BoardFilters({
   assignees,
   labels,
-  epics,
 }: {
   assignees: Option[];
   labels: Option[];
-  epics: Option[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -53,7 +51,7 @@ export function BoardFilters({
 
   function clearAll() {
     const params = new URLSearchParams(searchParams);
-    for (const key of ["type", "assignee", "label", "epic"]) {
+    for (const key of ["type", "assignee", "label"]) {
       params.delete(key);
     }
     replaceParams(params);
@@ -63,8 +61,7 @@ export function BoardFilters({
   const type = searchParams.get("type") ?? "";
   const assignee = searchParams.get("assignee") ?? "";
   const label = searchParams.get("label") ?? "";
-  const epic = searchParams.get("epic") ?? "";
-  const activeCount = [type, assignee, label, epic].filter(Boolean).length;
+  const activeCount = [type, assignee, label].filter(Boolean).length;
 
   return (
     <Popover>
@@ -131,26 +128,6 @@ export function BoardFilters({
             {labels.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="board-filter-epic" className="text-xs text-muted-foreground">
-            Epic
-          </Label>
-          <NativeSelect
-            id="board-filter-epic"
-            aria-label="Filter by epic"
-            value={epic}
-            onChange={(e) => setParam("epic", e.target.value)}
-            className="h-8 w-full"
-          >
-            <option value="">All epics</option>
-            {epics.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
               </option>
             ))}
           </NativeSelect>

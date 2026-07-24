@@ -20,7 +20,6 @@ const baseStory: StoryCardData = {
   points: 3,
   assigneeName: null,
   labels: [],
-  epic: null,
 };
 
 describe("StoryCard", () => {
@@ -85,40 +84,16 @@ describe("StoryCard", () => {
     expect(screen.getByLabelText("Agent")).toBeInTheDocument();
   });
 
-  // TASK-41: epic membership must stay visible on the card, not just in the
-  // detail panel's editor (spec/ux-principles.md principle 8).
-  it("shows the epic badge when the story belongs to an epic", () => {
-    render(
-      <StoryCard
-        story={{ ...baseStory, epic: { id: "e1", name: "Checkout revamp", color: "#6366f1" } }}
-        projectId="p1"
-      />,
-    );
-    expect(screen.getByText("Checkout revamp")).toBeInTheDocument();
-  });
-
-  it("shows no epic badge when the story has no epic", () => {
-    render(<StoryCard story={baseStory} projectId="p1" />);
-    expect(screen.queryByText("Checkout revamp")).not.toBeInTheDocument();
-  });
-
   it("uses theme foreground text while keeping user colors in chip tints and dots", () => {
     render(
       <StoryCard
         story={{
           ...baseStory,
-          epic: { id: "e1", name: "Pale epic", color: "#ffffcc" },
           labels: [{ id: "l1", name: "Dark label", color: "#111111" }],
         }}
         projectId="p1"
       />,
     );
-
-    const epicName = screen.getByText("Pale epic");
-    const epicChip = epicName.parentElement;
-    expect(epicChip).toHaveClass("text-foreground");
-    expect(epicChip).toHaveStyle({ backgroundColor: "#ffffcc22" });
-    expect((epicChip as HTMLElement).style.color).toBe("");
 
     const labelChip = screen.getByText("Dark label");
     expect(labelChip).toHaveClass("text-foreground");

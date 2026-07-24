@@ -89,7 +89,6 @@ export type DraftStoryInput = {
   description: string | null;
   storyType: string;
   points: number | null;
-  epicId: string | null;
   assigneeId: string | null;
   labelIds: string[];
 };
@@ -183,7 +182,9 @@ export async function createDraftStory(input: DraftStoryInput): Promise<ActionRe
     description: input.description,
     storyType: input.storyType,
     points: input.points,
-    epicId: input.epicId,
+    // New stories start top-level (no parent); nesting happens via the Parent
+    // picker / Split Studio (doc-18), never at quick-create time.
+    parentId: null,
     assigneeId: input.assigneeId,
     labelIds: input.labelIds,
   });

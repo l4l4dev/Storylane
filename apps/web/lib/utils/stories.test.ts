@@ -5,9 +5,9 @@ import stateTemplates from "../../../../spec/fixtures/state-templates.json";
 
 describe("filterStories", () => {
   const stories = [
-    { id: "1", story_type: "feature", assignee_id: "u1", labelIds: ["l1"], epic_id: "e1" },
-    { id: "2", story_type: "bug", assignee_id: "u2", labelIds: ["l2", "l1"], epic_id: null },
-    { id: "3", story_type: "chore", assignee_id: null, labelIds: [], epic_id: "e2" },
+    { id: "1", story_type: "feature", assignee_id: "u1", labelIds: ["l1"] },
+    { id: "2", story_type: "bug", assignee_id: "u2", labelIds: ["l2", "l1"] },
+    { id: "3", story_type: "chore", assignee_id: null, labelIds: [] },
   ];
 
   it("returns everything when no filter is set", () => {
@@ -26,16 +26,12 @@ describe("filterStories", () => {
     expect(filterStories(stories, { labelId: "l1" }).map((s) => s.id)).toEqual(["1", "2"]);
   });
 
-  it("filters by epic", () => {
-    expect(filterStories(stories, { epicId: "e1" }).map((s) => s.id)).toEqual(["1"]);
-  });
-
   it("combines criteria with AND", () => {
     expect(filterStories(stories, { type: "bug", labelId: "l1" }).map((s) => s.id)).toEqual(["2"]);
   });
 
   it("treats empty-string criteria as no filter", () => {
-    expect(filterStories(stories, { type: "", assigneeId: "", labelId: "", epicId: "" })).toHaveLength(3);
+    expect(filterStories(stories, { type: "", assigneeId: "", labelId: "" })).toHaveLength(3);
   });
 });
 

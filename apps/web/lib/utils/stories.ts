@@ -82,17 +82,15 @@ export type StoryFilter = {
   type?: string | null;
   assigneeId?: string | null;
   labelId?: string | null;
-  epicId?: string | null;
 };
 
 type FilterableStory = {
   story_type: string;
   assignee_id: string | null;
   labelIds?: ReadonlyArray<string>;
-  epic_id?: string | null;
 };
 
-/** Whether a single story matches type/assignee/label/epic criteria. Empty/undefined criteria match everything. */
+/** Whether a single story matches type/assignee/label criteria. Empty/undefined criteria match everything. */
 export function matchesStoryFilter<T extends FilterableStory>(story: T, filter: StoryFilter): boolean {
   if (filter.type && story.story_type !== filter.type) {
     return false;
@@ -103,13 +101,10 @@ export function matchesStoryFilter<T extends FilterableStory>(story: T, filter: 
   if (filter.labelId && !(story.labelIds ?? []).includes(filter.labelId)) {
     return false;
   }
-  if (filter.epicId && story.epic_id !== filter.epicId) {
-    return false;
-  }
   return true;
 }
 
-/** Filters by story type, assignee, label, and epic. Empty/undefined criteria match everything. */
+/** Filters by story type, assignee, and label. Empty/undefined criteria match everything. */
 export function filterStories<T extends FilterableStory>(stories: ReadonlyArray<T>, filter: StoryFilter): T[] {
   return stories.filter((story) => matchesStoryFilter(story, filter));
 }

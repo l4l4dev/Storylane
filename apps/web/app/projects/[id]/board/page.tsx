@@ -34,7 +34,6 @@ export default async function BoardPage({
     type?: string;
     assignee?: string;
     label?: string;
-    epic?: string;
     story?: string;
     invite_failed?: string;
     promoted_epic?: string;
@@ -46,7 +45,6 @@ export default async function BoardPage({
     type,
     assignee,
     label,
-    epic,
     story: peekStoryId,
     invite_failed,
     promoted_epic,
@@ -104,7 +102,7 @@ export default async function BoardPage({
     project.iteration_length,
   );
 
-  const [iterationsResult, stories, labelsResult, epicsResult, dividersResult, pendingGoalsResult, statesResult] =
+  const [iterationsResult, stories, labelsResult, dividersResult, pendingGoalsResult, statesResult] =
     await Promise.all([
       supabase
         .from("iterations")
@@ -117,14 +115,13 @@ export default async function BoardPage({
         supabase
           .from("stories")
           .select(
-            "id, number, title, description, story_type, state_id, points, position, iteration_id, epic_id, assignee_id, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
+            "id, number, title, description, story_type, state_id, points, position, iteration_id, assignee_id, completed_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
           )
           .eq("project_id", id)
           .order("position", { ascending: true })
           .range(from, to),
       ),
       supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
-      supabase.from("epics").select("id, name, color").eq("project_id", id).order("position", { ascending: true }),
       // List view only (see components/features/board/board-list-view.tsx) —
       // freeform planning dividers for the Backlog section.
       supabase.from("backlog_dividers").select("id, label, kind, position").eq("project_id", id),
@@ -144,7 +141,6 @@ export default async function BoardPage({
     ]);
   const iterations = assertReadOk(iterationsResult);
   const labels = assertReadOk(labelsResult);
-  const epics = assertReadOk(epicsResult);
   const dividers = assertReadOk(dividersResult);
   const pendingGoals = assertReadOk(pendingGoalsResult);
   const statesData = assertReadOk(statesResult);
@@ -168,7 +164,6 @@ export default async function BoardPage({
     allIterations.filter((iteration) => iteration.state === "done").map((iteration) => iteration.id),
   );
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
-  const epicById = new Map((epics ?? []).map((e) => [e.id, e]));
 
   const cards = stories
     // Stories of finalized iterations belong to the history view
@@ -177,7 +172,6 @@ export default async function BoardPage({
     .map((story) => {
       const assigneeProfile = Array.isArray(story.assignee) ? story.assignee[0] : story.assignee;
       const labelIds = story.story_labels.map((sl) => sl.label_id);
-      const epic = story.epic_id ? epicById.get(story.epic_id) : undefined;
       const card: BoardStory = {
         id: story.id,
         number: story.number,
@@ -198,8 +192,6 @@ export default async function BoardPage({
           .filter((l): l is NonNullable<typeof l> => l != null)
           .map((l) => ({ id: l.id, name: l.name, color: l.color })),
         labelIds,
-        epic_id: story.epic_id,
-        epic: epic ? { id: epic.id, name: epic.name, color: epic.color } : null,
       };
       return card;
     });
@@ -211,7 +203,7 @@ export default async function BoardPage({
   // hidden stories' positions, and would make the virtual-iteration
   // groups/point sums/committed-points shift with whatever filter happened
   // to be active.
-  const filter = { type, assigneeId: assignee, labelId: label, epicId: epic };
+  const filter = { type, assigneeId: assignee, labelId: label };
   const initialContainers: Record<string, BoardStory[]> = {
     [BACKLOG_COLUMN_ID]: [],
     [ICEBOX_COLUMN_ID]: [],
@@ -345,14 +337,12 @@ export default async function BoardPage({
         canManageStates={canFinishIteration}
         filter={filter}
         pointScale={pointScaleValues(project.point_scale, project.custom_points)}
-        epics={(epics ?? []).map((e) => ({ id: e.id, name: e.name }))}
         members={memberOptions}
         labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
         toolbar={
           <BoardFilters
             assignees={assigneeOptions}
             labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
-            epics={(epics ?? []).map((e) => ({ id: e.id, name: e.name }))}
           />
         }
       />

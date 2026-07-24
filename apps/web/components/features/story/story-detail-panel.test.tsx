@@ -49,11 +49,10 @@ const baseDetail: StoryDetail = {
   stateId: "Unstarted",
   states: CLASSIC_STATES,
   points: 3,
-  epicId: null,
+  parentId: null,
   assigneeId: null,
   labelIds: [],
   pointScale: [0, 1, 2, 3, 5, 8, 13],
-  epics: [],
   labels: [],
   members: [],
   comments: [],
@@ -68,29 +67,28 @@ describe("StoryDetailPanel", () => {
     expect(screen.getByLabelText("Description")).toHaveValue("Let users sign in");
   });
 
-  // TASK-147: isPersonalProject must reach StoryFields (hides Points/Epic —
+  // TASK-147: isPersonalProject must reach StoryFields (hides Points —
   // doc-8 §10) and TransitionButtons (skips the needless Estimate gate,
   // matching set_story_state's server-side is_personal exemption, TASK-139).
-  it("hides Points/Epic and the Estimate gate for a personal-project story", () => {
+  it("hides Points and the Estimate gate for a personal-project story", () => {
     render(
       <StoryDetailPanel
         detail={{ ...baseDetail, isPersonalProject: true, points: null, stateId: "Unstarted" }}
       />,
     );
     expect(screen.queryByLabelText("Points")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Epic")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Estimate" })).not.toBeInTheDocument();
   });
 
   // TASK-172: layout="split" (the standalone /stories/[id] page) renders
-  // title/description via one StoryFields call and type/points/epic/
+  // title/description via one StoryFields call and type/points/
   // assignee/labels via a second — this proves both halves still show up
   // (i.e. nothing was dropped splitting the single "all" render into two).
   it("renders every field when layout is split", () => {
     render(
       <StoryDetailPanel
-        detail={{ ...baseDetail, epicId: null, epics: [{ id: "e1", name: "Onboarding" }], labels: [{ id: "l1", name: "urgent" }] }}
+        detail={{ ...baseDetail, labels: [{ id: "l1", name: "urgent" }] }}
         layout="split"
       />,
     );
@@ -98,7 +96,6 @@ describe("StoryDetailPanel", () => {
     expect(screen.getByLabelText("Description")).toHaveValue("Let users sign in");
     expect(screen.getByLabelText("Type")).toBeInTheDocument();
     expect(screen.getByLabelText("Points")).toBeInTheDocument();
-    expect(screen.getByLabelText("Epic")).toBeInTheDocument();
     expect(screen.getByLabelText("Assignee")).toBeInTheDocument();
     expect(screen.getByText("urgent")).toBeInTheDocument();
   });
@@ -329,9 +326,8 @@ describe("StoryDetailPanel autosave", () => {
         description: "Someone else's description",
         story_type: "bug",
         points: 8,
-        epic_id: null,
+        parent_id: null,
         assignee_id: null,
-        custom_status_id: null,
       });
     });
 

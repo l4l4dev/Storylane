@@ -11,7 +11,6 @@ vi.mock("@/app/projects/[id]/board/actions", () => ({
   createDraftStory: createDraftStoryMock,
 }));
 
-const EPICS = [{ id: "epic-1", name: "Checkout revamp" }];
 const MEMBERS = [{ id: "user-1", name: "Mary Evans" }];
 const LABELS = [{ id: "label-1", name: "Urgent" }];
 
@@ -23,7 +22,6 @@ function renderCard(overrides: Partial<Parameters<typeof DraftStoryCard>[0]> = {
       target="unstarted"
       beforeItemId={null}
       pointScale={[0, 1, 2, 3, 5, 8, 13]}
-      epics={EPICS}
       members={MEMBERS}
       labels={LABELS}
       onClose={onClose}
@@ -61,29 +59,26 @@ describe("DraftStoryCard", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows the full field set: title, description, type, points, epic, assignee, labels", () => {
+  it("shows the full field set: title, description, type, points, assignee, labels", () => {
     renderCard();
 
     expect(screen.getByLabelText("Title")).toBeInTheDocument();
     expect(screen.getByLabelText("Description")).toBeInTheDocument();
     expect(screen.getByLabelText("Type")).toBeInTheDocument();
     expect(screen.getByLabelText("Points")).toBeInTheDocument();
-    expect(screen.getByLabelText("Epic")).toBeInTheDocument();
     expect(screen.getByLabelText("Assignee")).toBeInTheDocument();
     expect(screen.getByText("Urgent")).toBeInTheDocument();
   });
 
-  // TASK-147: My Work's quick-add passes hidePointsAndEpic (doc-8 §10 "title
-  // only, defaults for everything else") — the personal project has no epics
-  // and never estimates.
-  it("hides Points and Epic when hidePointsAndEpic is set, keeping the rest", () => {
-    renderCard({ hidePointsAndEpic: true });
+  // TASK-147: My Work's quick-add passes hidePoints (doc-8 §10 "title only,
+  // defaults for everything else") — the personal project never estimates.
+  it("hides Points when hidePoints is set, keeping the rest", () => {
+    renderCard({ hidePoints: true });
 
     expect(screen.getByLabelText("Title")).toBeInTheDocument();
     expect(screen.getByLabelText("Type")).toBeInTheDocument();
     expect(screen.getByLabelText("Assignee")).toBeInTheDocument();
     expect(screen.queryByLabelText("Points")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Epic")).not.toBeInTheDocument();
   });
 
   // My Work's quick-add passes this (TASK-93 follow-up): a personal task left
@@ -114,7 +109,6 @@ describe("DraftStoryCard", () => {
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Ship it" } });
     fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Details here" } });
     fireEvent.change(screen.getByLabelText("Points"), { target: { value: "3" } });
-    fireEvent.change(screen.getByLabelText("Epic"), { target: { value: "epic-1" } });
     fireEvent.change(screen.getByLabelText("Assignee"), { target: { value: "user-1" } });
     fireEvent.click(screen.getByText("Urgent"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -128,7 +122,6 @@ describe("DraftStoryCard", () => {
       description: "Details here",
       storyType: "feature",
       points: 3,
-      epicId: "epic-1",
       assigneeId: "user-1",
       labelIds: ["label-1"],
     });
@@ -205,7 +198,6 @@ describe("DraftStoryCard", () => {
           target="unstarted"
           beforeItemId={null}
           pointScale={[]}
-          epics={[]}
           members={[]}
           labels={[]}
           onClose={onClose}

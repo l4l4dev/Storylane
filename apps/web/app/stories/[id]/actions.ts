@@ -25,11 +25,10 @@ export type StoryDetail = {
   // computeStateGate input (packages/core).
   states: ProjectState[];
   points: number | null;
-  epicId: string | null;
+  parentId: string | null;
   assigneeId: string | null;
   labelIds: string[];
   pointScale: number[];
-  epics: { id: string; name: string }[];
   labels: { id: string; name: string }[];
   members: { id: string; name: string; isAgent?: boolean }[];
   comments: { id: string; body: string; createdAt: string; authorName: string }[];
@@ -58,14 +57,13 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     return null;
   }
 
-  const [{ data: project }, { data: epics }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: history }, { data: statesData }] =
+  const [{ data: project }, { data: labels }, { data: members }, { data: comments }, { data: tasks }, { data: history }, { data: statesData }] =
     await Promise.all([
       supabase
         .from("projects")
         .select("point_scale, custom_points, is_personal")
         .eq("id", story.project_id)
         .single(),
-      supabase.from("epics").select("id, name").eq("project_id", story.project_id).order("position"),
       supabase.from("labels").select("id, name").eq("project_id", story.project_id).order("name"),
       supabase
         .from("project_members")
@@ -105,11 +103,10 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     stateId: story.state_id,
     states: (statesData ?? []) as ProjectState[],
     points: story.points,
-    epicId: story.epic_id,
+    parentId: story.parent_id,
     assigneeId: story.assignee_id,
     labelIds: story.story_labels.map((sl) => sl.label_id),
     pointScale: pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points),
-    epics: epics ?? [],
     labels: labels ?? [],
     members: (members ?? []).map((m) => {
       const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
@@ -149,7 +146,7 @@ export type UpdateStoryInput = {
   description: string | null;
   storyType: string;
   points: number | null;
-  epicId: string | null;
+  parentId: string | null;
   assigneeId: string | null;
   labelIds: string[];
 };
@@ -159,7 +156,7 @@ export type UpdateStoryFields = {
   description: string | null;
   storyType: string;
   points: number | null;
-  epicId: string | null;
+  parentId: string | null;
   assigneeId: string | null;
   labelIds: string[];
 };
@@ -201,7 +198,7 @@ export async function updateStory(input: UpdateStoryInput): Promise<UpdateStoryR
     p_description: input.description as string,
     p_story_type: input.storyType,
     p_points: input.points as number,
-    p_epic_id: input.epicId as string,
+    p_parent_id: input.parentId as string,
     p_assignee_id: input.assigneeId as string,
     p_label_ids: input.labelIds,
   });
@@ -222,7 +219,7 @@ export async function updateStory(input: UpdateStoryInput): Promise<UpdateStoryR
       description: row.description,
       storyType: row.story_type,
       points: row.points,
-      epicId: row.epic_id,
+      parentId: row.parent_id,
       assigneeId: row.assignee_id,
       labelIds: row.label_ids ?? [],
     },

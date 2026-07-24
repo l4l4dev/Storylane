@@ -819,7 +819,6 @@ function ListSection({
   // itself is Current-only.
   draftAdd: {
     target: "unstarted";
-    epics: { id: string; name: string }[];
     members: { id: string; name: string; isAgent?: boolean }[];
     labels: { id: string; name: string }[];
   };
@@ -849,7 +848,6 @@ function ListSection({
           view="list"
           beforeItemId={items[0]?.id ?? null}
           pointScale={pointScale}
-          epics={draftAdd.epics}
           members={draftAdd.members}
           labels={draftAdd.labels}
           onClose={() => setDraftOpen(false)}
@@ -901,7 +899,6 @@ function BacklogSection({
   collapsedGroups,
   onToggleGroup,
   pointScale,
-  epics,
   members,
   labels,
   onError,
@@ -924,8 +921,7 @@ function BacklogSection({
   collapsedGroups: ReadonlySet<string>;
   onToggleGroup: (key: string) => void;
   pointScale: number[];
-  // The draft story card's Epic/Assignee/Labels field options (TASK-82).
-  epics: { id: string; name: string }[];
+  // The draft story card's Assignee/Labels field options (TASK-82).
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
   // Surfaces a row insert-menu failure (TASK-42) in the shared banner at
@@ -991,7 +987,6 @@ function BacklogSection({
           target="backlog"
           beforeItemId={nextRealRowIds[0]}
           pointScale={pointScale}
-          epics={epics}
           members={members}
           labels={labels}
           onClose={() => setDraftOpen(false)}
@@ -1074,7 +1069,6 @@ function IceboxColumn({
   projectId,
   states,
   pointScale,
-  epics,
   members,
   labels,
 }: {
@@ -1082,7 +1076,6 @@ function IceboxColumn({
   projectId: string;
   states: ProjectState[];
   pointScale: number[];
-  epics: { id: string; name: string }[];
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
 }) {
@@ -1104,7 +1097,6 @@ function IceboxColumn({
             target="icebox"
             beforeItemId={items[0]?.id ?? null}
             pointScale={pointScale}
-            epics={epics}
             members={members}
             labels={labels}
             onClose={() => setDraftOpen(false)}
@@ -1143,7 +1135,6 @@ export function BoardListView({
   showIcebox,
   filter,
   pointScale,
-  epics,
   members,
   labels,
 }: {
@@ -1171,8 +1162,7 @@ export function BoardListView({
   // to every TransitionButtons render so an unestimated feature's estimation
   // picker offers the right scale (TASK-37).
   pointScale: number[];
-  // The draft story card's Epic/Assignee/Labels field options (TASK-82).
-  epics: { id: string; name: string }[];
+  // The draft story card's Assignee/Labels field options (TASK-82).
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
 }) {
@@ -1346,7 +1336,7 @@ export function BoardListView({
             items={visibleCurrentItems}
             projectId={projectId}
             states={states}
-            draftAdd={{ target: "unstarted", epics, members, labels }}
+            draftAdd={{ target: "unstarted", members, labels }}
             collapsed={collapsedGroups.has("current")}
             onToggleCollapse={() => onToggleGroup("current")}
             pointScale={pointScale}
@@ -1366,7 +1356,6 @@ export function BoardListView({
             collapsedGroups={collapsedGroups}
             onToggleGroup={onToggleGroup}
             pointScale={pointScale}
-            epics={epics}
             members={members}
             labels={labels}
             onError={setMutationError}
@@ -1379,7 +1368,6 @@ export function BoardListView({
             projectId={projectId}
             states={states}
             pointScale={pointScale}
-            epics={epics}
             members={members}
             labels={labels}
           />

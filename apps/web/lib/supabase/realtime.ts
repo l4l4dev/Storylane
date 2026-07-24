@@ -100,7 +100,7 @@ export type StoryRealtimeRow = {
   description: string | null;
   story_type: string;
   points: number | null;
-  epic_id: string | null;
+  parent_id: string | null;
   assignee_id: string | null;
 };
 

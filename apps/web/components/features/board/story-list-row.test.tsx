@@ -36,29 +36,9 @@ const baseStory: StoryCardData & { state_id: string | null } = {
   points: 3,
   assigneeName: null,
   labels: [],
-  epic: null,
 };
 
-// TASK-41: epic membership must stay visible on the List row too, not just
-// the Kanban/Focus card (spec/ux-principles.md principle 8).
 describe("StoryListRow", () => {
-  it("shows the epic badge when the story belongs to an epic", () => {
-    render(
-      <StoryListRow
-        story={{ ...baseStory, epic: { id: "e1", name: "Checkout revamp", color: "#6366f1" } }}
-        projectId="p1"
-        states={CLASSIC_STATES}
-        pointScale={fibonacci}
-      />,
-    );
-    expect(screen.getByText("Checkout revamp")).toBeInTheDocument();
-  });
-
-  it("shows no epic badge when the story has no epic", () => {
-    render(<StoryListRow story={baseStory} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />);
-    expect(screen.queryByText("Checkout revamp")).not.toBeInTheDocument();
-  });
-
   it("marks an agent assignee in the compact row", () => {
     render(
       <StoryListRow
@@ -104,7 +84,6 @@ describe("StoryListRow", () => {
       <StoryListRow
         story={{
           ...baseStory,
-          epic: { id: "e1", name: "Checkout revamp", color: "#6366f1" },
           labels: [{ id: "l1", name: "Urgent", color: "#ef4444" }],
         }}
         projectId="p1"
@@ -115,7 +94,6 @@ describe("StoryListRow", () => {
 
     expect(screen.getByRole("button", { name: /Add login/ })).toHaveClass("min-w-0");
     expect(screen.getByText("Add login")).toHaveClass("min-w-0", "flex-1");
-    expect(screen.getByText("Checkout revamp").parentElement?.parentElement).toHaveClass("hidden", "sm:inline-flex");
     expect(screen.getByText("•••")).toHaveClass("hidden", "sm:inline-flex");
     expect(screen.getByText("•••")).toHaveAttribute("data-slot", "badge");
     expect(screen.getByLabelText("3 points")).toBeInTheDocument();
@@ -133,7 +111,6 @@ describe("StoryListRow", () => {
             points: null,
             state_id: "Rejected",
             assigneeName: "Mary Evans",
-            epic: { id: "e1", name: "Checkout revamp", color: "#6366f1" },
             labels: [
               { id: "l1", name: "Urgent", color: "#ef4444" },
               { id: "l2", name: "Customer request", color: "#3b82f6" },

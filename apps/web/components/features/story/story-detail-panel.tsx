@@ -24,7 +24,6 @@ type EditableFields = {
   description: string;
   storyType: string;
   points: number | null;
-  epicId: string;
   assigneeId: string;
   labelIds: string[];
 };
@@ -34,7 +33,6 @@ const LOCKABLE_FIELDS = [
   "description",
   "storyType",
   "points",
-  "epicId",
   "assigneeId",
   "labelIds",
 ] as const;
@@ -46,7 +44,6 @@ function toEditableFields(detail: StoryDetail): EditableFields {
     description: detail.description ?? "",
     storyType: detail.storyType,
     points: detail.points,
-    epicId: detail.epicId ?? "",
     assigneeId: detail.assigneeId ?? "",
     labelIds: detail.labelIds,
   };
@@ -58,7 +55,6 @@ function toEditableFieldsFromRealtime(row: StoryRealtimeRow): EditableFields {
     description: row.description ?? "",
     storyType: row.story_type,
     points: row.points,
-    epicId: row.epic_id ?? "",
     assigneeId: row.assignee_id ?? "",
     // Realtime doesn't carry the joined story_labels rows — labels only
     // ever change through this panel's own save, so they're never merged
@@ -154,7 +150,11 @@ export function StoryDetailPanel({
       description: snapshot.description.trim() ? snapshot.description : null,
       storyType: snapshot.storyType,
       points: snapshot.points,
-      epicId: snapshot.epicId || null,
+      // doc-18: the parent (nesting) link is preserved unchanged here — there
+      // is no parent editor in the detail form yet (the Parent picker lands in
+      // TASK-184). Sending the story's current parent keeps update_story's
+      // p_parent_id from wiping it on every autosave.
+      parentId: detail.parentId ?? null,
       assigneeId: snapshot.assigneeId || null,
       labelIds: snapshot.labelIds,
     });
@@ -351,11 +351,10 @@ export function StoryDetailPanel({
     onTextKeyDown: handleTextKeyDown,
     onDiscreteChange: handleDiscreteChange,
     pointScale: detail.pointScale,
-    epics: detail.epics,
     members: detail.members,
     labels: detail.labels,
     idPrefix: "detail",
-    hidePointsAndEpic: detail.isPersonalProject,
+    hidePoints: detail.isPersonalProject,
   } as const;
 
   const historySection = detail.history.length > 0 && (

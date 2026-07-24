@@ -324,7 +324,6 @@ function KanbanColumn({
   // Backlog/Icebox panels get their own in BoardListView).
   draftAdd?: {
     pointScale: number[];
-    epics: { id: string; name: string }[];
     members: { id: string; name: string; isAgent?: boolean }[];
     labels: { id: string; name: string }[];
   };
@@ -355,7 +354,6 @@ function KanbanColumn({
             view="tracker"
             beforeItemId={stories[0]?.id ?? null}
             pointScale={draftAdd.pointScale}
-            epics={draftAdd.epics}
             members={draftAdd.members}
             labels={draftAdd.labels}
             onClose={() => setDraftOpen(false)}
@@ -380,7 +378,6 @@ export function KanbanColumnsBoard({
   filter,
   canManageStates,
   pointScale,
-  epics,
   members,
   labels,
 }: {
@@ -400,7 +397,6 @@ export function KanbanColumnsBoard({
   // The draft story card's field options (TASK-82) — only the unstarted
   // column's trigger ever uses these.
   pointScale: number[];
-  epics: { id: string; name: string }[];
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
 }) {
@@ -545,7 +541,7 @@ export function KanbanColumnsBoard({
             stories={visibleContainers[state.id] ?? []}
             canManageStates={canManageStates}
             draftAdd={
-              state.id === firstUnstartedId ? { pointScale, epics, members, labels } : undefined
+              state.id === firstUnstartedId ? { pointScale, members, labels } : undefined
             }
           >
             <DroppableStoryList

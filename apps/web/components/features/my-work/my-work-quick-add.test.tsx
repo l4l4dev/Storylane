@@ -18,7 +18,6 @@ describe("MyWorkQuickAdd", () => {
         projectId="project-1"
         currentUserId="user-1"
         pointScale={[1, 2, 3]}
-        epics={[]}
         members={[]}
         labels={[]}
       />,

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-4-8'
 created_date: '2026-07-24 04:07'
-updated_date: '2026-07-24 04:37'
+updated_date: '2026-07-24 05:18'
 labels: []
 milestone: m-6
 dependencies: []
@@ -41,4 +41,6 @@ Replace the separate epics table + stories.epic_id label model with a self-refer
 
 <!-- SECTION:NOTES:BEGIN -->
 Slice 1 done on feat/epic-story-unification: migration 20260724043408_epic_story_unification_schema.sql (add parent_id/is_container/epic_color + off-board CHECK; drop stories.epic_id + epics table CASCADE). Verified via supabase db reset (all migrations + seed apply clean). Regenerated database.types.ts (epics gone, new cols present). SCOPE DISCOVERY: update_story RPC (20260708000003) and mcp atomic-write RPC (20260719000003) still take p_epic_id and write stories.epic_id -> now broken. These need redefining to parent_id within TASK-178 to keep the DB coherent (swap epic->parent). Remaining: RPC epic_id->parent_id swap, ~24 TS files compile sweep, test updates, pnpm test+lint. iOS Story model deferred (Web-first).
+
+Slice 2 done + committed (34cf59a, WIP): RPC re-anchor migration 20260724051506 (update_story + create_story_tracker epic_id->parent_id), db reset verified, types regenerated (only promote's epic refs remain, dropped in 181). Remaining TS compile sweep surface (tsc --noEmit): board/page.tsx(38), iterations/page.tsx(24), epics/page.tsx(18), epics/actions.ts(12), stories/[id]/actions.ts(6), my-work/page.tsx(4), lib/types.ts(1) + cascade into components (story-card EpicBadge, story-fields epic dropdown, story-detail-panel, board-list-view, kanban-board, epic UI components) + tests + lint. Approach: strip epic from queries/shapes; neuter epic UI (epics page/actions/components, EpicBadge, epic dropdown) deferring the real container UI to TASK-184; swap TS updateStory epicId->parentId.
 <!-- SECTION:NOTES:END -->

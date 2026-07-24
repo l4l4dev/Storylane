@@ -23,7 +23,6 @@ const EMPTY_VALUE: StoryFieldsValue = {
   description: "",
   storyType: "feature",
   points: null,
-  epicId: "",
   assigneeId: "",
   labelIds: [],
 };
@@ -42,11 +41,10 @@ export function DraftStoryCard({
   view,
   beforeItemId,
   pointScale,
-  epics,
   members,
   labels,
   defaultAssigneeId,
-  hidePointsAndEpic,
+  hidePoints,
   onClose,
 }: {
   projectId: string;
@@ -56,7 +54,6 @@ export function DraftStoryCard({
   // (TASK-82 AC#4) — null when the panel is empty.
   beforeItemId: string | null;
   pointScale: number[];
-  epics: { id: string; name: string }[];
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
   // Board panels leave this unset (Pivotal parity: unassigned by default).
@@ -67,7 +64,7 @@ export function DraftStoryCard({
   // TASK-147: My Work's quick-add (the personal project's only creation
   // surface) passes this — doc-8 §10 "title only, defaults for everything
   // else". Board panel callers leave it unset.
-  hidePointsAndEpic?: boolean;
+  hidePoints?: boolean;
   onClose: () => void;
 }) {
   const [value, setValue] = useState<StoryFieldsValue>(() => ({
@@ -114,7 +111,6 @@ export function DraftStoryCard({
       description: value.description.trim() ? value.description : null,
       storyType: value.storyType,
       points: value.points,
-      epicId: value.epicId || null,
       assigneeId: value.assigneeId || null,
       labelIds: value.labelIds,
     });
@@ -162,12 +158,11 @@ export function DraftStoryCard({
           onTextChange={(field, v) => setValue((prev) => ({ ...prev, [field]: v }))}
           onDiscreteChange={(field, v) => setValue((prev) => ({ ...prev, [field]: v }))}
           pointScale={pointScale}
-          epics={epics}
           members={members}
           labels={labels}
           idPrefix="draft"
           titleAutoFocus
-          hidePointsAndEpic={hidePointsAndEpic}
+          hidePoints={hidePoints}
         />
         <div className="mt-3 flex items-center gap-2">
           <Button type="submit" size="xs" disabled={pending || !value.title.trim()}>

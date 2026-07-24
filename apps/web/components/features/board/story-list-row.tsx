@@ -6,7 +6,7 @@ import { Bug, Star, Wrench, type LucideIcon } from "lucide-react";
 import { formatPoints, storyStateBadge, STORY_TYPE_META, type StoryType } from "@/lib/utils/stories";
 import { initials } from "@/lib/utils/format";
 import type { ProjectState } from "@/lib/types";
-import { EpicBadge, ReleaseMarkerRow, type StoryCardData } from "./story-card";
+import { ReleaseMarkerRow, type StoryCardData } from "./story-card";
 import { TransitionButtons } from "@/components/features/story/transition-buttons";
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 import { Badge } from "@/components/ui/badge";
@@ -78,11 +78,6 @@ export function StoryListRow({
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{story.title}</span>
       </button>
 
-      {story.epic && (
-        <span className="hidden min-w-0 sm:inline-flex">
-          <EpicBadge epic={story.epic} />
-        </span>
-      )}
       {/* No badge for Icebox rows — the column/section itself already says
           "Icebox", so a per-row badge there would be redundant noise. */}
       {story.state_id !== null && (
