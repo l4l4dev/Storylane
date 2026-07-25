@@ -16,25 +16,6 @@
 - Views handle presentation only — business logic belongs in ViewModels or Repositories
 - All Supabase communication goes through the Repository layer
 
-```
-apps/ios/Storylane/
-├── Features/
-│   ├── Backlog/
-│   │   ├── BacklogView.swift
-│   │   └── BacklogViewModel.swift
-│   ├── Story/
-│   │   ├── StoryDetailView.swift
-│   │   └── StoryDetailViewModel.swift
-│   └── ...
-├── Repositories/
-│   ├── StoryRepository.swift
-│   └── ProjectRepository.swift
-├── Models/
-│   └── Story.swift, Project.swift ...
-└── Core/
-    └── SupabaseClient.swift
-```
-
 ## Testing
 - Use **Swift Testing** — never XCTest
 - Write unit tests for ViewModels and Repositories

@@ -59,17 +59,6 @@ Most work here is done by AI agents — keep context small:
 
 ---
 
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| iOS | Swift / SwiftUI (iOS 17+) |
-| Web | Next.js (App Router) + TypeScript |
-| Backend | Supabase (DB / Auth / Realtime) |
-| Hosting | Vercel |
-
----
-
 iOS conventions live in `apps/ios/CLAUDE.md`; Web conventions live in `apps/web/CLAUDE.md` (loaded automatically when working under those directories).
 
 ## Supabase Conventions

@@ -12,26 +12,6 @@
 - Constants (env vars etc.): `UPPER_SNAKE_CASE`
 - File names: `UpperCamelCase.tsx` for components, `kebab-case.ts` otherwise
 
-## Folder Structure
-
-```
-apps/web/
-├── app/                      # Next.js App Router
-│   ├── (auth)/
-│   ├── dashboard/
-│   └── projects/[id]/
-├── components/
-│   ├── ui/                   # Generic UI components
-│   └── features/             # Feature-specific components
-│       ├── backlog/
-│       ├── story/
-│       └── iteration/
-├── lib/
-│   ├── supabase/             # Supabase client
-│   └── utils/
-└── types/                    # Type definitions
-```
-
 ## Testing
 - Unit tests: Vitest
 - Component tests: Testing Library
