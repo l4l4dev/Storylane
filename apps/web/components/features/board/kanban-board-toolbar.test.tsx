@@ -22,6 +22,7 @@ function iceboxStory(id: string): BoardStory {
     completed_at: null,
     parentId: null,
     parentEpicTitle: null,
+    parentEpicColor: null,
   };
 }
 
@@ -301,6 +302,7 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
       completed_at: null,
       parentId: null,
       parentEpicTitle: null,
+      parentEpicColor: null,
     };
     render(
       <KanbanBoard
@@ -336,6 +338,7 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
       completed_at: null,
       parentId: null,
       parentEpicTitle: null,
+      parentEpicColor: null,
     };
     const backlogStory = {
       ...currentStory,

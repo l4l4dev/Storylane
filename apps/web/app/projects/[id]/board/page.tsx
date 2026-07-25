@@ -199,6 +199,7 @@ export default async function BoardPage({
         labelIds,
         parentId: story.parent_id,
         parentEpicTitle: story.parent_id ? (containerById.get(story.parent_id)?.title ?? null) : null,
+        parentEpicColor: story.parent_id ? (containerById.get(story.parent_id)?.epic_color ?? null) : null,
       };
       return card;
     });

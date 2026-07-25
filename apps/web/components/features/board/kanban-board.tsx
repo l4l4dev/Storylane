@@ -47,11 +47,13 @@ export type BoardStory = StoryCardData & {
   completed_at: string | null;
   // doc-18 §9: a container's own children carry parentId; the board fetch
   // still excludes containers themselves (TASK-180) so this only ever
-  // points at one. parentEpicTitle is precomputed at fetch time (board/
-  // page.tsx) rather than looked up client-side, so StoryListRow's "part of
-  // Epic" link needs no extra prop threading through the row wrappers.
+  // points at one. parentEpicTitle/parentEpicColor are precomputed at fetch
+  // time (board/page.tsx) rather than looked up client-side, so
+  // StoryListRow's "part of Epic" link and left rule (doc-20 §4) need no
+  // extra prop threading through the row wrappers.
   parentId: string | null;
   parentEpicTitle: string | null;
+  parentEpicColor: string | null;
 };
 
 export type IterationMeta = {

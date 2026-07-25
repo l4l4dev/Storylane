@@ -7,6 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-25 03:14'
+updated_date: '2026-07-25 08:14'
 labels:
   - db
 milestone: m-6
@@ -35,4 +36,12 @@ Since the migration is already applied, these need a NEW forward-fixing migratio
 - [ ] #3 Migration comments no longer cite specific review-pass provenance (rls-security-reviewer / TASK-189 / /code-review) per CLAUDE.md's Code Comment Policy
 - [ ] #4 The audit-then-clear block and the #6366f1 default-color literal are defined once and reused by recompute_is_container/create_epic/set_epic_pinned instead of hand-duplicated
 - [ ] #5 rls-security-reviewer pass plus /code-review before merge (this migration touches TASK-182/TASK-189's remediation surface)
+- [ ] #6 The boolean expression 'epic_pinned OR has_children' is defined once and reused by derive_is_container's trigger body and recompute_is_container's v_should_be computation, not duplicated verbatim (found by TASK-191's /code-review)
+- [ ] #7 protect_stories_epic_pinned's blanket role-based exemption (any SECURITY DEFINER function bypasses the guard) is narrowed to an explicit allowlist of the two writer functions, or the gap is explicitly reviewed and accepted as low-risk with a comment explaining why (found by TASK-191's /code-review)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+TASK-191's /code-review (2026-07-25) surfaced 2 more findings against this same migration, folded in as AC#6/#7 above: the is_container boolean formula duplicated between derive_is_container and recompute_is_container, and protect_stories_epic_pinned's role-based (not allowlist-based) exemption for SECURITY DEFINER functions -- not exploitable today (verified: update_story isn't SECURITY DEFINER; split_story forces epic_pinned false on insert), but flagged as a forward-looking hardening gap.
+<!-- SECTION:NOTES:END -->

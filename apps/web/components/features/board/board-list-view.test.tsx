@@ -244,6 +244,7 @@ function backlogStory(id: string, points: number): BoardStory {
     completed_at: null,
     parentId: null,
     parentEpicTitle: null,
+    parentEpicColor: null,
   };
 }
 

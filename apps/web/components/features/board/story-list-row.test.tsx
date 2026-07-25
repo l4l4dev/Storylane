@@ -25,7 +25,12 @@ const CLASSIC_STATES: ProjectState[] = stateTemplates.classic.states.map((s) => 
   created_at: "",
 }));
 
-const baseStory: StoryCardData & { state_id: string | null; parentId: string | null; parentEpicTitle: string | null } = {
+const baseStory: StoryCardData & {
+  state_id: string | null;
+  parentId: string | null;
+  parentEpicTitle: string | null;
+  parentEpicColor: string | null;
+} = {
   id: "s1",
   number: 42,
   title: "Add login",
@@ -38,6 +43,7 @@ const baseStory: StoryCardData & { state_id: string | null; parentId: string | n
   labels: [],
   parentId: null,
   parentEpicTitle: null,
+  parentEpicColor: null,
 };
 
 describe("StoryListRow", () => {
@@ -81,7 +87,10 @@ describe("StoryListRow", () => {
     );
   });
 
-  it("lets the title shrink and hides secondary chips below the small breakpoint", () => {
+  // doc-20 §4: line 2 (points/labels/epic) never hides behind a width
+  // breakpoint anymore — the two-line layout gives it room, so a viewer no
+  // longer loses metadata just because the panel is narrow.
+  it("lets the title shrink on line 1 and always shows points/labels on line 2", () => {
     render(
       <StoryListRow
         story={{
@@ -96,9 +105,10 @@ describe("StoryListRow", () => {
 
     expect(screen.getByRole("button", { name: /Add login/ })).toHaveClass("min-w-0");
     expect(screen.getByText("Add login")).toHaveClass("min-w-0", "flex-1");
-    expect(screen.getByText("•••")).toHaveClass("hidden", "sm:inline-flex");
+    expect(screen.getByText("•••")).not.toHaveClass("hidden");
     expect(screen.getByText("•••")).toHaveAttribute("data-slot", "badge");
     expect(screen.getByLabelText("3 points")).toBeInTheDocument();
+    expect(screen.getByText("Urgent")).not.toHaveClass("hidden");
     expect(screen.getByText("Urgent")).toHaveClass("text-foreground");
     expect(screen.getByText("Urgent").style.color).toBe("");
   });
@@ -143,11 +153,12 @@ describe("StoryListRow", () => {
   // ux-principles principle 8: a child still renders in its own zone (the
   // Epics band shows a separate, lighter mirror row, doc-20 §3) — this badge
   // is how its epic membership stays visible without teleporting the user
-  // out of the zone they're working in.
-  it("shows a link back to the parent epic when the story has one", () => {
+  // out of the zone they're working in. Never hidden by width (doc-20 §4,
+  // AC#3) — no more `hidden`/`sm:` classes on it.
+  it("shows a link back to the parent epic when the story has one, never hidden by width", () => {
     render(
       <StoryListRow
-        story={{ ...baseStory, parentId: "e1", parentEpicTitle: "Big epic" }}
+        story={{ ...baseStory, parentId: "e1", parentEpicTitle: "Big epic", parentEpicColor: "#ff0000" }}
         projectId="p1"
         states={CLASSIC_STATES}
         pointScale={fibonacci}
@@ -155,10 +166,42 @@ describe("StoryListRow", () => {
     );
     const link = screen.getByRole("link", { name: "Big epic" });
     expect(link).toHaveAttribute("href", "/stories/e1");
+    expect(link).not.toHaveClass("hidden");
   });
 
-  it("omits the epic link for a story with no parent", () => {
+  // doc-20 §4: a left rule in the epic's colour so a run of siblings reads
+  // as one group while scrolling.
+  it("shows a left rule in the epic's colour when the story belongs to one", () => {
+    render(
+      <StoryListRow
+        story={{ ...baseStory, parentId: "e1", parentEpicTitle: "Big epic", parentEpicColor: "#ff0000" }}
+        projectId="p1"
+        states={CLASSIC_STATES}
+        pointScale={fibonacci}
+      />,
+    );
+    const row = screen.getByTestId("story-list-row");
+    expect(row).toHaveClass("border-l-2");
+    expect(row.style.borderLeftColor).toBe("rgb(255, 0, 0)");
+  });
+
+  it("falls back to the default epic colour for the rule when epic_color is null", () => {
+    render(
+      <StoryListRow
+        story={{ ...baseStory, parentId: "e1", parentEpicTitle: "Big epic", parentEpicColor: null }}
+        projectId="p1"
+        states={CLASSIC_STATES}
+        pointScale={fibonacci}
+      />,
+    );
+    expect(screen.getByTestId("story-list-row").style.borderLeftColor).toBe("rgb(99, 102, 241)");
+  });
+
+  it("omits the epic link and left rule for a story with no parent", () => {
     render(<StoryListRow story={baseStory} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    const row = screen.getByTestId("story-list-row");
+    expect(row).not.toHaveClass("border-l-2");
+    expect(row.style.borderLeftColor).toBe("");
   });
 });

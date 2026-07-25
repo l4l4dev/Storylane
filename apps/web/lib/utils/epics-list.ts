@@ -1,4 +1,5 @@
 import { rollupContainer, type ContainerRollup, type RollupChild, type StateCategory } from "@storylane/core";
+import { zoneForStory } from "./kanban";
 
 // The dropped epics table's own default (kept as the fallback so a
 // colorless container still gets a consistent identity) — shared by /epics
@@ -61,9 +62,10 @@ function bandChildLocation(
   currentIterationId: string | null,
 ): BandChildLocation {
   if (child.isDone) return "done";
-  if (child.stateId === null) return "icebox";
-  if (currentIterationId && child.iterationId === currentIterationId) return "current";
-  return "backlog";
+  // zoneForStory (kanban.ts) is the single source of truth for icebox/
+  // current/backlog classification — only its state_id/iteration_id fields
+  // matter, so story_type/points here are dummy values.
+  return zoneForStory({ state_id: child.stateId, iteration_id: child.iterationId, story_type: "", points: null }, currentIterationId);
 }
 
 /**

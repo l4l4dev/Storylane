@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -81,6 +80,7 @@ import { DraftStoryCard, DraftStoryTrigger } from "./draft-story-card";
 import { StoryListRow } from "./story-list-row";
 import { SortableItem } from "./sortable-item";
 import { useInlineEdit } from "./use-inline-edit";
+import { useOpenPeek } from "./use-open-peek";
 import type { BoardStory, IterationMeta } from "./kanban-board";
 
 // Collapse state for the Backlog's virtual-iteration groups and the Current
@@ -1166,20 +1166,6 @@ const BAND_LOCATION_DOT_CLASS: Record<BandChildLocation, string> = {
   done: "bg-green-500",
 };
 
-// Shared by every band row that opens StoryPeek (EpicBandRow for the epic
-// itself, EpicBandChildRow for a mirrored child) — both just need "push the
-// ?story=<id> param", so they share this instead of each re-deriving it.
-function useOpenPeek() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  return function openPeek(id: string) {
-    const params = new URLSearchParams(searchParams);
-    params.set("story", id);
-    router.push(`${pathname}?${params.toString()}`, { scroll: false });
-  };
-}
-
 // Not a drag source and renders no drag handle (doc-20 §3 "mirror-row
 // requirements", ux-principles principle 1): the real row, in its own zone,
 // is what the user drags — this row exists only so scheduling a child
@@ -1261,7 +1247,10 @@ function EpicBandRow({
 
 // Inline "+ Add Epic" (doc-20 §1 tracker parity: top-down creation).
 // resetAfterCommit clears the field back to blank on success, ready for the
-// next add — matching DraftStoryCard's own quick-add convention.
+// next add. Blur discards silently rather than committing, matching
+// DraftStoryCard's quick-add convention (Esc/click-outside never partial-
+// saves) — a real epic row would otherwise get created just by clicking
+// elsewhere on the page mid-type.
 function AddEpicButton({ onCreate }: { onCreate: (title: string) => Promise<void> }) {
   const { editor } = useInlineEdit({
     initialValue: "",
@@ -1293,7 +1282,7 @@ function AddEpicButton({ onCreate }: { onCreate: (title: string) => Promise<void
             editor.cancel("keyboard");
           }
         }}
-        onBlur={() => void editor.commitAndClose("blur")}
+        onBlur={() => editor.cancel("blur")}
         placeholder="Epic title"
         aria-label="New epic title"
         readOnly={editor.isSaving}
