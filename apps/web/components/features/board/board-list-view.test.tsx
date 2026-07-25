@@ -5,10 +5,13 @@ import type { ActionResult, ProjectState } from "@/lib/types";
 import { BoardListView, DividerRow, InsertBetweenRows, IterationGoalInput, IterationHeaderRow, RowInsertMenu } from "./board-list-view";
 import type { BoardStory } from "./kanban-board";
 
-const { deleteBacklogDividerMock, createBacklogDividerMock, createDraftStoryMock, upsertIterationGoalMock } = vi.hoisted(() => ({
+const { deleteBacklogDividerMock, createBacklogDividerMock, createDraftStoryMock, createEpicMock, upsertIterationGoalMock } = vi.hoisted(() => ({
   deleteBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
   createBacklogDividerMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
   createDraftStoryMock: vi.fn<(input: unknown) => Promise<ActionResult>>(() => Promise.resolve({ ok: true })),
+  createEpicMock: vi.fn<(input: unknown) => Promise<{ ok: true; id: string } | { ok: false; message: string }>>(() =>
+    Promise.resolve({ ok: true, id: "new-epic" }),
+  ),
   upsertIterationGoalMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
 }));
 
@@ -21,6 +24,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/app/projects/[id]/board/actions", () => ({
   createBacklogDivider: createBacklogDividerMock,
   createDraftStory: createDraftStoryMock,
+  createEpic: createEpicMock,
   deleteBacklogDivider: deleteBacklogDividerMock,
   dropStoryInList: vi.fn(),
   estimateStory: vi.fn(),
@@ -243,6 +247,13 @@ function backlogStory(id: string, points: number): BoardStory {
   };
 }
 
+// epicBandChildren is now server-computed (epics-list.ts buildEpicBandChildren)
+// and passed as its own prop — independent of initialContainers, which only
+// supplies the child's REAL row. A test wanting a mirror row must supply both.
+function epicBandChild(id: string, points: number, location: "current" | "backlog" | "icebox" | "done" = "icebox") {
+  return { id, number: Number(id.slice(1)), title: `Story ${id}`, points, location };
+}
+
 const CLASSIC_STATES: ProjectState[] = [
   { id: "unstarted", name: "Unstarted", category: "unstarted", action_label: "Start", position: 0, project_id: "p1", created_at: "" },
   { id: "started", name: "Started", category: "in_progress", action_label: "Finish", position: 1, project_id: "p1", created_at: "" },
@@ -268,7 +279,8 @@ function boardProps(stories: BoardStory[]) {
       rejected: [],
     },
     initialBacklogItems: stories.map((story) => ({ kind: "story" as const, story })),
-    containerAccordionRows: [],
+    containerListItems: [],
+    epicBandChildren: {},
     backlogBudgets: [5],
     nextVirtualIterationNumber: 4,
     iterationLength: 14,
@@ -332,16 +344,16 @@ describe("Panel draft-story triggers", () => {
     expect(call.view).toBe("list");
   });
 
-  // doc-18 §9: the Icebox accordion. A container's own row structurally only
-  // ever lives here (its state_id is always NULL, doc-18 §4).
-  it("shows a container's row with its epic_color, progress bar, and its Icebox children nested under it", () => {
+  // doc-20 §3: the Epics band. A container's own row lives at the top of the
+  // List view, never in the Icebox column (doc-20 §1 tracker parity).
+  it("shows an epic's band row with its epic_color, progress bar, and every child mirrored regardless of zone", () => {
     const child = { ...backlogStory("s2", 2), state_id: null, parentId: "e1" };
     const props = boardProps([]);
     render(
       <BoardListView
         {...props}
         initialContainers={{ ...props.initialContainers, icebox: [child] }}
-        containerAccordionRows={[
+        containerListItems={[
           {
             id: "e1",
             number: 5,
@@ -352,27 +364,28 @@ describe("Panel draft-story triggers", () => {
               points: 2,
               breakdown: { unstarted: 1, in_progress: 0, done: 0, rejected: 0, icebox: 0 },
             },
-            iceboxChildIds: ["s2"],
           },
         ]}
+        epicBandChildren={{ e1: [epicBandChild("s2", 2)] }}
         showIcebox
       />,
     );
 
     expect(screen.getByText("Big Epic")).toBeInTheDocument();
     expect(screen.getByText("0 / 1 done")).toBeInTheDocument();
-    // The child renders once, nested — never also as its own flat Icebox row.
-    expect(screen.getAllByText("Story s2")).toHaveLength(1);
+    // Mirror-row model (doc-20 §3): the child renders twice — once as its
+    // real Icebox row, once as the band's lighter mirror row.
+    expect(screen.getAllByText("Story s2")).toHaveLength(2);
   });
 
-  it("collapses a container's row to hide its nested children, and expands it back", async () => {
+  it("collapses an epic's band row to hide its mirrored children, without touching their real Icebox row", async () => {
     const child = { ...backlogStory("s2", 2), state_id: null, parentId: "e1" };
     const props = boardProps([]);
     render(
       <BoardListView
         {...props}
         initialContainers={{ ...props.initialContainers, icebox: [child] }}
-        containerAccordionRows={[
+        containerListItems={[
           {
             id: "e1",
             number: 5,
@@ -383,32 +396,31 @@ describe("Panel draft-story triggers", () => {
               points: 2,
               breakdown: { unstarted: 1, in_progress: 0, done: 0, rejected: 0, icebox: 0 },
             },
-            iceboxChildIds: ["s2"],
           },
         ]}
+        epicBandChildren={{ e1: [epicBandChild("s2", 2)] }}
         showIcebox
       />,
     );
 
-    expect(screen.getByText("Story s2")).toBeInTheDocument();
+    expect(screen.getAllByText("Story s2")).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "Collapse Big Epic" }));
-    expect(screen.queryByText("Story s2")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Story s2")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Expand Big Epic" }));
-    expect(screen.getByText("Story s2")).toBeInTheDocument();
+    expect(screen.getAllByText("Story s2")).toHaveLength(2);
   });
 
-  // A container's nested Icebox child must be a real drag source (jsdom
-  // can't simulate an actual pointer-distance drag — see split-studio's tests
-  // for the same limitation — so this only asserts the SortableItem wiring
-  // landed, not the drop outcome; that's manual-browser-verified).
-  it("wires a container's nested Icebox child as a draggable row", () => {
+  // doc-20 §3 mirror-row requirements / ux-principles principle 1: the
+  // band's copy must not look grabbable when it refuses the drag — the real
+  // row (still in its own zone) is the actual drag source.
+  it("renders a band child row without a drag handle, unlike its real zone row", () => {
     const child = { ...backlogStory("s2", 2), state_id: null, parentId: "e1" };
     const props = boardProps([]);
     render(
       <BoardListView
         {...props}
         initialContainers={{ ...props.initialContainers, icebox: [child] }}
-        containerAccordionRows={[
+        containerListItems={[
           {
             id: "e1",
             number: 5,
@@ -419,43 +431,114 @@ describe("Panel draft-story triggers", () => {
               points: 2,
               breakdown: { unstarted: 1, in_progress: 0, done: 0, rejected: 0, icebox: 0 },
             },
-            iceboxChildIds: ["s2"],
+          },
+        ]}
+        epicBandChildren={{ e1: [epicBandChild("s2", 2)] }}
+        showIcebox
+      />,
+    );
+
+    // DOM order: the band renders before the Icebox column.
+    const [mirrorRow, realRow] = screen.getAllByText("Story s2").map((el) => el.closest("li"));
+    expect(mirrorRow).not.toHaveClass("cursor-grab");
+    expect(realRow).toHaveClass("cursor-grab");
+  });
+
+  it("shows a no-stories-yet state for an empty epic", () => {
+    const props = boardProps([]);
+    render(
+      <BoardListView
+        {...props}
+        containerListItems={[
+          {
+            id: "e1",
+            number: 5,
+            title: "Empty Epic",
+            epicColor: null,
+            rollup: {
+              headline: "icebox",
+              points: 0,
+              breakdown: { unstarted: 0, in_progress: 0, done: 0, rejected: 0, icebox: 0 },
+            },
           },
         ]}
         showIcebox
       />,
     );
 
-    expect(screen.getByText("Story s2").closest("li")).toHaveClass("cursor-grab");
+    expect(screen.getByText("No stories yet.")).toBeInTheDocument();
   });
 
-  // TASK-188: the container ("epic") row itself is now a drag source too, so it
-  // can be reordered among other containers. Same jsdom limitation as above —
-  // this asserts the SortableItem wiring, the reorder is manual-browser-verified.
-  it("wires a container's own accordion row as a draggable row", () => {
+  it("collapses the Epics band itself, hiding every epic row, and expands it back", () => {
     const props = boardProps([]);
     render(
       <BoardListView
         {...props}
-        containerAccordionRows={[
+        containerListItems={[
           {
             id: "e1",
             number: 5,
-            title: "Draggable Epic",
+            title: "Band Epic",
+            epicColor: null,
+            rollup: {
+              headline: "icebox",
+              points: 0,
+              breakdown: { unstarted: 0, in_progress: 0, done: 0, rejected: 0, icebox: 0 },
+            },
+          },
+        ]}
+        showIcebox
+      />,
+    );
+
+    expect(screen.getByText("Band Epic")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Epics" }));
+    expect(screen.queryByText("Band Epic")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Epics" }));
+    expect(screen.getByText("Band Epic")).toBeInTheDocument();
+  });
+
+  // An epic's own band row isn't (yet) a drag source — TASK-192 ports
+  // drag-reorder-among-epics into the band (doc-20 §7/§8 phase 4).
+  it("does not (yet) wire an epic's own band row as a drag source", () => {
+    const props = boardProps([]);
+    render(
+      <BoardListView
+        {...props}
+        containerListItems={[
+          {
+            id: "e1",
+            number: 5,
+            title: "Static Epic",
             epicColor: null,
             rollup: {
               headline: "unstarted",
               points: 0,
               breakdown: { unstarted: 0, in_progress: 0, done: 0, rejected: 0, icebox: 0 },
             },
-            iceboxChildIds: [],
           },
         ]}
         showIcebox
       />,
     );
 
-    expect(screen.getByText("Draggable Epic").closest("li")).toHaveClass("cursor-grab");
+    expect(screen.getByText("Static Epic").closest("li")).not.toHaveClass("cursor-grab");
+  });
+
+  it("+ Add Epic calls createEpic and lands with the band and the new epic expanded", async () => {
+    createEpicMock.mockClear();
+    createEpicMock.mockResolvedValue({ ok: true, id: "e-new" });
+    const props = boardProps([]);
+    render(<BoardListView {...props} showIcebox />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add epic" }));
+    fireEvent.change(screen.getByLabelText("New epic title"), { target: { value: "Fresh Epic" } });
+    fireEvent.keyDown(screen.getByLabelText("New epic title"), { key: "Enter" });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(createEpicMock).toHaveBeenCalledWith({ projectId: "p1", title: "Fresh Epic" });
   });
 
   it("Icebox panel's trigger creates with target icebox when shown", async () => {

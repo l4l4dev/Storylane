@@ -2,7 +2,7 @@ import { rollupContainer, type ContainerRollup, type RollupChild, type StateCate
 
 // The dropped epics table's own default (kept as the fallback so a
 // colorless container still gets a consistent identity) — shared by /epics
-// and the List view's Icebox accordion so both fall back to the same color.
+// and the List view's Epics band so both fall back to the same color.
 export const DEFAULT_EPIC_COLOR = "#6366f1";
 
 export type ContainerRow = { id: string; number: number; title: string; epicColor: string | null };
@@ -11,10 +11,12 @@ export type ContainerChild = { parentId: string; category: StateCategory | null;
 export type ContainerListItem = ContainerRow & { rollup: ContainerRollup };
 
 /**
- * The `/epics` container list (doc-18 §9): groups every child by its parent
- * and rolls each container up independently (packages/core rollupContainer,
- * doc-18 §5). `containers` is expected pre-sorted by number (the caller's
- * query order) — this function only groups/rolls, it never reorders.
+ * Groups every child by its parent and rolls each container up independently
+ * (packages/core rollupContainer, doc-18 §5) — every child, any zone, so the
+ * roll-up never changes as a child gets scheduled (doc-20 §3, defect 3).
+ * Shared by `/epics` and the List view's Epics band. `containers` is expected
+ * pre-sorted by position (the caller's query order) — this function only
+ * groups/rolls, it never reorders.
  */
 export function buildContainerListItems(
   containers: ReadonlyArray<ContainerRow>,
@@ -34,41 +36,68 @@ export function buildContainerListItems(
   }));
 }
 
-export type AccordionChild = ContainerChild & { id: string; stateId: string | null; position: number };
-export type ContainerAccordionRow = ContainerListItem & {
-  /** This container's Icebox children (stateId null) only, sorted by
-   * position — the ones nested under this row's accordion in the List view
-   * (doc-18 §9). A child with a state stays in its own zone (Current/
-   * Backlog), unaffected — it's still counted in `rollup` above, just not
-   * nested here. */
-  iceboxChildIds: string[];
+// The List view's Epics band location dot (doc-20 §3): "done" wins over
+// zone (an accepted current-iteration child reads as Done, not Current).
+export type BandChildLocation = "current" | "backlog" | "icebox" | "done";
+
+const BAND_LOCATION_RANK: Record<BandChildLocation, number> = { current: 0, backlog: 1, icebox: 2, done: 3 };
+
+export type EpicBandChildInput = {
+  id: string;
+  parentId: string;
+  number: number;
+  title: string;
+  points: number | null;
+  stateId: string | null;
+  iterationId: string | null;
+  isDone: boolean;
+  position: number;
 };
 
-/**
- * The List view's Icebox accordion rows (doc-18 §9): each container's full
- * roll-up (every child, any zone — reuses buildContainerListItems) plus just
- * its Icebox children's ids for nesting under the row.
- */
-export function buildContainerAccordionRows(
-  containers: ReadonlyArray<ContainerRow>,
-  children: ReadonlyArray<AccordionChild>,
-): ContainerAccordionRow[] {
-  const rolledUp = buildContainerListItems(containers, children);
+export type EpicBandChild = { id: string; number: number; title: string; points: number | null; location: BandChildLocation };
 
-  const iceboxByParent = new Map<string, AccordionChild[]>();
-  for (const child of children) {
-    if (child.stateId === null) {
-      const bucket = iceboxByParent.get(child.parentId);
-      if (bucket) bucket.push(child);
-      else iceboxByParent.set(child.parentId, [child]);
-    }
+function bandChildLocation(
+  child: Pick<EpicBandChildInput, "stateId" | "iterationId" | "isDone">,
+  currentIterationId: string | null,
+): BandChildLocation {
+  if (child.isDone) return "done";
+  if (child.stateId === null) return "icebox";
+  if (currentIterationId && child.iterationId === currentIterationId) return "current";
+  return "backlog";
+}
+
+/**
+ * Every container's children, any zone, grouped by parent for the List
+ * view's Epics band (doc-20 §3). `position` is scoped per zone (spec/
+ * data-model.md "Position ordering invariant"), not one sequence comparable
+ * across zones — so children are grouped by location first and only sorted
+ * by position within that group, never compared across it. Built from the
+ * same unfiltered query as `buildContainerListItems`' rollup (every child,
+ * any zone — not the board's zone-filtered story lists), so a child whose
+ * iteration later finalizes and rolls off the board still shows here
+ * instead of silently vanishing from its epic (the defect doc-20 §3 fixes,
+ * reappearing for a different reason if this read the filtered lists).
+ */
+export function buildEpicBandChildren(
+  children: ReadonlyArray<EpicBandChildInput>,
+  currentIterationId: string | null,
+): Record<string, EpicBandChild[]> {
+  const byEpic = new Map<string, { rank: number; position: number; child: EpicBandChild }[]>();
+  for (const c of children) {
+    const location = bandChildLocation(c, currentIterationId);
+    const entry = {
+      rank: BAND_LOCATION_RANK[location],
+      position: c.position,
+      child: { id: c.id, number: c.number, title: c.title, points: c.points, location },
+    };
+    const bucket = byEpic.get(c.parentId);
+    if (bucket) bucket.push(entry);
+    else byEpic.set(c.parentId, [entry]);
   }
 
-  return rolledUp.map((item) => ({
-    ...item,
-    iceboxChildIds: (iceboxByParent.get(item.id) ?? [])
-      .slice()
-      .sort((a, b) => a.position - b.position)
-      .map((c) => c.id),
-  }));
+  const result: Record<string, EpicBandChild[]> = {};
+  for (const [epicId, bucket] of byEpic) {
+    result[epicId] = bucket.sort((a, b) => a.rank - b.rank || a.position - b.position).map((entry) => entry.child);
+  }
+  return result;
 }

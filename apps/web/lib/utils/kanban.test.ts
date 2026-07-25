@@ -4,17 +4,12 @@ import {
   BACKLOG_COLUMN_ID,
   CONTAINER_ROWS_ZONE_ID,
   ICEBOX_COLUMN_ID,
-  classifyNestDrop,
   columnForStory,
-  epicIceboxZoneId,
-  epicIdFromZone,
   isContainerBlockDroppable,
   isDisallowedContainerRowDrop,
   evaluateDrop,
   evaluateListDrop,
   flattenCurrentZone,
-  isEpicIceboxZone,
-  toServerZone,
   zoneForStory,
   type KanbanStory,
 } from "./kanban";
@@ -36,94 +31,12 @@ function story(overrides: Partial<KanbanStory> = {}): KanbanStory {
   return { state_id: "Unstarted", story_type: "feature", points: 2, iteration_id: null, ...overrides };
 }
 
-// A container's nested Icebox children live in their own dnd-kit drag
-// container (board-list-view.tsx), keyed off the container's story id —
-// distinct from the 3 semantic ListZoneId values, which stay a closed union
-// (a container is off the board and never in a zone, spec/data-model.md).
-describe("epicIceboxZoneId / isEpicIceboxZone", () => {
-  it("builds a zone id isEpicIceboxZone recognizes", () => {
-    expect(isEpicIceboxZone(epicIceboxZoneId("e1"))).toBe(true);
-  });
-
-  it("does not recognize a plain ListZoneId or story id as an epic zone", () => {
-    expect(isEpicIceboxZone(ICEBOX_COLUMN_ID)).toBe(false);
-    expect(isEpicIceboxZone(BACKLOG_COLUMN_ID)).toBe(false);
-    expect(isEpicIceboxZone("current")).toBe(false);
-    expect(isEpicIceboxZone("e1")).toBe(false);
-  });
-
-  // The container id has to survive the round trip: it becomes move_story_board's
-  // parent_id delta when a board story is dropped into that nest (doc-18 §9).
-  it("round-trips the container id back out of the zone key", () => {
-    expect(epicIdFromZone(epicIceboxZoneId("e1"))).toBe("e1");
-  });
-
-  it("returns null for a zone key that is not an epic nest", () => {
-    expect(epicIdFromZone(ICEBOX_COLUMN_ID)).toBeNull();
-    expect(epicIdFromZone("current")).toBeNull();
-  });
-});
-
-// One decision for every List drop that touches a container's Icebox nest
-// (doc-18 §9), replacing three overlapping predicates that each re-tested the
-// same zone-key prefix.
-//
-// Keyed on the story's OWN parent_id, never on the zone the drag came from:
-// onDragOver relocates the item optimistically, so any origin-derived answer
-// reports wherever the pointer has been, and a drag routed through Current
-// would launder a nested child past these rules. parent_id travels with the
-// row from the server and no reorder touches it.
-//
-// "rejected" covers the two shapes that would leave parent_id saying something
-// the board doesn't show: putting a story that HAS a parent into the flat
-// Icebox list (which only renders parentless rows, so it would re-nest itself
-// on the next refresh — a silent self-revert), and moving between containers.
-// An attach still has to clear the Icebox crossing rule via evaluateListDrop.
-describe("classifyNestDrop", () => {
-  const e1 = epicIceboxZoneId("e1");
-
-  it("is not a nest drop at all when no nest and no parent are involved", () => {
-    expect(classifyNestDrop(null, BACKLOG_COLUMN_ID)).toEqual({ kind: "none" });
-    expect(classifyNestDrop(null, "current")).toEqual({ kind: "none" });
-    expect(classifyNestDrop(null, ICEBOX_COLUMN_ID)).toEqual({ kind: "none" });
-  });
-
-  it("is a reorder within the story's own container nest", () => {
-    expect(classifyNestDrop("e1", e1)).toEqual({ kind: "reorder" });
-  });
-
-  it("is an attach when a parentless story lands in a nest", () => {
-    expect(classifyNestDrop(null, e1)).toEqual({ kind: "attach", parentId: "e1" });
-  });
-
-  it("rejects moving a child into a different container", () => {
-    expect(classifyNestDrop("other-epic", e1)).toEqual({ kind: "rejected" });
-  });
-
-  // The flat list filters to parentless rows, so a still-parented story
-  // dropped there vanishes back into its epic on the next server render.
-  it("rejects putting a parented story into the flat Icebox list", () => {
-    expect(classifyNestDrop("e1", ICEBOX_COLUMN_ID)).toEqual({ kind: "rejected" });
-  });
-
-  // Regardless of how the drag got there: a nested child dragged up through
-  // Current and back down is judged on its parent_id, not on that detour.
-  it("still lets a parented story move to Current or Backlog", () => {
-    expect(classifyNestDrop("e1", "current")).toEqual({ kind: "none" });
-    expect(classifyNestDrop("e1", BACKLOG_COLUMN_ID)).toEqual({ kind: "none" });
-  });
-});
-
 // The container ("epic") rows render in their own block above the flat Icebox
 // list, so they get their own dnd-kit zone — but they share the SAME server
 // zone and position sequence as everything else state-null (spec/data-model.md:
 // no separate epic-internal position scope). The block is exclusive in both
 // directions: a container never leaves it, and nothing else may enter.
 describe("container-row zone", () => {
-  it("maps the container block to the plain icebox zone for the server", () => {
-    expect(toServerZone(CONTAINER_ROWS_ZONE_ID)).toBe(ICEBOX_COLUMN_ID);
-  });
-
   it("allows a container row to reorder within the container block", () => {
     expect(isDisallowedContainerRowDrop(true, CONTAINER_ROWS_ZONE_ID)).toBe(false);
   });
@@ -131,7 +44,6 @@ describe("container-row zone", () => {
   it("rejects a container row leaving the block for any other zone", () => {
     expect(isDisallowedContainerRowDrop(true, ICEBOX_COLUMN_ID)).toBe(true);
     expect(isDisallowedContainerRowDrop(true, "current")).toBe(true);
-    expect(isDisallowedContainerRowDrop(true, epicIceboxZoneId("e1"))).toBe(true);
   });
 
   it("rejects an ordinary story entering the container block", () => {
@@ -140,7 +52,6 @@ describe("container-row zone", () => {
 
   it("leaves ordinary story drops elsewhere alone", () => {
     expect(isDisallowedContainerRowDrop(false, ICEBOX_COLUMN_ID)).toBe(false);
-    expect(isDisallowedContainerRowDrop(false, epicIceboxZoneId("e1"))).toBe(false);
   });
 
   // An expanded container row's droppable rect encloses its own nest and every
@@ -156,15 +67,14 @@ describe("container-row zone", () => {
       expect(isContainerBlockDroppable("c2", rowIds)).toBe(true);
     });
 
-    it("excludes an epic's nest and its children even though they render inside a container row", () => {
-      expect(isContainerBlockDroppable(epicIceboxZoneId("c1"), rowIds)).toBe(false);
+    it("excludes any other zone even though it renders inside a container row", () => {
       expect(isContainerBlockDroppable("child-of-c1", rowIds)).toBe(false);
       expect(isContainerBlockDroppable(ICEBOX_COLUMN_ID, rowIds)).toBe(false);
       expect(isContainerBlockDroppable("current", rowIds)).toBe(false);
     });
 
     it("leaves a container drag only container-block targets to land on", () => {
-      const targets = [CONTAINER_ROWS_ZONE_ID, "c1", "c2", epicIceboxZoneId("c2"), "child-of-c2", ICEBOX_COLUMN_ID];
+      const targets = [CONTAINER_ROWS_ZONE_ID, "c1", "c2", "child-of-c2", ICEBOX_COLUMN_ID];
       expect(targets.filter((id) => isContainerBlockDroppable(id, rowIds) === true)).toEqual([
         CONTAINER_ROWS_ZONE_ID,
         "c1",
@@ -173,32 +83,12 @@ describe("container-row zone", () => {
     });
 
     it("hides every container-block target from an ordinary story drag", () => {
-      const targets = [CONTAINER_ROWS_ZONE_ID, "c1", epicIceboxZoneId("c1"), "child-of-c1", ICEBOX_COLUMN_ID];
+      const targets = [CONTAINER_ROWS_ZONE_ID, "c1", "child-of-c1", ICEBOX_COLUMN_ID];
       expect(targets.filter((id) => isContainerBlockDroppable(id, rowIds) === false)).toEqual([
-        epicIceboxZoneId("c1"),
         "child-of-c1",
         ICEBOX_COLUMN_ID,
       ]);
     });
-  });
-});
-
-// Found via manual browser verification: a same-nest reorder, allowed by
-// isAllowedEpicNestDrop, was sending the raw dnd-kit container key
-// ("epic:<id>") to dropStoryInList as target_zone — the server action only
-// understands the 3 canonical ListZoneId strings and silently fell through to
-// its "current" branch for anything else, actually SCHEDULING the story
-// instead of just reordering it within Icebox. The dnd-kit container key must
-// be translated to the semantic zone before it ever reaches the server.
-describe("toServerZone", () => {
-  it("translates an epic nest's dnd-kit container key to the icebox zone", () => {
-    expect(toServerZone(epicIceboxZoneId("e1"))).toBe(ICEBOX_COLUMN_ID);
-  });
-
-  it("passes a canonical ListZoneId through unchanged", () => {
-    expect(toServerZone(ICEBOX_COLUMN_ID)).toBe(ICEBOX_COLUMN_ID);
-    expect(toServerZone(BACKLOG_COLUMN_ID)).toBe(BACKLOG_COLUMN_ID);
-    expect(toServerZone("current")).toBe("current");
   });
 });
 

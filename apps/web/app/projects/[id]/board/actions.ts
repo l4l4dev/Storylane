@@ -200,6 +200,34 @@ export async function createDraftStory(input: DraftStoryInput): Promise<ActionRe
 }
 
 /**
+ * "+ Add Epic" (doc-20 §1 tracker parity: top-down creation, TASK-189's
+ * create_epic RPC) — a childless, epic_pinned container the List view's
+ * Epics band can land the user in immediately, unlike the old
+ * split-an-existing-story-only path.
+ */
+export async function createEpic(input: {
+  projectId: string;
+  title: string;
+}): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  const title = input.title.trim();
+  if (!title) {
+    return { ok: false, message: "Title is required" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("create_epic", {
+    p_project_id: input.projectId,
+    p_title: title,
+  });
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+
+  revalidatePath(`/projects/${input.projectId}/board`);
+  return { ok: true, id: data as string };
+}
+
+/**
  * Handles a kanban drop (see spec/screens.md "Board layout": drag = state
  * transition). Re-derives the story's source column and re-validates the
  * move server-side with the same pure `evaluateDrop` the client uses, so a

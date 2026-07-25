@@ -140,10 +140,10 @@ describe("StoryListRow", () => {
     expect(screen.queryByRole("button", { name: /Estimate: 1 point/ })).not.toBeInTheDocument();
   });
 
-  // doc-18 §9 / ux-principles principle 8: a child still renders in its own
-  // Current/Backlog zone (unlike its Icebox siblings, which nest under the
-  // Icebox accordion instead) — this badge is how its epic membership stays
-  // visible without teleporting the user out of the zone they're working in.
+  // ux-principles principle 8: a child still renders in its own zone (the
+  // Epics band shows a separate, lighter mirror row, doc-20 §3) — this badge
+  // is how its epic membership stays visible without teleporting the user
+  // out of the zone they're working in.
   it("shows a link back to the parent epic when the story has one", () => {
     render(
       <StoryListRow
@@ -159,25 +159,6 @@ describe("StoryListRow", () => {
 
   it("omits the epic link for a story with no parent", () => {
     render(<StoryListRow story={baseStory} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />);
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
-  });
-
-  // Found during manual browser verification: a story already rendered
-  // nested under ITS OWN epic's Icebox accordion row doesn't need
-  // this badge repeated — it's redundant there, and the badge's fixed
-  // (non-shrinking) width was squeezing the title down to 1-2 characters in
-  // the accordion's narrow sidebar column (the only place a title-bearing
-  // row and this badge previously combined).
-  it("omits the epic link when hideEpicLink is set, even with a parent", () => {
-    render(
-      <StoryListRow
-        story={{ ...baseStory, parentId: "e1", parentEpicTitle: "Big epic" }}
-        projectId="p1"
-        states={CLASSIC_STATES}
-        pointScale={fibonacci}
-        hideEpicLink
-      />,
-    );
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });

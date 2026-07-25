@@ -13,7 +13,7 @@ import {
   startPlanningCapacityFetch,
 } from "@/lib/utils/planning-capacity";
 import { pointScaleValues } from "@/lib/utils/stories";
-import { buildContainerAccordionRows } from "@/lib/utils/epics-list";
+import { buildContainerListItems, buildEpicBandChildren } from "@/lib/utils/epics-list";
 import { fetchAllRows } from "@/lib/utils/supabase-pagination";
 import { assertReadOk } from "@/lib/supabase/assert";
 import type { ProjectState } from "@/lib/types";
@@ -203,25 +203,35 @@ export default async function BoardPage({
       return card;
     });
 
-  // The List view's Icebox accordion (doc-18 §9): each container's full
-  // roll-up (every child, any zone, doc-18 §5) plus just its Icebox
-  // children's ids for nesting under the row — see epics-list.ts. Built from
-  // the RAW `stories` fetch, not `cards`: `cards` already excludes stories in
-  // a finalized iteration (line above), which would silently drop a
-  // "done and rolled off" child from the roll-up (a real disagreement vs
-  // /epics, which queries every child directly with no such filter).
-  const containerAccordionRows = buildContainerAccordionRows(
+  // The List view's Epics band (doc-20 §3) — see epics-list.ts. Built from
+  // the RAW `stories` fetch, not `cards`: `cards` already excludes stories
+  // in a finalized iteration (above), which would silently drop a "done and
+  // rolled off" child — both the roll-up (buildContainerListItems, every
+  // child any zone, doc-18 §5) and the band's own expanded child list
+  // (buildEpicBandChildren) must agree on that, or the band's contents
+  // disagree with its own progress bar the moment an iteration finalizes.
+  const epicChildStories = stories.filter((s) => s.parent_id !== null);
+  const containerListItems = buildContainerListItems(
     (containerRows ?? []).map((c) => ({ id: c.id, number: c.number, title: c.title, epicColor: c.epic_color })),
-    stories
-      .filter((s) => s.parent_id !== null)
-      .map((s) => ({
-        id: s.id,
-        parentId: s.parent_id as string,
-        stateId: s.state_id,
-        position: s.position,
-        category: s.state_id ? (stateById.get(s.state_id)?.category ?? null) : null,
-        points: s.points,
-      })),
+    epicChildStories.map((s) => ({
+      parentId: s.parent_id as string,
+      category: s.state_id ? (stateById.get(s.state_id)?.category ?? null) : null,
+      points: s.points,
+    })),
+  );
+  const epicBandChildren = buildEpicBandChildren(
+    epicChildStories.map((s) => ({
+      id: s.id,
+      parentId: s.parent_id as string,
+      number: s.number,
+      title: s.title,
+      points: s.points,
+      stateId: s.state_id,
+      iterationId: s.iteration_id,
+      isDone: s.state_id !== null && stateById.get(s.state_id)?.category === "done",
+      position: s.position,
+    })),
+    currentIteration?.id ?? null,
   );
 
   // Containers are built from every card, unfiltered — filters only hide
@@ -349,7 +359,8 @@ export default async function BoardPage({
         states={states}
         initialContainers={initialContainers}
         initialBacklogItems={initialBacklogItems}
-        containerAccordionRows={containerAccordionRows}
+        containerListItems={containerListItems}
+        epicBandChildren={epicBandChildren}
         currentBudget={currentBudget}
         backlogBudgets={backlogBudgets}
         nextVirtualIterationNumber={nextVirtualIterationNumber}

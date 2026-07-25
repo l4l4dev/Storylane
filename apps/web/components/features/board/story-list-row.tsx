@@ -28,14 +28,13 @@ export function StoryListRow({
   states,
   pointScale,
   insertMenu,
-  hideEpicLink,
 }: {
   // StoryCardData plus state_id — the row needs it for the badge and
   // transition buttons; the physical card (isDone only) doesn't. parentId/
-  // parentEpicTitle: this row still renders in its own zone even when it's a
-  // container's child (only an Icebox child nests under the accordion
-  // instead, doc-18 §9) — the link keeps the relation visible here too
-  // (ux-principles principle 8: never make a membership invisible).
+  // parentEpicTitle: this row renders in its own zone even when it's a
+  // container's child (the Epics band shows a separate, lighter mirror row —
+  // doc-20 §3) — the link keeps the relation visible here too (ux-principles
+  // principle 8: never make a membership invisible).
   story: StoryCardData & { state_id: string | null; parentId: string | null; parentEpicTitle: string | null };
   projectId: string;
   states: ProjectState[];
@@ -43,11 +42,6 @@ export function StoryListRow({
   // Row-level "insert note/iteration break here" menu (TASK-42) — Backlog
   // rows pass this; Current/Icebox rows (no notes/breaks there) don't.
   insertMenu?: ReactNode;
-  // Set when this row already renders nested under its own epic's Icebox
-  // accordion — the badge would just repeat what's already visually obvious
-  // there, and its fixed (non-shrinking) width squeezes the title unreadably
-  // in the accordion's narrow sidebar column.
-  hideEpicLink?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -105,7 +99,7 @@ export function StoryListRow({
           {formatPoints(story.points)}
         </Badge>
       )}
-      {!hideEpicLink && story.parentId && story.parentEpicTitle && (
+      {story.parentId && story.parentEpicTitle && (
         <Link
           href={`/stories/${story.parentId}`}
           onClick={(e) => e.stopPropagation()}

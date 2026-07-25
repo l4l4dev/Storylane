@@ -10,23 +10,12 @@ import type { ProjectState } from "@/lib/types";
 export const BACKLOG_COLUMN_ID = "backlog";
 export const ICEBOX_COLUMN_ID = "icebox";
 
-// A container's nested Icebox children (doc-18 §9) get their own dnd-kit
-// drag container in the List view, keyed off the container's story id — kept
-// separate from ListZoneId (below), which stays a closed 3-value union since
-// a container is off the board and never in a zone (spec/data-model.md).
-const EPIC_ICEBOX_PREFIX = "epic:";
-export function epicIceboxZoneId(containerId: string): string {
-  return `${EPIC_ICEBOX_PREFIX}${containerId}`;
-}
-export function isEpicIceboxZone(zoneId: string): boolean {
-  return zoneId.startsWith(EPIC_ICEBOX_PREFIX);
-}
-
-// The container ("epic") rows render as their own block above the flat Icebox
-// list, so they need their own dnd-kit zone to be reorderable — but they are
-// NOT a separate position space: like every state-null row they live in the one
-// shared Icebox sequence (spec/data-model.md, doc-18 §2), which is why
-// toServerZone maps this straight back to the plain Icebox zone.
+// The container ("epic") rows render as their own block, reorderable among
+// themselves — but they are NOT a separate position space: like every
+// state-null row they live in the one shared Icebox sequence (spec/
+// data-model.md, doc-18 §2). Not currently wired to any render — TASK-192
+// owns rendering the block inside the List view's Epics band (doc-20 §7/§8
+// phase 4); kept defined here for that.
 export const CONTAINER_ROWS_ZONE_ID = "container-rows";
 
 /**
@@ -56,63 +45,6 @@ export function isDisallowedContainerRowDrop(isContainerRow: boolean, targetZone
  */
 export function isContainerBlockDroppable(droppableId: string, containerRowIds: ReadonlySet<string>): boolean {
   return droppableId === CONTAINER_ROWS_ZONE_ID || containerRowIds.has(droppableId);
-}
-
-/** The container id inside an epic-nest zone key, or null for any other zone. */
-export function epicIdFromZone(zoneId: string): string | null {
-  return isEpicIceboxZone(zoneId) ? zoneId.slice(EPIC_ICEBOX_PREFIX.length) : null;
-}
-
-/** What a List drop means when a container's Icebox nest is on either side. */
-export type NestDrop =
-  /** No nest involved — the caller applies the ordinary zone rules. */
-  | { kind: "none" }
-  /** Within the story's own nest: position only, no parent write. */
-  | { kind: "reorder" }
-  /** Into a nest from outside every nest: writes parent_id (doc-18 §9). */
-  | { kind: "attach"; parentId: string }
-  | { kind: "rejected" };
-
-/**
- * Classifies a drop from the story's OWN parent_id and the target zone —
- * deliberately not from the zone the drag started in. onDragOver relocates the
- * item optimistically, so anything derived from the live drag state reports
- * wherever the pointer has been, and a nested child routed up through Current
- * and back down would launder itself past these rules. parent_id comes from
- * the server row and no reorder touches it.
- *
- * Two shapes are rejected because both would leave parent_id saying something
- * the board doesn't show: a story that still HAS a parent landing in the flat
- * Icebox list (which renders parentless rows only, so the next server render
- * pulls it back into its epic — a silent self-revert), and a child moving
- * between two different containers. An attach still has to clear the ordinary
- * Icebox crossing rule, which stays with evaluateListDrop.
- */
-export function classifyNestDrop(storyParentId: string | null, targetZone: string): NestDrop {
-  const targetEpic = epicIdFromZone(targetZone);
-
-  if (targetEpic === null) {
-    return storyParentId !== null && targetZone === ICEBOX_COLUMN_ID ? { kind: "rejected" } : { kind: "none" };
-  }
-  if (storyParentId === targetEpic) {
-    return { kind: "reorder" };
-  }
-  return storyParentId === null ? { kind: "attach", parentId: targetEpic } : { kind: "rejected" };
-}
-
-/**
- * dropStoryInList only understands the 3 canonical ListZoneId strings — a drop
- * inside a nest must never send the raw dnd-kit container key ("epic:<id>") as
- * target_zone, or the server casts it, fails to match
- * ICEBOX_COLUMN_ID/BACKLOG_COLUMN_ID, and falls through to its "current" branch
- * — actually scheduling the story instead of leaving it in place. A nest is
- * semantically Icebox for zone purposes; the parent it implies travels
- * separately, as classifyNestDrop's "attach" delta.
- */
-export function toServerZone(dndContainerId: string): string {
-  return isEpicIceboxZone(dndContainerId) || dndContainerId === CONTAINER_ROWS_ZONE_ID
-    ? ICEBOX_COLUMN_ID
-    : dndContainerId;
 }
 
 // A state column's id IS the project_states row's id — the column set is
