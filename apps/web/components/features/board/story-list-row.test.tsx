@@ -1,9 +1,22 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { StoryListRow } from "./story-list-row";
 import type { StoryCardData } from "./story-card";
 import type { ProjectState } from "@/lib/types";
 import stateTemplates from "../../../../../spec/fixtures/state-templates.json";
+
+const { setStoryParentMock } = vi.hoisted(() => ({
+  setStoryParentMock: vi.fn<(input: unknown) => Promise<{ ok: boolean; message?: string }>>(() =>
+    Promise.resolve({ ok: true }),
+  ),
+}));
+
+vi.mock("@/app/projects/[id]/board/actions", () => ({
+  setStoryParent: setStoryParentMock,
+  setStoryState: vi.fn(),
+  estimateStory: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -195,6 +208,34 @@ describe("StoryListRow", () => {
       />,
     );
     expect(screen.getByTestId("story-list-row").style.borderLeftColor).toBe("rgb(99, 102, 241)");
+  });
+
+  // doc-20 §5 / AC#5: detaching is a menu action, never a drag, in v1.
+  it("offers Remove from epic for a story in one, and calls setStoryParent with null", async () => {
+    setStoryParentMock.mockClear();
+    setStoryParentMock.mockResolvedValue({ ok: true });
+    render(
+      <StoryListRow
+        story={{ ...baseStory, parentId: "e1", parentEpicTitle: "Big epic", parentEpicColor: null }}
+        projectId="p1"
+        states={CLASSIC_STATES}
+        pointScale={fibonacci}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Epic actions/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Remove from epic" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(setStoryParentMock).toHaveBeenCalledWith({ storyId: "s1", projectId: "p1", parentId: null });
+  });
+
+  it("offers no epic menu for a story with no parent", () => {
+    render(<StoryListRow story={baseStory} projectId="p1" states={CLASSIC_STATES} pointScale={fibonacci} />);
+    expect(screen.queryByRole("button", { name: /Epic actions/ })).not.toBeInTheDocument();
   });
 
   it("omits the epic link and left rule for a story with no parent", () => {

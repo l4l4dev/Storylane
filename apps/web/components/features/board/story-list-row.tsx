@@ -12,6 +12,7 @@ import { TransitionButtons } from "@/components/features/story/transition-button
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 import { Badge } from "@/components/ui/badge";
 import { useOpenPeek } from "./use-open-peek";
+import { StoryEpicMenu } from "./story-epic-menu";
 
 const STORY_TYPE_ICON: Record<Exclude<StoryType, "release">, LucideIcon> = {
   feature: Star,
@@ -29,6 +30,7 @@ export function StoryListRow({
   states,
   pointScale,
   insertMenu,
+  onError,
 }: {
   // StoryCardData plus state_id — the row needs it for the badge and
   // transition buttons; the physical card (isDone only) doesn't. parentId/
@@ -49,6 +51,9 @@ export function StoryListRow({
   // Row-level "insert note/iteration break here" menu (TASK-42) — Backlog
   // rows pass this; Current/Icebox rows (no notes/breaks there) don't.
   insertMenu?: ReactNode;
+  // Surfaces a failed "Remove from epic" in the caller's own error slot —
+  // the List view has one banner for the whole view, not one per row.
+  onError?: (message: string) => void;
 }) {
   const openPeek = useOpenPeek();
 
@@ -94,6 +99,14 @@ export function StoryListRow({
             points={story.points}
             pointScale={pointScale}
           />
+          {hasEpic && (
+            <StoryEpicMenu
+              storyId={story.id}
+              projectId={projectId}
+              epicTitle={story.parentEpicTitle as string}
+              onError={onError}
+            />
+          )}
           {insertMenu}
         </div>
       </div>

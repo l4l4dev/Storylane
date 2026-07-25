@@ -499,18 +499,22 @@ describe("Panel draft-story triggers", () => {
     expect(screen.getByText("Band Epic")).toBeInTheDocument();
   });
 
-  // An epic's own band row isn't (yet) a drag source — TASK-192 ports
-  // drag-reorder-among-epics into the band (doc-20 §7/§8 phase 4).
-  it("does not (yet) wire an epic's own band row as a drag source", () => {
+  // TASK-192 ported TASK-188's container-row reorder into the band, so an
+  // epic row is a drag source again. Same jsdom limitation as elsewhere (no
+  // real pointer-distance drag) — this asserts the SortableItem wiring; the
+  // reorder itself is manual-browser-verified.
+  it("wires an epic's own band row as a drag source, unlike its mirrored children", () => {
+    const child = { ...backlogStory("s2", 2), state_id: null, parentId: "e1" };
     const props = boardProps([]);
     render(
       <BoardListView
         {...props}
+        initialContainers={{ ...props.initialContainers, icebox: [child] }}
         containerListItems={[
           {
             id: "e1",
             number: 5,
-            title: "Static Epic",
+            title: "Draggable Epic",
             epicColor: null,
             rollup: {
               headline: "unstarted",
@@ -519,11 +523,19 @@ describe("Panel draft-story triggers", () => {
             },
           },
         ]}
+        epicBandChildren={{ e1: [epicBandChild("s2", 2)] }}
         showIcebox
       />,
     );
 
-    expect(screen.getByText("Static Epic").closest("li")).not.toHaveClass("cursor-grab");
+    expect(screen.getByText("Draggable Epic").closest("li")).toHaveClass("cursor-grab");
+    // The mirror row stays non-draggable in v1 (AC#5, doc-20 §3). It renders
+    // INSIDE the epic's own draggable <li>, so the list it sits in has to
+    // cancel the inherited grab cursor — otherwise it would look grabbable and
+    // then drag its whole epic (ux-principles principle 1).
+    const [mirrorRow] = screen.getAllByText("Story s2").map((el) => el.closest("li"));
+    expect(mirrorRow).not.toHaveClass("cursor-grab");
+    expect(mirrorRow!.closest("ul")).toHaveClass("cursor-default");
   });
 
   it("+ Add Epic calls createEpic and lands with the band and the new epic expanded", async () => {

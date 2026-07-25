@@ -7,6 +7,7 @@ import {
   columnForStory,
   isContainerBlockDroppable,
   isDisallowedContainerRowDrop,
+  toServerZone,
   evaluateDrop,
   evaluateListDrop,
   flattenCurrentZone,
@@ -37,6 +38,19 @@ function story(overrides: Partial<KanbanStory> = {}): KanbanStory {
 // no separate epic-internal position scope). The block is exclusive in both
 // directions: a container never leaves it, and nothing else may enter.
 describe("container-row zone", () => {
+  // The band's dnd-kit key must never reach dropStoryInList raw: the server
+  // matches only the 3 canonical zones and would fall through to "current",
+  // scheduling the epic instead of reordering it.
+  it("maps the band's block to the plain icebox zone for the server", () => {
+    expect(toServerZone(CONTAINER_ROWS_ZONE_ID)).toBe(ICEBOX_COLUMN_ID);
+  });
+
+  it("passes a canonical ListZoneId through unchanged", () => {
+    expect(toServerZone(ICEBOX_COLUMN_ID)).toBe(ICEBOX_COLUMN_ID);
+    expect(toServerZone(BACKLOG_COLUMN_ID)).toBe(BACKLOG_COLUMN_ID);
+    expect(toServerZone("current")).toBe("current");
+  });
+
   it("allows a container row to reorder within the container block", () => {
     expect(isDisallowedContainerRowDrop(true, CONTAINER_ROWS_ZONE_ID)).toBe(false);
   });

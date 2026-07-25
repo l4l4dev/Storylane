@@ -10,13 +10,22 @@ import type { ProjectState } from "@/lib/types";
 export const BACKLOG_COLUMN_ID = "backlog";
 export const ICEBOX_COLUMN_ID = "icebox";
 
-// The container ("epic") rows render as their own block, reorderable among
-// themselves — but they are NOT a separate position space: like every
-// state-null row they live in the one shared Icebox sequence (spec/
-// data-model.md, doc-18 §2). Not currently wired to any render — TASK-192
-// owns rendering the block inside the List view's Epics band (doc-20 §7/§8
-// phase 4); kept defined here for that.
+// The epic rows render as their own block in the List view's Epics band,
+// reorderable among themselves — but they are NOT a separate position space:
+// like every state-null row they live in the one shared Icebox sequence
+// (spec/data-model.md, doc-18 §2), which is what toServerZone encodes.
 export const CONTAINER_ROWS_ZONE_ID = "container-rows";
+
+/**
+ * dropStoryInList only understands the 3 canonical ListZoneId strings, so the
+ * band's dnd-kit key must never reach it raw — the server would fail to match
+ * ICEBOX/BACKLOG and fall through to its "current" branch, actually scheduling
+ * the epic. An epic is state-null, so its zone IS the Icebox as far as
+ * ordering goes.
+ */
+export function toServerZone(dndContainerId: string): string {
+  return dndContainerId === CONTAINER_ROWS_ZONE_ID ? ICEBOX_COLUMN_ID : dndContainerId;
+}
 
 /**
  * The container block is exclusive in both directions: a container row only

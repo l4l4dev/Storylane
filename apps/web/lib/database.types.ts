@@ -1072,6 +1072,10 @@ export type Database = {
         Args: { p_label_ids: string[]; p_story_id: string }
         Returns: undefined
       }
+      set_story_parent: {
+        Args: { p_parent_id: string; p_story_id: string }
+        Returns: undefined
+      }
       set_story_state: {
         Args: { p_state_id: string; p_story_id: string }
         Returns: Json

@@ -743,9 +743,9 @@ describe("board drop actions -> move_story_board", () => {
       expect(call.p_anchor).toEqual({ before: { kind: "divider", id: "d1" } });
     });
 
-    // Dropping into a container's Icebox accordion is the one List drop that
-    // also re-parents (doc-18 §9): the zone still travels as plain "icebox",
-    // the epic travels beside it as a parent_id delta.
+    // doc-20 §5 retired attach-by-move: a List drop never carries parent_id
+    // anymore, and a forged one is ignored rather than honoured. Attaching is
+    // set_story_parent's job (setStoryParent + its own integration test).
     function iceboxDrop(parentId?: string): FormData {
       fixtures.stories = {
         single: {
@@ -773,40 +773,56 @@ describe("board drop actions -> move_story_board", () => {
       return data;
     }
 
-    it("sends the epic as a parent_id delta when the drop lands in a nest", async () => {
+    it("never sends a parent_id delta, even when the form post carries one", async () => {
       const { dropStoryInList } = await import("./actions");
 
       await dropStoryInList(iceboxDrop("epic-1"));
 
-      expect(moveCall().p_deltas).toEqual({ state_id: null, iteration: "none", parent_id: "epic-1" });
+      expect(moveCall().p_deltas).toEqual({ state_id: null, iteration: "none" });
     });
 
-    it("omits parent_id for a drop outside any nest", async () => {
+    it("omits parent_id for an ordinary drop", async () => {
       const { dropStoryInList } = await import("./actions");
 
       await dropStoryInList(iceboxDrop());
 
       expect(moveCall().p_deltas).toEqual({ state_id: null, iteration: "none" });
     });
+  });
 
-    it("treats an empty parent_id field as no attach at all", async () => {
-      const { dropStoryInList } = await import("./actions");
+  describe("setStoryParent", () => {
+    it("attaches through set_story_parent, not move_story_board", async () => {
+      rpcResults["set_story_parent"] = { data: null, error: null };
+      const { setStoryParent } = await import("./actions");
 
-      await dropStoryInList(iceboxDrop(""));
+      const result = await setStoryParent({ storyId: "story-4", projectId: "project-1", parentId: "epic-1" });
 
-      expect(moveCall().p_deltas).toEqual({ state_id: null, iteration: "none" });
+      expect(result).toEqual({ ok: true });
+      expect(rpcMock).toHaveBeenCalledWith("set_story_parent", {
+        p_story_id: "story-4",
+        p_parent_id: "epic-1",
+      });
+      expect(rpcMock).not.toHaveBeenCalledWith("move_story_board", expect.anything());
     });
 
-    // Without this the form post could name any top-level story, and the
-    // maintain_is_container trigger would containerize it — silently clearing
-    // the points/state the Parent picker demands a confirmation for.
-    it("refuses to attach to something that is not a container, without calling the RPC", async () => {
-      const data = iceboxDrop("not-an-epic");
-      fixtures.stories!.maybeSingle = { data: null, error: null };
-      const { dropStoryInList } = await import("./actions");
+    it("detaches with a null parent", async () => {
+      rpcResults["set_story_parent"] = { data: null, error: null };
+      const { setStoryParent } = await import("./actions");
 
-      await expect(dropStoryInList(data)).rejects.toThrow("That epic no longer exists. Refresh and try again.");
-      expect(rpcMock).not.toHaveBeenCalled();
+      await setStoryParent({ storyId: "story-4", projectId: "project-1", parentId: null });
+
+      expect(rpcMock).toHaveBeenCalledWith("set_story_parent", { p_story_id: "story-4", p_parent_id: null });
+    });
+
+    // The RPC owns the rules, so its refusal is what the user must see —
+    // surfaced, not swallowed into a silent no-op.
+    it("returns the RPC's message when it refuses", async () => {
+      rpcResults["set_story_parent"] = { data: null, error: { message: "That epic no longer exists." } };
+      const { setStoryParent } = await import("./actions");
+
+      const result = await setStoryParent({ storyId: "story-4", projectId: "project-1", parentId: "epic-1" });
+
+      expect(result).toEqual({ ok: false, message: "That epic no longer exists." });
     });
   });
 

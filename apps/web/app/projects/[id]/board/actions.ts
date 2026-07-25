@@ -335,11 +335,6 @@ export async function dropStoryInList(formData: FormData) {
   const itemId = String(formData.get("item_id"));
   const targetZone = String(formData.get("target_zone")) as ListZoneId;
   const beforeItemId = String(formData.get("before_item_id") ?? "") || null;
-  // Present only when the drop landed inside a container's Icebox accordion
-  // (doc-18 §9) — the one List drop that also re-parents. Absent for every
-  // other target, which leaves parent_id alone (a container's child dragged
-  // out to the board keeps its epic, doc-18 §1).
-  const attachToParentId = String(formData.get("parent_id") ?? "") || null;
 
   const supabase = await createClient();
 
@@ -401,38 +396,12 @@ export async function dropStoryInList(formData: FormData) {
     throw new Error(evaluation.reason);
   }
 
-  // Only an EXISTING container may be dropped into. The accordion never offers
-  // anything else, but this is a form post: without the check, a forged
-  // parent_id would containerize an ordinary story — the maintain_is_container
-  // trigger would clear its points/state/iteration, the very loss the Parent
-  // picker demands a confirmation for (doc-18 §9). The triggers own the
-  // hierarchy rules (single-level, cross-project, self-parent) and are left to
-  // it; is_container is the one thing none of them assert. Doubles as the
-  // malformed-uuid guard — a non-uuid simply matches no row here rather than
-  // surfacing a raw 22P02 cast error from the RPC.
-  if (attachToParentId) {
-    const { data: parent } = await supabase
-      .from("stories")
-      .select("id")
-      .eq("id", attachToParentId)
-      .eq("project_id", projectId)
-      .eq("is_container", true)
-      .maybeSingle();
-    if (!parent) {
-      throw new Error("That epic no longer exists. Refresh and try again.");
-    }
-  }
-
-  const deltas = attachToParentId
-    ? { ...trackerDeltas(evaluation), parent_id: attachToParentId }
-    : trackerDeltas(evaluation);
-
   const { error } = await supabase.rpc("move_story_board", {
     p_project_id: projectId,
     p_item: { kind: "story", id: itemId },
     p_view: "list",
     p_expected: moveExpected(story),
-    p_deltas: deltas,
+    p_deltas: trackerDeltas(evaluation),
     p_anchor: moveAnchor(beforeItemId),
   });
   if (error) {
@@ -441,9 +410,44 @@ export async function dropStoryInList(formData: FormData) {
 
   revalidatePath(`/projects/${projectId}/board`);
   revalidatePath(`/stories/${itemId}`);
-  // An attach clears state_id/iteration_id, so the story drops out of My Work
-  // the same way createDraftStory's icebox target does.
   revalidatePath("/my-work");
+}
+
+/**
+ * Attaching a story to an epic, or detaching it (doc-20 §5): parent_id and
+ * nothing else — the story keeps its zone, its position, and its place in the
+ * iteration. That is why this does not go through `move_story_board` like
+ * every other board drag; see the RPC's own header for the full rationale.
+ * `parentId: null` detaches, serving the row menu's "Remove from epic".
+ */
+export async function setStoryParent(input: {
+  storyId: string;
+  projectId: string;
+  parentId: string | null;
+}): Promise<ActionResult> {
+  const supabase = await createClient();
+  // Same generated-types null gap as updateStory's — the RPC's SQL body takes
+  // and handles null for p_parent_id (that is the detach case).
+  const { error } = await supabase.rpc("set_story_parent", {
+    p_story_id: input.storyId,
+    p_parent_id: input.parentId as string,
+  });
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+
+  revalidatePath(`/projects/${input.projectId}/board`);
+  revalidatePath(`/projects/${input.projectId}/epics`);
+  revalidatePath(`/stories/${input.storyId}`);
+  // The epic's own detail lists its children, so it goes stale too. On a
+  // detach the parent is not in the payload — the child's row is the only one
+  // that names it, and it has just been revalidated above.
+  if (input.parentId) {
+    revalidatePath(`/stories/${input.parentId}`);
+  }
+  // Not /my-work: an attach no longer touches state_id/iteration_id, so
+  // nothing about the story's My Work placement changes.
+  return { ok: true };
 }
 
 /**

@@ -535,11 +535,11 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
     expect(await positionsOf([i1!.id, i0!.id])).toEqual([0, 1]);
   });
 
-  // Attaching a board story to a container's Icebox nest is the one board move
-  // that must also write parent_id (doc-18 §9). The position side needs no new
-  // scope: the 'single' zone's Icebox predicate keys on state_id alone, so the
-  // flat Icebox rows and every container's nested children already share one
-  // dense sequence.
+  // Attaching is no longer a board move at all: doc-20 §5 made it parent_id
+  // and nothing else, owned by set_story_parent (see that RPC's own
+  // integration test). What still matters here is the opposite guarantee —
+  // every move_story_board call must leave parent_id exactly as it found it,
+  // and its p_expected snapshot must still catch a concurrent reparent.
   // Positions come from stories_position_seq (no literals) so this fixture
   // can't collide with, or be perturbed by, any other state_id-null row —
   // they all share one dense Icebox sequence.
@@ -578,34 +578,6 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
     return (data as StoryRow[]).map((r) => r.id);
   }
 
-  it("attaches a current-iteration story to a container's Icebox nest (parent_id delta)", async () => {
-    const [dragged] = await seedCurrentIteration([{ stateId: states.Unstarted, position: 0 }]);
-    const { containerId, childId } = await seedContainerWithIceboxChild();
-
-    const { error } = await asOwner.rpc("move_story_board", {
-      p_project_id: projectId,
-      p_item: { kind: "story", id: dragged },
-      p_view: "list",
-      p_expected: { state_id: states.Unstarted, iteration_id: iterationId, parent_id: null },
-      p_deltas: { state_id: null, iteration: "none", parent_id: containerId },
-      p_anchor: { before: { kind: "story", id: childId } },
-    });
-    expect(error).toBeNull();
-
-    const { data: row } = await asService
-      .from("stories")
-      .select("parent_id, state_id, iteration_id")
-      .eq("id", dragged)
-      .single();
-    expect(row).toMatchObject({ parent_id: containerId, state_id: null, iteration_id: null });
-
-    // AC#2: lands immediately before its anchor sibling in the shared Icebox
-    // sequence — asserted relatively, since the absolute values come from the
-    // sequence and every other Icebox row shares the same space.
-    const order = await iceboxOrder();
-    expect(order.indexOf(dragged)).toBe(order.indexOf(childId) - 1);
-  });
-
   it("rejects a move whose parent_id snapshot no longer matches (stale)", async () => {
     const [dragged] = await seedCurrentIteration([{ stateId: states.Unstarted, position: 0 }]);
     const { containerId } = await seedContainerWithIceboxChild();
@@ -621,23 +593,6 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
       p_anchor: {},
     });
     expect(error?.message).toMatch(/stale/i);
-  });
-
-  // The hierarchy invariants stay with the triggers (doc-18 §3) rather than
-  // being re-implemented inside the RPC.
-  it("rejects nesting under a story that is itself a child (single-level)", async () => {
-    const [dragged] = await seedCurrentIteration([{ stateId: states.Unstarted, position: 0 }]);
-    const { childId } = await seedContainerWithIceboxChild();
-
-    const { error } = await asOwner.rpc("move_story_board", {
-      p_project_id: projectId,
-      p_item: { kind: "story", id: dragged },
-      p_view: "list",
-      p_expected: { state_id: states.Unstarted, iteration_id: iterationId, parent_id: null },
-      p_deltas: { state_id: null, iteration: "none", parent_id: childId },
-      p_anchor: {},
-    });
-    expect(error?.message).toMatch(/max depth = 1/i);
   });
 
   it("leaves parent_id untouched when p_deltas carries no parent_id", async () => {

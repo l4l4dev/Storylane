@@ -9,7 +9,6 @@ import {
   type DragStartEvent,
   PointerSensor,
   KeyboardSensor,
-  closestCenter,
   useDroppable,
   useSensor,
   useSensors,
@@ -17,14 +16,17 @@ import {
 import {
   SortableContext,
   sortableKeyboardCoordinates,
+  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, ChevronRight, MoreVertical, Pencil, Snowflake, X } from "lucide-react";
 import {
   createBacklogDivider,
   createEpic,
   deleteBacklogDivider,
   dropStoryInList,
+  setStoryParent,
   upsertIterationGoal,
 } from "@/app/projects/[id]/board/actions";
 import { beforeAnchorId, findContainer, moveBetweenContainers, storyById, sumPoints } from "@/lib/utils/board";
@@ -34,9 +36,12 @@ import { formatDate } from "@/lib/utils/format";
 import { isImeComposing } from "@/lib/utils/keyboard";
 import {
   BACKLOG_COLUMN_ID,
+  CONTAINER_ROWS_ZONE_ID,
   ICEBOX_COLUMN_ID,
   evaluateListDrop,
+  toServerZone,
   flattenCurrentZone,
+  isDisallowedContainerRowDrop,
   toGateStates,
   zoneForStory,
   type ListZoneId,
@@ -81,6 +86,7 @@ import { StoryListRow } from "./story-list-row";
 import { SortableItem } from "./sortable-item";
 import { useInlineEdit } from "./use-inline-edit";
 import { useOpenPeek } from "./use-open-peek";
+import { listCollisionDetection } from "./list-collision";
 import type { BoardStory, IterationMeta } from "./kanban-board";
 
 // Collapse state for the Backlog's virtual-iteration groups and the Current
@@ -157,7 +163,11 @@ function useCollapsedGroups(projectId: string) {
 // (from lib/utils/board, shared with the Kanban view) work uniformly.
 type ListItem =
   | { kind: "story"; id: string; story: BoardStory }
-  | { kind: "divider"; id: string; divider: BacklogDivider };
+  | { kind: "divider"; id: string; divider: BacklogDivider }
+  // An epic row in the band. It carries no BoardStory: containers are fetched
+  // separately and excluded from the board's cards (doc-18 §1), so everything
+  // the row renders comes off ContainerListItem.
+  | { kind: "container"; id: string; row: ContainerListItem };
 
 function wrapStory(story: BoardStory): ListItem {
   return { kind: "story", id: story.id, story };
@@ -167,8 +177,14 @@ function toListItemContainers(
   source: Record<string, BoardStory[]>,
   backlogItems: ReadonlyArray<BacklogRowItem<BoardStory>>,
   states: ReadonlyArray<ProjectState>,
+  containerListItems: ReadonlyArray<ContainerListItem>,
 ): Record<string, ListItem[]> {
   return {
+    // The band's epic rows are their own drag zone: reorderable among
+    // themselves, but nothing enters or leaves the block (isAllowedMove).
+    // Server-side they share the one Icebox position sequence with every other
+    // state-null row — no separate scope (spec/data-model.md, doc-18 §2).
+    [CONTAINER_ROWS_ZONE_ID]: containerListItems.map((row) => ({ kind: "container" as const, id: row.id, row })),
     // Every Icebox story, including a container's children — the Epics band
     // shows those same stories again as a lighter mirror row (doc-20 §3);
     // this, their real zone row, is still the drag source and the thing
@@ -195,22 +211,22 @@ function SortableListRow({
   projectId,
   states,
   pointScale,
+  onError,
 }: {
   item: ListItem;
   projectId: string;
   states: ProjectState[];
   pointScale: number[];
+  onError: (message: string) => void;
 }) {
   return (
     <SortableItem id={item.id}>
       {item.kind === "story" ? (
-        <StoryListRow story={item.story} projectId={projectId} states={states} pointScale={pointScale} />
+        <StoryListRow story={item.story} projectId={projectId} states={states} pointScale={pointScale} onError={onError} />
       ) : item.kind === "divider" ? (
         // Unreachable in practice — Current/Icebox ListItems are always
-        // stories (see the doc comment above) — kept type-correct with a
-        // no-op rather than threading onError through two more prop layers
-        // for a branch that never renders.
-        <DividerRow projectId={projectId} divider={item.divider} onError={() => {}} />
+        // stories (see the doc comment above) — kept type-correct.
+        <DividerRow projectId={projectId} divider={item.divider} onError={onError} />
       ) : null}
     </SortableItem>
   );
@@ -685,7 +701,14 @@ function SortableBacklogRow({
   return (
     <SortableItem id={dragId} className={row.kind === "story" ? "pl-3" : ""}>
       {row.kind === "story" ? (
-        <StoryListRow story={row.story} projectId={projectId} states={states} pointScale={pointScale} insertMenu={insertMenu} />
+        <StoryListRow
+          story={row.story}
+          projectId={projectId}
+          states={states}
+          pointScale={pointScale}
+          insertMenu={insertMenu}
+          onError={onError}
+        />
       ) : (
         <DividerRow projectId={projectId} divider={row.divider} insertMenu={insertMenu} onError={onError} />
       )}
@@ -837,6 +860,7 @@ function ListSection({
   onToggleCollapse,
   pointScale,
   draftAdd,
+  onError,
 }: {
   zoneId: string;
   title: ReactNode;
@@ -846,6 +870,7 @@ function ListSection({
   collapsed: boolean;
   onToggleCollapse: () => void;
   pointScale: number[];
+  onError: (message: string) => void;
   // Only the Current panel gets a draft-story trigger — Backlog/Icebox have
   // their own header trigger (BacklogSection/IceboxColumn), and ListSection
   // itself is Current-only.
@@ -891,7 +916,14 @@ function ListSection({
       <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className={`flex min-h-10 flex-col gap-1.5 ${collapsed ? "hidden" : ""}`}>
           {items.map((item) => (
-            <SortableListRow key={item.id} item={item} projectId={projectId} states={states} pointScale={pointScale} />
+            <SortableListRow
+              key={item.id}
+              item={item}
+              projectId={projectId}
+              states={states}
+              pointScale={pointScale}
+              onError={onError}
+            />
           ))}
         </ul>
       </SortableContext>
@@ -1105,6 +1137,7 @@ function IceboxColumn({
   pointScale,
   members,
   labels,
+  onError,
 }: {
   items: ListItem[];
   projectId: string;
@@ -1112,6 +1145,7 @@ function IceboxColumn({
   pointScale: number[];
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
+  onError: (message: string) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: ICEBOX_COLUMN_ID });
   const [draftOpen, setDraftOpen] = useState(false);
@@ -1139,7 +1173,14 @@ function IceboxColumn({
         <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <ul ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-1.5">
             {items.map((item) => (
-              <SortableListRow key={item.id} item={item} projectId={projectId} states={states} pointScale={pointScale} />
+              <SortableListRow
+                key={item.id}
+                item={item}
+                projectId={projectId}
+                states={states}
+                pointScale={pointScale}
+                onError={onError}
+              />
             ))}
           </ul>
         </SortableContext>
@@ -1151,6 +1192,11 @@ function IceboxColumn({
 // The List view's own top-level collapse key (useCollapsedGroups) for the
 // Epics band header — separate from each row's own `epic:<id>` key below.
 const EPICS_BAND_KEY = "epics-band";
+
+// Distinguishes an epic row from a story card inside the one DndContext, so a
+// row can tell "a story is hovering me" (attach) from "another epic is"
+// (reorder). SortableItem's own cards keep their "card" tag (TASK-148).
+const EPIC_ROW_DRAG_TYPE = "epic-row";
 
 const BAND_LOCATION_LABEL: Record<BandChildLocation, string> = {
   current: "Current",
@@ -1179,7 +1225,7 @@ function EpicBandChildRow({ child }: { child: EpicBandChild }) {
         type="button"
         onClick={() => openPeek(child.id)}
         title={`${BAND_LOCATION_LABEL[child.location]} #${child.number}`}
-        className="flex w-full min-w-0 items-center gap-2 rounded px-1.5 py-1 text-left text-xs hover:bg-muted"
+        className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-left text-xs hover:bg-muted"
       >
         <span aria-hidden className={`size-2 shrink-0 rounded-full ${BAND_LOCATION_DOT_CLASS[child.location]}`} />
         <span className="shrink-0 text-muted-foreground">#{child.number}</span>
@@ -1207,9 +1253,35 @@ function EpicBandRow({
 }) {
   const openPeek = useOpenPeek();
   const color = row.epicColor ?? DEFAULT_EPIC_COLOR;
+  // useSortable rather than the shared SortableItem: an epic row is both a drag
+  // source (reorder among epics) and a drop target (attach, doc-20 §5), and
+  // useSortable already registers the droppable for this id — adding a second
+  // useDroppable with the same id would fight it for the same slot in dnd-kit's
+  // registry. `isOver` is the attach affordance: the story does not move, so
+  // without a highlight the gesture lands with nothing confirming which epic
+  // caught it (ux-principles principle 2).
+  //
+  // Same deliberate omission of dnd-kit's `attributes` as SortableItem (doc-17
+  // #43): the row wraps its own buttons, so the role/tabIndex they add would
+  // nest a button inside a button role.
+  const { active, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
+    id: row.id,
+    data: { type: EPIC_ROW_DRAG_TYPE },
+  });
+  // isOver alone is true for an epic dragged over this one too, and that is a
+  // reorder which can never attach — painting the same "drop here to attach"
+  // ring for it would promise something the drop does not do.
+  const isAttachTarget = isOver && active?.data.current?.type !== EPIC_ROW_DRAG_TYPE;
 
   return (
-    <li className="flex flex-col gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-xs">
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex cursor-grab flex-col gap-1.5 rounded-lg border bg-card px-2.5 py-1.5 shadow-xs active:cursor-grabbing ${
+        isAttachTarget ? "border-primary ring-2 ring-primary/40" : "border-border"
+      } ${isDragging ? "opacity-60" : ""}`}
+      {...listeners}
+    >
       <div className="flex items-center gap-1.5">
         <button
           type="button"
@@ -1233,7 +1305,15 @@ function EpicBandRow({
       <EpicProgressBar rollup={row.rollup} color={color} />
       {expanded &&
         (childRows.length > 0 ? (
-          <ul className="flex flex-col gap-1 pl-6">
+          // The epic row itself is the drag handle, and these render INSIDE it —
+          // so without stopping pointerdown here a child row would inherit
+          // `cursor-grab` and then drag its whole epic, i.e. look grabbable and
+          // move something else (AC#5, ux-principles principle 1). Click still
+          // works: only the sensor's pointerdown is stopped, not the click.
+          <ul
+            className="flex cursor-default flex-col gap-1 pl-6"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
             {childRows.map((child) => (
               <EpicBandChildRow key={child.id} child={child} />
             ))}
@@ -1242,6 +1322,24 @@ function EpicBandRow({
           <p className="pl-6 text-xs text-muted-foreground">No stories yet.</p>
         ))}
     </li>
+  );
+}
+
+// The drag ghost for an epic row: a static copy of the row's identity strip.
+// Deliberately not shared with EpicBandRow, which interleaves the collapse
+// chevron and the peek button through that same strip — factoring those out
+// into props costs more than this duplication removes.
+function EpicRowGhost({ row }: { row: ContainerListItem }) {
+  const color = row.epicColor ?? DEFAULT_EPIC_COLOR;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-xs">
+      <div className="flex items-center gap-2">
+        <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <span className="shrink-0 text-xs text-muted-foreground">#{row.number}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{row.title}</span>
+      </div>
+      <EpicProgressBar rollup={row.rollup} color={color} />
+    </div>
   );
 }
 
@@ -1318,6 +1416,10 @@ function EpicsBand({
   onToggleGroup: (key: string) => void;
   expandGroup: (key: string) => void;
 }) {
+  // Empty-block droppable so findContainer can resolve an epic row dropped onto
+  // the block when it holds only one row (mirrors the flat lists' setNodeRef).
+  const { setNodeRef: setBlockRef } = useDroppable({ id: CONTAINER_ROWS_ZONE_ID });
+
   async function handleCreate(title: string) {
     const result = await createEpic({ projectId, title });
     if (!result.ok) {
@@ -1347,17 +1449,22 @@ function EpicsBand({
         (items.length === 0 ? (
           <p className="pl-6 text-xs text-muted-foreground">No epics yet.</p>
         ) : (
-          <ul className="flex flex-col gap-1.5">
-            {items.map((row) => (
-              <EpicBandRow
-                key={row.id}
-                row={row}
-                childRows={childrenByEpic[row.id] ?? []}
-                expanded={!collapsedGroups.has(`epic:${row.id}`)}
-                onToggle={() => onToggleGroup(`epic:${row.id}`)}
-              />
-            ))}
-          </ul>
+          // The whole epic row is the drag handle, same convention as a story
+          // row — the collapse/peek buttons still fire on an under-threshold
+          // click (PointerSensor activation distance).
+          <SortableContext items={items.map((row) => row.id)} strategy={verticalListSortingStrategy}>
+            <ul ref={setBlockRef} className="flex flex-col gap-1.5">
+              {items.map((row) => (
+                <EpicBandRow
+                  key={row.id}
+                  row={row}
+                  childRows={childrenByEpic[row.id] ?? []}
+                  expanded={!collapsedGroups.has(`epic:${row.id}`)}
+                  onToggle={() => onToggleGroup(`epic:${row.id}`)}
+                />
+              ))}
+            </ul>
+          </SortableContext>
         ))}
     </section>
   );
@@ -1430,8 +1537,8 @@ export function BoardListView({
   // it doubles as the change token. Optimistic order, realtime-safe reconcile,
   // and per-drag reverts all live in the hook (TASK-113).
   const serverContainers = useMemo(
-    () => toListItemContainers(initialContainers, initialBacklogItems, states),
-    [initialContainers, initialBacklogItems, states],
+    () => toListItemContainers(initialContainers, initialBacklogItems, states, containerListItems),
+    [initialContainers, initialBacklogItems, states, containerListItems],
   );
   const { containers, setContainers, activeId, beginDrag, endDrag, revertToSnapshot, runDrop } =
     useOptimisticBoardOrder(serverContainers);
@@ -1444,6 +1551,18 @@ export function BoardListView({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  // Read from the optimistic zone rather than the prop so an epic reorder
+  // lands immediately, like every other zone here — the prop only catches up
+  // on the server's revalidatePath. The band RENDERS this too — reading the
+  // prop there instead would make an epic reorder snap back until the
+  // revalidate arrived, and would let a second drag compute its anchor from an
+  // order the user was not looking at.
+  const epicRows = (containers[CONTAINER_ROWS_ZONE_ID] ?? []).flatMap((item) =>
+    item.kind === "container" ? [item.row] : [],
+  );
+  const containerRowIds = new Set(epicRows.map((row) => row.id));
+  const collisionDetection = listCollisionDetection(containerRowIds);
 
   // Derived from the item's own data, not the visual zone. A divider can only
   // ever reorder within the Backlog zone — it never has a story's state/
@@ -1458,10 +1577,18 @@ export function BoardListView({
     if (item.kind === "divider") {
       return targetZone === BACKLOG_COLUMN_ID;
     }
-    // A container's Icebox children are now plain rows in their own zone
-    // (doc-20 §3 mirror-row model) — no nest/attach classification needed
-    // here anymore; the Epics band is read-only in this task (TASK-192 adds
-    // drop-on-epic attach, doc-20 §5/§8 phase 4).
+    // The band's block is exclusive both ways — checked before anything
+    // story-shaped, since an epic row carries no BoardStory to evaluate. This
+    // is also what keeps an attach from LOOKING like a move: a story dragged
+    // over an epic is refused entry to the block, so onDragOver never relocates
+    // it and it stays visibly in its own zone, which is the whole point of
+    // doc-20 §5. handleDragEnd picks the attach up separately.
+    if (isDisallowedContainerRowDrop(item.kind === "container", targetZone)) {
+      return false;
+    }
+    if (item.kind === "container") {
+      return true; // reordering among its own block; no state/iteration to gate
+    }
     const from = zoneForStory(item.story, currentIteration?.id ?? null);
     return evaluateListDrop(item.story, from, targetZone as ListZoneId, toGateStates(states)).ok;
   }
@@ -1493,6 +1620,38 @@ export function BoardListView({
       return;
     }
 
+    // Attach (doc-20 §5): a story dropped ON an epic row writes parent_id and
+    // nothing else — no zone change, no reorder, so this returns before the
+    // move path rather than routing through dropStoryInList.
+    const draggedItem = storyById(containers, String(active.id));
+    if (draggedItem?.kind === "story" && containerRowIds.has(String(over.id))) {
+      const parentId = String(over.id);
+      // The drag still has to be undone. onDragOver relocates optimistically on
+      // every hover, so a story dragged up to the band THROUGH Current is
+      // already rendered there — and an attach must leave it exactly where it
+      // started, or the board shows a zone the server was never told about
+      // until the revalidate lands.
+      revertToSnapshot();
+      setMutationError(null);
+      runDrop(
+        String(active.id),
+        async () => {
+          const result = await setStoryParent({ storyId: String(active.id), projectId, parentId });
+          if (!result.ok) {
+            throw new Error(result.message);
+          }
+          // Expanded only once it actually worked: an attach moves nothing on
+          // screen, so the child appearing under its epic is the only proof
+          // (ux-principles principle 2). Expanding up front would leave a
+          // failed drop showing an opened, childless epic beside the error.
+          expandGroup(EPICS_BAND_KEY);
+          expandGroup(`epic:${parentId}`);
+        },
+        setMutationError,
+      );
+      return;
+    }
+
     const overContainer = findContainer(containers, String(over.id));
     if (!overContainer || !isAllowedMove(String(active.id), overContainer)) {
       revertToSnapshot();
@@ -1514,12 +1673,18 @@ export function BoardListView({
     formData.set("project_id", projectId);
     formData.set("item_kind", activeItem?.kind === "divider" ? "divider" : "story");
     formData.set("item_id", String(active.id));
-    formData.set("target_zone", overContainer);
+    formData.set("target_zone", toServerZone(overContainer));
     // Intent, not a full sequence: the neighbour ("story:<id>"/"divider:<id>")
     // the item now sits before (or nothing = append to the zone's end). The
     // server re-derives dense positions across both tables from current DB
     // order, so a stale client can't overwrite a concurrent drag (TASK-56).
-    const beforeId = beforeAnchorId(reordered, String(active.id));
+    // An epic neighbour anchors as a story for the same reason as item_kind:
+    // server-side an epic IS a story row (is_container = true), only the client
+    // models it as its own kind.
+    const beforeId = beforeAnchorId(
+      reordered.map((it) => (it.kind === "container" ? { ...it, kind: "story" } : it)),
+      String(active.id),
+    );
     if (beforeId) {
       formData.set("before_item_id", beforeId);
     }
@@ -1567,7 +1732,7 @@ export function BoardListView({
     <DndContext
       id="board-list-view"
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -1586,7 +1751,7 @@ export function BoardListView({
             </div>
           )}
           <EpicsBand
-            items={containerListItems}
+            items={epicRows}
             childrenByEpic={epicBandChildren}
             projectId={projectId}
             collapsed={collapsedGroups.has(EPICS_BAND_KEY)}
@@ -1613,6 +1778,7 @@ export function BoardListView({
             collapsed={collapsedGroups.has("current")}
             onToggleCollapse={() => onToggleGroup("current")}
             pointScale={pointScale}
+            onError={setMutationError}
           />
 
           <BacklogSection
@@ -1643,6 +1809,7 @@ export function BoardListView({
             pointScale={pointScale}
             members={members}
             labels={labels}
+            onError={setMutationError}
           />
         )}
       </div>
@@ -1652,6 +1819,8 @@ export function BoardListView({
           <div className="max-w-3xl rotate-1 cursor-grabbing">
             {activeItem.kind === "divider" ? (
               <DividerRow projectId={projectId} divider={activeItem.divider} onError={setMutationError} />
+            ) : activeItem.kind === "container" ? (
+              <EpicRowGhost row={activeItem.row} />
             ) : (
               <StoryListRow story={activeItem.story} projectId={projectId} states={states} pointScale={pointScale} />
             )}
