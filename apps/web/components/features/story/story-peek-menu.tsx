@@ -8,6 +8,7 @@ import {
   deleteStory,
   getMoveTargetProjects,
   moveStoryToProject,
+  turnIntoEpic,
   type MoveCopyTargetProject,
   type StoryDetail,
 } from "@/app/stories/[id]/actions";
@@ -38,6 +39,7 @@ export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
+  const [epicOpen, setEpicOpen] = useState(false);
 
   // A container is already split (no board state to split from) and a child
   // can't be split (single-level nesting, doc-18 §3) — split_story rejects
@@ -45,6 +47,14 @@ export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
   // (owner decision: splitting would containerize it, dropping it out of My
   // Work with unassigned children also invisible there).
   const canSplit = !detail.isContainer && detail.parentId === null && !detail.isPersonalProject;
+
+  // A container has no children left to gain, a child can't become an epic
+  // (single-level nesting, doc-18 §3), set_epic_pinned requires owner/member,
+  // and it rejects a personal-project story outright (My Tasks has no epic
+  // grouping) — all mirrored here so the item is hidden rather than offered
+  // and left to fail server-side (doc-20 §2).
+  const canBecomeEpic =
+    !detail.isContainer && detail.parentId === null && detail.viewerIsMember && !detail.isPersonalProject;
 
   return (
     <>
@@ -63,6 +73,16 @@ export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
               }}
             >
               Split…
+            </DropdownMenuItem>
+          )}
+          {canBecomeEpic && (
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                setEpicOpen(true);
+              }}
+            >
+              Turn into epic…
             </DropdownMenuItem>
           )}
           {/* A container is rejected server-side by both RPCs (doc-18 §8 —
@@ -103,7 +123,62 @@ export function StoryPeekMenu({ detail }: { detail: StoryDetail }) {
       <DeleteStoryDialog detail={detail} open={deleteOpen} onOpenChange={setDeleteOpen} />
       <MoveCopyDialog detail={detail} mode="move" open={moveOpen} onOpenChange={setMoveOpen} />
       <MoveCopyDialog detail={detail} mode="copy" open={copyOpen} onOpenChange={setCopyOpen} />
+      <TurnIntoEpicDialog detail={detail} open={epicOpen} onOpenChange={setEpicOpen} />
     </>
+  );
+}
+
+function TurnIntoEpicDialog({
+  detail,
+  open,
+  onOpenChange,
+}: {
+  detail: StoryDetail;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    setPending(true);
+    setError(null);
+    try {
+      const result = await turnIntoEpic(detail.id, detail.projectId);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      onOpenChange(false);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to turn into epic");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Turn &ldquo;{detail.title}&rdquo; into an epic?</DialogTitle>
+          <DialogDescription>
+            &ldquo;{detail.title}&rdquo; will become an epic and leave the board; its points and state are cleared.
+          </DialogDescription>
+        </DialogHeader>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => void handleConfirm()} disabled={pending}>
+            {pending ? "Turning into epic…" : "Turn into epic"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

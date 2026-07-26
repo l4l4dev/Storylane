@@ -47,6 +47,7 @@ const baseDetail: StoryDetail = {
   tasks: [{ id: "t1", title: "A task", is_done: false }],
   history: [],
   parentCandidates: [],
+  viewerIsMember: true,
 };
 
 async function renderPage(detail: StoryDetail | null) {

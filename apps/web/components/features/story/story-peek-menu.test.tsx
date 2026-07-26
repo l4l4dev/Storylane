@@ -6,16 +6,18 @@ import { StoryPeekMenu } from "./story-peek-menu";
 
 // The overflow menu hosts Split/Move/Copy/Delete. split_story's own
 // correctness is covered by lib/utils/split.integration.test.ts.
-const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }));
+const { pushMock, refreshMock } = vi.hoisted(() => ({ pushMock: vi.fn(), refreshMock: vi.fn() }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, refresh: refreshMock }),
 }));
 const getMoveTargetProjectsMock = vi.fn();
+const turnIntoEpicMock = vi.fn();
 vi.mock("@/app/stories/[id]/actions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/app/stories/[id]/actions")>();
   return {
     ...actual,
     getMoveTargetProjects: (...args: unknown[]) => getMoveTargetProjectsMock(...args),
+    turnIntoEpic: (...args: unknown[]) => turnIntoEpicMock(...args),
   };
 });
 
@@ -46,11 +48,14 @@ const baseDetail: StoryDetail = {
   tasks: [],
   history: [],
   parentCandidates: [],
+  viewerIsMember: true,
 };
 
 describe("StoryPeekMenu", () => {
   beforeEach(() => {
     pushMock.mockClear();
+    refreshMock.mockClear();
+    turnIntoEpicMock.mockClear();
   });
 
   it("shows a delete confirmation naming the story and its comment count", async () => {
@@ -181,5 +186,58 @@ describe("StoryPeekMenu", () => {
     await user.click(screen.getByRole("menuitem", { name: "Delete story" }));
 
     expect(screen.queryByText(/ungrouped/i)).not.toBeInTheDocument();
+  });
+
+  // doc-20 §2/TASK-196: the pre-existing set_epic_pinned path had no UI
+  // caller — this confirms it, mirroring the Parent picker's own
+  // "Make an epic?" confirmation copy.
+  it("confirms and calls set_epic_pinned via turnIntoEpic", async () => {
+    turnIntoEpicMock.mockResolvedValueOnce({ ok: true });
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={baseDetail} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Turn into epic…" }));
+
+    expect(screen.getByText(/leave the board; its points and state are cleared/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Turn into epic" }));
+
+    expect(turnIntoEpicMock).toHaveBeenCalledWith("s1", "p1");
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it("hides Turn into epic for a container story", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={{ ...baseDetail, isContainer: true }} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Turn into epic…" })).not.toBeInTheDocument();
+  });
+
+  it("hides Turn into epic for a viewer who isn't an owner/member", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={{ ...baseDetail, viewerIsMember: false }} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Turn into epic…" })).not.toBeInTheDocument();
+  });
+
+  // set_epic_pinned rejects a personal-project story outright (My Tasks has
+  // no epic grouping) — hidden rather than offered and left to fail.
+  it("hides Turn into epic for a personal-project story", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={{ ...baseDetail, isPersonalProject: true }} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Turn into epic…" })).not.toBeInTheDocument();
+  });
+
+  // set_epic_pinned rejects a child story outright (single-level nesting,
+  // doc-18 §3) — hidden rather than offered and left to fail.
+  it("hides Turn into epic for a child story", async () => {
+    const user = userEvent.setup();
+    render(<StoryPeekMenu detail={{ ...baseDetail, parentId: "parent-1" }} />);
+    await user.click(screen.getByRole("button", { name: "Story actions" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Turn into epic…" })).not.toBeInTheDocument();
   });
 });

@@ -46,6 +46,7 @@ const detail: StoryDetail = {
   tasks: [],
   history: [],
   parentCandidates: [],
+  viewerIsMember: true,
 };
 
 describe("StoryPeek", () => {

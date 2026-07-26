@@ -65,6 +65,10 @@ export type StoryDetail = {
   // re-parented onto, single-level nesting, §3). Picking a candidate whose
   // isContainer is false containerizes it (needs confirmation, §4/§9).
   parentCandidates: { id: string; number: number; title: string; isContainer: boolean }[];
+  // Owner/member gate for "Turn into epic" (set_epic_pinned's own RPC-level
+  // check, mirrored here so the menu item can be hidden rather than offered
+  // and left to fail, doc-20 §2/TASK-196).
+  viewerIsMember: boolean;
 };
 
 /**
@@ -85,6 +89,10 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
   if (!story) {
     return null;
   }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const [
     { data: project },
@@ -107,7 +115,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
       supabase.from("labels").select("id, name").eq("project_id", story.project_id).order("name"),
       supabase
         .from("project_members")
-        .select("user_id, profiles(display_name, is_agent)")
+        .select("user_id, role, profiles(display_name, is_agent)")
         .eq("project_id", story.project_id),
       supabase
         .from("comments")
@@ -185,6 +193,10 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         : Promise.resolve({ data: [] as { id: string; number: number; title: string }[] }),
     ]);
 
+  const viewerIsMember = (members ?? []).some(
+    (m) => m.user_id === user?.id && (m.role === "owner" || m.role === "member"),
+  );
+
   const currentIterationId = currentIterationOf(iterationsData ?? [])?.id ?? null;
   const states = (statesData ?? []) as ProjectState[];
   const categoryById = new Map(states.map((s) => [s.id, s.category]));
@@ -244,6 +256,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
       title: row.title,
       isContainer: row.is_container,
     })),
+    viewerIsMember,
     members: (members ?? []).map((m) => {
       const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
       return {
@@ -469,6 +482,26 @@ export async function splitStory(storyId: string, children: SplitChildInput[]): 
   }
 
   return { ok: true, parentId: result.parent_id, childIds: result.child_ids };
+}
+
+export type TurnIntoEpicResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * "Turn into epic" (story detail overflow menu, doc-20 §2/TASK-196): pins an
+ * existing childless story as a container via `set_epic_pinned`. The RPC
+ * itself clears points/state/iteration and audits the lost points — this
+ * only calls it and lets the caller re-fetch the story.
+ */
+export async function turnIntoEpic(storyId: string, projectId: string): Promise<TurnIntoEpicResult> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_epic_pinned", { p_story_id: storyId, p_pinned: true });
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+
+  revalidatePath(`/stories/${storyId}`);
+  revalidatePath(`/projects/${projectId}/board`);
+  return { ok: true };
 }
 
 export async function addComment(formData: FormData): Promise<ActionResult> {

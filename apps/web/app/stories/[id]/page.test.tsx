@@ -52,6 +52,7 @@ const baseDetail: StoryDetail = {
   tasks: [],
   history: [],
   parentCandidates: [],
+  viewerIsMember: true,
 };
 
 describe("StoryDetailPage", () => {
