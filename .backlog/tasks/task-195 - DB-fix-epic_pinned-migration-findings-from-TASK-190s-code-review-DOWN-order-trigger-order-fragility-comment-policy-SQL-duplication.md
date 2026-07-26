@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-25 03:14'
-updated_date: '2026-07-26 03:45'
+updated_date: '2026-07-26 09:03'
 labels:
   - db
 milestone: m-6
@@ -46,4 +46,6 @@ Since the migration is already applied, these need a NEW forward-fixing migratio
 TASK-191's /code-review (2026-07-25) surfaced 2 more findings against this same migration, folded in as AC#6/#7 above: the is_container boolean formula duplicated between derive_is_container and recompute_is_container, and protect_stories_epic_pinned's role-based (not allowlist-based) exemption for SECURITY DEFINER functions -- not exploitable today (verified: update_story isn't SECURITY DEFINER; split_story forces epic_pinned false on insert), but flagged as a forward-looking hardening gap.
 
 Comment-policy violations (AC#3) fixed as a drive-by cleanup during TASK-193's /code-review response (2026-07-26), ahead of this task's own migration work: epic_pinned.sql:58/144, epic-pinned.integration.test.ts (2 spots), set-story-parent.integration.test.ts:176 all had their /code-review, rls-security-reviewer, TASK-189/192 provenance framing stripped, keeping only the actual constraint each comment states. AC#3 can be checked off without further work here. AC#1 (DOWN order), AC#2 (trigger-order fragility), AC#4 (SQL duplication), AC#6/#7 (is_container formula duplication, protect_stories_epic_pinned's role-based exemption) remain — these need a real forward-fixing migration, not just comment edits.
+
+Re-confirmed by TASK-196's /code-review (2026-07-26): DOWN order (AC#1), trigger-order fragility (AC#2), audit-then-clear/#6366f1 duplication (AC#4), and protect_stories_epic_pinned's role-based exemption (AC#7) are all still open. New minor finding folded in: stories_aa_protect_epic_pinned and stories_derive_is_container are BEFORE INSERT OR UPDATE with no WHEN clause, so both run on every stories write (title edits, drag reorders) even when epic_pinned/parent_id are untouched -- a WHEN clause would skip both for ordinary edits. No new AC added (same migration, same fix pass); worth picking up when this task is implemented.
 <!-- SECTION:NOTES:END -->
