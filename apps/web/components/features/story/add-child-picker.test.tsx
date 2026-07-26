@@ -54,8 +54,8 @@ describe("AddChildPicker", () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  // /code-review: a bare .then() with no .catch left `pending` stuck true
-  // forever when the call rejected instead of resolving to {ok:false}.
+  // A bare .then() with no .catch left `pending` stuck true forever when the
+  // call rejected instead of resolving to {ok:false}.
   it("clears pending and shows an error when setStoryParent rejects outright", async () => {
     refreshMock.mockClear();
     setStoryParentMock.mockRejectedValueOnce(new Error("Network error"));

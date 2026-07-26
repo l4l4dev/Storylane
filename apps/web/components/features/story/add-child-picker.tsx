@@ -38,7 +38,7 @@ export function AddChildPicker({
     // try/finally so `pending` always clears, including if setStoryParent
     // itself throws (e.g. createClient() failing) rather than resolving to
     // {ok:false} — a bare .then() with no .catch left the select disabled
-    // forever on that path (/code-review).
+    // forever on that path.
     try {
       const result = await setStoryParent({ storyId: value, projectId, parentId: containerId });
       if (!result.ok) {
