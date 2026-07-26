@@ -1,10 +1,11 @@
 ---
 id: TASK-200
 title: 'Board: migrate remaining peek-open call sites to useOpenPeek'
-status: To Do
+status: Done
 assignee:
   - '@claude-haiku-4-5'
 created_date: '2026-07-26 09:04'
+updated_date: '2026-07-26 09:57'
 labels:
   - web
 milestone: m-6
@@ -20,7 +21,13 @@ Found by TASK-196's /code-review. The useOpenPeek hook (apps/web/components/feat
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 story-card.tsx uses useOpenPeek instead of hand-writing the params.set('story', id) + router.push logic
-- [ ] #2 my-work-sections.tsx uses useOpenPeek instead of hand-writing the same logic
-- [ ] #3 Existing peek-open tests for both call sites still pass unchanged in behavior
+- [x] #1 story-card.tsx uses useOpenPeek instead of hand-writing the params.set('story', id) + router.push logic
+- [x] #2 my-work-sections.tsx uses useOpenPeek instead of hand-writing the same logic
+- [x] #3 Existing peek-open tests for both call sites still pass unchanged in behavior
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+story-card.tsx and my-work-sections.tsx both now call useOpenPeek() instead of hand-writing params.set('story', id) + router.push -- useOpenPeek is now the single call site for the peek URL contract, as its own comment already claimed. Verified via the existing story-card.test.tsx and my-work-sections.test.tsx (42 tests, unchanged behavior), full suite (836 tests), tsc --noEmit, eslint, all clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

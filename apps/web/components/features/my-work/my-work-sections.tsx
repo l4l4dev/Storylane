@@ -25,7 +25,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { addDays } from "@storylane/core";
 import {
@@ -64,6 +63,7 @@ import {
 import { BOARD_COLUMN_HEIGHT_CLASS } from "@/components/features/board/kanban-columns-board";
 import { MutationErrorBanner } from "@/components/features/board/mutation-error-banner";
 import { SortableItem } from "@/components/features/board/sortable-item";
+import { useOpenPeek } from "@/components/features/board/use-open-peek";
 import { useOptimisticBoardOrder } from "@/components/features/board/use-optimistic-board-order";
 import { AddColumnTile, ColumnNameField, DeleteColumnButton } from "./my-work-column-manager";
 import { MyWorkRow, type MyWorkRowData } from "./my-work-row";
@@ -474,17 +474,10 @@ export function MyWorkSections({
 }) {
   const todayKey = useSyncExternalStore(NOOP_SUBSCRIBE, localTodayKey, () => serverTodayKey);
 
-  // Opens a row's story in the side peek (TASK-172), matching the project
-  // board's StoryCard.openPeek: sets ?story=<id> on the current URL rather
-  // than navigating away, so the board stays mounted underneath.
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  function openStoryPeek(storyId: string) {
-    const params = new URLSearchParams(searchParams);
-    params.set("story", storyId);
-    router.push(`${pathname}?${params.toString()}`, { scroll: false });
-  }
+  // Opens a row's story in the side peek (TASK-172): sets ?story=<id> on the
+  // current URL rather than navigating away, so the board stays mounted
+  // underneath. Same hook the board's StoryCard uses (TASK-200).
+  const openStoryPeek = useOpenPeek();
 
   // Keeps the "local_date" cookie fresh so next visit's SSR (page.tsx) can
   // seed serverTodayKey with it instead of UTC — closes the hydration flash

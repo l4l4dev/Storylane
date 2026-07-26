@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bug, Flag, Star, Wrench, type LucideIcon } from "lucide-react";
 import {
   formatPoints,
@@ -11,6 +10,7 @@ import {
 import { initials } from "@/lib/utils/format";
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 import { Badge } from "@/components/ui/badge";
+import { useOpenPeek } from "./use-open-peek";
 
 export type StoryCardData = {
   id: string;
@@ -89,18 +89,10 @@ export function StoryCard({
   story: StoryCardData;
   projectId?: string;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  function openPeek() {
-    const params = new URLSearchParams(searchParams);
-    params.set("story", story.id);
-    router.push(`${pathname}?${params.toString()}`, { scroll: false });
-  }
+  const openPeek = useOpenPeek();
 
   if (story.story_type === "release") {
-    return <ReleaseMarkerRow story={story} onOpen={projectId ? openPeek : undefined} />;
+    return <ReleaseMarkerRow story={story} onOpen={projectId ? () => openPeek(story.id) : undefined} />;
   }
 
   const typeMeta = STORY_TYPE_META[story.story_type as StoryType];
@@ -167,7 +159,7 @@ export function StoryCard({
       }`}
     >
       {projectId ? (
-        <button type="button" onClick={openPeek} className="block w-full text-left hover:opacity-80">
+        <button type="button" onClick={() => openPeek(story.id)} className="block w-full text-left hover:opacity-80">
           {cardContent}
         </button>
       ) : (
