@@ -41,7 +41,7 @@ export default async function EpicsPage({
   // classified against a stale, not-yet-rolled-over current iteration.
   await ensureCurrentIteration(project.id);
 
-  const [{ data: containerRows }, { data: childRows }, { data: statesData }, { data: iterationsData }] =
+  const [{ data: containerRows }, { data: childRows }, { data: statesData }, { data: iterationsData }, peekDetail] =
     await Promise.all([
       // Ordered by position (not number) — doc-18 §2: a container shares the
       // single stories.position space like any top-level story, so its order
@@ -63,6 +63,11 @@ export default async function EpicsPage({
       // Just enough to derive the current iteration id for the location dot's
       // "done wins over zone" rule — same derivation as board/page.tsx.
       supabase.from("iterations").select("id, number, state").eq("project_id", id),
+      // Independent of the four queries above — launched alongside them
+      // rather than awaited afterward, since getStoryDetail batches its own
+      // ~11-query Promise.all and awaiting it serially would double
+      // server-render latency on any /epics?story=<id> load (TASK-199).
+      peekStoryId ? getStoryDetail(peekStoryId) : Promise.resolve(null),
     ]);
 
   // `category` is a generic `string` in the generated Row type (the DB CHECK
@@ -95,7 +100,6 @@ export default async function EpicsPage({
   );
 
   const selectedEpic = selectedEpicId ? (items.find((item) => item.id === selectedEpicId) ?? null) : null;
-  const peekDetail = peekStoryId ? await getStoryDetail(peekStoryId) : null;
 
   return (
     <main className="p-6">
