@@ -47,7 +47,8 @@
   Split Studio (`/stories/[id]/split`, from the story detail "⋯" menu — see
   spec/screens.md "Split Studio"). Unlike the old promote flow, **the source
   story is never deleted**: it stays and becomes a **container** (an "epic" =
-  `is_container = true`, doc-18 §1).
+  `is_container = true`, doc-18 §1's board model — still current; *where* a
+  container renders is now doc-20 §3).
   - Each right-pane card becomes a new child story (`parent_id` = the source,
     `epic_color` inherited); the user assigns each child a title, description,
     type, and tentative points, and drags source tasks onto the child that
@@ -70,9 +71,16 @@
   **Containers are excluded (doc-18 §8):** a story with `is_container = true`
   cannot be Moved/Copied — the RPCs reject it and the menu items are
   hidden/disabled — because deleting the source would `SET NULL` its children's
-  `parent_id` and silently explode the epic. Move/regroup the children instead;
-  the emptied container auto-reverts to a normal story. A **child** (a story
-  with a `parent_id`) still moves normally, dropping its parent link on landing:
+  `parent_id` and silently explode the epic. Move/regroup the children
+  instead; an emptied container that lost its last child auto-reverts to a
+  normal story **only if it was never explicitly pinned as an epic** — since
+  doc-20 §2, `is_container = has_children OR epic_pinned`, so a childless
+  epic created via "+ Add Epic" or "Turn into epic…" (`create_epic` /
+  `set_epic_pinned`) stays a container, off the board, until explicitly
+  un-pinned (`set_epic_pinned(story_id, false)`, which itself rejects while
+  children remain — moot here since they're already gone). A **child** (a
+  story with a `parent_id`) still moves normally, dropping its parent link on
+  landing:
   - **Move** carries title, description, type, tasks, labels (recreated by
     name+color in the target if missing) and comments; the story receives a
     new per-project number in the target. Parent ("epic") link is dropped
@@ -130,10 +138,16 @@
 
 #### Epics & Labels
 - **Epics are container stories (doc-18):** an epic is a story with children
-  (`is_container = true`), created by splitting a story or nesting stories under
-  it — not a separate record. `epic_color` sets its color; progress is a
-  read-side roll-up of its children's state and point sum (doc-18 §5). The
-  `/epics` view lists all containers with their roll-up progress.
+  (`is_container = true`), created by splitting a story, nesting stories
+  under one via the Parent picker, or explicitly via **"+ Add Epic"**
+  (`create_epic`, a brand-new childless epic) or an existing story's
+  **"Turn into epic…"** (`set_epic_pinned`, TASK-196) — not a separate
+  record (doc-20 §2). `epic_color` sets its color; progress is a read-side
+  roll-up of its children's state and point sum, any zone (doc-18 §5). The
+  List view's **Epics band** (doc-20 §3) and the **`/epics`** two-pane view
+  (doc-20 §6) both list every epic with its roll-up progress; a story joins
+  an epic by dragging it onto the epic row — `parent_id` only, its own
+  state/iteration/position untouched (doc-20 §5).
 - Create labels with colors and apply multiple labels to stories (orthogonal to
   the parent hierarchy — labels are cross-cutting tags, doc-18 §1)
 

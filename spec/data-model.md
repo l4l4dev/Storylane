@@ -73,9 +73,11 @@ project_members (
 ```
 
 ### epics (removed — doc-18)
-Unified into `stories`: an epic is now a **story with children**
-(`is_container = true`), grouped by `stories.parent_id` and colored by
-`stories.epic_color`. See `stories` below and doc-18 (§1–§2).
+Unified into `stories`: an epic is now a **story with children, or one
+explicitly pinned via `epic_pinned` while still childless** (`is_container =
+has_children OR epic_pinned`, doc-20 §2), grouped by `stories.parent_id` and
+colored by `stories.epic_color`. See `stories` below, doc-18 (§1–§2), and
+doc-20 (§2).
 
 ### labels
 ```sql
@@ -359,10 +361,22 @@ stories (
                                           -- container (is_container = true, auto-maintained). Depth is
                                           -- capped at 1 by enforce_single_level_nesting (doc-18 §3).
   is_container boolean NOT NULL DEFAULT false,
-                                          -- doc-18 §4: trigger-maintained (true iff ≥1 child). APP-LAYER
+                                          -- trigger-maintained: has_children OR epic_pinned (doc-20 §2,
+                                          -- supersedes doc-18 §4's "true iff ≥1 child"). APP-LAYER
                                           -- READ-ONLY — never written by clients. On false→true the trigger
                                           -- also NULLs points/state_id/iteration_id (a container is off the
-                                          -- board) and logs the old points to activity_logs.
+                                          -- board) and logs the old points to activity_logs (doc-18 §4,
+                                          -- unchanged).
+  epic_pinned  boolean NOT NULL DEFAULT false,
+                                          -- doc-20 §2: the *intent* to stay an epic with zero children —
+                                          -- is_container stays fully derived (relaxing it would reopen the
+                                          -- TASK-182 hole where a client sets is_container=false, points=5
+                                          -- to un-containerize a row). Written only by two SECURITY DEFINER
+                                          -- RPCs: create_epic(project_id, title) (childless epic, "+ Add
+                                          -- Epic") and set_epic_pinned(story_id, pinned) (pins an existing
+                                          -- childless story, "Turn into epic…"; unpins, rejecting while
+                                          -- children remain). Any other write path is blocked by a
+                                          -- protect_stories_epic_pinned trigger.
   epic_color   text,                      -- doc-18: display color, meaningful only when is_container = true
                                           -- (folds in the removed epics.color)
   state_id     uuid,                      -- doc-8 §2: the story's project_state (board column).
@@ -391,27 +405,37 @@ stories (
 )
 ```
 
-**Container stories & roll-up (doc-18 §1–§5):** a story with children is a
-**container** (an "epic"); a story with a `parent_id` is a **child**. `parent_id`
-is 1-to-many hierarchy; `labels` stay the orthogonal many-to-many tag — they
-coexist. Board model (owner decision 2026-07-24): **children are the real board
-items** (their own state/iteration/points, counted in velocity as terminal
-stories); a **container never sits in a Kanban column or sprint** — its
-state/iteration/points are NULL and its progress (aggregate state + point sum)
-is **derived on read from its children, never stored** (roll-up rule in doc-18
-§5, a shared `packages/core` pure function with golden fixtures). Children reuse
-their single `stories.position` for order under the parent — no separate
-"epic-internal" position scope (doc-18 §2). Containers are excluded from board /
-velocity / My Work paths by one `is_container = false` filter (doc-18 §5);
-`split_story` (doc-18 §6) is the only bulk create-children path. A container's
-off-the-board property is a **permanent DB invariant, not a one-time clear**
-(decision-1): `CHECK (NOT is_container OR (points IS NULL AND state_id IS NULL
-AND iteration_id IS NULL))` on `stories`, plus an `is_container` reject guard in
-`set_story_state`, so no later direct UPDATE can re-populate a container's board
-fields (doc-18 §4). A **container itself cannot be Move/Copied** — the RPCs
+**Container stories & roll-up (doc-18 §1–§5, is_container lifecycle superseded
+by doc-20 §2):** a story with children, or one explicitly pinned as an epic
+while childless (`epic_pinned`, doc-20 §2), is a **container** (an "epic"); a
+story with a `parent_id` is a **child**. `parent_id` is 1-to-many hierarchy;
+`labels` stay the orthogonal many-to-many tag — they coexist. Board model
+(owner decision 2026-07-24): **children are the real board items** (their own
+state/iteration/points, counted in velocity as terminal stories); a
+**container never sits in a Kanban column or sprint** — its
+state/iteration/points are NULL and its progress (aggregate state + point sum,
+any zone) is **derived on read from its children, never stored** (roll-up rule
+in doc-18 §5, a shared `packages/core` pure function with golden fixtures).
+Children reuse their single `stories.position` for order under the parent —
+no separate "epic-internal" position scope (doc-18 §2). Containers are
+excluded from board / velocity / My Work paths by one `is_container = false`
+filter (doc-18 §5); `split_story` (doc-18 §6) is the only bulk
+create-children path, and `create_epic` / `set_epic_pinned` (doc-20 §2) are
+the only paths that pin/unpin a childless story as an epic — none of the
+three ever bulk-creates *and* pins in one call. A container's off-the-board
+property is a **permanent DB invariant, not a one-time clear** (decision-1):
+`CHECK (NOT is_container OR (points IS NULL AND state_id IS NULL AND
+iteration_id IS NULL))` on `stories`, plus an `is_container` reject guard in
+`set_story_state`, so no later direct UPDATE can re-populate a container's
+board fields (doc-18 §4; the CHECK now also covers a pinned-but-childless
+epic, doc-20 §2). A **container itself cannot be Move/Copied** — the RPCs
 reject `is_container = true` (moving it would `SET NULL` its children's
 `parent_id` and explode the epic); relocate an epic by moving its children
-(doc-18 §8).
+(doc-18 §8). Attaching/detaching a story to/from an epic (`set_story_parent`,
+doc-20 §5) sets `parent_id` **only** — state/iteration/position are
+untouched, unlike containerizing via the story-detail Parent picker or
+`split_story`, which do clear the *parent's* board fields when it newly
+becomes a container.
 
 ### story_labels (join table)
 ```sql

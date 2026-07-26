@@ -17,8 +17,8 @@
                           Projects page header
 /projects/[id]            Redirects to the board (see below) — the board is the project's home view
 /projects/[id]/board      Board (List / Kanban view, toggled in place — see "Board layout" below)
-/projects/[id]/epics      Container ("epic") list — every is_container story with
-                          roll-up progress (doc-18 §9; was the epics-table list)
+/projects/[id]/epics      Epics: two panes — every epic with roll-up progress on the
+                          left, the selected epic's children on the right (doc-20 §6)
 /projects/[id]/iterations Iteration history (past/done iterations with velocity and their stories)
 /projects/[id]/activity   Project activity log (read-only feed of recent story/comment changes)
 /projects/[id]/settings   Project settings (members, integrations, point scale, etc.)
@@ -252,30 +252,57 @@ a physical column.
     draggable to a new spot — delete it via its header badge and re-insert
     at the new spot instead (still exact, via the insert-between
     affordance below).
-- **Container accordion (doc-18 §1, §9):** a **container** (`is_container =
-  true`) has a permanently NULL `state_id` (doc-18 §4), so it structurally only
-  ever belongs to the Icebox zone — it renders there as a collapsible parent
-  row showing its `epic_color` and a roll-up progress bar (aggregate child
-  state + point sum across *every* child regardless of zone, doc-18 §5).
-  Expanding it reveals only its **Icebox children** (`parent_id` = the
-  container, `state_id IS NULL`) indented one level, ordered by `position` — a
-  child never also appears as its own top-level Icebox row. This is the whole
-  hierarchy UI: a flat list plus one accordion level, no tree widget (doc-18
-  §3). Container rows sit in their own block above the Icebox's plain items
-  (ordered by `position` among themselves) — reordering a container, or
-  dragging its nested children, is not yet supported (v1 scope; the accordion
-  is display-only).
-  - **A child that has its own state (in Current or Backlog) is unaffected**:
-    doc-18 §1 makes children "normal board items... exactly like any story
-    today", so it keeps rendering as a flat row in its own zone, unchanged —
-    it is never pulled into the Icebox accordion. Its row instead carries a
-    small link back to its parent epic (ux-principles principle 8: a
-    relationship must stay visible, not disappear once the item leaves
-    Icebox).
+- **Epics band (doc-20 §3, replaces the old Icebox-only "Container accordion"
+  — doc-18 §1/§9 superseded on where a container renders):** a collapsible
+  **Epics** section at the top of the List view, above Current — a container
+  (`is_container = true`, now `has_children OR epic_pinned`, doc-20 §2) never
+  renders inside the Backlog or Icebox blocks, matching Tracker's own epics
+  live in their own panel (doc-20 §1). Collapse state persists like the
+  existing Backlog groups. Each epic row shows its `epic_color`, `#number
+  title`, and a roll-up progress bar (aggregate child state + point sum
+  across *every* child regardless of zone, doc-18 §5 — unchanged). Epic rows
+  are drag-reorderable among themselves and sit in their own block, ordered
+  by `position` (doc-18 §2's single dense position space, ported from
+  TASK-188's Icebox-block logic). A header **"+ Add Epic"** button creates a
+  new, childless epic (`create_epic` RPC, doc-20 §2) and lands with the band
+  and the new epic both expanded (ux-principles principle 10).
+  - **Expanding an epic reveals every child, regardless of zone** (fixes the
+    old accordion's defect: a child that moved out of Icebox used to
+    disappear from its epic's visible contents). Each child renders as a
+    **mirror row** — a location dot (Current / Backlog / Icebox / Done /
+    Rejected; hover reveals the precise location, e.g. "Backlog #3") + `#number
+    title` + points — deliberately lighter than, and separate from, the
+    child's own real row in its zone. Mirror rows are **not drag sources**
+    and render no drag handle (ux-principles principle 1: a control that
+    looks grabbable but refuses the drag is a dead control); the epic row
+    itself is the drag handle for reordering.
+  - **A child still renders its own flat row in its zone, unchanged**: doc-18
+    §1's "normal board items... exactly like any story today" still holds —
+    a child is never pulled into the band, only mirrored there. Its own row
+    carries a left rule in `epic_color` and an epic-name chip (two-line story
+    rows, next bullet) so the relationship stays visible without visiting the
+    band (ux-principles principle 8).
+  - **Attach = drag a story onto an epic row** (doc-20 §5): sets `parent_id`
+    only, leaving the story's state/iteration/position untouched — detaching
+    is a row-menu action ("Remove from epic", two-line rows below) or Parent
+    = None in the detail, not a drag, in v1.
   - On the Kanban view, children appear individually in their own state
-    columns and containers do not appear (a container is off the board); use
-    the `/epics` view or the List's Icebox accordion to see a container as a
-    whole.
+    columns and epics do not appear (a container is off the board); use the
+    `/epics` view or the List view's Epics band to see an epic as a whole.
+- **Two-line story rows (doc-20 §4):** a single line could not fit type icon,
+  number, title, state, points, epic, labels, and assignee without hiding the
+  epic chip below `sm` width — the exact width at which a story's epic
+  membership, a daily-use fact, would silently vanish. Every List row is two
+  lines instead: line 1 is the type icon / `#number` / title / transition
+  buttons; line 2 is the epic-name chip (a story with a parent only; never
+  hidden by width) / state badge (omitted for an Icebox row — the section
+  itself already says "Icebox") / points / labels / assignee. A story with a
+  parent also gets a **left vertical rule in `epic_color`**, so a run of
+  siblings reads as one group while scrolling; a story with no parent keeps
+  no rule and line 2 carries the same metadata without the chip. The epic
+  chip links to the epic's own detail; a row-level menu offers **"Remove from
+  epic"** (`set_story_parent(storyId, null)`, doc-20 §5) alongside the
+  transition buttons.
 - **Indent distinction (2026-07-07):** note labels start flush at the
   list's left edge and span full width; story rows are indented slightly
   to the right, so structure rows and work rows are distinguishable at a
@@ -355,14 +382,15 @@ Applies to the side peek and `/stories/[id]`; there are no Save buttons.
   saved value.
 - **Discrete fields** (type, points, assignee, parent, labels): save
   immediately on change, as most already do. The former "epic" field is now a
-  **Parent** picker — choose an existing container to nest this story under,
+  **Parent** picker — choose an existing epic to nest this story under,
   setting `parent_id` (doc-18 §9); the single-level trigger (doc-18 §3) rejects
   an illegal choice. If the chosen parent is **not yet** a container, nesting
-  flips it into one and clears its points/state/iteration (doc-18 §4) — so the
-  picker confirms first ("X will become an epic and leave the board…") in that
-  case; nesting under an already-container parent needs no confirmation. State
-  changes go through the advance button / Accept-Reject pair (`set_story_state`),
-  not a free-form dropdown.
+  flips it into one and clears its points/state/iteration (doc-18 §4's
+  clearing behavior; `is_container` itself is now `has_children OR
+  epic_pinned`, doc-20 §2) — so the picker confirms first ("X will become an
+  epic and leave the board…") in that case; nesting under an already-container
+  parent needs no confirmation. State changes go through the advance button /
+  Accept-Reject pair (`set_story_state`), not a free-form dropdown.
 - A small **"Saving… / Saved ✓"** indicator in the peek header reflects
   in-flight state; a failed save keeps the local value, shows an error,
   and offers retry. Realtime updates from other users must not clobber a
@@ -393,7 +421,10 @@ Conflict & failure rules (2026-07-08):
   state-change-only. Verify this against the existing trigger before
   shipping.
 - The overflow (⋯) menu in the peek header hosts **Split** (opens the Split
-  Studio, doc-18 §7 — labelled "分割する"/"Split", never "convert to epic") and
+  Studio, doc-18 §7 — labelled "分割する"/"Split", never "convert to epic"),
+  **Turn into epic…** (a childless, top-level story only — `set_epic_pinned`,
+  doc-20 §2; confirms first, same "leave the board, points/state cleared"
+  copy as the Parent picker's containerize confirmation above), and
   **Move / Copy to another project** (behavior in spec/features.md
   "Story Management"), alongside Delete.
 
