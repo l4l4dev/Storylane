@@ -173,7 +173,7 @@ or `spec/`, with a one-line pointer from the code.
 
 This project uses Backlog.md for task and project management.
 
-**For every user request in this project, run `backlog instructions overview` before answering or taking action.**
+**Before searching, reading, creating, or updating Backlog tasks — or when a request's scope is unclear — run `backlog instructions overview` first.** Skip it for turns that are pure conversation, code-only changes with no task implications, or questions unrelated to Backlog.
 
 Use the overview to decide whether to search, read, create, or update Backlog tasks.
 
