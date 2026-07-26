@@ -90,7 +90,7 @@ export default async function BoardPage({
     project.iteration_length,
   );
 
-  const [iterationsResult, stories, labelsResult, dividersResult, pendingGoalsResult, statesResult, containersResult] =
+  const [iterationsResult, stories, labelsResult, dividersResult, pendingGoalsResult, statesResult, containerRows] =
     await Promise.all([
       supabase
         .from("iterations")
@@ -131,24 +131,30 @@ export default async function BoardPage({
         .eq("project_id", id)
         .order("position", { ascending: true }),
       // Containers, fetched separately from the board's story list (doc-18
-      // §9): the List view's Icebox accordion + every child's "part of
-      // Epic" link (ux-principles principle 8) both need them. Ordered by
-      // position (not number) — doc-18 §2: a container shares the single
-      // stories.position space like any top-level story, so its relative
-      // order among other containers must follow that, not creation order.
-      supabase
-        .from("stories")
-        .select("id, number, title, epic_color")
-        .eq("project_id", id)
-        .eq("is_container", true)
-        .order("position", { ascending: true }),
+      // §9): the Epics band + every child's "part of Epic" link
+      // (ux-principles principle 8) both need them. Ordered by position (not
+      // number) — doc-18 §2: a container shares the single stories.position
+      // space like any top-level story, so its relative order among other
+      // containers must follow that, not creation order. Paged the same way
+      // as the stories query above — an unbounded select silently truncates
+      // past PostgREST's max_rows, which used to drop epics (and every
+      // affected child's epic badge) with no error in a project with more
+      // than 1000 (TASK-198).
+      fetchAllRows((from, to) =>
+        supabase
+          .from("stories")
+          .select("id, number, title, epic_color")
+          .eq("project_id", id)
+          .eq("is_container", true)
+          .order("position", { ascending: true })
+          .range(from, to),
+      ),
     ]);
   const iterations = assertReadOk(iterationsResult);
   const labels = assertReadOk(labelsResult);
   const dividers = assertReadOk(dividersResult);
   const pendingGoals = assertReadOk(pendingGoalsResult);
   const statesData = assertReadOk(statesResult);
-  const containerRows = assertReadOk(containersResult);
 
   const states: ProjectState[] = (statesData ?? []) as ProjectState[];
   const stateById = new Map(states.map((s) => [s.id, s]));
@@ -161,7 +167,7 @@ export default async function BoardPage({
     allIterations.filter((iteration) => iteration.state === "done").map((iteration) => iteration.id),
   );
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
-  const containerById = new Map((containerRows ?? []).map((c) => [c.id, c]));
+  const containerById = new Map(containerRows.map((c) => [c.id, c]));
 
   const cards = stories
     // Stories of finalized iterations belong to the history view
@@ -206,7 +212,7 @@ export default async function BoardPage({
   // disagree with its own progress bar the moment an iteration finalizes.
   const epicChildStories = stories.filter((s) => s.parent_id !== null);
   const containerListItems = buildContainerListItems(
-    (containerRows ?? []).map((c) => ({ id: c.id, number: c.number, title: c.title, epicColor: c.epic_color })),
+    containerRows.map((c) => ({ id: c.id, number: c.number, title: c.title, epicColor: c.epic_color })),
     epicChildStories.map((s) => ({
       parentId: s.parent_id as string,
       category: s.state_id ? (stateById.get(s.state_id)?.category ?? null) : null,
