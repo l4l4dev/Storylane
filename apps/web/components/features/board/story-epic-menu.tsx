@@ -34,9 +34,16 @@ export function StoryEpicMenu({
 
   function detach() {
     startTransition(async () => {
-      const result = await setStoryParent({ storyId, projectId, parentId: null });
-      if (!result.ok) {
-        onError?.(result.message);
+      // try/catch so a thrown setStoryParent (e.g. createClient() failing)
+      // still surfaces an error instead of becoming an unhandled rejection
+      // inside startTransition, matching add-child-picker.tsx's hardening.
+      try {
+        const result = await setStoryParent({ storyId, projectId, parentId: null });
+        if (!result.ok) {
+          onError?.(result.message);
+        }
+      } catch (err) {
+        onError?.(err instanceof Error ? err.message : "Failed to remove from epic");
       }
     });
   }
