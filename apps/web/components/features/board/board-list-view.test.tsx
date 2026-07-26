@@ -499,9 +499,9 @@ describe("Panel draft-story triggers", () => {
     expect(screen.getByText("Band Epic")).toBeInTheDocument();
   });
 
-  // TASK-192 ported TASK-188's container-row reorder into the band, so an
-  // epic row is a drag source again. Same jsdom limitation as elsewhere (no
-  // real pointer-distance drag) — this asserts the SortableItem wiring; the
+  // An epic row is a drag source, reorderable among the band's other epic
+  // rows. Same jsdom limitation as elsewhere (no real pointer-distance
+  // drag) — this asserts the SortableItem wiring; the
   // reorder itself is manual-browser-verified.
   it("wires an epic's own band row as a drag source, unlike its mirrored children", () => {
     const child = { ...backlogStory("s2", 2), state_id: null, parentId: "e1" };

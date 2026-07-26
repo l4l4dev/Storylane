@@ -18,6 +18,8 @@ vi.mock("@/lib/supabase/server", () => ({
 describe("EpicsPage", () => {
   it("throws instead of rendering a 404 when the project read fails", async () => {
     const { default: EpicsPage } = await import("./page");
-    await expect(EpicsPage({ params: Promise.resolve({ id: "p1" }) })).rejects.toThrow("connection reset");
+    await expect(
+      EpicsPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("connection reset");
   });
 });

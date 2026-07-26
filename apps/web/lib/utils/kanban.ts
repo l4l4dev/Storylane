@@ -40,17 +40,17 @@ export function isDisallowedContainerRowDrop(isContainerRow: boolean, targetZone
  * Whether a dnd-kit droppable id belongs to the container block — the block
  * itself or one of the container rows inside it.
  *
- * Needed because an expanded container row's droppable rect ENCLOSES that
- * epic's nest droppable and every nested child row, and closestCenter ranks
- * purely by centre distance with no notion of nesting: past one child the
- * enclosing row's centre sits among the children's and wins at random pixels,
- * hijacking a nest drop (and, the other way, a container dragged over another
- * expanded epic resolves to that epic's nest). Both drops are already
- * forbidden by isDisallowedContainerRowDrop; the caller applies the same rule
- * at collision time so the pointer can only ever resolve to a zone the drop
- * could actually land in. Why not a nesting-aware collision algorithm: the
- * block is exclusive both ways, so there is no legal cross-boundary drop for
- * one to disambiguate.
+ * Needed because an expanded epic row's droppable rect ENCLOSES its mirrored
+ * children (doc-20 §3), and closestCenter ranks purely by centre distance
+ * with no notion of nesting: the mirror rows aren't droppables themselves
+ * (they're plain, non-interactive rows), but their height still pushes the
+ * epic row's own centre down past neighbouring rows, which can hijack a drop
+ * meant for a sibling epic or the zone below. Both directions are already
+ * forbidden by isDisallowedContainerRowDrop; the caller applies the same
+ * rule at collision time so the pointer can only ever resolve to a zone the
+ * drop could actually land in. Why not a nesting-aware collision algorithm:
+ * the block is exclusive both ways, so there is no legal cross-boundary drop
+ * for one to disambiguate.
  */
 export function isContainerBlockDroppable(droppableId: string, containerRowIds: ReadonlySet<string>): boolean {
   return droppableId === CONTAINER_ROWS_ZONE_ID || containerRowIds.has(droppableId);
@@ -313,4 +313,21 @@ export function flattenCurrentZone<T extends { position: number }>(
 ): T[] {
   const columnOrder = [...states].sort((a, b) => a.position - b.position).map((s) => s.id);
   return columnOrder.flatMap((column) => containers[column] ?? []).sort((a, b) => a.position - b.position);
+}
+
+/**
+ * The project's current iteration: the highest-numbered non-done one —
+ * whichever row `ensureCurrentIteration`'s `finalize_iteration` RPC just left
+ * in place, not "starts on or before today" (a manually-finished iteration's
+ * successor starts tomorrow, so date coverage would show no current
+ * iteration for the rest of finish day). One implementation shared by every
+ * page that needs it (board, /epics, story detail's Child stories location
+ * dots) instead of each re-deriving the same filter+sort, generic over
+ * whatever shape the caller fetched so board/page.tsx's fuller `IterationMeta`
+ * and the id-only shape /epics and getStoryDetail fetch both fit.
+ */
+export function currentIterationOf<T extends { number: number; state: string }>(
+  iterations: ReadonlyArray<T>,
+): T | null {
+  return iterations.filter((iteration) => iteration.state !== "done").sort((a, b) => b.number - a.number)[0] ?? null;
 }

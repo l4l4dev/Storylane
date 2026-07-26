@@ -6,6 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import type { ActionResult, ProjectState } from "@/lib/types";
 import { pointScaleValues } from "@/lib/utils/stories";
+import { buildContainerListItems, buildEpicBandChildren, type EpicBandChild } from "@/lib/utils/epics-list";
+import { currentIterationOf } from "@/lib/utils/kanban";
+import type { ContainerRollup } from "@storylane/core";
 
 export type StoryDetail = {
   id: string;
@@ -34,6 +37,19 @@ export type StoryDetail = {
   // used for the Delete confirmation's "N child stories will be ungrouped"
   // notice (deleting a container SET NULLs their parent_id, doc-18 §8).
   childCount: number;
+  // Only meaningful when isContainer (doc-20 §6 "Child stories" section):
+  // every child, any zone (same EpicChildRow the List view's Epics band and
+  // /epics use, AC#4), plus its own roll-up progress. epicColor mirrors the
+  // Epics band's fallback (DEFAULT_EPIC_COLOR applied at render, not here).
+  epicColor: string | null;
+  children: EpicBandChild[];
+  childRollup: ContainerRollup;
+  // "Add a child" candidates (doc-20 §6): every top-level, non-container
+  // story in the project — the mirror of parentCandidates, which offers a
+  // container's children as containerization targets; a container can never
+  // itself become a child (single-level nesting, doc-18 §3), so it is
+  // excluded here rather than surfaced as an option that always errors.
+  addChildCandidates: { id: string; number: number; title: string }[];
   assigneeId: string | null;
   labelIds: string[];
   pointScale: number[];
@@ -78,8 +94,10 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     { data: tasks },
     { data: history },
     { data: statesData },
-    { count: childCount },
     { data: parentCandidateRows },
+    { data: childRows },
+    { data: iterationsData },
+    { data: addChildCandidateRows },
   ] = await Promise.all([
       supabase
         .from("projects")
@@ -112,9 +130,6 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .select("id, project_id, name, action_label, category, position, created_at")
         .eq("project_id", story.project_id)
         .order("position"),
-      // Only meaningful when this story is a container (doc-18 §8's Delete
-      // ungroup notice) — cheap to always fetch alongside everything else.
-      supabase.from("stories").select("id", { count: "exact", head: true }).eq("parent_id", storyId),
       // Parent picker candidates (doc-18 §9): every other top-level story in
       // the project — a story with its own parent is rejected by the
       // single-level trigger, so it's excluded here rather than surfaced as
@@ -126,7 +141,76 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .is("parent_id", null)
         .neq("id", storyId)
         .order("number"),
+      // The "Child stories" section (doc-20 §6) and childCount (doc-18 §8's
+      // Delete ungroup notice) both only mean anything for a container — and
+      // is_container is derived as `has_children OR epic_pinned`, so a
+      // non-container provably has zero children. Skipping this query (and
+      // the two below it, which only exist to classify/populate it) for the
+      // common non-container case avoids 3 wasted round trips per story-detail
+      // load (/code-review).
+      story.is_container
+        ? supabase
+            .from("stories")
+            .select("id, number, title, points, state_id, iteration_id, position")
+            .eq("project_id", story.project_id)
+            .eq("parent_id", storyId)
+        : Promise.resolve({
+            data: [] as {
+              id: string;
+              number: number;
+              title: string;
+              points: number | null;
+              state_id: string | null;
+              iteration_id: string | null;
+              position: number;
+            }[],
+          }),
+      // Just enough to derive the current iteration id for EpicChildRow's
+      // location dot (doc-20 §3's "done wins over zone" rule) — same
+      // derivation as board/page.tsx's own currentIteration.
+      story.is_container
+        ? supabase.from("iterations").select("id, number, state").eq("project_id", story.project_id)
+        : Promise.resolve({ data: [] as { id: string; number: number; state: string }[] }),
+      // Add-a-child candidates (doc-20 §6): a container can only ever adopt a
+      // plain, still-parentless story (single-level nesting, doc-18 §3).
+      story.is_container
+        ? supabase
+            .from("stories")
+            .select("id, number, title")
+            .eq("project_id", story.project_id)
+            .is("parent_id", null)
+            .eq("is_container", false)
+            .neq("id", storyId)
+            .order("number")
+        : Promise.resolve({ data: [] as { id: string; number: number; title: string }[] }),
     ]);
+
+  const currentIterationId = currentIterationOf(iterationsData ?? [])?.id ?? null;
+  const states = (statesData ?? []) as ProjectState[];
+  const categoryById = new Map(states.map((s) => [s.id, s.category]));
+  const childRollup = buildContainerListItems(
+    [{ id: story.id, number: story.number, title: story.title, epicColor: story.epic_color }],
+    (childRows ?? []).map((c) => ({
+      parentId: storyId,
+      category: c.state_id ? (categoryById.get(c.state_id) ?? null) : null,
+      points: c.points,
+    })),
+  )[0].rollup;
+  const children =
+    buildEpicBandChildren(
+      (childRows ?? []).map((c) => ({
+        id: c.id,
+        parentId: storyId,
+        number: c.number,
+        title: c.title,
+        points: c.points,
+        stateId: c.state_id,
+        iterationId: c.iteration_id,
+        category: c.state_id ? (categoryById.get(c.state_id) ?? null) : null,
+        position: c.position,
+      })),
+      currentIterationId,
+    )[storyId] ?? [];
 
   return {
     id: story.id,
@@ -137,11 +221,19 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     description: story.description,
     storyType: story.story_type,
     stateId: story.state_id,
-    states: (statesData ?? []) as ProjectState[],
+    states,
     points: story.points,
     parentId: story.parent_id,
     isContainer: story.is_container,
-    childCount: childCount ?? 0,
+    childCount: (childRows ?? []).length,
+    epicColor: story.epic_color,
+    children,
+    childRollup,
+    addChildCandidates: (addChildCandidateRows ?? []).map((row) => ({
+      id: row.id,
+      number: row.number,
+      title: row.title,
+    })),
     assigneeId: story.assignee_id,
     labelIds: story.story_labels.map((sl) => sl.label_id),
     pointScale: pointScaleValues(project?.point_scale ?? "fibonacci", project?.custom_points),

@@ -5,6 +5,7 @@ import {
   CONTAINER_ROWS_ZONE_ID,
   ICEBOX_COLUMN_ID,
   columnForStory,
+  currentIterationOf,
   isContainerBlockDroppable,
   isDisallowedContainerRowDrop,
   toServerZone,
@@ -378,5 +379,34 @@ describe("flattenCurrentZone", () => {
 
   it("returns an empty list when every bucket is empty", () => {
     expect(flattenCurrentZone({}, [])).toEqual([]);
+  });
+});
+
+describe("currentIterationOf", () => {
+  it("picks the highest-numbered non-done iteration", () => {
+    const iterations = [
+      { id: "i1", number: 1, state: "done" },
+      { id: "i2", number: 2, state: "current" },
+      { id: "i3", number: 3, state: "planned" },
+    ];
+    expect(currentIterationOf(iterations)?.id).toBe("i3");
+  });
+
+  // A manually-finished iteration's successor starts tomorrow — this must
+  // not require the iteration to have already started (TASK-19 class of bug:
+  // no "current" iteration would show for the rest of finish day otherwise).
+  it("does not require the iteration to have started yet", () => {
+    const iterations = [{ id: "i1", number: 1, state: "done" }, { id: "i2", number: 2, state: "planned" }];
+    expect(currentIterationOf(iterations)?.id).toBe("i2");
+  });
+
+  it("returns null when every iteration is done, or there are none", () => {
+    expect(currentIterationOf([{ id: "i1", number: 1, state: "done" }])).toBeNull();
+    expect(currentIterationOf([])).toBeNull();
+  });
+
+  it("carries through whatever extra fields the caller's shape has", () => {
+    const iterations = [{ id: "i1", number: 1, state: "current", end_date: "2026-08-01" }];
+    expect(currentIterationOf(iterations)?.end_date).toBe("2026-08-01");
   });
 });

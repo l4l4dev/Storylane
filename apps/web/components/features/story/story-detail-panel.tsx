@@ -15,6 +15,10 @@ import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 import { TransitionButtons } from "./transition-buttons";
 import { StoryFields, type StoryFieldsValue } from "./story-fields";
 import { ParentPicker } from "./story-parent-picker";
+import { AddChildPicker } from "./add-child-picker";
+import { EpicChildRow } from "@/components/features/epics/epic-child-row";
+import { EpicProgressBar } from "@/components/features/epics/epic-progress-bar";
+import { DEFAULT_EPIC_COLOR } from "@/lib/utils/epics-list";
 
 // The story fields this panel edits inline — everything else on
 // `StoryDetail` (comments, tasks, epics/labels/members lists,
@@ -401,6 +405,29 @@ export function StoryDetailPanel({
     />
   );
 
+  // A container's own relation to its children (doc-20 §6) — the mirror of
+  // parentPicker above, which a container never renders (it can't itself be
+  // a child, single-level nesting doc-18 §3), so the two are never both
+  // visible at once. Same EpicChildRow the List view's Epics band and
+  // /epics use (AC#4), so a child's location dot reads identically anywhere
+  // it appears.
+  const childStoriesSection = detail.isContainer && (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-sm font-semibold">Child stories</h3>
+      <EpicProgressBar rollup={detail.childRollup} color={detail.epicColor ?? DEFAULT_EPIC_COLOR} />
+      {detail.children.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {detail.children.map((child) => (
+            <EpicChildRow key={child.id} child={child} />
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted-foreground">No stories yet.</p>
+      )}
+      <AddChildPicker containerId={detail.id} projectId={detail.projectId} candidates={detail.addChildCandidates} />
+    </section>
+  );
+
   const historySection = detail.history.length > 0 && (
     <section className="flex flex-col gap-2">
       <h3 className="text-sm font-semibold">History</h3>
@@ -448,6 +475,7 @@ export function StoryDetailPanel({
       <div className={isSplit ? "flex flex-col gap-4 lg:col-start-1 lg:row-start-1" : "contents"}>
         <StoryFields {...fieldsProps} section={isSplit ? "title" : "all"} />
         {!isSplit && parentPicker}
+        {childStoriesSection}
         <TaskChecklist storyId={detail.id} tasks={detail.tasks} onMutated={onMutated} />
         <CommentThread
           storyId={detail.id}

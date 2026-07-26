@@ -3,11 +3,11 @@ id: TASK-192
 title: >-
   Attach = parent only: drop the Icebox-crossing gate, port container reorder
   into the band
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-24 18:15'
-updated_date: '2026-07-25 13:58'
+updated_date: '2026-07-25 14:21'
 labels:
   - web
   - db
@@ -251,3 +251,17 @@ which is finding 1's exact repro. Finding 3 is covered by list-collision.test.ts
 Re-verified: clean supabase db reset, full suite with SUPABASE_INTEGRATION=1 1061 passed,
 lint + tsc clean.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+エピック行へのストーリードロップ = attach を実装(doc-20 §5)。parent_id だけを書き、state/iteration/position は不変 — Tracker の「エピックにドラッグしても story は動かない」に一致。TASK-187 の「Icebox の nest に引き込む」挙動は撤去。
+
+doc-20 §7 は move_story_board の parent_id delta で賄う想定だったが実装不可と判明(position 機構に skip 経路がなく、アンカーなし呼び出しが必ず position = max+1 を書くため attach でストーリーがゾーン末尾に飛ぶ)。新規 RPC set_story_parent を追加 — parent_id のみ書き込み、「親は既にエピックであること」ルールを iOS からも届く DB 側に置き(decision-1 §1/§2)、null で detach も兼ねる。move_story_board の delta は呼び出し元ゼロのまま温存し、§7 の訂正は TASK-194 に申し送り。あわせて TASK-188 のコンテナ行並べ替えをバンドへ移植し、「Remove from epic」行メニューを追加。
+
+検証: set-story-parent.integration.test.ts 10件(AC#1 は対象ストーリーと隣接ストーリー双方の position 不変を検証)、list-collision.test.ts 5件、既存の attach-crosses-into-Icebox テストは新契約へ差し替え。クリーンな supabase db reset 後、SUPABASE_INTEGRATION=1 で全 1061 テスト通過、lint/tsc クリーン。
+
+rls-security-reviewer: セキュリティ穴なし。指摘2件対応(自己親テスト追加、デッドロックに関する誤ったコメントを訂正)。fable-advisor: 事前設計・事後デザインとも修正付き承認 — RLS 前提の誤り、当たり判定のズレ(展開したエピック行の矩形が子を内包するため中心距離では狙いとずれる)、子ミラー行が親のリスナーで掴めてしまう問題を修正。/code-review high: 5件すべて実バグとして修正(attach 時の楽観的更新の戻し漏れ、バンドの楽観的並べ替えが描画されていない、fallback 当たり判定にエピック行が残り意図しない attach が起きうる、リングの誤表示、失敗時の展開残り)。
+
+手動ブラウザ確認は未実施(確認手順を提示済み、指摘1の再現経路「Current を経由してバンドへドラッグ」を含む)。
+<!-- SECTION:FINAL_SUMMARY:END -->

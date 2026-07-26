@@ -20,9 +20,22 @@ const CLASSIC_STATES: ProjectState[] = stateTemplates.classic.states.map((s) => 
 // These tests stub routing/realtime (no App Router context or real Supabase
 // client/env vars in this environment) and the `updateStory` action itself
 // (Task 12 autosave) so each test controls exactly when/how a save resolves.
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn() }),
+const { routerPushMock, setStoryParentMock } = vi.hoisted(() => ({
+  routerPushMock: vi.fn(),
+  setStoryParentMock: vi.fn(() => Promise.resolve({ ok: true })),
 }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: routerPushMock }),
+  usePathname: () => "/stories/s1",
+  useSearchParams: () => new URLSearchParams(),
+}));
+// TransitionButtons (rendered via StoryFields) also imports from this module
+// (estimateStory, setStoryState) — importOriginal keeps those real so only
+// setStoryParent is stubbed.
+vi.mock("@/app/projects/[id]/board/actions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/app/projects/[id]/board/actions")>();
+  return { ...actual, setStoryParent: setStoryParentMock };
+});
 let latestOnFieldsChanged: ((row: Record<string, unknown>) => void) | null = null;
 vi.mock("@/lib/supabase/realtime", () => ({
   useStoryRealtime: (
@@ -52,6 +65,10 @@ const baseDetail: StoryDetail = {
   parentId: null,
   isContainer: false,
   childCount: 0,
+  epicColor: null,
+  children: [],
+  childRollup: { headline: "icebox", points: 0, breakdown: { unstarted: 0, in_progress: 0, done: 0, rejected: 0, icebox: 0 } },
+  addChildCandidates: [],
   assigneeId: null,
   labelIds: [],
   pointScale: [0, 1, 2, 3, 5, 8, 13],
@@ -403,5 +420,63 @@ describe("StoryDetailPanel autosave", () => {
       await Promise.resolve();
     });
     expect(updateStoryMock).toHaveBeenCalledWith(expect.objectContaining({ parentId: "server-set-parent" }));
+  });
+});
+
+// doc-20 §6: a container's own detail gains a Child stories section — the
+// mirror of the Parent picker, which a container never shows (it can't
+// itself be a child).
+describe("StoryDetailPanel — Child stories section", () => {
+  it("shows the roll-up, child rows, and add-a-child picker for a container, and hides the Parent picker", () => {
+    render(
+      <StoryDetailPanel
+        detail={{
+          ...baseDetail,
+          isContainer: true,
+          childCount: 1,
+          epicColor: "#ff0000",
+          children: [{ id: "c1", number: 7, title: "Child one", points: 2, location: "backlog" }],
+          childRollup: { headline: "unstarted", points: 2, breakdown: { unstarted: 1, in_progress: 0, done: 0, rejected: 0, icebox: 0 } },
+          addChildCandidates: [{ id: "cand1", number: 9, title: "Candidate" }],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Child stories")).toBeInTheDocument();
+    expect(screen.getByText("Child one")).toBeInTheDocument();
+    expect(screen.getByText("0 / 1 done")).toBeInTheDocument();
+    expect(screen.getByLabelText("Add a child")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Parent")).not.toBeInTheDocument();
+  });
+
+  it("shows a no-stories-yet state for a childless container", () => {
+    render(<StoryDetailPanel detail={{ ...baseDetail, isContainer: true }} />);
+    expect(screen.getByText("No stories yet.")).toBeInTheDocument();
+  });
+
+  it("omits the Child stories section, and shows the Parent picker instead, for a plain story", () => {
+    render(<StoryDetailPanel detail={baseDetail} />);
+    expect(screen.queryByText("Child stories")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Parent")).toBeInTheDocument();
+  });
+
+  it("adds a child by calling setStoryParent, then refreshes", async () => {
+    setStoryParentMock.mockClear();
+    setStoryParentMock.mockResolvedValue({ ok: true });
+    render(
+      <StoryDetailPanel
+        detail={{
+          ...baseDetail,
+          isContainer: true,
+          addChildCandidates: [{ id: "cand1", number: 9, title: "Candidate" }],
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Add a child"), { target: { value: "cand1" } });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(setStoryParentMock).toHaveBeenCalledWith({ storyId: "cand1", projectId: "p1", parentId: "s1" });
   });
 });

@@ -55,10 +55,10 @@ revoke execute on function public.derive_is_container() from public, anon, authe
 -- shape has no legitimate write path at all. epic_pinned needs one.
 --
 -- The exemption is role-based, so it covers EVERY SECURITY DEFINER function,
--- not just the two below (rls-security-reviewer, TASK-189): a later one that
--- writes stories.epic_pinned — e.g. through an `insert ... select` that carries
--- the column along — would skip the ownership, nesting and audit checks
--- set_epic_pinned performs. Route epic_pinned writes through set_epic_pinned.
+-- not just the two below: a later one that writes stories.epic_pinned — e.g.
+-- through an `insert ... select` that carries the column along — would skip
+-- the ownership, nesting and audit checks set_epic_pinned performs. Route
+-- epic_pinned writes through set_epic_pinned.
 -- ------------------------------------------------------------
 create or replace function public.protect_stories_epic_pinned()
 returns trigger
@@ -141,7 +141,7 @@ $$;
 revoke execute on function public.recompute_is_container(uuid) from public, authenticated;
 
 -- ------------------------------------------------------------
--- 3b. An epic can no longer be nested (/code-review, TASK-189).
+-- 3b. An epic can no longer be nested.
 --
 -- The symmetric guard in 20260724054954 rejects a story that HAS CHILDREN from
 -- becoming a child. Now that is_container can also come from epic_pinned, a

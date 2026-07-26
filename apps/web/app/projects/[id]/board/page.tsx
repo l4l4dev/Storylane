@@ -4,6 +4,7 @@ import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
   columnForStory,
+  currentIterationOf,
 } from "@/lib/utils/kanban";
 import { projectedIterationDates, type BacklogRowItem } from "@/lib/utils/iterations";
 import { utcTodayKey } from "@/lib/utils/format";
@@ -155,15 +156,7 @@ export default async function BoardPage({
   const storyPositionById = new Map(stories.map((s) => [s.id, s.position]));
 
   const allIterations: IterationMeta[] = iterations ?? [];
-  // The current iteration is whichever non-done row
-  // ensureCurrentIteration's finalize_iteration RPC just left in place — not
-  // "starts on or before today" (isCurrentIteration). A manually-finished
-  // iteration's successor starts *tomorrow*, so requiring date coverage left
-  // the board showing no current iteration at all for the rest of finish day.
-  const currentIteration =
-    allIterations
-      .filter((iteration) => iteration.state !== "done")
-      .sort((a, b) => b.number - a.number)[0] ?? null;
+  const currentIteration = currentIterationOf(allIterations);
   const doneIterationIds = new Set(
     allIterations.filter((iteration) => iteration.state === "done").map((iteration) => iteration.id),
   );
@@ -229,7 +222,7 @@ export default async function BoardPage({
       points: s.points,
       stateId: s.state_id,
       iterationId: s.iteration_id,
-      isDone: s.state_id !== null && stateById.get(s.state_id)?.category === "done",
+      category: s.state_id ? (stateById.get(s.state_id)?.category ?? null) : null,
       position: s.position,
     })),
     currentIteration?.id ?? null,

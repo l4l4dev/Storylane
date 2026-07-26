@@ -54,14 +54,15 @@ import {
   type BacklogRow,
   type BacklogRowItem,
 } from "@/lib/utils/iterations";
-import { formatPoints, matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
+import { matchesStoryFilter, type StoryFilter } from "@/lib/utils/stories";
 import {
   DEFAULT_EPIC_COLOR,
-  type BandChildLocation,
   type ContainerListItem,
   type EpicBandChild,
 } from "@/lib/utils/epics-list";
 import { EpicProgressBar } from "@/components/features/epics/epic-progress-bar";
+import { EpicChildRow } from "@/components/features/epics/epic-child-row";
+import { AddEpicButton } from "@/components/features/epics/add-epic-button";
 import type { ProjectState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -1198,44 +1199,6 @@ const EPICS_BAND_KEY = "epics-band";
 // (reorder). SortableItem's own cards keep their "card" tag (TASK-148).
 const EPIC_ROW_DRAG_TYPE = "epic-row";
 
-const BAND_LOCATION_LABEL: Record<BandChildLocation, string> = {
-  current: "Current",
-  backlog: "Backlog",
-  icebox: "Icebox",
-  done: "Done",
-};
-
-const BAND_LOCATION_DOT_CLASS: Record<BandChildLocation, string> = {
-  current: "bg-blue-500",
-  backlog: "bg-amber-500",
-  icebox: "bg-sky-500",
-  done: "bg-green-500",
-};
-
-// Not a drag source and renders no drag handle (doc-20 §3 "mirror-row
-// requirements", ux-principles principle 1): the real row, in its own zone,
-// is what the user drags — this row exists only so scheduling a child
-// doesn't make it disappear from its epic's view (owner defect 3).
-function EpicBandChildRow({ child }: { child: EpicBandChild }) {
-  const openPeek = useOpenPeek();
-
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={() => openPeek(child.id)}
-        title={`${BAND_LOCATION_LABEL[child.location]} #${child.number}`}
-        className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-left text-xs hover:bg-muted"
-      >
-        <span aria-hidden className={`size-2 shrink-0 rounded-full ${BAND_LOCATION_DOT_CLASS[child.location]}`} />
-        <span className="shrink-0 text-muted-foreground">#{child.number}</span>
-        <span className="min-w-0 flex-1 truncate">{child.title}</span>
-        {child.points != null && <span className="shrink-0 text-muted-foreground">{formatPoints(child.points)}</span>}
-      </button>
-    </li>
-  );
-}
-
 // An epic's row in the band (doc-20 §3): collapsible, expanding to every
 // child regardless of zone (unlike the old Icebox-only accordion, doc-18
 // §9). Read-only ordering for now — TASK-192 ports the drag-reorder-among-
@@ -1315,7 +1278,7 @@ function EpicBandRow({
             onPointerDown={(event) => event.stopPropagation()}
           >
             {childRows.map((child) => (
-              <EpicBandChildRow key={child.id} child={child} />
+              <EpicChildRow key={child.id} child={child} />
             ))}
           </ul>
         ) : (
@@ -1343,55 +1306,6 @@ function EpicRowGhost({ row }: { row: ContainerListItem }) {
   );
 }
 
-// Inline "+ Add Epic" (doc-20 §1 tracker parity: top-down creation).
-// resetAfterCommit clears the field back to blank on success, ready for the
-// next add. Blur discards silently rather than committing, matching
-// DraftStoryCard's quick-add convention (Esc/click-outside never partial-
-// saves) — a real epic row would otherwise get created just by clicking
-// elsewhere on the page mid-type.
-function AddEpicButton({ onCreate }: { onCreate: (title: string) => Promise<void> }) {
-  const { editor } = useInlineEdit({
-    initialValue: "",
-    fallbackError: "Failed to create epic",
-    shouldCommit: (value) => value.length > 0,
-    resetAfterCommit: true,
-    onCommit: onCreate,
-  });
-
-  if (!editor.editing) {
-    return <DraftStoryTrigger label="Add epic" onClick={editor.startEditing} />;
-  }
-
-  return (
-    <div className="flex min-w-0 items-center gap-1.5">
-      <input
-        autoFocus
-        value={editor.value}
-        onChange={(event) => editor.setValue(event.target.value)}
-        onKeyDown={(event) => {
-          if (isImeComposing(event)) {
-            return;
-          }
-          if (event.key === "Enter") {
-            event.preventDefault();
-            void editor.commitAndClose("keyboard");
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            editor.cancel("keyboard");
-          }
-        }}
-        onBlur={() => editor.cancel("blur")}
-        placeholder="Epic title"
-        aria-label="New epic title"
-        readOnly={editor.isSaving}
-        aria-busy={editor.isSaving || undefined}
-        className="h-7 w-40 truncate rounded border border-border bg-transparent px-1.5 text-xs focus:outline-none"
-      />
-      {editor.error && <span className="shrink-0 text-xs text-destructive">{editor.error}</span>}
-    </div>
-  );
-}
-
 // The List view's Epics band (doc-20 §3): a collapsible section at the top
 // of the view, above Current — epics never render inside Backlog/Icebox
 // (doc-20 §1 tracker parity). Collapse persists like the existing groups
@@ -1401,8 +1315,6 @@ function EpicsBand({
   items,
   childrenByEpic,
   projectId,
-  collapsed,
-  onToggle,
   collapsedGroups,
   onToggleGroup,
   expandGroup,
@@ -1410,8 +1322,6 @@ function EpicsBand({
   items: ContainerListItem[];
   childrenByEpic: Record<string, EpicBandChild[]>;
   projectId: string;
-  collapsed: boolean;
-  onToggle: () => void;
   collapsedGroups: Set<string>;
   onToggleGroup: (key: string) => void;
   expandGroup: (key: string) => void;
@@ -1419,6 +1329,11 @@ function EpicsBand({
   // Empty-block droppable so findContainer can resolve an epic row dropped onto
   // the block when it holds only one row (mirrors the flat lists' setNodeRef).
   const { setNodeRef: setBlockRef } = useDroppable({ id: CONTAINER_ROWS_ZONE_ID });
+  // Own collapse key, resolved the same way each EpicBandRow resolves its
+  // own `epic:<id>` key two lines below — no need for the caller to also
+  // compute and pass this pair.
+  const collapsed = collapsedGroups.has(EPICS_BAND_KEY);
+  const onToggle = () => onToggleGroup(EPICS_BAND_KEY);
 
   async function handleCreate(title: string) {
     const result = await createEpic({ projectId, title });
@@ -1558,11 +1473,18 @@ export function BoardListView({
   // prop there instead would make an epic reorder snap back until the
   // revalidate arrived, and would let a second drag compute its anchor from an
   // order the user was not looking at.
-  const epicRows = (containers[CONTAINER_ROWS_ZONE_ID] ?? []).flatMap((item) =>
-    item.kind === "container" ? [item.row] : [],
+  // Memoized off the one zone these actually read, not all of `containers` —
+  // `setContainers` only replaces the zone a drag actually touches, so an
+  // unrelated drag (Current, Icebox) keeps this exact array reference and
+  // skips rebuilding the Set + collision-detection closure on every one of
+  // onDragOver's per-hover re-renders (/code-review).
+  const containerRowsZone = containers[CONTAINER_ROWS_ZONE_ID];
+  const epicRows = useMemo(
+    () => (containerRowsZone ?? []).flatMap((item) => (item.kind === "container" ? [item.row] : [])),
+    [containerRowsZone],
   );
-  const containerRowIds = new Set(epicRows.map((row) => row.id));
-  const collisionDetection = listCollisionDetection(containerRowIds);
+  const containerRowIds = useMemo(() => new Set(epicRows.map((row) => row.id)), [epicRows]);
+  const collisionDetection = useMemo(() => listCollisionDetection(containerRowIds), [containerRowIds]);
 
   // Derived from the item's own data, not the visual zone. A divider can only
   // ever reorder within the Backlog zone — it never has a story's state/
@@ -1754,8 +1676,6 @@ export function BoardListView({
             items={epicRows}
             childrenByEpic={epicBandChildren}
             projectId={projectId}
-            collapsed={collapsedGroups.has(EPICS_BAND_KEY)}
-            onToggle={() => onToggleGroup(EPICS_BAND_KEY)}
             collapsedGroups={collapsedGroups}
             onToggleGroup={onToggleGroup}
             expandGroup={expandGroup}

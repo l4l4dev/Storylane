@@ -37,11 +37,26 @@ export function buildContainerListItems(
   }));
 }
 
-// The List view's Epics band location dot (doc-20 §3): "done" wins over
-// zone (an accepted current-iteration child reads as Done, not Current).
-export type BandChildLocation = "current" | "backlog" | "icebox" | "done";
+// The List view's Epics band location dot (doc-20 §3): "done" and "rejected"
+// both win over zone (an accepted or rejected current-iteration child reads
+// as its own terminal state, not Current) — kept as two distinct dots rather
+// than folding rejected into done, since they are separate categories
+// everywhere else in the app (lib/utils/stories.ts, kanban-columns-board.tsx)
+// and interleaving a bounced story with finished ones would misreport
+// progress at a glance (ux-principles principle 9).
+export type BandChildLocation = "current" | "backlog" | "icebox" | "done" | "rejected";
 
-const BAND_LOCATION_RANK: Record<BandChildLocation, number> = { current: 0, backlog: 1, icebox: 2, done: 3 };
+// Ranks the story's underlying ZONE, never its display location — a done or
+// rejected child still physically lives in current/backlog/icebox's position
+// sequence (done/rejected always implies a non-null state_id, so never
+// icebox in practice, but the type doesn't promise that). Ranking by
+// BandChildLocation instead would put every done/rejected child in one
+// bucket and sort it by raw position regardless of which sequence that
+// position came from — exactly the cross-zone comparison this function's own
+// doc comment says never to make. Zone rank, not display label, keeps a
+// current-iteration accept from being compared against a since-finalized
+// iteration's accept.
+const BAND_ZONE_RANK: Record<"current" | "backlog" | "icebox", number> = { current: 0, backlog: 1, icebox: 2 };
 
 export type EpicBandChildInput = {
   id: string;
@@ -51,17 +66,19 @@ export type EpicBandChildInput = {
   points: number | null;
   stateId: string | null;
   iterationId: string | null;
-  isDone: boolean;
+  // The child's own state category (null for Icebox) — done/rejected both
+  // short-circuit the zone lookup below, since either is a terminal state
+  // regardless of which zone the story physically still sits in.
+  category: StateCategory | null;
   position: number;
 };
 
 export type EpicBandChild = { id: string; number: number; title: string; points: number | null; location: BandChildLocation };
 
-function bandChildLocation(
-  child: Pick<EpicBandChildInput, "stateId" | "iterationId" | "isDone">,
+function bandChildZone(
+  child: Pick<EpicBandChildInput, "stateId" | "iterationId">,
   currentIterationId: string | null,
-): BandChildLocation {
-  if (child.isDone) return "done";
+): "current" | "backlog" | "icebox" {
   // zoneForStory (kanban.ts) is the single source of truth for icebox/
   // current/backlog classification — only its state_id/iteration_id fields
   // matter, so story_type/points here are dummy values.
@@ -86,9 +103,10 @@ export function buildEpicBandChildren(
 ): Record<string, EpicBandChild[]> {
   const byEpic = new Map<string, { rank: number; position: number; child: EpicBandChild }[]>();
   for (const c of children) {
-    const location = bandChildLocation(c, currentIterationId);
+    const zone = bandChildZone(c, currentIterationId);
+    const location: BandChildLocation = c.category === "done" ? "done" : c.category === "rejected" ? "rejected" : zone;
     const entry = {
-      rank: BAND_LOCATION_RANK[location],
+      rank: BAND_ZONE_RANK[zone],
       position: c.position,
       child: { id: c.id, number: c.number, title: c.title, points: c.points, location },
     };

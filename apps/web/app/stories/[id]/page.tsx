@@ -2,19 +2,30 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { StoryDetailPanel } from "@/components/features/story/story-detail-panel";
 import { StoryPeekMenu } from "@/components/features/story/story-peek-menu";
+import { StoryPeekHost } from "@/components/features/board/story-peek-host";
 import { getStoryDetail } from "./actions";
 
 export default async function StoryDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ story?: string }>;
 }) {
   const { id } = await params;
+  const { story: peekStoryId } = await searchParams;
   const detail = await getStoryDetail(id);
 
   if (!detail) {
     notFound();
   }
+
+  // A container's "Child stories" section (doc-20 §6) uses the same
+  // EpicChildRow the board and /epics do, which opens its target via
+  // ?story=<id> (useOpenPeek) — this page needs the same StoryPeekHost they
+  // both already render, or that click would just add a stray query param
+  // and do nothing (/code-review).
+  const peekDetail = peekStoryId ? await getStoryDetail(peekStoryId) : null;
 
   return (
     // TASK-172: this is the peek's "expand to full view" destination, so it
@@ -39,6 +50,8 @@ export default async function StoryDetailPage({
       </div>
 
       <StoryDetailPanel detail={detail} layout="split" />
+
+      <StoryPeekHost peekStoryId={peekStoryId} detail={peekDetail} />
     </main>
   );
 }

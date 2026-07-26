@@ -219,10 +219,9 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
     expect(await read(id as string)).toMatchObject({ points: null });
   });
 
-  // rls-security-reviewer (TASK-189): set_epic_pinned's whole authorisation is
-  // the project_id-in-my-memberships filter on its SELECT, so both halves of it
-  // get a regression test — a foreign project's story, and a viewer inside this
-  // one.
+  // set_epic_pinned's whole authorisation is the project_id-in-my-memberships
+  // filter on its SELECT, so both halves of it get a regression test — a
+  // foreign project's story, and a viewer inside this one.
   it("set_epic_pinned refuses a story in a project the caller is not a member of", async () => {
     const email = `epic-outsider-${Date.now()}@storylane.local`;
     const password = "integration-test-only-password";
@@ -269,7 +268,7 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
     expect(await read(story)).toMatchObject({ epic_pinned: false, is_container: false });
   });
 
-  // /code-review (TASK-189) findings, one test each.
+  // Nesting guard regression, one test each.
   it("an epic cannot be nested under another story", async () => {
     const { data: outer } = await owner.rpc("create_epic", { p_project_id: projectId, p_title: "Outer" });
     const { data: inner } = await owner.rpc("create_epic", { p_project_id: projectId, p_title: "Inner" });

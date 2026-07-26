@@ -173,10 +173,10 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
     expect((await read(epicA)).parent_id).toBeNull();
   });
 
-  // The fourth forged-parent shape (rls-security-reviewer, TASK-192): an epic
-  // dropped on ITSELF satisfies this RPC's is_container check, so the refusal
-  // comes from enforce_single_level_nesting's self-reference guard instead.
-  // Pinned here so a future refactor of either layer cannot drop it silently.
+  // A fourth forged-parent shape: an epic dropped on ITSELF satisfies this
+  // RPC's is_container check, so the refusal comes from
+  // enforce_single_level_nesting's self-reference guard instead. Pinned here
+  // so a future refactor of either layer cannot drop it silently.
   it("refuses an epic named as its own parent", async () => {
     const epicId = await newEpic("self");
     const { error } = await owner.rpc("set_story_parent", { p_story_id: epicId, p_parent_id: epicId });

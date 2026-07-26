@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-25 03:14'
-updated_date: '2026-07-25 08:14'
+updated_date: '2026-07-26 03:45'
 labels:
   - db
 milestone: m-6
@@ -33,7 +33,7 @@ Since the migration is already applied, these need a NEW forward-fixing migratio
 <!-- AC:BEGIN -->
 - [ ] #1 A new migration reorders the DOWN rollback comment so the trigger-function reverts happen before stories.epic_pinned is dropped, with no window where a live trigger references a dropped column
 - [ ] #2 Trigger execution order between stories_aa_protect_epic_pinned and stories_derive_is_container is guarded by something stronger than a comment (e.g. an automated test reading pg_trigger, or a naming/ordering convention enforced elsewhere) so a future same-table trigger addition can't silently break it
-- [ ] #3 Migration comments no longer cite specific review-pass provenance (rls-security-reviewer / TASK-189 / /code-review) per CLAUDE.md's Code Comment Policy
+- [x] #3 Migration comments no longer cite specific review-pass provenance (rls-security-reviewer / TASK-189 / /code-review) per CLAUDE.md's Code Comment Policy
 - [ ] #4 The audit-then-clear block and the #6366f1 default-color literal are defined once and reused by recompute_is_container/create_epic/set_epic_pinned instead of hand-duplicated
 - [ ] #5 rls-security-reviewer pass plus /code-review before merge (this migration touches TASK-182/TASK-189's remediation surface)
 - [ ] #6 The boolean expression 'epic_pinned OR has_children' is defined once and reused by derive_is_container's trigger body and recompute_is_container's v_should_be computation, not duplicated verbatim (found by TASK-191's /code-review)
@@ -44,4 +44,6 @@ Since the migration is already applied, these need a NEW forward-fixing migratio
 
 <!-- SECTION:NOTES:BEGIN -->
 TASK-191's /code-review (2026-07-25) surfaced 2 more findings against this same migration, folded in as AC#6/#7 above: the is_container boolean formula duplicated between derive_is_container and recompute_is_container, and protect_stories_epic_pinned's role-based (not allowlist-based) exemption for SECURITY DEFINER functions -- not exploitable today (verified: update_story isn't SECURITY DEFINER; split_story forces epic_pinned false on insert), but flagged as a forward-looking hardening gap.
+
+Comment-policy violations (AC#3) fixed as a drive-by cleanup during TASK-193's /code-review response (2026-07-26), ahead of this task's own migration work: epic_pinned.sql:58/144, epic-pinned.integration.test.ts (2 spots), set-story-parent.integration.test.ts:176 all had their /code-review, rls-security-reviewer, TASK-189/192 provenance framing stripped, keeping only the actual constraint each comment states. AC#3 can be checked off without further work here. AC#1 (DOWN order), AC#2 (trigger-order fragility), AC#4 (SQL duplication), AC#6/#7 (is_container formula duplication, protect_stories_epic_pinned's role-based exemption) remain — these need a real forward-fixing migration, not just comment edits.
 <!-- SECTION:NOTES:END -->

@@ -69,28 +69,69 @@ function child(overrides: Partial<EpicBandChildInput> & { id: string; parentId: 
     points: null,
     stateId: null,
     iterationId: null,
-    isDone: false,
+    category: null,
     position: 0,
     ...overrides,
   };
 }
 
 describe("buildEpicBandChildren", () => {
-  it("classifies each child's location: done wins over zone, then current/backlog/icebox", () => {
+  it("classifies each child's location: done/rejected win over zone, then current/backlog/icebox", () => {
     const result = buildEpicBandChildren(
       [
-        child({ id: "c-done", parentId: "e1", isDone: true, stateId: "s1", iterationId: "iter-1" }),
-        child({ id: "c-current", parentId: "e1", stateId: "s1", iterationId: "iter-1" }),
-        child({ id: "c-backlog", parentId: "e1", stateId: "s1", iterationId: "iter-9" }),
+        child({ id: "c-done", parentId: "e1", category: "done", stateId: "s1", iterationId: "iter-1" }),
+        child({ id: "c-rejected", parentId: "e1", category: "rejected", stateId: "s1", iterationId: "iter-1" }),
+        child({ id: "c-current", parentId: "e1", category: "in_progress", stateId: "s1", iterationId: "iter-1" }),
+        child({ id: "c-backlog", parentId: "e1", category: "unstarted", stateId: "s1", iterationId: "iter-9" }),
         child({ id: "c-icebox", parentId: "e1", stateId: null }),
       ],
       "iter-1",
     );
     const byId = new Map(result["e1"].map((c) => [c.id, c.location]));
     expect(byId.get("c-done")).toBe("done");
+    // Rejected must not blend into done (ux-principles principle 9 — "bounced"
+    // and "finished" are not the same terminal state).
+    expect(byId.get("c-rejected")).toBe("rejected");
     expect(byId.get("c-current")).toBe("current");
     expect(byId.get("c-backlog")).toBe("backlog");
     expect(byId.get("c-icebox")).toBe("icebox");
+  });
+
+  it("sorts done and rejected children by position when they share the same underlying zone", () => {
+    const result = buildEpicBandChildren(
+      [
+        child({ id: "rejected-1", parentId: "e1", category: "rejected", position: 5 }),
+        child({ id: "done-1", parentId: "e1", category: "done", position: 1 }),
+      ],
+      null,
+    );
+    // Both default to stateId: null -> the same underlying zone (icebox) ->
+    // comparable positions, sorted normally within it.
+    expect(result["e1"].map((c) => c.id)).toEqual(["done-1", "rejected-1"]);
+  });
+
+  // /code-review: ranking by BandChildLocation (done/rejected as one shared
+  // bucket) would have compared these two children's positions directly even
+  // though they come from different underlying sequences — exactly the
+  // cross-zone comparison this function's own doc comment forbids. Ranking by
+  // the underlying zone instead keeps a current-iteration accept from
+  // out-ranking a since-finalized iteration's accept by raw position alone.
+  it("never compares position across zones even when both children show the same done/rejected dot", () => {
+    const result = buildEpicBandChildren(
+      [
+        // Zone "backlog" (iteration doesn't match current): low position, but
+        // from a different sequence than the current-iteration child below.
+        child({ id: "done-backlog", parentId: "e1", category: "done", stateId: "s1", iterationId: "iter-9", position: 1 }),
+        // Zone "current": high position in ITS OWN sequence.
+        child({ id: "done-current", parentId: "e1", category: "done", stateId: "s1", iterationId: "iter-1", position: 9 }),
+      ],
+      "iter-1",
+    );
+    // Current-zone rank (0) beats backlog-zone rank (1) regardless of the
+    // raw position numbers — a rank-by-done/rejected bug would have sorted
+    // these by position (1 before 9) instead.
+    expect(result["e1"].map((c) => c.id)).toEqual(["done-current", "done-backlog"]);
+    expect(result["e1"].map((c) => c.location)).toEqual(["done", "done"]);
   });
 
   it("classifies a story with no current iteration as backlog, never current", () => {
@@ -127,7 +168,7 @@ describe("buildEpicBandChildren", () => {
   // disagrees with its own progress bar (the exact defect doc-20 §3 fixes).
   it("includes a child of a finalized (rolled-off) iteration, classified by its own category", () => {
     const result = buildEpicBandChildren(
-      [child({ id: "history-done", parentId: "e1", isDone: true, stateId: "s1", iterationId: "iter-0" })],
+      [child({ id: "history-done", parentId: "e1", category: "done", stateId: "s1", iterationId: "iter-0" })],
       "iter-1",
     );
     expect(result["e1"].map((c) => c.id)).toEqual(["history-done"]);
