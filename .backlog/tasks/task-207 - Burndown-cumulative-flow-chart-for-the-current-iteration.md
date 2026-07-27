@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@gpt-5.6-sol'
 created_date: '2026-07-27 01:48'
-updated_date: '2026-07-27 22:50'
+updated_date: '2026-07-27 23:00'
 labels: []
 milestone: m-0
 dependencies: []
@@ -143,6 +143,20 @@ Seventh round: Codex reviewed the test-only commit and found 2 more real gaps, b
 - [P2, FIXED] The retro_notes grant fix (this task's first Codex-review round, the live production bug) had no integration test of its own — only verified manually via curl during that session. Added iteration-retro-notes-grant.integration.test.ts: owner and member can save retro notes (the exact regression), a viewer's attempt is a silent RLS no-op rather than a grant-level error (confirming the grant now permits the write and RLS is what actually gates it).
 
 Re-verified: tsc/lint clean, full suite 1124/1124 passed (+3 for the two new/strengthened tests).
+
+Comments:
+--------------------------------------------------
+#1 - @claude-sonnet-5 - 2026-07-27 06:14 (UTC)
+Delegated to Codex CLI (@gpt-5.6-sol, ChatGPT quota) per owner request 2026-07-27: surplus Codex tokens available. No new tables/RLS involved (derives from existing activity_logs), so within policy scope. Standard review workflow (code-review, fable-advisor design review since this is user-facing UI, manual verification) still applies before merge.
+
+#2 - @claude-sonnet-5 - 2026-07-27 06:38 (UTC)
+fable-advisor design review: approved. Ideal-pace line confirmed to reuse existing velocityRate/forecastPoints (iterations/page.tsx passes targetPoints into burndown.ts, no parallel calc). Two non-blocking notes: (1) single-day-cadence duplicate end-date label — fixed directly in burndown-chart.tsx. (2) full iteration-history activity_logs read on the reporting page for long-lived projects — deferred as acceptable for now per advisor, not a correctness issue.
+
+---
+
+Eighth round: Codex reviewed the marker/grant-test commit and found one more gap: describeActivity's story.iteration_changed branch (and the legacy story.iteration_rolled_over alias) had no unit coverage in activity.test.ts. Added 3 cases: a normal reschedule by iteration number, both null-endpoint directions (to/from the Icebox), and confirmation that the legacy action name formats identically to the current one.
+
+Re-verified: tsc/lint clean, full suite 1127/1127 passed (+3).
 <!-- SECTION:NOTES:END -->
 
 ## Comments
