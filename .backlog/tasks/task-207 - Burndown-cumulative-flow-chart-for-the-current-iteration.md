@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@gpt-5.6-sol'
 created_date: '2026-07-27 01:48'
-updated_date: '2026-07-27 22:38'
+updated_date: '2026-07-27 22:50'
 labels: []
 milestone: m-0
 dependencies: []
@@ -126,6 +126,23 @@ fable-advisor design review: approved. Ideal-pace line confirmed to reuse existi
 Sixth round: Codex flagged that log_story_activity's new iteration_id branch — the central new behavior of this whole fix chain — had only been verified manually (curl against a local reset) during the session, with no permanent test; a repo-wide search found no test mentioning either iteration-change action. Added apps/web/lib/utils/iteration-change-log.integration.test.ts (4 cases): an ordinary reschedule logs exactly one story.iteration_changed row with correct iteration numbers, a move to the Icebox logs null appropriately, a single UPDATE changing both state_id and iteration_id logs both events (not one), and an unrelated column update logs neither.
 
 Re-verified: tsc/lint clean, full suite 1121/1121 passed (+4 for the new test file).
+
+Comments:
+--------------------------------------------------
+#1 - @claude-sonnet-5 - 2026-07-27 06:14 (UTC)
+Delegated to Codex CLI (@gpt-5.6-sol, ChatGPT quota) per owner request 2026-07-27: surplus Codex tokens available. No new tables/RLS involved (derives from existing activity_logs), so within policy scope. Standard review workflow (code-review, fable-advisor design review since this is user-facing UI, manual verification) still applies before merge.
+
+#2 - @claude-sonnet-5 - 2026-07-27 06:38 (UTC)
+fable-advisor design review: approved. Ideal-pace line confirmed to reuse existing velocityRate/forecastPoints (iterations/page.tsx passes targetPoints into burndown.ts, no parallel calc). Two non-blocking notes: (1) single-day-cadence duplicate end-date label — fixed directly in burndown-chart.tsx. (2) full iteration-history activity_logs read on the reporting page for long-lived projects — deferred as acceptable for now per advisor, not a correctness issue.
+
+---
+
+Seventh round: Codex reviewed the test-only commit and found 2 more real gaps, both about coverage rather than new logic bugs:
+
+- [P2, FIXED] The single-point chart fix's own test fixture (remaining === ideal, the common day-one case) is exactly where two solid circles fail: the larger 'remaining' marker fully covers the smaller 'ideal' one at the same coordinate, so the chart still showed only one visible series despite the earlier fix. Changed to a ring (unfilled, dashed stroke) for ideal plus a smaller filled dot for remaining — distinguishable even stacked. Strengthened the test to assert on the actual fill treatment (one circle fill=none, one fill-primary), not just 'two <circle> elements exist', which would have passed even with the bug.
+- [P2, FIXED] The retro_notes grant fix (this task's first Codex-review round, the live production bug) had no integration test of its own — only verified manually via curl during that session. Added iteration-retro-notes-grant.integration.test.ts: owner and member can save retro notes (the exact regression), a viewer's attempt is a silent RLS no-op rather than a grant-level error (confirming the grant now permits the write and RLS is what actually gates it).
+
+Re-verified: tsc/lint clean, full suite 1124/1124 passed (+3 for the two new/strengthened tests).
 <!-- SECTION:NOTES:END -->
 
 ## Comments

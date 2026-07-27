@@ -47,11 +47,15 @@ export function BurndownChart({
         <polyline points={line("remaining")} fill="none" className="stroke-primary" strokeWidth="2.5" />
         {/* A single-point series (day one of a current iteration, or any
             supported one-day iteration) has nothing for polyline to connect
-            — it paints no visible pixel. Circle markers cover that case. */}
+            — it paints no visible pixel. Circle markers cover that case, but
+            day one is exactly where ideal and remaining often coincide (both
+            equal the full target) — an unfilled ring plus a smaller filled
+            dot stay distinguishable even stacked at the same point, unlike
+            two solid circles where the larger one fully hides the other. */}
         {points.length === 1 && (
           <>
-            <circle cx={x(0)} cy={y(points[0].ideal)} r="3" fill="currentColor" />
-            <circle cx={x(0)} cy={y(points[0].remaining)} r="3.5" className="fill-primary" />
+            <circle cx={x(0)} cy={y(points[0].ideal)} r="5" fill="none" stroke="currentColor" strokeDasharray="3 2" />
+            <circle cx={x(0)} cy={y(points[0].remaining)} r="3" className="fill-primary" />
           </>
         )}
         <text x={PAD} y={HEIGHT - 3} fill="currentColor" fontSize="10">{formatDate(points[0].date)}</text>
