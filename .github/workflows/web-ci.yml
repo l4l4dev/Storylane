@@ -6,6 +6,7 @@ on:
     paths:
       - "apps/web/**"
       - "packages/**"
+      - "supabase/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/web-ci.yml"
@@ -14,6 +15,7 @@ on:
     paths:
       - "apps/web/**"
       - "packages/**"
+      - "supabase/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/web-ci.yml"
@@ -51,8 +53,39 @@ jobs:
       - name: Lint (web)
         run: pnpm --filter web run lint
 
+      - uses: supabase/setup-cli@v3
+        with:
+          version: latest
+
+      # `supabase start` applies every migration to an empty database, which is
+      # what proves the chain still applies in order. On a pull_request it does
+      # gate the merge; on main it does NOT gate production — deploy.yml fires
+      # on the same push with no dependency on this job and finishes first, so
+      # a bad migration reaches production before this run goes red (TASK-204
+      # closes that race by moving deploys behind a published release).
+      # Excluded services are the ones no test touches — the integration suite
+      # makes no storage or edge-function calls. Drop the `-x` if one ever does.
+      - name: Start Supabase (applies all migrations to a fresh DB)
+        run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector
+
+      # SUPABASE_INTEGRATION=1 un-skips the 35 *.integration.test.ts files that
+      # cover RLS, RPCs and triggers — the layer tsc/eslint/jsdom cannot reach.
+      # The credentials stay inside this step rather than $GITHUB_ENV: Next
+      # inlines NEXT_PUBLIC_* at build time, so exporting them job-wide would
+      # bake 127.0.0.1 into the Build step's bundle.
       - name: Run tests (web)
-        run: pnpm --filter web run test
+        run: |
+          # Assign first: `eval "$(supabase status ...)"` would swallow a
+          # status failure and leave the three vars empty, so the suite would
+          # fail as "env not set" instead of naming the real cause.
+          supabase_env="$(supabase status -o env)"
+          eval "$supabase_env"
+          export NEXT_PUBLIC_SUPABASE_URL="$API_URL"
+          export NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY"
+          export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          pnpm --filter web run test
+        env:
+          SUPABASE_INTEGRATION: "1"
 
       # Type checking a Server Component doesn't catch a browser-only
       # dependency leaking into the server bundle (TASK-67 regression: an
