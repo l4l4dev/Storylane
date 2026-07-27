@@ -94,7 +94,7 @@ export default async function BoardPage({
     await Promise.all([
       supabase
         .from("iterations")
-        .select("id, number, goal, start_date, end_date, velocity, capacity, state, skipped")
+        .select("id, number, goal, retro_notes, start_date, end_date, velocity, capacity, state, skipped")
         .eq("project_id", id)
         .order("number", { ascending: true }),
       // A project's full story list isn't bounded by anything else here —

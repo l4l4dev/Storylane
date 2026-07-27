@@ -246,6 +246,7 @@ export type Database = {
           id: string
           number: number
           project_id: string
+          retro_notes: string | null
           skipped: boolean
           start_date: string
           state: string
@@ -259,6 +260,7 @@ export type Database = {
           id?: string
           number: number
           project_id: string
+          retro_notes?: string | null
           skipped?: boolean
           start_date: string
           state?: string
@@ -272,6 +274,7 @@ export type Database = {
           id?: string
           number?: number
           project_id?: string
+          retro_notes?: string | null
           skipped?: boolean
           start_date?: string
           state?: string

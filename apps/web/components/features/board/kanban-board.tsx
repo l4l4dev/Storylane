@@ -3,7 +3,12 @@
 import { type ReactNode, useEffect, useState, useSyncExternalStore, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { LayoutGrid, List as ListIcon, Pencil, Snowflake } from "lucide-react";
-import { finishIteration, overrideIterationLength, updateIterationGoal } from "@/app/projects/[id]/board/actions";
+import {
+  finishIteration,
+  overrideIterationLength,
+  updateIterationGoal,
+  updateIterationRetroNotes,
+} from "@/app/projects/[id]/board/actions";
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { sumPoints } from "@/lib/utils/board";
 import { ICEBOX_COLUMN_ID } from "@/lib/utils/kanban";
@@ -60,6 +65,7 @@ export type IterationMeta = {
   id: string;
   number: number;
   goal: string | null;
+  retro_notes: string | null;
   start_date: string;
   end_date: string;
   velocity: number | null;
@@ -325,6 +331,18 @@ export function KanbanBoard({
               iterationId={currentIteration.id}
               initialGoal={currentIteration.goal ?? ""}
             />
+            <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />
+            {canFinishIteration ? (
+              <IterationRetroNotesBar
+                projectId={projectId}
+                iterationId={currentIteration.id}
+                initialRetroNotes={currentIteration.retro_notes ?? ""}
+              />
+            ) : (
+              currentIteration.retro_notes && (
+                <span className="truncate text-sm text-muted-foreground">{currentIteration.retro_notes}</span>
+              )
+            )}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2">
@@ -532,6 +550,83 @@ export function IterationGoalBar({
         readOnly={editor.isSaving}
         aria-busy={editor.isSaving || undefined}
         className="h-8 min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 text-sm focus:outline-none disabled:opacity-60"
+      />
+      {editor.error && <span className="shrink-0 text-xs text-destructive">{editor.error}</span>}
+    </div>
+  );
+}
+
+// The retrospective counterpart to IterationGoalBar above — same click-to-edit
+// contract (commits on blur/Enter, Esc reverts, saved value renders as text),
+// a textarea instead of a single-line input since a retro is usually longer
+// than a goal. Reused on both the board (current iteration) and the
+// iterations history page (past done iterations) — it only needs an id,
+// project id, and the saved value, so it doesn't care which.
+export function IterationRetroNotesBar({
+  projectId,
+  iterationId,
+  initialRetroNotes,
+}: {
+  projectId: string;
+  iterationId: string;
+  initialRetroNotes: string;
+}) {
+  const { buttonRef, editor } = useInlineEdit({
+    initialValue: initialRetroNotes,
+    fallbackError: "Failed to save retro notes",
+    async onCommit(trimmed) {
+      const formData = new FormData();
+      formData.set("project_id", projectId);
+      formData.set("iteration_id", iterationId);
+      formData.set("retro_notes", trimmed);
+      await updateIterationRetroNotes(formData);
+    },
+  });
+
+  if (!editor.editing) {
+    return (
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={editor.startEditing}
+        aria-label={editor.synced ? `Edit retro notes: ${editor.synced}` : "Add retro notes"}
+        className="group flex min-w-0 max-w-md items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm hover:bg-muted"
+      >
+        {editor.synced ? (
+          <span className="truncate">{editor.synced}</span>
+        ) : (
+          <span className="text-muted-foreground italic">Add retro notes…</span>
+        )}
+        <Pencil
+          className="size-3 shrink-0 text-muted-foreground opacity-60"
+          aria-hidden
+        />
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex min-w-56 flex-1 flex-col gap-1 sm:max-w-md">
+      <textarea
+        autoFocus
+        rows={3}
+        value={editor.value}
+        onChange={(event) => editor.setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (isImeComposing(event)) {
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            editor.cancel("keyboard");
+          }
+        }}
+        onBlur={() => void editor.commitAndClose("blur")}
+        placeholder="What went well? What to improve?"
+        aria-label="Retro notes"
+        readOnly={editor.isSaving}
+        aria-busy={editor.isSaving || undefined}
+        className="min-w-0 flex-1 resize-y rounded-md border border-border bg-transparent px-2 py-1 text-sm focus:outline-none disabled:opacity-60"
       />
       {editor.error && <span className="shrink-0 text-xs text-destructive">{editor.error}</span>}
     </div>

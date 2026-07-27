@@ -19,7 +19,7 @@
 /projects/[id]/board      Board (List / Kanban view, toggled in place — see "Board layout" below)
 /projects/[id]/epics      Epics: two panes — every epic with roll-up progress on the
                           left, the selected epic's children on the right (doc-20 §6)
-/projects/[id]/iterations Iteration history (past/done iterations with velocity and their stories)
+/projects/[id]/iterations Iteration history (past/done iterations with velocity, retro notes, and their stories)
 /projects/[id]/activity   Project activity log (read-only feed of recent story/comment changes)
 /projects/[id]/settings   Project settings (members, integrations, point scale, etc.)
 /stories/[id]             Story detail (standalone deep-link page; primary editing happens
@@ -136,7 +136,8 @@ action at the visual center):
 
 - **Info row** (only when a current iteration exists): iteration number
   (bolder, for hierarchy), a "Current" badge, date range, committed
-  points, **"auto-finishes on <end_date>"**, and the iteration goal.
+  points, **"auto-finishes on <end_date>"**, the iteration goal, and its
+  retro notes (TASK-205).
   The goal (spec/ux-principles.md principle 5) renders as **text** — the
   saved goal, or italic **"Add goal…"** ghost text when empty — with a
   pencil affordance on hover; clicking opens an inline input. **Enter** or
@@ -144,6 +145,13 @@ action at the visual center):
   keeps the input open with the typed value and an inline error); **Esc**
   discards and returns to text. There is no separate "Saved" flash —
   returning to text view is the success feedback.
+- **Retro notes** sit next to the goal, same click-to-edit contract, but a
+  multi-line textarea (Enter inserts a newline instead of committing —
+  only **blur** commits, **Esc** discards). Editable on the current
+  iteration here and on past done iterations on
+  `/projects/[id]/iterations` (see below) — never on virtual future
+  iterations, which have no row to attach it to. Viewers see the saved
+  text read-only (no editor) on both pages.
 - **Controls row**: the **List / Kanban** toggle (**List is the
   default**; both views read/write the same stories, the toggle only
   changes grouping/dragging), the **Icebox toggle** (List view only —

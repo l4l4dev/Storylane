@@ -798,6 +798,31 @@ export async function updateIterationGoal(formData: FormData) {
   revalidatePath(`/projects/${projectId}`);
 }
 
+// The retrospective counterpart to updateIterationGoal above — same shape,
+// same reliance on the existing owner/member iterations UPDATE policy (no
+// separate RLS surface for this column). Editable on the current iteration
+// and on past done iterations (iterations history page); never on virtual
+// future iterations, which have no row to attach it to.
+export async function updateIterationRetroNotes(formData: FormData) {
+  const projectId = String(formData.get("project_id"));
+  const iterationId = String(formData.get("iteration_id"));
+  const retroNotes = String(formData.get("retro_notes") ?? "").trim() || null;
+
+  const supabase = await createClient();
+  await assertRowAffected(
+    await supabase
+      .from("iterations")
+      .update({ retro_notes: retroNotes })
+      .eq("id", iterationId)
+      .eq("project_id", projectId)
+      .select("id"),
+  );
+
+  revalidatePath(`/projects/${projectId}/board`);
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/iterations`);
+}
+
 /**
  * Sets or clears the goal for a *virtual* (not-yet-real) future iteration,
  * edited inline on its Backlog group header (spec/screens.md "Backlog

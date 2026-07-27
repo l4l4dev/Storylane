@@ -309,6 +309,9 @@ iterations (
   project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
   number      int  NOT NULL,              -- sprint number (1, 2, 3...)
   goal        text,                       -- sprint goal (optional)
+  retro_notes text,                       -- TASK-205: retrospective (optional), the backward-looking
+                                          -- counterpart to goal. Same RLS as goal (owner/member write,
+                                          -- any member read) — no dedicated policy
   start_date  date NOT NULL,
   end_date    date NOT NULL,
   velocity    int,                        -- finalized done-category point sum, snapshotted when done

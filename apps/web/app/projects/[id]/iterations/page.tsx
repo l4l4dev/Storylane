@@ -5,6 +5,7 @@ import { groupStoriesByIteration } from "@/lib/utils/board";
 import { formatDate } from "@/lib/utils/format";
 import { iterationLabel } from "@/lib/utils/iterations";
 import { StoryCard, type StoryCardData } from "@/components/features/board/story-card";
+import { IterationRetroNotesBar } from "@/components/features/board/kanban-board";
 import { Badge } from "@/components/ui/badge";
 import { ensureCurrentIteration } from "../board/actions";
 
@@ -35,14 +36,38 @@ export default async function IterationsPage({
   // shows up here instead of lingering on the board (spec/velocity.md).
   await ensureCurrentIteration(project.id);
 
-  const iterations = assertReadOk(
-    await supabase
+  // getUser() and the iterations query are independent — run them together
+  // rather than paying for a sequential round trip before the iterations
+  // query even starts. The membership lookup depends on user.id, so it stays
+  // after (mirrors the storiesResult/labelsResult/statesResult Promise.all
+  // below for the same reason).
+  const [
+    {
+      data: { user },
+    },
+    iterationsResult,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase
       .from("iterations")
-      .select("id, number, goal, start_date, end_date, velocity, capacity, state, skipped")
+      .select("id, number, goal, retro_notes, start_date, end_date, velocity, capacity, state, skipped")
       .eq("project_id", id)
       .eq("state", "done")
       .order("number", { ascending: false }),
-  );
+  ]);
+  const iterations = assertReadOk(iterationsResult);
+
+  const membership = user
+    ? assertReadOk(
+        await supabase
+          .from("project_members")
+          .select("role")
+          .eq("project_id", id)
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      )
+    : null;
+  const canEditRetroNotes = membership?.role === "owner" || membership?.role === "member";
 
   const doneIterations = iterations ?? [];
   const doneIds = doneIterations.map((iteration) => iteration.id);
@@ -136,6 +161,19 @@ export default async function IterationsPage({
               </p>
               {iteration.goal && (
                 <p className="mb-3 text-sm text-muted-foreground">{iteration.goal}</p>
+              )}
+              {canEditRetroNotes ? (
+                <div className="mb-3">
+                  <IterationRetroNotesBar
+                    projectId={project.id}
+                    iterationId={iteration.id}
+                    initialRetroNotes={iteration.retro_notes ?? ""}
+                  />
+                </div>
+              ) : (
+                iteration.retro_notes && (
+                  <p className="mb-3 text-sm text-muted-foreground">{iteration.retro_notes}</p>
+                )
               )}
               {iterationStories.length > 0 ? (
                 <ul className="flex flex-col gap-2">
