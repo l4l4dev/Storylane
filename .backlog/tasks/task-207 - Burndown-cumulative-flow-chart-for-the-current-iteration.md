@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@gpt-5.6-sol'
 created_date: '2026-07-27 01:48'
-updated_date: '2026-07-27 15:44'
+updated_date: '2026-07-27 15:59'
 labels: []
 milestone: m-0
 dependencies: []
@@ -75,6 +75,26 @@ Third round: Codex's automated review on PR #6 (after merge to main) found 5 mor
 Also reverted ARCHITECTURE.md's exception-list wording from round 2 (finalize_iteration's rollover insert is no longer a self-recorded exception now that the general trigger covers it) and updated describeActivity's message for the renamed, now-generic action.
 
 Re-verified: tsc/lint clean, supabase db reset applies the full chain (7 migrations) cleanly, full suite under CI conditions 1117/1117 passed (+1 for the new single-point chart test).
+
+Comments:
+--------------------------------------------------
+#1 - @claude-sonnet-5 - 2026-07-27 06:14 (UTC)
+Delegated to Codex CLI (@gpt-5.6-sol, ChatGPT quota) per owner request 2026-07-27: surplus Codex tokens available. No new tables/RLS involved (derives from existing activity_logs), so within policy scope. Standard review workflow (code-review, fable-advisor design review since this is user-facing UI, manual verification) still applies before merge.
+
+#2 - @claude-sonnet-5 - 2026-07-27 06:38 (UTC)
+fable-advisor design review: approved. Ideal-pace line confirmed to reuse existing velocityRate/forecastPoints (iterations/page.tsx passes targetPoints into burndown.ts, no parallel calc). Two non-blocking notes: (1) single-day-cadence duplicate end-date label — fixed directly in burndown-chart.tsx. (2) full iteration-history activity_logs read on the reporting page for long-lived projects — deferred as acceptable for now per advisor, not a correctness issue.
+
+---
+
+Fourth round: Codex reviewed PR #7 itself (its environment is now configured, so it reviews automatically going forward). 6 more comments, most on the very code this task's third round just wrote. Verified each rather than applying blindly:
+
+- [P1, FIXED] Confirmed real: the stories query filtered by CURRENT iteration_id, so a story moved from Current back to Backlog/Icebox (iteration_id -> NULL) dropped out of the fetch entirely, even though rolledOutOf already knew it belonged to a past iteration's history from the activity log — the knowledge had no row to attach points/state_id to. Fixed: the stories fetch now runs after rolledOutOf is derived, widened with an .or() filter to also include any story ID the logs say ever moved. Verified live: a story moved to Backlog (iteration_id set NULL) is still returned by the widened query.
+- [P2, FIXED] Confirmed real: the read path only recognized the renamed story.iteration_changed action, so any story.iteration_rolled_over row written during the brief window 20260727120000 was live before this task's third round would vanish from history. Fixed: reads both action names.
+- [P1, correctly NOT fixed — verified false for this schema] 'positions are dense per iteration' was checked directly: inserted 6 stories across 2 iterations via the real insert path and read back positions 192-197, no duplicates — stories_position_seq (and promote_story_to_epic's compaction, 20260716000006) are explicitly project-scoped, not per-iteration, confirmed by that migration's own 'ranking the project's rows ... writing 0..n-1' comment. Ordering by position alone is safe; no tiebreaker needed.
+- [P1, folded into TASK-218] buildBurndown's membership check is all-or-nothing per iteration with no date awareness — a story scheduled in or removed mid-iteration should only count from its actual change date, not the whole span. Same root cause and same scope of rewrite as TASK-218's points-snapshot issue, so folded into that task rather than filed separately or rushed here.
+- [P2, deferred to TASK-218] describeActivity's iteration_changed message can't distinguish Backlog from Icebox (both read as null iteration_number), and no longer distinguishes an automated rollover from a manual drag now that both share one action name. Added as ACs on TASK-218.
+
+Re-verified: tsc/lint clean, supabase db reset applies the full 9-migration chain cleanly, full suite under CI conditions 1117/1117 passed.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
