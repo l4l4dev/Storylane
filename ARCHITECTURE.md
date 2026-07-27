@@ -87,7 +87,7 @@ Clients never set `is_container`. The triggers own hierarchy integrity for every
 
 Postgres triggers on `stories`/`comments` writes are the single `activity_logs` recording path, so every write route is covered without duplicating logic per client. `activity_logs` also references `project_id` directly, so it survives story deletion.
 
-**Exceptions** — events no INSERT/UPDATE trigger on the observed columns can capture, so those paths record their own rows: `move_story_to_project` / `copy_story_to_project` (`story.moved_out` / `story.moved_in` / `story.copied_in`, all DELETE-driven or cross-project) and the `is_container` maintenance trigger logging a container's cleared points.
+**Exceptions** — events no INSERT/UPDATE trigger on the observed columns can capture, so those paths record their own rows: `move_story_to_project` / `copy_story_to_project` (`story.moved_out` / `story.moved_in` / `story.copied_in`, all DELETE-driven or cross-project), the `is_container` maintenance trigger logging a container's cleared points, and `finalize_iteration` logging `story.iteration_rolled_over` for each incomplete story it reparents onto the next iteration (a plain `iteration_id` UPDATE the state_id-watching trigger doesn't see).
 
 ## Cross-project writes
 

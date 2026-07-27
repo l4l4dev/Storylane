@@ -560,6 +560,7 @@ export type Database = {
           created_at: string
           created_by: string
           custom_points: number[] | null
+          definition_of_done: string | null
           description: string | null
           id: string
           is_personal: boolean
@@ -577,6 +578,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           custom_points?: number[] | null
+          definition_of_done?: string | null
           description?: string | null
           id?: string
           is_personal?: boolean
@@ -594,6 +596,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           custom_points?: number[] | null
+          definition_of_done?: string | null
           description?: string | null
           id?: string
           is_personal?: boolean

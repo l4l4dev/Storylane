@@ -31,6 +31,7 @@ const baseDetail: StoryDetail = {
   stateId: null,
   states: [],
   points: 8,
+  doneDefinition: null,
   parentId: null,
   isContainer: false,
   childCount: 0,

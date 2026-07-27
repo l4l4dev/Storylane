@@ -42,6 +42,9 @@ export async function updateProject(formData: FormData) {
   const id = String(formData.get("project_id"));
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
+  // Free text (TASK-206): a reference checklist shown alongside a story's
+  // transition into a done-category state — informational only, never a gate.
+  const definitionOfDone = String(formData.get("definition_of_done") ?? "").trim() || null;
   // Clamped rather than passed through: projects_iteration_length_range
   // rejects anything outside 1-90, and this action has no error channel — an
   // out-of-range post would surface as a raw exception, not a message.
@@ -70,6 +73,7 @@ export async function updateProject(formData: FormData) {
       .update({
         name,
         description,
+        definition_of_done: definitionOfDone,
         iteration_length: iterationLength,
         iteration_term: iterationTerm,
         point_scale: pointScale,

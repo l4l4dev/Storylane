@@ -29,6 +29,7 @@ export function StoryListRow({
   projectId,
   states,
   pointScale,
+  doneDefinition,
   insertMenu,
   onError,
 }: {
@@ -48,6 +49,9 @@ export function StoryListRow({
   projectId: string;
   states: ProjectState[];
   pointScale: number[];
+  // TASK-206: project's Definition of Done, passed straight through to
+  // TransitionButtons. Null/undefined = no DoD set, nothing extra renders.
+  doneDefinition?: string | null;
   // Row-level "insert note/iteration break here" menu (TASK-42) — Backlog
   // rows pass this; Current/Icebox rows (no notes/breaks there) don't.
   insertMenu?: ReactNode;
@@ -98,6 +102,7 @@ export function StoryListRow({
             storyType={story.story_type}
             points={story.points}
             pointScale={pointScale}
+            doneDefinition={doneDefinition}
           />
           {hasEpic && (
             <StoryEpicMenu

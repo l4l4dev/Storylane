@@ -97,6 +97,17 @@ export default async function ProjectSettingsPage({
               disabled={!isOwner}
             />
           </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="settings-definition-of-done">Definition of Done</Label>
+            <Textarea
+              id="settings-definition-of-done"
+              name="definition_of_done"
+              defaultValue={project.definition_of_done ?? ""}
+              rows={2}
+              placeholder="What your team requires before calling a story done — shown as a reference when a story reaches Done."
+              disabled={!isOwner}
+            />
+          </div>
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-1 flex-col gap-1.5">
               <Label htmlFor="settings-iteration-term">What you call an iteration</Label>

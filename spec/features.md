@@ -31,6 +31,12 @@
   card to a column also sets the state; on iOS via the advance button (see
   spec/screens.md). The advance/pair computation is a shared `packages/core`
   pure function with golden fixtures.
+- **Definition of Done reference (TASK-206):** when the project has a
+  `definition_of_done` (spec/data-model.md `projects`), it appears as a
+  reference next to both done-category entry points — the button whose
+  target is a done-category state, and the done-category Kanban column's
+  header (the drag path has no button to attach it to). Informational only;
+  never blocks the transition. No DoD set shows nothing extra.
 - Point estimation — points are chosen from the project's point scale, no free numeric input
   - `fibonacci`: 0, 1, 2, 3, 5, 8, 13 / `linear`: 0, 1, 2, 3 / `custom`: values from `projects.custom_points`
   - **Estimation gate (category terms):** an unestimated `feature` can only
@@ -134,6 +140,11 @@
   future (virtual) iterations, keyed by iteration number
   (`iteration_goals`, see spec/data-model.md); adopted into the real
   iteration row on rollover.
+- **Burndown reporting (TASK-207):** the Iterations view charts remaining
+  point-bearing work by day for the current and past iterations from
+  `story.state_changed` activity history. Its ideal pace uses the shared
+  velocity rate × iteration capacity forecast (spec/velocity.md); missing
+  historical coverage degrades to a partial or empty chart.
 - Manual story movement between iterations
 
 #### Epics & Labels
@@ -221,7 +232,6 @@
 - **Forgejo**: Same webhook integration as GitHub (for self-hosted environments)
 
 ### Phase 2 (Future)
-- Burndown chart
 - CSV export
 - Generic Webhook API
 - Avatar upload (Supabase Storage)

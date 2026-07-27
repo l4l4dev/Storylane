@@ -147,6 +147,7 @@ export function KanbanBoard({
   filter,
   toolbar,
   pointScale,
+  doneDefinition,
   members,
   labels,
 }: {
@@ -210,6 +211,11 @@ export function KanbanBoard({
   // estimation picker (TASK-37). The Kanban columns view never needs it —
   // state changes there are drag-only, no transition buttons render.
   pointScale: number[];
+  // TASK-206: the project's Definition of Done. List view needs it for
+  // TransitionButtons; Kanban columns need it on the done-category column
+  // header, since a Kanban move is drag-only (no TransitionButtons there).
+  // Null/undefined = no DoD set, nothing extra renders in either view.
+  doneDefinition?: string | null;
   // The draft story card's Assignee/Labels fields (TASK-82) — same shapes
   // StoryDetail uses, so StoryFields renders identically either way.
   members: { id: string; name: string; isAgent?: boolean }[];
@@ -443,6 +449,7 @@ export function KanbanBoard({
           filter={filter}
           canManageStates={canManageStates}
           pointScale={pointScale}
+          doneDefinition={doneDefinition}
           members={members}
           labels={labels}
         />
@@ -464,6 +471,7 @@ export function KanbanBoard({
           showIcebox={showIcebox}
           filter={filter}
           pointScale={pointScale}
+          doneDefinition={doneDefinition}
           members={members}
           labels={labels}
         />

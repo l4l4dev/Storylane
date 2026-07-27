@@ -28,6 +28,10 @@ export type StoryDetail = {
   // computeStateGate input (packages/core).
   states: ProjectState[];
   points: number | null;
+  // TASK-206: the project's Definition of Done, shown as a reference next to
+  // TransitionButtons when the target state is done-category. Null means no
+  // DoD set for this project — nothing extra renders.
+  doneDefinition: string | null;
   parentId: string | null;
   // Trigger-derived (doc-18 §4) — a container has no board state and is
   // never itself nestable (single-level, §3): the Parent picker, Points
@@ -109,7 +113,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
   ] = await Promise.all([
       supabase
         .from("projects")
-        .select("point_scale, custom_points, is_personal")
+        .select("point_scale, custom_points, is_personal, definition_of_done")
         .eq("id", story.project_id)
         .single(),
       supabase.from("labels").select("id, name").eq("project_id", story.project_id).order("name"),
@@ -235,6 +239,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     stateId: story.state_id,
     states,
     points: story.points,
+    doneDefinition: project?.definition_of_done ?? null,
     parentId: story.parent_id,
     isContainer: story.is_container,
     childCount: (childRows ?? []).length,

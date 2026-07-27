@@ -19,7 +19,7 @@
 /projects/[id]/board      Board (List / Kanban view, toggled in place — see "Board layout" below)
 /projects/[id]/epics      Epics: two panes — every epic with roll-up progress on the
                           left, the selected epic's children on the right (doc-20 §6)
-/projects/[id]/iterations Iteration history (past/done iterations with velocity, retro notes, and their stories)
+/projects/[id]/iterations Current and past iterations with burndown, velocity, retro notes, and stories
 /projects/[id]/activity   Project activity log (read-only feed of recent story/comment changes)
 /projects/[id]/settings   Project settings (members, integrations, point scale, etc.)
 /stories/[id]             Story detail (standalone deep-link page; primary editing happens
@@ -348,6 +348,20 @@ a physical column.
   no per-group placement anymore). See "Quick-add: draft story card" below.
 - The side peek works the same as Kanban.
 
+#### Iterations view — current and history
+
+`/projects/[id]/iterations` lists the current iteration first, followed by
+past done iterations. Each iteration card shows its dates, goal, velocity /
+snapshotted person-day capacity where available, retro notes, stories, and a
+burndown chart. The actual line is reconstructed day by day from
+`activity_logs` `story.state_changed` rows and `project_states.category`
+(`done` is never inferred from a state name). The ideal line uses the shared
+`rate × capacity` forecast from spec/velocity.md: planned calendar capacity
+for the current iteration and its stored capacity for a done iteration.
+History from before activity coverage, or events whose deleted/renamed state
+can no longer be resolved, renders as an empty or explicitly partial chart
+instead of failing the page.
+
 ### Quick-add: draft story card (2026-07-07, reworked 2026-07-20 — TASK-82, Pivotal parity)
 
 > **Parity note (doc-8 §10):** original Pivotal used a single "+ Add Story"
@@ -567,8 +581,8 @@ views reduce to List / Kanban.
 
 Sections, in order, each gated by its own RLS-matching role (see spec/rls.md):
 
-- **Details** — name, description, iteration term/length, point scale,
-  velocity window. Owner-editable; members see it read-only.
+- **Details** — name, description, definition of done, iteration term/length,
+  point scale, velocity window. Owner-editable; members see it read-only.
 - **Members** — invite (owner), role changes and removal (owner), list
   (everyone).
 - **Labels** — create (any member), delete (owner).

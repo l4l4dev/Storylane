@@ -53,6 +53,10 @@ projects (
   archived_at       timestamptz,          -- 2026-07-07: set = archived (owner only), NULL = active.
                                           -- Archived projects are hidden behind an "Archived"
                                           -- filter on the Projects page; unarchive sets NULL
+  definition_of_done text,                -- TASK-206: free-text reference checklist, owner-editable
+                                          -- (same policy as name/description). Shown alongside a
+                                          -- story's transition into a done-category state — informational
+                                          -- only, never a gate. NULL/empty shows nothing extra.
   created_by        uuid REFERENCES profiles(id),
   created_at        timestamptz DEFAULT now(),
   updated_at        timestamptz DEFAULT now()
