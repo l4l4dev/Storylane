@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-26 16:01'
-updated_date: '2026-07-27 02:50'
+updated_date: '2026-07-27 06:20'
 labels:
   - tooling
 milestone: m-2
@@ -33,7 +33,7 @@ Related: .claude/agent-memory/fable-advisor/ is 24 files / 72 KB, and the single
 - [x] #2 The cross-cutting relations that sessions must not re-derive are still reachable — moved, not deleted
 - [x] #3 ARCHITECTURE.md no longer duplicates what spec/ owns; it points instead
 - [x] #4 Spent single-task verdicts under .claude/agent-memory/fable-advisor/ are archived, leaving the learnings-* and review-* files
-- [x] #5 ARCHITECTURE.md's closing pointer to TASK.md is resolved (TASK-185 retires that file)
+- [x] #5 ARCHITECTURE.md's closing legacy task-list pointer is resolved
 - [x] #6 The Codex mirror .codex/hooks.json carries the same SessionStart hook — it changes with .claude/settings.json, not after it
 <!-- AC:END -->
 
@@ -46,7 +46,7 @@ Above the marker: the entity diagram, a one-line 'removed, do not reintroduce' l
 
 Sizes: injected 11,224 -> 3,703 bytes (67% smaller); the whole file 11,224 -> 9,869. Verified by running the hook command exactly as the runner does — valid JSON out, the marker line itself excluded from the payload. Content-loss checked against 17 key identifiers (split_story, set_story_state, notify_slack_event, iteration_goals, ...), all still present.
 
-The stale 'Current phase' section (Tasks 6-13 numbering, pointer to TASK.md) is deleted rather than updated — it described the pre-Backlog era. That closes AC#5 without waiting on TASK-185, so the dependency on that task is moot.
+The stale 'Current phase' section (Tasks 6-13 numbering, legacy task-list pointer) is deleted rather than updated — it described the pre-Backlog era. That closes AC#5 without waiting on TASK-185, so the dependency on that task is moot.
 
 Advisor memory: 9 verdicts whose task is Done moved to .claude/agent-memory/fable-advisor/archive/ (git mv, not deleted) and dropped from MEMORY.md; index 5,334 -> 3,230 bytes. project-my-work-column-management.md was kept despite being task-scoped because a live learnings-* file wikilinks to it. All 14 remaining index links verified to resolve.
 
@@ -74,3 +74,5 @@ Nine advisor verdicts whose task has shipped moved to agent-memory archive/ (git
 
 Content-loss checked against 17 key identifiers, all still present. .codex/hooks.json carries the identical hook.
 <!-- SECTION:FINAL_SUMMARY:END -->
+
+<!-- SECTION:NOTES:END -->
