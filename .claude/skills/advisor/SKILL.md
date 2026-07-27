@@ -23,7 +23,7 @@ Rules:
   not paste whole files.
 - Fable time is metered on the user's plan: batch related sub-questions
   into one consultation instead of spawning repeatedly. Do not use the
-  advisor for questions CLAUDE.md or the spec already answers.
+  advisor for questions the project instructions or the spec already answer.
 - Relay the advisor's verdict to the user (verbatim conclusion + key
   corrections) before acting on it.
 - If the verdict changes a spec or Backlog task, you make those edits per

@@ -1,4 +1,12 @@
-# Storylane — Claude Code Instructions
+# Storylane — Agent Instructions
+
+<!-- AGENTS.md here is a symlink to this file; apps/web and apps/ios each have
+     their own AGENTS.md -> CLAUDE.md symlink pointing at their OWN sibling, not
+     at this one. Claude Code reads CLAUDE.md, Codex reads AGENTS.md.
+     Do not "fix" any of them into a real file — the copy is what drifted before,
+     and `backlog agents --update-instructions` offers CLAUDE.md and AGENTS.md as
+     separate targets that are now one inode: pick CLAUDE.md only, or its
+     write-then-rename replaces the symlink with a duplicate. -->
 
 ## About This Project
 
@@ -59,7 +67,7 @@ Most work here is done by AI agents — keep context small:
 
 ---
 
-iOS conventions live in `apps/ios/CLAUDE.md`; Web conventions live in `apps/web/CLAUDE.md` (loaded automatically when working under those directories).
+iOS conventions live in `apps/ios/`, Web conventions in `apps/web/` — each directory's instruction file is loaded automatically when working under it.
 
 ## Supabase Conventions
 
@@ -127,8 +135,8 @@ one (the list changes over time — don't assume the ids below stay accurate):
 
 - Pick the existing milestone whose scope covers the task's actual outcome — don't default to
   whichever milestone is currently active if the task belongs elsewhere.
-- If no existing milestone fits, ask the owner before creating a new one (same rule as Backlog
-  task creation itself — see [[feedback-ask-before-creating-backlog-tasks]] in memory).
+- If no existing milestone fits, ask the owner before creating a new one — the same rule that
+  applies to creating a Backlog task in the first place.
 
 ## Backlog Ordering & Doc Hygiene (standing rules, owner-requested 2026-07-22)
 

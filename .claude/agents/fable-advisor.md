@@ -18,7 +18,7 @@ Ground every answer in the repo, not in memory:
 - ARCHITECTURE.md (cross-layer rules) and Backlog decisions/tasks
   (`backlog task view <id> --plain`, `.backlog/decisions/`)
 - The actual code when the question depends on it (Grep/partial reads —
-  obey CLAUDE.md's Token Economy rules)
+  obey the project instructions' Token Economy rules)
 
 Danger zones to check against any plan that touches them:
 - Finalization/rollover concurrency — spec/velocity.md "Finalization

@@ -79,7 +79,7 @@ describe.skipIf(!RUN)("working-day calendar RLS (integration)", () => {
       otherId = existing.id;
     }
 
-    asOwner = createClient(url, anonKey);
+    asOwner = createClient(url, anonKey, { auth: { persistSession: false } });
     const ownerAuth = await asOwner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -89,7 +89,7 @@ describe.skipIf(!RUN)("working-day calendar RLS (integration)", () => {
     }
     ownerId = ownerAuth.data.user.id;
 
-    asOther = createClient(url, anonKey);
+    asOther = createClient(url, anonKey, { auth: { persistSession: false } });
     const otherAuth = await asOther.auth.signInWithPassword({
       email: OTHER_EMAIL,
       password: OTHER_PASSWORD,

@@ -95,7 +95,7 @@ describe.skipIf(!RUN)("membership admin RPCs (integration)", () => {
       memberId = existing.id;
     }
 
-    asOwner = createClient(url, anonKey);
+    asOwner = createClient(url, anonKey, { auth: { persistSession: false } });
     const ownerAuth = await asOwner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -105,7 +105,7 @@ describe.skipIf(!RUN)("membership admin RPCs (integration)", () => {
     }
     ownerId = ownerAuth.data.user.id;
 
-    asMember = createClient(url, anonKey);
+    asMember = createClient(url, anonKey, { auth: { persistSession: false } });
     const memberAuth = await asMember.auth.signInWithPassword({
       email: SECOND_EMAIL,
       password: SECOND_PASSWORD,

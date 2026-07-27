@@ -42,7 +42,7 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
     }
     admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 
-    owner = createClient(url, anonKey);
+    owner = createClient(url, anonKey, { auth: { persistSession: false } });
     const ownerAuth = await owner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -89,7 +89,11 @@ describe.skipIf(!RUN)("stories write-permission model (integration)", () => {
         .from("project_members")
         .insert({ project_id: projectId, user_id: created.user.id, role });
       if (memberError) throw new Error(`Failed to add ${label}: ${memberError.message}`);
-      const client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      const client = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
       const { error: signInError } = await client.auth.signInWithPassword({ email, password });
       if (signInError) throw new Error(`${label} sign-in failed: ${signInError.message}`);
       return { client, userId: created.user.id };
