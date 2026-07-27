@@ -14,6 +14,13 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     // Dot reporter keeps local (AI-driven) runs terse; CI keeps the readable default.
     reporters: process.env.CI ? "default" : "dot",
+    // The *.integration.test.ts files share one database AND one seeded dev
+    // user — e.g. working-day-calendar wipes that user's user_time_off rows
+    // while capacity/planning-capacity read them. Run them one file at a time.
+    // Serialising the whole suite (74s vs 15s) rather than only the
+    // integration lane keeps this to one flag; the unit-only run, which is
+    // what runs by default, is untouched.
+    fileParallelism: process.env.SUPABASE_INTEGRATION !== "1",
     // e2e/ holds Playwright specs (run via `pnpm test:e2e`), not Vitest ones —
     // exclude them (on top of Vitest's own defaults, which this list
     // replaces rather than merges with) so Vitest doesn't try to run them

@@ -77,9 +77,14 @@ jobs:
         run: |
           # Assign first: `eval "$(supabase status ...)"` would swallow a
           # status failure and leave the three vars empty, so the suite would
-          # fail as "env not set" instead of naming the real cause.
+          # fail as "env not set" instead of naming the real cause. The :?
+          # guards cover the other half — status succeeding but reporting
+          # different key names, which the CLI has changed before.
           supabase_env="$(supabase status -o env)"
           eval "$supabase_env"
+          : "${API_URL:?supabase status reported no API_URL}"
+          : "${ANON_KEY:?supabase status reported no ANON_KEY}"
+          : "${SERVICE_ROLE_KEY:?supabase status reported no SERVICE_ROLE_KEY}"
           export NEXT_PUBLIC_SUPABASE_URL="$API_URL"
           export NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY"
           export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
