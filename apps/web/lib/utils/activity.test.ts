@@ -103,6 +103,47 @@ describe("describeActivity", () => {
     expect(text).toBe('Dev User copied "Fix login bug" here from another project');
   });
 
+  it("describes an iteration reschedule by number", () => {
+    const text = describeActivity({
+      action: "story.iteration_changed",
+      payload: { from_iteration_number: 3, to_iteration_number: 4 },
+      actorName: "Dev User",
+      storyTitle: "Add welcome tour",
+    });
+    expect(text).toBe('Dev User moved "Add welcome tour" from iteration #3 to #4');
+  });
+
+  it("names the Icebox when either end of an iteration change is null", () => {
+    const toIcebox = describeActivity({
+      action: "story.iteration_changed",
+      payload: { from_iteration_number: 2, to_iteration_number: null },
+      actorName: "Dev User",
+      storyTitle: "Add welcome tour",
+    });
+    expect(toIcebox).toBe('Dev User moved "Add welcome tour" from iteration #2 to the Icebox');
+
+    const fromIcebox = describeActivity({
+      action: "story.iteration_changed",
+      payload: { from_iteration_number: null, to_iteration_number: 5 },
+      actorName: "Dev User",
+      storyTitle: "Add welcome tour",
+    });
+    expect(fromIcebox).toBe('Dev User moved "Add welcome tour" from iteration the Icebox to #5');
+  });
+
+  // story.iteration_rolled_over: the pre-rename action name
+  // (20260727120000, superseded by 20260727140000) — same payload shape,
+  // must format identically so already-deployed rows stay readable.
+  it("formats the pre-rename action name identically to the current one", () => {
+    const text = describeActivity({
+      action: "story.iteration_rolled_over",
+      payload: { from_iteration_number: 3, to_iteration_number: 4 },
+      actorName: "Dev User",
+      storyTitle: "Add welcome tour",
+    });
+    expect(text).toBe('Dev User moved "Add welcome tour" from iteration #3 to #4');
+  });
+
   it("falls back to a generic description for unknown actions", () => {
     const text = describeActivity({
       action: "project.renamed",

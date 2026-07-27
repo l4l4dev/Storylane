@@ -86,17 +86,9 @@ export default async function IterationsPage({
   );
   const earliestStart = allIterations.at(-1)?.start_date ?? today;
 
-  const [storiesResult, labelsResult, statesResult, activityLogs, rolloverLogs] =
+  const [labelsResult, statesResult, activityLogs, rolloverLogs] =
     iterationIds.length > 0
       ? await Promise.all([
-          supabase
-            .from("stories")
-            .select(
-              "id, number, title, description, story_type, state_id, points, position, iteration_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
-            )
-            .eq("is_container", false)
-            .in("iteration_id", iterationIds)
-            .order("position", { ascending: true }),
           supabase.from("labels").select("id, name, color").eq("project_id", id),
           supabase.from("project_states").select("id, name, category").eq("project_id", id),
           // Tiebreaker on id (after created_at): range()-based pagination
@@ -116,41 +108,87 @@ export default async function IterationsPage({
               .order("id", { ascending: true })
               .range(from, to),
           ),
-          // A past iteration's burndown must count a story that rolled over
-          // to the next iteration before it finished (finalize_iteration
-          // moves iteration_id forward for incomplete stories on rollover) —
-          // otherwise the story's points silently drop out of that iteration's
-          // history the moment it rolls over. This log is the only record of
-          // "which iteration a story used to belong to" once that happens.
+          // A past iteration's burndown must count a story that has since
+          // moved on — a rollover, or an ordinary Backlog<->Current reschedule
+          // — before it finished, otherwise its points silently drop out of
+          // that iteration's history the moment iteration_id changes. This
+          // log (any stories.iteration_id UPDATE, not just automated
+          // rollovers) is the only record of "which iteration a story used
+          // to belong to" once that happens. Reads both the current and the
+          // brief-window-old action name: rows already written as
+          // story.iteration_rolled_over (20260727120000, before this file's
+          // generalized rename) must not silently vanish from history just
+          // because the read path only looked for the new name.
           fetchAllRows((from, to) =>
             supabase
               .from("activity_logs")
               .select("id, story_id, payload")
               .eq("project_id", id)
-              .eq("action", "story.iteration_rolled_over")
+              .in("action", ["story.iteration_changed", "story.iteration_rolled_over"])
               .order("id", { ascending: true })
               .range(from, to),
           ),
         ])
-      : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }, [], []];
-  const stories = assertReadOk(storiesResult);
+      : [{ data: [], error: null }, { data: [], error: null }, [], []];
   const labels = assertReadOk(labelsResult);
   const states = assertReadOk(statesResult);
 
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
   const categoryByStateName = new Map((states ?? []).map((state) => [state.name, state.category]));
   const categoryByStateId = new Map((states ?? []).map((state) => [state.id, state.category]));
-  // storyId set that rolled OUT of each iteration — unioned with the
+  // storyId set that moved OUT of each iteration (rollover or an ordinary
+  // reschedule — story.iteration_changed covers both) — unioned with the
   // current-iteration_id filter below to recover a past iteration's true
-  // story membership after rollover has moved some of them onward.
+  // story membership after some of them have since moved on.
   const rolledOutOf = new Map<string, Set<string>>();
+  const everMovedOutStoryIds = new Set<string>();
   for (const log of rolloverLogs as Array<{ story_id: string | null; payload: unknown }>) {
     const payload = (log.payload ?? {}) as { from_iteration_id?: string };
     if (!log.story_id || !payload.from_iteration_id) continue;
     const set = rolledOutOf.get(payload.from_iteration_id) ?? new Set<string>();
     set.add(log.story_id);
     rolledOutOf.set(payload.from_iteration_id, set);
+    everMovedOutStoryIds.add(log.story_id);
   }
+
+  const STORY_COLUMNS =
+    "id, number, title, description, story_type, state_id, points, position, iteration_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)";
+
+  const storiesByIteration =
+    iterationIds.length > 0
+      ? await fetchAllRows((from, to) =>
+          supabase
+            .from("stories")
+            .select(STORY_COLUMNS)
+            .eq("is_container", false)
+            .in("iteration_id", iterationIds)
+            .order("position", { ascending: true })
+            .range(from, to),
+        )
+      : [];
+
+  // Filtering by CURRENT iteration_id alone misses one case: Current ->
+  // Backlog/Icebox sets iteration_id to NULL, which is never in
+  // iterationIds. rolledOutOf already knows such a story belongs to a past
+  // iteration's history; without also fetching its row here, that knowledge
+  // has no points/state_id to attach to and the story is silently absent
+  // from that iteration's chart despite being tracked. Fetched as a second,
+  // separately batched query rather than one big .or(...) — PostgREST sends
+  // filters in the URL, and a long-lived project's full moved-story history
+  // interpolated into one query string could exceed a proxy's request-line
+  // limit.
+  const coveredIds = new Set(storiesByIteration.map((s) => s.id));
+  const extraIds = [...everMovedOutStoryIds].filter((storyId) => !coveredIds.has(storyId));
+  const EXTRA_BATCH_SIZE = 200;
+  const extraStories: typeof storiesByIteration = [];
+  for (let i = 0; i < extraIds.length; i += EXTRA_BATCH_SIZE) {
+    const batch = extraIds.slice(i, i + EXTRA_BATCH_SIZE);
+    const { data, error } = await supabase.from("stories").select(STORY_COLUMNS).in("id", batch);
+    if (error) throw new Error(error.message);
+    extraStories.push(...(data ?? []));
+  }
+  const stories = [...storiesByIteration, ...extraStories];
+
   // Grouped once so each rendered iteration's buildBurndown call only scans
   // the handful of logs for its own stories, not the whole project's history.
   const activityLogsByStory = new Map<string, typeof activityLogs>();
