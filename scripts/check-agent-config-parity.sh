@@ -24,10 +24,25 @@ trim() {
   awk 'NF {p=1} p' | awk '{lines[NR]=$0} END {last=NR; while (last>0 && lines[last]=="") last--; for (i=1;i<=last;i++) print lines[i]}'
 }
 
+# Driven off .codex/*.toml rather than a hardcoded list, so a new pair is
+# covered the moment it is added. .claude is canonical, so a Claude-only agent
+# is fine; a Codex agent with no Claude counterpart is not.
 status=0
-for agent in fable-advisor rls-security-reviewer; do
+shopt -s nullglob
+tomls=(.codex/agents/*.toml)
+if [ ${#tomls[@]} -eq 0 ]; then
+  echo "no .codex/agents/*.toml found — did the directory move?" >&2
+  exit 1
+fi
+
+for toml in "${tomls[@]}"; do
+  agent="$(basename "$toml" .toml)"
   md=".claude/agents/${agent}.md"
-  toml=".codex/agents/${agent}.toml"
+  if [ ! -f "$md" ]; then
+    echo "MISSING: ${toml} has no counterpart at ${md}" >&2
+    status=1
+    continue
+  fi
   if diff -u <(md_body "$md" | trim) <(toml_body "$toml" | trim) > /tmp/agent-parity-$$.diff; then
     echo "ok: ${agent} bodies match"
   else
