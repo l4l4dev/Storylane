@@ -1,11 +1,11 @@
 ---
 id: TASK-202
 title: Stop AGENTS.md drifting from CLAUDE.md — one source for the shared rules
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-26 16:00'
-updated_date: '2026-07-27 00:54'
+updated_date: '2026-07-27 02:50'
 labels:
   - docs
 milestone: m-2
@@ -64,3 +64,15 @@ Left alone deliberately: .claude/agents/fable-advisor.md still declares `model: 
 
 AC #5 is deliberately left unchecked: whether Codex follows the symlinks can only be confirmed by running Codex, which is the owner's step.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+AGENTS.md is a symlink to CLAUDE.md at the repo root and in apps/web and apps/ios, as is .agents/skills/advisor/SKILL.md — the shared rules now live in exactly one file per scope and cannot diverge. Removes 207 lines of duplicated instructions.
+
+The mirror turned out to be find/replace output with three dead targets: apps/web/AGENTS.md and apps/ios/AGENTS.md were never created, so the per-directory conventions had never reached Codex at all, and .codex/agents/rls-security-reviewer.toml pointed at a '.Codex/commands/' path that does not exist.
+
+The two .codex/agents/*.toml files cannot be symlinked across formats, so scripts/check-agent-config-parity.sh compares their instruction bodies and runs as its own CI workflow (green in 3-6s on every run since). It is glob-driven, so a new pair is covered when added, and a Codex agent with no .claude counterpart is reported as an error — both verified with injected drift and a throwaway orphan TOML.
+
+Verified: all four symlinks resolve to the intended sibling; a line-by-line diff confirmed the only content unique to the old AGENTS.md was the superseded backlog rule, the Codex title, the sub-file pointer, and the Tech Stack table that 0e2539f deliberately removed.
+<!-- SECTION:FINAL_SUMMARY:END -->

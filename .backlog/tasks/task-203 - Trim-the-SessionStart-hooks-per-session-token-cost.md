@@ -1,11 +1,11 @@
 ---
 id: TASK-203
 title: Trim the SessionStart hook's per-session token cost
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-26 16:01'
-updated_date: '2026-07-27 01:51'
+updated_date: '2026-07-27 02:50'
 labels:
   - tooling
 milestone: m-2
@@ -60,3 +60,17 @@ Moved the pipeline into scripts/session-context.sh (set -euo pipefail) and point
 
 Also hardened scripts/check-agent-config-parity.sh, whose agent list was hardcoded to today's two pairs: it now iterates .codex/agents/*.toml, so a new pair is covered as soon as it is added, and reports a Codex agent with no .claude counterpart as an error. Verified both ways with a throwaway orphan-test.toml.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ARCHITECTURE.md is split by a hook:end marker: the SessionStart hook injects only the part above it, cutting the per-session context from 11,224 to 3,703 bytes (67%). Above the marker are the entity diagram and ten invariants — the rules a session would silently violate without being told, each linking to its section below. Below it, the old cross-layer table is regrouped into eight sections with spec restatements reduced to pointers, which the file's own header had always required.
+
+Split by marker rather than into a second file, which would have recreated the drift TASK-202 removed.
+
+The hook now runs scripts/session-context.sh instead of an inline 'awk | jq' that exited with jq's status: a missing file produced valid JSON with an empty context, and a deleted marker silently injected the whole file. Verified both failure modes now exit 1 with a named reason, and the success path emits valid JSON with the marker line excluded.
+
+Nine advisor verdicts whose task has shipped moved to agent-memory archive/ (git mv, not deleted) and left MEMORY.md, taking the index from 5,334 to 3,230 bytes; all 14 remaining index links verified to resolve. The saving there is index-only, since the individual files were already read on demand.
+
+Content-loss checked against 17 key identifiers, all still present. .codex/hooks.json carries the identical hook.
+<!-- SECTION:FINAL_SUMMARY:END -->

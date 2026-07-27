@@ -1,11 +1,11 @@
 ---
 id: TASK-201
 title: 'CI: run the integration suite against a fresh Supabase stack'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-26 16:00'
-updated_date: '2026-07-27 02:28'
+updated_date: '2026-07-27 02:49'
 labels:
   - ci
   - db
@@ -27,11 +27,11 @@ Starting the local stack in CI closes both gaps at once: `supabase start` applie
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 supabase/** is in the workflow's push and pull_request trigger paths
-- [ ] #2 CI starts a local Supabase stack, which applies every migration to an empty database
-- [ ] #3 The web test step runs with SUPABASE_INTEGRATION=1 so no integration file is skipped
-- [ ] #4 Local Supabase credentials stay scoped to the test step — they must not leak into the Build step, which inlines NEXT_PUBLIC_* at build time
-- [ ] #5 A CI run on a real PR reports the full test count, not the reduced one
+- [x] #1 supabase/** is in the workflow's push and pull_request trigger paths
+- [x] #2 CI starts a local Supabase stack, which applies every migration to an empty database
+- [x] #3 The web test step runs with SUPABASE_INTEGRATION=1 so no integration file is skipped
+- [x] #4 Local Supabase credentials stay scoped to the test step — they must not leak into the Build step, which inlines NEXT_PUBLIC_* at build time
+- [x] #5 A CI run on a real PR reports the full test count, not the reduced one
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -81,3 +81,13 @@ Fix: { auth: { persistSession: false } } on all 51 anon createClient sites acros
 
 Test-only defect: the production clients in apps/web/lib/supabase/ use @supabase/ssr with cookie storage and are unaffected.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+web-ci.yml now starts a local Supabase stack, which applies all 116 migrations to an empty database, and runs the web suite with SUPABASE_INTEGRATION=1 so the 35 integration files covering RLS, RPCs and triggers no longer skip. supabase/** was added to the trigger paths, which previously let a migration-only change run no CI at all.
+
+Verified on PR #5: Web CI green on the branch and again on main after merge, reporting 126 files / 1094 tests passed — up from 836. Start Supabase green, confirming the -x exclusion list works on a GitHub runner.
+
+The first CI run exposed 36 pre-existing test failures that had never surfaced locally: all Supabase clients in a file share one auth storage key, which only matters where localStorage exists (CI's Node 22, not the Node 26 used locally). Fixed with persistSession: false on 51 anon client sites; database state, container versions and a timing race were each ruled out first. The CLI is pinned to 2.109.1 so the stack under test cannot change without a commit, and integration files run serially because they share one seeded dev user.
+<!-- SECTION:FINAL_SUMMARY:END -->
