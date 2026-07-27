@@ -41,7 +41,7 @@ describe.skipIf(!RUN)("reshape_current_iteration (integration)", () => {
     if (!url || !anonKey || !serviceKey) {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
-    supabase = createClient(url, anonKey);
+    supabase = createClient(url, anonKey, { auth: { persistSession: false } });
     admin = createClient(url, serviceKey, { auth: { persistSession: false } });
     const { error } = await supabase.auth.signInWithPassword({
       email: "dev@storylane.local",
@@ -149,7 +149,11 @@ describe.skipIf(!RUN)("reshape_current_iteration (integration)", () => {
     const projectId = await createProject({ iteration_length: 14 });
     await seedCurrentIteration(projectId);
     // A fresh anon client that never signed in has no membership.
-    const outsider = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const outsider = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     const { error } = await outsider.rpc("reshape_current_iteration", { p_project_id: projectId });
     expect(error).not.toBeNull(); // project_role gate raises for a non-member
   });

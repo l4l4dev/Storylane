@@ -31,7 +31,7 @@ describe.skipIf(!RUN)("update_story RPC (integration)", () => {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
     admin = createClient(url, serviceKey, { auth: { persistSession: false } });
-    owner = createClient(url, anonKey);
+    owner = createClient(url, anonKey, { auth: { persistSession: false } });
     const ownerAuth = await owner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",

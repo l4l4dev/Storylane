@@ -1,5 +1,8 @@
 # Web (TypeScript / Next.js) Conventions
 
+<!-- AGENTS.md in this directory is a symlink to this file, so Codex gets these
+     conventions too. It must keep pointing here, not at the repo-root file. -->
+
 ## General
 - Use **pnpm** as the package manager — never `npm` or `yarn` (e.g. `pnpm install`, `pnpm add`, `pnpm run dev`)
 - Never use `any` — use `unknown` when the type is uncertain
@@ -16,3 +19,7 @@
 - Unit tests: Vitest
 - Component tests: Testing Library
 - Test files go next to the source file as `*.test.ts(x)`
+- In `*.integration.test.ts`, every `createClient` needs `{ auth: { persistSession: false } }`.
+  Without it all clients in a file share one storage key, so a client meant to be anonymous
+  inherits the previous sign-in and clients playing different roles overwrite each other. It
+  only bites where localStorage exists, so it passes on Node 26 and fails on CI's Node 22.

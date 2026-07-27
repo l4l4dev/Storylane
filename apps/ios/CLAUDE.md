@@ -1,5 +1,8 @@
 # iOS (Swift) Conventions
 
+<!-- AGENTS.md in this directory is a symlink to this file, so Codex gets these
+     conventions too. It must keep pointing here, not at the repo-root file. -->
+
 ## General
 - Use the latest stable Swift and SwiftUI APIs
 - Prefer SwiftUI; use UIKit only when necessary

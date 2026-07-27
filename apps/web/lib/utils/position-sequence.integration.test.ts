@@ -32,7 +32,7 @@ describe.skipIf(!RUN)("position sequence invariant (integration)", () => {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
     asService = createClient(url, serviceKey, { auth: { persistSession: false } });
-    asOwner = createClient(url, anonKey);
+    asOwner = createClient(url, anonKey, { auth: { persistSession: false } });
     const auth = await asOwner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",

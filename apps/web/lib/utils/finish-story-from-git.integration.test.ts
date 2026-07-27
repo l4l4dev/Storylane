@@ -68,7 +68,7 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
 
-    asUser = createClient(url, anonKey);
+    asUser = createClient(url, anonKey, { auth: { persistSession: false } });
     asService = createClient(url, serviceKey, { auth: { persistSession: false } });
     const { error: authError } = await asUser.auth.signInWithPassword({
       email: "dev@storylane.local",

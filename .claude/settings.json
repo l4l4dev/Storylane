@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -Rs '{hookSpecificOutput: {hookEventName: \"SessionStart\", additionalContext: .}}' ARCHITECTURE.md",
+            "command": "./scripts/session-context.sh",
             "statusMessage": "Loading architecture map..."
           }
         ]

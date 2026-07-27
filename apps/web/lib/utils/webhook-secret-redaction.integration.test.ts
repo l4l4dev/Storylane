@@ -35,7 +35,7 @@ describe.skipIf(!RUN)("webhook_secret redaction (integration)", () => {
 
     asService = createClient(url, serviceKey, { auth: { persistSession: false } });
 
-    asOwner = createClient(url, anonKey);
+    asOwner = createClient(url, anonKey, { auth: { persistSession: false } });
     const ownerAuth = await asOwner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
