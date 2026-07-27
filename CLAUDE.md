@@ -97,6 +97,18 @@ fix/velocity-calculation
 chore/update-supabase-client
 ```
 
+### PR vs. Direct Push to `main`
+
+Branch protection is intentionally off — direct push to `main` stays available for small work.
+Codex reviews every PR automatically, so opening one is a free extra check.
+
+- **Open a PR** for anything covered by the `/advisor` rule above (new tables/RLS, algorithm
+  rewrites, concurrency-sensitive changes), or any feature/fix that touches multiple
+  files/subsystems as one unit of work.
+- **Direct push to `main` is fine** for chore/config/docs tweaks, single- or few-line fixes, and
+  Backlog task housekeeping commits.
+- When unsure which side a task falls on, open a PR.
+
 ---
 
 ## Backlog Assignee & Model Policy
