@@ -151,30 +151,43 @@ export default async function IterationsPage({
     everMovedOutStoryIds.add(log.story_id);
   }
 
-  // Filtering stories by CURRENT iteration_id alone misses one case:
-  // Current -> Backlog/Icebox sets iteration_id to NULL, which is never in
+  const STORY_COLUMNS =
+    "id, number, title, description, story_type, state_id, points, position, iteration_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)";
+
+  const storiesByIteration =
+    iterationIds.length > 0
+      ? await fetchAllRows((from, to) =>
+          supabase
+            .from("stories")
+            .select(STORY_COLUMNS)
+            .eq("is_container", false)
+            .in("iteration_id", iterationIds)
+            .order("position", { ascending: true })
+            .range(from, to),
+        )
+      : [];
+
+  // Filtering by CURRENT iteration_id alone misses one case: Current ->
+  // Backlog/Icebox sets iteration_id to NULL, which is never in
   // iterationIds. rolledOutOf already knows such a story belongs to a past
   // iteration's history; without also fetching its row here, that knowledge
   // has no points/state_id to attach to and the story is silently absent
-  // from that iteration's chart despite being tracked.
-  const stories =
-    iterationIds.length > 0
-      ? await fetchAllRows((from, to) => {
-          const base = supabase
-            .from("stories")
-            .select(
-              "id, number, title, description, story_type, state_id, points, position, iteration_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
-            )
-            .eq("is_container", false);
-          return (
-            everMovedOutStoryIds.size > 0
-              ? base.or(`iteration_id.in.(${iterationIds.join(",")}),id.in.(${[...everMovedOutStoryIds].join(",")})`)
-              : base.in("iteration_id", iterationIds)
-          )
-            .order("position", { ascending: true })
-            .range(from, to);
-        })
-      : [];
+  // from that iteration's chart despite being tracked. Fetched as a second,
+  // separately batched query rather than one big .or(...) — PostgREST sends
+  // filters in the URL, and a long-lived project's full moved-story history
+  // interpolated into one query string could exceed a proxy's request-line
+  // limit.
+  const coveredIds = new Set(storiesByIteration.map((s) => s.id));
+  const extraIds = [...everMovedOutStoryIds].filter((storyId) => !coveredIds.has(storyId));
+  const EXTRA_BATCH_SIZE = 200;
+  const extraStories: typeof storiesByIteration = [];
+  for (let i = 0; i < extraIds.length; i += EXTRA_BATCH_SIZE) {
+    const batch = extraIds.slice(i, i + EXTRA_BATCH_SIZE);
+    const { data, error } = await supabase.from("stories").select(STORY_COLUMNS).in("id", batch);
+    if (error) throw new Error(error.message);
+    extraStories.push(...(data ?? []));
+  }
+  const stories = [...storiesByIteration, ...extraStories];
 
   // Grouped once so each rendered iteration's buildBurndown call only scans
   // the handful of logs for its own stories, not the whole project's history.

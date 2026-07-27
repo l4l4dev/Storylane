@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@gpt-5.6-sol'
 created_date: '2026-07-27 01:48'
-updated_date: '2026-07-27 15:59'
+updated_date: '2026-07-27 16:11'
 labels: []
 milestone: m-0
 dependencies: []
@@ -95,6 +95,23 @@ Fourth round: Codex reviewed PR #7 itself (its environment is now configured, so
 - [P2, deferred to TASK-218] describeActivity's iteration_changed message can't distinguish Backlog from Icebox (both read as null iteration_number), and no longer distinguishes an automated rollover from a manual drag now that both share one action name. Added as ACs on TASK-218.
 
 Re-verified: tsc/lint clean, supabase db reset applies the full 9-migration chain cleanly, full suite under CI conditions 1117/1117 passed.
+
+Comments:
+--------------------------------------------------
+#1 - @claude-sonnet-5 - 2026-07-27 06:14 (UTC)
+Delegated to Codex CLI (@gpt-5.6-sol, ChatGPT quota) per owner request 2026-07-27: surplus Codex tokens available. No new tables/RLS involved (derives from existing activity_logs), so within policy scope. Standard review workflow (code-review, fable-advisor design review since this is user-facing UI, manual verification) still applies before merge.
+
+#2 - @claude-sonnet-5 - 2026-07-27 06:38 (UTC)
+fable-advisor design review: approved. Ideal-pace line confirmed to reuse existing velocityRate/forecastPoints (iterations/page.tsx passes targetPoints into burndown.ts, no parallel calc). Two non-blocking notes: (1) single-day-cadence duplicate end-date label — fixed directly in burndown-chart.tsx. (2) full iteration-history activity_logs read on the reporting page for long-lived projects — deferred as acceptable for now per advisor, not a correctness issue.
+
+---
+
+Fifth round: Codex reviewed the round-4 push itself and found 2 more real issues in that exact code:
+
+- [P2, FIXED] describeActivity lost its case for the pre-rename action name (story.iteration_rolled_over) when round 3 renamed it — the burndown-page query was fixed to read both names in round 4, but this separate consumer (the project activity feed) still only matched the new name, so any already-deployed legacy row fell through to the raw-string fallback. Fixed by fallthrough to the same case (both actions share the same payload shape).
+- [P2, FIXED] Round 4's .or() filter interpolated every ever-moved story's UUID directly into one PostgREST query string — for a long-lived project with hundreds of such stories, that could exceed a proxy's request-line limit and break the whole page. Replaced with two separate queries: the existing iteration_id-scoped fetchAllRows, plus a second query for only the IDs not already covered, batched at 200 per request rather than one unbounded filter.
+
+Re-verified: tsc/lint clean, full suite under CI conditions 1117/1117 passed.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

@@ -45,6 +45,10 @@ export function describeActivity(log: ActivityLog): string {
       const title = payload.title ? `"${String(payload.title)}"` : story;
       return `${log.actorName} copied ${title} here from another project`;
     }
+    // story.iteration_rolled_over: the pre-rename action name
+    // (20260727120000, superseded by 20260727140000) — same payload shape,
+    // kept here so already-deployed rows stay readable in the feed.
+    case "story.iteration_rolled_over":
     case "story.iteration_changed": {
       const from = payload.from_iteration_number != null ? `#${String(payload.from_iteration_number)}` : "the Icebox";
       const to = payload.to_iteration_number != null ? `#${String(payload.to_iteration_number)}` : "the Icebox";
