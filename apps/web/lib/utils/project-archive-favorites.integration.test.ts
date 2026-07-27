@@ -41,7 +41,7 @@ describe.skipIf(!RUN)("toggle_project_favorite / archive permissions (integratio
 
     admin = createClient(url, serviceRoleKey, { auth: { persistSession: false } });
 
-    owner = createClient(url, anonKey);
+    owner = createClient(url, anonKey, { auth: { persistSession: false } });
     const { error: ownerAuthError } = await owner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -74,7 +74,7 @@ describe.skipIf(!RUN)("toggle_project_favorite / archive permissions (integratio
       .insert({ project_id: projectId, user_id: memberUserId, role: "member" });
     if (memberInsertError) throw new Error(`Failed to add test member: ${memberInsertError.message}`);
 
-    member = createClient(url, anonKey);
+    member = createClient(url, anonKey, { auth: { persistSession: false } });
     const { error: memberAuthError } = await member.auth.signInWithPassword({
       email,
       password: "integration-test-only-password",
@@ -138,7 +138,11 @@ describe.skipIf(!RUN)("toggle_project_favorite / archive permissions (integratio
     }
     createdUserIds.push(outsider.user.id);
 
-    const outsiderClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const outsiderClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     const { error: signInError } = await outsiderClient.auth.signInWithPassword({
       email: outsiderEmail,
       password: "integration-test-only-password",

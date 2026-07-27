@@ -53,7 +53,7 @@ describe.skipIf(!RUN)("flexible cadence (integration)", () => {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
 
-    supabase = createClient(url, anonKey);
+    supabase = createClient(url, anonKey, { auth: { persistSession: false } });
     admin = createClient(url, serviceKey, { auth: { persistSession: false } });
     const { error: authError } = await supabase.auth.signInWithPassword({
       email: "dev@storylane.local",

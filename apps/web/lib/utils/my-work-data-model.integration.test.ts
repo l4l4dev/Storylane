@@ -38,7 +38,7 @@ describe.skipIf(!RUN)("My Work data model (TASK-130/176 integration)", () => {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
     admin = createClient(url, serviceKey, { auth: { persistSession: false } });
-    owner = createClient(url, anonKey);
+    owner = createClient(url, anonKey, { auth: { persistSession: false } });
     const ownerAuth = await owner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -125,7 +125,11 @@ describe.skipIf(!RUN)("My Work data model (TASK-130/176 integration)", () => {
     const { data: created } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     const otherId = created!.user!.id;
     await admin.from("project_members").insert({ project_id: projectId, user_id: otherId, role: "member" });
-    const other = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const other = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     await other.auth.signInWithPassword({ email, password });
 
     const { data: crossRead } = await other.from("my_work_columns").select("id").eq("user_id", ownerId);

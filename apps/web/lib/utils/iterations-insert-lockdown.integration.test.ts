@@ -30,7 +30,7 @@ describe.skipIf(!RUN)("iterations INSERT lockdown (integration)", () => {
     if (!url || !anonKey) {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY must be set");
     }
-    supabase = createClient(url, anonKey);
+    supabase = createClient(url, anonKey, { auth: { persistSession: false } });
     const { error } = await supabase.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",

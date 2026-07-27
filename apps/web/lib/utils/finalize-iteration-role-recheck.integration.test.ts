@@ -41,7 +41,7 @@ describe.skipIf(!RUN)("finalize_iteration role re-check after the lock (TASK-142
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
     admin = createClient(url, serviceKey, { auth: { persistSession: false } });
-    supabase = createClient(url, anonKey);
+    supabase = createClient(url, anonKey, { auth: { persistSession: false } });
     const { data: auth, error } = await supabase.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -168,7 +168,11 @@ describe.skipIf(!RUN)("finalize_iteration role re-check after the lock (TASK-142
       .from("project_members")
       .insert({ project_id: projectId, user_id: created!.user!.id, role: "viewer" });
 
-    const viewer = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const viewer = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     await viewer.auth.signInWithPassword({ email, password });
 
     const { error } = await viewer.rpc("finalize_iteration", { p_project_id: projectId, p_manual: false });
@@ -192,7 +196,11 @@ describe.skipIf(!RUN)("finalize_iteration role re-check after the lock (TASK-142
       .from("project_members")
       .insert({ project_id: projectId, user_id: created!.user!.id, role: "viewer" });
 
-    const viewer = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const viewer = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     await viewer.auth.signInWithPassword({ email, password });
 
     const { error } = await viewer.rpc("finalize_iteration", {

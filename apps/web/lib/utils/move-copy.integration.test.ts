@@ -40,7 +40,7 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
 
     admin = createClient(url, serviceRoleKey, { auth: { persistSession: false } });
 
-    supabase = createClient(url, anonKey);
+    supabase = createClient(url, anonKey, { auth: { persistSession: false } });
     const { error: authError } = await supabase.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -276,7 +276,11 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
 
     const story = await createStory(projectAId, { title: "Viewer cannot move" });
 
-    const viewerClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const viewerClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     const { error: signInError } = await viewerClient.auth.signInWithPassword({ email, password });
     if (signInError) throw new Error(`Viewer sign-in failed: ${signInError.message}`);
 
@@ -299,7 +303,11 @@ describe.skipIf(!RUN)("move_story_to_project / copy_story_to_project RPCs (integ
 
     const story = await createStory(projectAId, { title: "No access to target" });
 
-    const memberClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const memberClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     const { error: signInError } = await memberClient.auth.signInWithPassword({ email, password });
     if (signInError) throw new Error(`Sign-in failed: ${signInError.message}`);
 

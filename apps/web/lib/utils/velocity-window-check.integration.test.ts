@@ -31,7 +31,7 @@ describe.skipIf(!RUN)("projects_velocity_window_check (integration)", () => {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY not set for the integration test");
     }
 
-    supabase = createClient(url, anonKey);
+    supabase = createClient(url, anonKey, { auth: { persistSession: false } });
     const { error: authError } = await supabase.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",

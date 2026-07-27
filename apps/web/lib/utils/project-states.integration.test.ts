@@ -42,7 +42,7 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
     admin = createClient(url, serviceKey, { auth: { persistSession: false } });
-    owner = createClient(url, anonKey);
+    owner = createClient(url, anonKey, { auth: { persistSession: false } });
     const ownerAuth = await owner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -251,7 +251,11 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
       const email = `reorder-viewer-${Date.now()}@storylane.local`;
       const { data: created } = await admin.auth.admin.createUser({ email, password: "viewer-pw", email_confirm: true });
       await admin.from("project_members").insert({ project_id: pid, user_id: created!.user!.id, role: "viewer" });
-      const viewer = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      const viewer = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
       await viewer.auth.signInWithPassword({ email, password: "viewer-pw" });
 
       const { error } = await viewer.rpc("reorder_project_state", {
@@ -453,7 +457,11 @@ describe.skipIf(!RUN)("project_states integrity (integration)", () => {
       const pid = await freshProject("create-state auth test");
       const email = `create-state-outsider-${Date.now()}@storylane.local`;
       const { data: created } = await admin.auth.admin.createUser({ email, password: "outsider-pw", email_confirm: true });
-      const outsider = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      const outsider = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
       await outsider.auth.signInWithPassword({ email, password: "outsider-pw" });
 
       const { error } = await outsider.rpc("create_project_state", {

@@ -56,7 +56,7 @@ describe.skipIf(!RUN)("search_users_for_new_project RPC (integration)", () => {
     }
 
     admin = createClient(url, serviceRoleKey, { auth: { persistSession: false } });
-    supabase = createClient(url, anonKey);
+    supabase = createClient(url, anonKey, { auth: { persistSession: false } });
     const { error: authError } = await supabase.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -111,7 +111,11 @@ describe.skipIf(!RUN)("search_users_for_new_project RPC (integration)", () => {
   });
 
   it("rejects an unauthenticated call", async () => {
-    const anonClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const anonClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     const { error } = await anonClient.rpc("search_users_for_new_project", { p_query: "anyone" });
     expect(error).not.toBeNull();
     // Post-TASK-55: anon has no EXECUTE grant on the function, so PostgREST

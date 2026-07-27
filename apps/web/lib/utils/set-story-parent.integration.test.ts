@@ -35,7 +35,7 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
     admin = createClient(url, serviceKey, { auth: { persistSession: false } });
-    owner = createClient(url, anonKey);
+    owner = createClient(url, anonKey, { auth: { persistSession: false } });
     const auth = await owner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -199,7 +199,11 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
     const { data: created } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     outsiderUserId = created!.user!.id;
 
-    const outsider = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const outsider = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     await outsider.auth.signInWithPassword({ email, password });
     const theirProject = await outsider.from("projects").insert({ name: "not yours" }).select("id").single();
     otherProjectId = theirProject.data!.id;
@@ -222,7 +226,11 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
     viewerUserId = created!.user!.id;
     await admin.from("project_members").insert({ project_id: projectId, user_id: viewerUserId, role: "viewer" });
 
-    const viewer = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const viewer = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     await viewer.auth.signInWithPassword({ email, password });
 
     const epicId = await newEpic("viewer target epic");

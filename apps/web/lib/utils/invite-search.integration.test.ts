@@ -57,7 +57,7 @@ describe.skipIf(!RUN)("search_users_for_invite / invite_member RPCs (integration
 
     admin = createClient(url, serviceRoleKey, { auth: { persistSession: false } });
 
-    supabase = createClient(url, anonKey);
+    supabase = createClient(url, anonKey, { auth: { persistSession: false } });
     const { error: authError } = await supabase.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -155,7 +155,11 @@ describe.skipIf(!RUN)("search_users_for_invite / invite_member RPCs (integration
   it("rejects a non-owner caller when p_project_id is given", async () => {
     const member = await createSearchableUser("nonowner", "Non Owner Caller");
     await admin.from("project_members").insert({ project_id: projectId, user_id: member.id, role: "member" });
-    const memberClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const memberClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     const { error: signInError } = await memberClient.auth.signInWithPassword({
       email: member.email,
       password: "integration-test-only-password",

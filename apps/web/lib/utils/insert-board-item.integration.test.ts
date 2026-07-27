@@ -34,7 +34,7 @@ describe.skipIf(!RUN)("insert_board_item RPC (integration)", () => {
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
     asService = createClient(url, serviceKey, { auth: { persistSession: false } });
-    asOwner = createClient(url, anonKey);
+    asOwner = createClient(url, anonKey, { auth: { persistSession: false } });
     const ownerAuth = await asOwner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -240,7 +240,11 @@ describe.skipIf(!RUN)("insert_board_item RPC (integration)", () => {
     }
     await asService.from("project_members").insert({ project_id: projectId, user_id: created.user.id, role: "viewer" });
 
-    const asViewer = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const asViewer = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
+    );
     await asViewer.auth.signInWithPassword({ email, password });
 
     const { error } = await asViewer.rpc("insert_board_item", {

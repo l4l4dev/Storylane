@@ -33,7 +33,7 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
       throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
     }
     admin = createClient(url, serviceKey, { auth: { persistSession: false } });
-    owner = createClient(url, anonKey);
+    owner = createClient(url, anonKey, { auth: { persistSession: false } });
     const auth = await owner.auth.signInWithPassword({
       email: "dev@storylane.local",
       password: "dev-local-only-password",
@@ -231,6 +231,7 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
     const outsider = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
     );
     await outsider.auth.signInWithPassword({ email, password });
     const theirProject = await outsider.from("projects").insert({ name: "not yours" }).select("id").single();
@@ -256,6 +257,7 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
     const viewer = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } },
     );
     await viewer.auth.signInWithPassword({ email, password });
 

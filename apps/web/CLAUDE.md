@@ -19,3 +19,7 @@
 - Unit tests: Vitest
 - Component tests: Testing Library
 - Test files go next to the source file as `*.test.ts(x)`
+- In `*.integration.test.ts`, every `createClient` needs `{ auth: { persistSession: false } }`.
+  Without it all clients in a file share one storage key, so a client meant to be anonymous
+  inherits the previous sign-in and clients playing different roles overwrite each other. It
+  only bites where localStorage exists, so it passes on Node 26 and fails on CI's Node 22.
