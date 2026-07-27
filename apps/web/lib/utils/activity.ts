@@ -45,8 +45,11 @@ export function describeActivity(log: ActivityLog): string {
       const title = payload.title ? `"${String(payload.title)}"` : story;
       return `${log.actorName} copied ${title} here from another project`;
     }
-    case "story.iteration_rolled_over":
-      return `${story} rolled over from iteration #${String(payload.from_iteration_number)} to #${String(payload.to_iteration_number)} (still unfinished)`;
+    case "story.iteration_changed": {
+      const from = payload.from_iteration_number != null ? `#${String(payload.from_iteration_number)}` : "the Icebox";
+      const to = payload.to_iteration_number != null ? `#${String(payload.to_iteration_number)}` : "the Icebox";
+      return `${log.actorName} moved ${story} from iteration ${from} to ${to}`;
+    }
     case "iteration.length_overridden":
       return `${log.actorName} moved iteration #${String(payload.number)}'s end date from ${formatDate(String(payload.from))} to ${formatDate(String(payload.to))}`;
     case "iteration.reshaped":

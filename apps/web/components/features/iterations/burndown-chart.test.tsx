@@ -25,4 +25,14 @@ describe("BurndownChart", () => {
     render(<BurndownChart coverage="none" points={[]} />);
     expect(screen.getByText(/cannot be reconstructed/)).toBeInTheDocument();
   });
+
+  // A single point (day one of a current iteration, or any one-day iteration)
+  // gives <polyline> nothing to connect — it paints no visible pixel without
+  // a marker of its own.
+  it("renders a visible marker for a single-point series", () => {
+    const { container } = render(
+      <BurndownChart coverage="full" points={[{ date: "2026-07-01", remaining: 8, ideal: 8 }]} />,
+    );
+    expect(container.querySelectorAll("circle")).toHaveLength(2);
+  });
 });

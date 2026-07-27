@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@gpt-5.6-sol'
 created_date: '2026-07-27 01:48'
-updated_date: '2026-07-27 11:32'
+updated_date: '2026-07-27 15:44'
 labels: []
 milestone: m-0
 dependencies: []
@@ -49,6 +49,32 @@ Also fixed from the rls-security-reviewer pass on the same migration: actor_id u
 Flagged, not fixed: targetByIteration's ideal-pace line collapses to 1 (forecastPoints' min-1 floor) for a legacy/first iteration with no prior velocity rate or snapshotted capacity. This follows directly from AC#2's explicit choice to reuse forecastPoints uniformly 'for consistency with existing velocity math' — changing it would mean overriding that acceptance criterion's stated intent, a design call I'm not making unilaterally. Left as-is; owner should decide whether a done iteration's ideal line should instead use its own snapshotted iteration.velocity.
 
 Re-verified after all fixes: tsc/lint clean, supabase db reset applies the corrected migration cleanly, full suite (SUPABASE_INTEGRATION=1 + CI's localStorage condition) 1116/1116 passed (130 files, +6 tests over the prior pass).
+
+Comments:
+--------------------------------------------------
+#1 - @claude-sonnet-5 - 2026-07-27 06:14 (UTC)
+Delegated to Codex CLI (@gpt-5.6-sol, ChatGPT quota) per owner request 2026-07-27: surplus Codex tokens available. No new tables/RLS involved (derives from existing activity_logs), so within policy scope. Standard review workflow (code-review, fable-advisor design review since this is user-facing UI, manual verification) still applies before merge.
+
+#2 - @claude-sonnet-5 - 2026-07-27 06:38 (UTC)
+fable-advisor design review: approved. Ideal-pace line confirmed to reuse existing velocityRate/forecastPoints (iterations/page.tsx passes targetPoints into burndown.ts, no parallel calc). Two non-blocking notes: (1) single-day-cadence duplicate end-date label — fixed directly in burndown-chart.tsx. (2) full iteration-history activity_logs read on the reporting page for long-lived projects — deferred as acceptable for now per advisor, not a correctness issue.
+
+---
+
+Third round: Codex's automated review on PR #6 (after merge to main) found 5 more issues, 2 of them P1 and genuinely serious since the merge had already deployed to production:
+
+1. [P1, LIVE BUG] supabase/migrations/20260727100000_iteration_retro_notes.sql (TASK-205) added iterations.retro_notes with a bare ALTER TABLE, but 20260720000002_iteration_capacity.sql had already revoked table-level UPDATE on iterations and granted back only 'update (goal)' to authenticated. The new column was never added to that grant, so every owner/member save through updateIterationRetroNotes hit 42501 before RLS was even evaluated. Confirmed live: PATCH .../iterations with retro_notes as the signed-in dev user returned exactly that error, against the just-deployed production schema. Fixed: supabase/migrations/20260727130000_grant_iteration_retro_notes.sql adds the missing column grant. Re-verified the same request now returns 200.
+
+2. [P1] The story.iteration_rolled_over logging this task's second round added only covered finalize_iteration's automated rollover -- an ordinary Backlog<->Current drag (move_story_board) changes iteration_id via a plain UPDATE with no logging at all, so normal rescheduling silently rewrote burndown history exactly like the bug the rollover logging was meant to fix. Root-caused instead of patched per call site: supabase/migrations/20260727140000_generalize_iteration_change_log.sql extends log_story_activity (already a trigger watching state_id) to also watch iteration_id independently -- not mutually exclusive with a state_id change in the same statement, since move_story_board can change both at once. This makes finalize_iteration's explicit INSERT redundant (removed); the plain UPDATE it already does is now caught automatically. Action renamed story.iteration_rolled_over -> story.iteration_changed (generic). Verified live: a plain iteration_id UPDATE now logs correctly, and a combined state_id+iteration_id UPDATE in one statement logs both events.
+
+3. [P2] The stories query in iterations/page.tsx had no pagination, unlike the activity_logs queries fixed in round 2 -- a project whose stories exceed PostgREST's 1000-row cap would silently lose stories from every chart. Wrapped in the existing fetchAllRows helper, matching board/page.tsx's own precedent.
+
+4. [P2] BurndownChart's SVG polyline paints nothing for a single-point series (day one of a current iteration, or any 1-day-cadence iteration) -- no line has two points to connect. Added circle markers for the single-point case; new test asserts 2 circles render.
+
+5. [P2, deferred to TASK-218] Re-estimating a story's points mid-iteration or after completion retroactively rewrites every day's remaining-points total in the chart, since buildBurndown applies the story's CURRENT points uniformly rather than reconstructing points-at-each-date. Requires new point-change logging plus a real change to buildBurndown's replay algorithm -- bigger than the other 4, filed separately rather than rushed.
+
+Also reverted ARCHITECTURE.md's exception-list wording from round 2 (finalize_iteration's rollover insert is no longer a self-recorded exception now that the general trigger covers it) and updated describeActivity's message for the renamed, now-generic action.
+
+Re-verified: tsc/lint clean, supabase db reset applies the full chain (7 migrations) cleanly, full suite under CI conditions 1117/1117 passed (+1 for the new single-point chart test).
 <!-- SECTION:NOTES:END -->
 
 ## Comments
