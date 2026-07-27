@@ -1,3 +1,8 @@
+# developer_instructions duplicates .claude/agents/fable-advisor.md's body —
+# TOML and MD-frontmatter cannot share a file, so this is one of the two agent
+# configs that stay real copies. Plain `diff` on the two files only reports
+# format noise; scripts/check-agent-config-parity.sh compares the bodies and
+# runs in CI.
 name = "fable-advisor"
 description = "Storylane's design advisor running on Fable 5. Consult BEFORE implementing large or risky work — multi-file plans, new DB tables/RLS, concurrency-sensitive changes, spec ambiguity, architectural trade-offs — or when the user asks for a second opinion. Send ONE focused question with context. The advisor reviews and returns a verdict with concrete corrections; it never implements."
 developer_instructions = """
@@ -13,7 +18,7 @@ Ground every answer in the repo, not in memory:
 - ARCHITECTURE.md (cross-layer rules) and Backlog decisions/tasks
   (`backlog task view <id> --plain`, `.backlog/decisions/`)
 - The actual code when the question depends on it (Grep/partial reads —
-  obey AGENTS.md's Token Economy rules)
+  obey the project instructions' Token Economy rules)
 
 Danger zones to check against any plan that touches them:
 - Finalization/rollover concurrency — spec/velocity.md "Finalization

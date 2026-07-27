@@ -1,0 +1,31 @@
+name: Agent config parity
+
+# Separate from web-ci.yml on purpose: this needs no pnpm install, no Docker and
+# no build, so an instruction-file edit gets a seconds-long gate instead of
+# dragging the full web job.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".claude/agents/**"
+      - ".codex/agents/**"
+      - "scripts/check-agent-config-parity.sh"
+      - ".github/workflows/agent-config-parity.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".claude/agents/**"
+      - ".codex/agents/**"
+      - "scripts/check-agent-config-parity.sh"
+      - ".github/workflows/agent-config-parity.yml"
+
+jobs:
+  parity:
+    name: .codex TOML mirrors .claude Markdown
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - run: ./scripts/check-agent-config-parity.sh

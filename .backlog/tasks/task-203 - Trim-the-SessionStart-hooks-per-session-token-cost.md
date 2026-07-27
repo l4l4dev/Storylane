@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-26 16:01'
+updated_date: '2026-07-27 00:45'
 labels:
   - tooling
 milestone: m-2
@@ -33,4 +34,5 @@ Related: .claude/agent-memory/fable-advisor/ is 24 files / 72 KB, and the single
 - [ ] #3 ARCHITECTURE.md no longer duplicates what spec/ owns; it points instead
 - [ ] #4 Spent single-task verdicts under .claude/agent-memory/fable-advisor/ are archived, leaving the learnings-* and review-* files
 - [ ] #5 ARCHITECTURE.md's closing pointer to TASK.md is resolved (TASK-185 retires that file)
+- [ ] #6 The Codex mirror .codex/hooks.json carries the same SessionStart hook — it changes with .claude/settings.json, not after it
 <!-- AC:END -->
