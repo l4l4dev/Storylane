@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@gpt-5.6-sol'
 created_date: '2026-07-27 01:48'
-updated_date: '2026-07-27 16:11'
+updated_date: '2026-07-27 22:38'
 labels: []
 milestone: m-0
 dependencies: []
@@ -112,6 +112,20 @@ Fifth round: Codex reviewed the round-4 push itself and found 2 more real issues
 - [P2, FIXED] Round 4's .or() filter interpolated every ever-moved story's UUID directly into one PostgREST query string — for a long-lived project with hundreds of such stories, that could exceed a proxy's request-line limit and break the whole page. Replaced with two separate queries: the existing iteration_id-scoped fetchAllRows, plus a second query for only the IDs not already covered, batched at 200 per request rather than one unbounded filter.
 
 Re-verified: tsc/lint clean, full suite under CI conditions 1117/1117 passed.
+
+Comments:
+--------------------------------------------------
+#1 - @claude-sonnet-5 - 2026-07-27 06:14 (UTC)
+Delegated to Codex CLI (@gpt-5.6-sol, ChatGPT quota) per owner request 2026-07-27: surplus Codex tokens available. No new tables/RLS involved (derives from existing activity_logs), so within policy scope. Standard review workflow (code-review, fable-advisor design review since this is user-facing UI, manual verification) still applies before merge.
+
+#2 - @claude-sonnet-5 - 2026-07-27 06:38 (UTC)
+fable-advisor design review: approved. Ideal-pace line confirmed to reuse existing velocityRate/forecastPoints (iterations/page.tsx passes targetPoints into burndown.ts, no parallel calc). Two non-blocking notes: (1) single-day-cadence duplicate end-date label — fixed directly in burndown-chart.tsx. (2) full iteration-history activity_logs read on the reporting page for long-lived projects — deferred as acceptable for now per advisor, not a correctness issue.
+
+---
+
+Sixth round: Codex flagged that log_story_activity's new iteration_id branch — the central new behavior of this whole fix chain — had only been verified manually (curl against a local reset) during the session, with no permanent test; a repo-wide search found no test mentioning either iteration-change action. Added apps/web/lib/utils/iteration-change-log.integration.test.ts (4 cases): an ordinary reschedule logs exactly one story.iteration_changed row with correct iteration numbers, a move to the Icebox logs null appropriately, a single UPDATE changing both state_id and iteration_id logs both events (not one), and an unrelated column update logs neither.
+
+Re-verified: tsc/lint clean, full suite 1121/1121 passed (+4 for the new test file).
 <!-- SECTION:NOTES:END -->
 
 ## Comments
