@@ -5,7 +5,7 @@ title: >-
   done, resume at 180)
 type: other
 created_date: '2026-07-24 05:55'
-updated_date: '2026-07-24 05:56'
+updated_date: '2026-07-27 06:19'
 ---
 # 19 — Session handoff 2026-07-24 — Epic/Story unification chain (TASK-178/179 done, resume at 180)
 
@@ -84,7 +84,7 @@ dependencies:
 - **Chain finalization**: `/code-review` for the chain and formally marking
   TASK-178/179 Done are deferred until the chain is review-ready (TASK-182 covers
   the RLS side). TASK-178 and TASK-179 are currently left `In Progress`.
-- **TASK-185** (separate, m-2): retire TASK.md into Backlog — not part of this
+- **TASK-185** (separate, m-2): consolidate residual legacy task tracking into Backlog — not part of this
   chain, do later.
 
 ## Environment

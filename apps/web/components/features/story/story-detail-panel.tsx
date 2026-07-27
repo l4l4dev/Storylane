@@ -345,6 +345,7 @@ export function StoryDetailPanel({
         points={detail.points}
         pointScale={detail.pointScale}
         isPersonal={detail.isPersonalProject}
+        doneDefinition={detail.doneDefinition}
       />
       <span
         className={`text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}

@@ -246,6 +246,7 @@ export type Database = {
           id: string
           number: number
           project_id: string
+          retro_notes: string | null
           skipped: boolean
           start_date: string
           state: string
@@ -259,6 +260,7 @@ export type Database = {
           id?: string
           number: number
           project_id: string
+          retro_notes?: string | null
           skipped?: boolean
           start_date: string
           state?: string
@@ -272,6 +274,7 @@ export type Database = {
           id?: string
           number?: number
           project_id?: string
+          retro_notes?: string | null
           skipped?: boolean
           start_date?: string
           state?: string
@@ -557,6 +560,7 @@ export type Database = {
           created_at: string
           created_by: string
           custom_points: number[] | null
+          definition_of_done: string | null
           description: string | null
           id: string
           is_personal: boolean
@@ -574,6 +578,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           custom_points?: number[] | null
+          definition_of_done?: string | null
           description?: string | null
           id?: string
           is_personal?: boolean
@@ -591,6 +596,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           custom_points?: number[] | null
+          definition_of_done?: string | null
           description?: string | null
           id?: string
           is_personal?: boolean

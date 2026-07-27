@@ -70,6 +70,59 @@ describe("TransitionButtons", () => {
     expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
   });
 
+  // TASK-206: the info icon only belongs on a button whose target is a
+  // done-category state (Accept, here — Reject's target is rejected-category).
+  it("shows the Definition of Done icon only next to Accept, never Reject", () => {
+    render(
+      <TransitionButtons
+        storyId="s1"
+        projectId="p1"
+        stateId="Delivered"
+        states={CLASSIC_STATES}
+        storyType="feature"
+        points={3}
+        pointScale={fibonacci}
+        doneDefinition="Tests pass. Reviewed."
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Definition of Done" })).toBeInTheDocument();
+    // Exactly one — not duplicated onto Reject's row.
+    expect(screen.getAllByRole("button", { name: "Definition of Done" })).toHaveLength(1);
+  });
+
+  it("renders no Definition of Done icon when the project has none set", () => {
+    render(
+      <TransitionButtons
+        storyId="s1"
+        projectId="p1"
+        stateId="Delivered"
+        states={CLASSIC_STATES}
+        storyType="feature"
+        points={3}
+        pointScale={fibonacci}
+        doneDefinition={null}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Definition of Done" })).not.toBeInTheDocument();
+  });
+
+  it("renders no Definition of Done icon when the target state isn't done-category", () => {
+    render(
+      <TransitionButtons
+        storyId="s1"
+        projectId="p1"
+        stateId="Unstarted"
+        states={CLASSIC_STATES}
+        storyType="feature"
+        points={3}
+        pointScale={fibonacci}
+        doneDefinition="Tests pass. Reviewed."
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Start" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Definition of Done" })).not.toBeInTheDocument();
+  });
+
   it("renders nothing for a terminal state with no further transitions", () => {
     const { container } = render(
       <TransitionButtons

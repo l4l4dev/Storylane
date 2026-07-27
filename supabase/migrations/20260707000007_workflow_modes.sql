@@ -1,5 +1,5 @@
 -- ============================================================
--- Task 14: Custom Workflow Modes (scope decided 2026-07-07 — TASK.md).
+-- Task 14: Custom Workflow Modes (scope decided 2026-07-07; history in Backlog doc-4).
 --
 -- `projects.workflow_mode` is chosen at creation and fixed:
 --   'pivotal' (default): the existing fixed state machine + iterations.

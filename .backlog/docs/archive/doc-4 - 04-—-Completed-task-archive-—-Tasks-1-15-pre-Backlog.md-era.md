@@ -3,15 +3,13 @@ id: doc-4
 title: 04 — Completed task archive — Tasks 1-15 (pre-Backlog.md era)
 type: other
 created_date: '2026-07-17 12:41'
-updated_date: '2026-07-22 09:03'
+updated_date: '2026-07-27 06:19'
 ---
 # Storylane — Completed Task Archive
 
-Completed sections moved out of `TASK.md` (2026-07-02) to keep the active task
-list small. Read this file only when you need the history of a finished task.
-The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
+Completed pre-Backlog sections were archived here on 2026-07-02 to keep active tracking small. Read this file only when you need the history of a finished task.
+The deferred iOS scope is tracked in Backlog doc **doc-22**.
 
----
 
 ## Task 1 — Repository & Project Setup ✅
 
@@ -22,7 +20,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] Install and configure Supabase CLI
 - [x] Verify local Supabase starts correctly with `supabase start`
 
----
 
 ## Task 2 — Database: Migrations & RLS ✅
 
@@ -36,7 +33,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] Write RLS policies for all tables (see SPEC.md for guidelines)
 - [x] Verify all policies locally with `supabase db reset`
 
----
 
 ## Task 3 — Authentication ✅
 
@@ -55,7 +51,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] Persist session across app launches
 - [x] Auto-create `profiles` row on first sign-in
 
----
 
 ## Task 4 — Project Management ✅
 
@@ -73,7 +68,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] Create project sheet
 - [x] Project settings screen
 
----
 
 ## Task 5 — Backlog & Stories ✅
 
@@ -92,7 +86,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] `StoryEditView` — create and edit story
 - [x] Swipe actions for quick state changes
 
----
 
 ## Task 6 — Iterations（Web 部分）
 
@@ -111,7 +104,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] Manual story move between iterations (drag-and-drop across iteration/backlog sections)
 - [x] Mark iteration as done → finalize velocity
 
----
 
 ## Task 7 — Epics & Labels（Web 部分）
 
@@ -123,7 +115,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] Label management in project settings
 - [x] Apply multiple labels to a story
 
----
 
 ## Task 8 — Velocity Calculation ✅
 
@@ -134,7 +125,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] Display current velocity on project home and iteration views
 - [x] Use velocity for auto-assignment in Task 6
 
----
 
 ## Task 9 — Collaboration: Comments & Activity（DB・Web 部分）
 
@@ -149,7 +139,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] @mention support (parse `@username` in comment body)
 - [x] Activity log timeline on project home
 
----
 
 ## Task 11 — Realtime Collaboration（Web ✅ 2026-07-07 移設）
 
@@ -159,7 +148,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] Reflect story state changes live without page refresh
 - [x] Show live comment updates on story detail
 
----
 
 ## Task 10 — Notifications（Web ✅ 2026-07-07 移設）
 
@@ -171,7 +159,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
       〈`lib/supabase/realtime.ts`〉+ `NotificationListener`〈root layout に配置〉。
       既知の簡略化: 自分自身の操作による変更も通知される — actor 判定は行っていない）
 
----
 
 ## Task 12 — Integrations（Web ✅ ローカル検証まで 2026-07-07。本番 Webhook 実検証は Backlog TASK-3）
 
@@ -195,7 +182,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
       server action から直接 POST — `after()` + `lib/integrations/slack.ts`、fire-and-forget。
       owner 専用の integrations 行は `lib/supabase/admin.ts`〈service role〉で読む）
 
----
 
 ## Task 12.5 — Pivotal Tracker UX Parity（Web ✅ 2026-07-07 移設）
 
@@ -219,7 +205,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
       カード全体ドラッグ / ポイントのドット表示（3以下）
 - [x] タスク（チェックリスト）UI
 
----
 
 ## Task 14 — Custom Workflow Modes（Web ✅ 2026-07-07、コミット f57f362）
 
@@ -235,7 +220,6 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] Settings にステータス管理 UI（Free のみ表示）
 - [x] tsc / eslint / vitest / build 通過、ブラウザ実機確認、spec 更新
 
----
 
 ## Task 15 — Board List View（Web ✅ 2026-07-07 移設）
 
@@ -252,12 +236,11 @@ The pending iOS portions of Tasks 6 / 7 / 9 remain in `TASK.md`.
 - [x] spec/screens.md・spec/data-model.md 更新、vitest テスト
 - ※ 区切り表示は 2026-07-07 要件改訂でグループヘッダー方式に刷新予定（Backlog TASK-9）
 
----
 
 ## Task 13 — Polish & QA（Web ✅ 2026-07-07、Backlog TASK-2 で管理・完了）
 
 > スコープは 3 項目に絞ることを オーナー確認済み（レスポンシブ / a11y 監査 /
-> パフォーマンスレビューは対象外 — 残スコープは TASK.md 参照）。詳細な実装ノートと
+> パフォーマンスレビューは対象外 — 残スコープは Backlog **TASK-217** 参照）。詳細な実装ノートと
 > 検証結果は `backlog task view TASK-2 --plain`。
 
 - [x] 全ビューのエラー・空状態（`error-state.tsx` + 各ルート `error.tsx`、board の空状態）

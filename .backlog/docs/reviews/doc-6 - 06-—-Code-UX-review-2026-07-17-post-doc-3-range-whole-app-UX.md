@@ -3,7 +3,7 @@ id: doc-6
 title: 06 — Code & UX review 2026-07-17 (post doc-3 range + whole-app UX)
 type: other
 created_date: '2026-07-17 13:17'
-updated_date: '2026-07-22 09:03'
+updated_date: '2026-07-27 06:19'
 ---
 # Code & UX review — 2026-07-17
 
@@ -32,7 +32,7 @@ Scope: (a) code review of b7fb2d1..HEAD (~30 commits since doc-3: TASK-56 slice 
 
 - e2e core-flow: stale pre-TASK-32 expectation (redirect back to /dashboard) fixed → suite green in 10.1s. TASK-69 closed.
 - Local DB found empty (a review agent's supabase db reset skipped seed); restored via supabase db reset with seed.
-- TASK_ARCHIVE.md → backlog doc-4; docs/superpowers plans/specs (gitignored) → specs archived to doc-5, plans deleted; TASK.md/CLAUDE.md pointers updated.
+- Legacy task history → backlog doc-4; docs/superpowers plans/specs (gitignored) → specs archived to doc-5, plans deleted; CLAUDE.md pointers updated.
 
 ## Execution order (ordinals rewritten 2026-07-17)
 

@@ -160,6 +160,42 @@ describe("upsertIterationGoal", () => {
   });
 });
 
+describe("updateIterationRetroNotes", () => {
+  beforeEach(() => {
+    updateMock.mockReset();
+  });
+
+  it("writes the trimmed retro notes for the given iteration/project", async () => {
+    const { updateIterationRetroNotes } = await import("./actions");
+
+    const formData = new FormData();
+    formData.set("project_id", "project-1");
+    formData.set("iteration_id", "iteration-1");
+    formData.set("retro_notes", "  Went well: shipped on time  ");
+
+    await updateIterationRetroNotes(formData);
+
+    expect(updateMock).toHaveBeenCalledWith(
+      "iterations",
+      { retro_notes: "Went well: shipped on time" },
+      "iteration-1",
+    );
+  });
+
+  it("stores null for an empty/whitespace-only value (clearing the notes)", async () => {
+    const { updateIterationRetroNotes } = await import("./actions");
+
+    const formData = new FormData();
+    formData.set("project_id", "project-1");
+    formData.set("iteration_id", "iteration-1");
+    formData.set("retro_notes", "   ");
+
+    await updateIterationRetroNotes(formData);
+
+    expect(updateMock).toHaveBeenCalledWith("iterations", { retro_notes: null }, "iteration-1");
+  });
+});
+
 describe("estimateStory", () => {
   beforeEach(() => {
     updateMock.mockReset();

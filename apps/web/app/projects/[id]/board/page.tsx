@@ -55,7 +55,7 @@ export default async function BoardPage({
     await supabase
       .from("projects")
       .select(
-        "id, name, velocity_window, iteration_length, iteration_term, point_scale, custom_points, working_weekdays",
+        "id, name, velocity_window, iteration_length, iteration_term, point_scale, custom_points, working_weekdays, definition_of_done",
       )
       .eq("id", id)
       .maybeSingle(),
@@ -94,7 +94,7 @@ export default async function BoardPage({
     await Promise.all([
       supabase
         .from("iterations")
-        .select("id, number, goal, start_date, end_date, velocity, capacity, state, skipped")
+        .select("id, number, goal, retro_notes, start_date, end_date, velocity, capacity, state, skipped")
         .eq("project_id", id)
         .order("number", { ascending: true }),
       // A project's full story list isn't bounded by anything else here —
@@ -374,6 +374,7 @@ export default async function BoardPage({
         canManageStates={canFinishIteration}
         filter={filter}
         pointScale={pointScaleValues(project.point_scale, project.custom_points)}
+        doneDefinition={project.definition_of_done}
         members={memberOptions}
         labels={(labels ?? []).map((l) => ({ id: l.id, name: l.name }))}
         toolbar={

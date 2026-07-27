@@ -41,6 +41,7 @@ import type { StateCategory } from "@storylane/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { DefinitionOfDonePopover } from "@/components/features/projects/definition-of-done-popover";
 import { MutationErrorBanner } from "./mutation-error-banner";
 import { DraftStoryCard, DraftStoryTrigger } from "./draft-story-card";
 import { StoryCard } from "./story-card";
@@ -304,12 +305,13 @@ function DroppableStoryList({
 
 // One kanban column: tinted surface, header with state icon / count / point
 // sum, independently scrollable body (spec/screens.md "Board layout").
-function KanbanColumn({
+export function KanbanColumn({
   projectId,
   state,
   states,
   stories,
   canManageStates,
+  doneDefinition,
   children,
   draftAdd,
 }: {
@@ -318,6 +320,9 @@ function KanbanColumn({
   states: ReadonlyArray<ProjectState>;
   stories: BoardStory[];
   canManageStates: boolean;
+  // TASK-206: shown on a done-category column's header only — a Kanban move
+  // is drag-only, so there's no TransitionButtons here to attach it to.
+  doneDefinition?: string | null;
   children: ReactNode;
   // Only the unstarted-category column gets the draft-story trigger
   // (TASK-82 AC#1: one "+" per panel — Kanban's is here, List's Current/
@@ -342,6 +347,9 @@ function KanbanColumn({
         <ColumnNameEditor projectId={projectId} state={state} canEdit={canManageStates} />
         <span className="text-xs text-muted-foreground">{stories.length}</span>
         {points > 0 && <span className="text-xs text-muted-foreground">· {points} pts</span>}
+        {doneDefinition && state.category === "done" && (
+          <DefinitionOfDonePopover text={doneDefinition} />
+        )}
         {draftAdd && (
           <DraftStoryTrigger label={`Add story to ${state.name}`} onClick={() => setDraftOpen(true)} />
         )}
@@ -378,6 +386,7 @@ export function KanbanColumnsBoard({
   filter,
   canManageStates,
   pointScale,
+  doneDefinition,
   members,
   labels,
 }: {
@@ -397,6 +406,10 @@ export function KanbanColumnsBoard({
   // The draft story card's field options (TASK-82) — only the unstarted
   // column's trigger ever uses these.
   pointScale: number[];
+  // TASK-206: the project's Definition of Done — shown on a done-category
+  // column's header (the drag path has no TransitionButtons to attach it
+  // to). Null/undefined = no DoD set, no icon renders.
+  doneDefinition?: string | null;
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
 }) {
@@ -540,6 +553,7 @@ export function KanbanColumnsBoard({
             states={states}
             stories={visibleContainers[state.id] ?? []}
             canManageStates={canManageStates}
+            doneDefinition={doneDefinition}
             draftAdd={
               state.id === firstUnstartedId ? { pointScale, members, labels } : undefined
             }

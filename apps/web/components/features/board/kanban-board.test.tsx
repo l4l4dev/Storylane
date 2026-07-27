@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
-import { FinishIterationButton, IterationDates, IterationGoalBar } from "./kanban-board";
+import { FinishIterationButton, IterationDates, IterationGoalBar, IterationRetroNotesBar } from "./kanban-board";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
@@ -9,18 +9,21 @@ vi.mock("next/navigation", () => ({
 
 type FinishResult = { events: Array<Record<string, unknown>> };
 
-const { updateIterationGoalMock, finishIterationMock, overrideIterationLengthMock } = vi.hoisted(() => ({
-  overrideIterationLengthMock: vi.fn<(formData: FormData) => Promise<{ ok: boolean; message?: string }>>(() =>
-    Promise.resolve({ ok: true }),
-  ),
-  updateIterationGoalMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
-  finishIterationMock: vi.fn<(formData: FormData) => Promise<{ events: Array<Record<string, unknown>> }>>(() =>
-    Promise.resolve({ events: [{ kind: "finalized", number: 3, velocity: 5, skipped: false }] }),
-  ),
-}));
+const { updateIterationGoalMock, updateIterationRetroNotesMock, finishIterationMock, overrideIterationLengthMock } =
+  vi.hoisted(() => ({
+    overrideIterationLengthMock: vi.fn<(formData: FormData) => Promise<{ ok: boolean; message?: string }>>(() =>
+      Promise.resolve({ ok: true }),
+    ),
+    updateIterationGoalMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+    updateIterationRetroNotesMock: vi.fn<(formData: FormData) => Promise<void>>(() => Promise.resolve()),
+    finishIterationMock: vi.fn<(formData: FormData) => Promise<{ events: Array<Record<string, unknown>> }>>(() =>
+      Promise.resolve({ events: [{ kind: "finalized", number: 3, velocity: 5, skipped: false }] }),
+    ),
+  }));
 
 vi.mock("@/app/projects/[id]/board/actions", () => ({
   updateIterationGoal: updateIterationGoalMock,
+  updateIterationRetroNotes: updateIterationRetroNotesMock,
   finishIteration: finishIterationMock,
   overrideIterationLength: overrideIterationLengthMock,
 }));
@@ -275,6 +278,76 @@ describe("IterationGoalBar", () => {
     const input = screen.getByRole("textbox", { name: "Iteration goal" });
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.getByRole("button", { name: /Edit iteration goal/ })).toHaveFocus();
+  });
+});
+
+// TASK-205: same click-to-edit contract as IterationGoalBar, a textarea
+// standing in for the single-line input since Enter should insert a newline
+// rather than commit.
+describe("IterationRetroNotesBar", () => {
+  beforeEach(() => {
+    updateIterationRetroNotesMock.mockClear();
+  });
+
+  it("shows the saved notes as text, and 'Add retro notes…' ghost text when empty — no textarea by default", () => {
+    render(<IterationRetroNotesBar projectId="p1" iterationId="i1" initialRetroNotes="Went well: shipped on time" />);
+    expect(screen.queryByRole("textbox", { name: "Retro notes" })).not.toBeInTheDocument();
+    expect(screen.getByText("Went well: shipped on time")).toBeInTheDocument();
+
+    render(<IterationRetroNotesBar projectId="p1" iterationId="i1" initialRetroNotes="" />);
+    expect(screen.getByText("Add retro notes…")).toBeInTheDocument();
+  });
+
+  it("opens the editor on click and commits on blur", async () => {
+    render(<IterationRetroNotesBar projectId="p1" iterationId="i1" initialRetroNotes="" />);
+    fireEvent.click(screen.getByText("Add retro notes…"));
+    const textarea = screen.getByRole("textbox", { name: "Retro notes" });
+
+    fireEvent.change(textarea, { target: { value: "Keep: pairing on the tricky story" } });
+    fireEvent.blur(textarea);
+
+    expect(updateIterationRetroNotesMock).toHaveBeenCalledTimes(1);
+    const formData = updateIterationRetroNotesMock.mock.calls[0]?.[0];
+    if (!formData) {
+      throw new Error("updateIterationRetroNotes was not called with FormData");
+    }
+    expect(formData.get("project_id")).toBe("p1");
+    expect(formData.get("iteration_id")).toBe("i1");
+    expect(formData.get("retro_notes")).toBe("Keep: pairing on the tricky story");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("textbox", { name: "Retro notes" })).not.toBeInTheDocument();
+  });
+
+  it("reverts to the last saved value and closes the editor on Escape, without saving", () => {
+    render(<IterationRetroNotesBar projectId="p1" iterationId="i1" initialRetroNotes="Original notes" />);
+    fireEvent.click(screen.getByText("Original notes"));
+    const textarea: HTMLTextAreaElement = screen.getByRole("textbox", { name: "Retro notes" });
+
+    fireEvent.change(textarea, { target: { value: "half-typed" } });
+    fireEvent.keyDown(textarea, { key: "Escape" });
+
+    expect(updateIterationRetroNotesMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Retro notes" })).not.toBeInTheDocument();
+    expect(screen.getByText("Original notes")).toBeInTheDocument();
+  });
+
+  it("keeps the editor open with the typed value and shows an error when the save fails", async () => {
+    updateIterationRetroNotesMock.mockRejectedValueOnce(new Error("Not a member of this project"));
+    render(<IterationRetroNotesBar projectId="p1" iterationId="i1" initialRetroNotes="" />);
+    fireEvent.click(screen.getByText("Add retro notes…"));
+    const textarea: HTMLTextAreaElement = screen.getByRole("textbox", { name: "Retro notes" });
+
+    fireEvent.change(textarea, { target: { value: "Keep: pairing" } });
+    fireEvent.blur(textarea);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("textbox", { name: "Retro notes" })).toHaveValue("Keep: pairing");
+    expect(screen.getByText("Not a member of this project")).toBeInTheDocument();
   });
 });
 

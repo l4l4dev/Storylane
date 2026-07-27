@@ -212,18 +212,27 @@ function SortableListRow({
   projectId,
   states,
   pointScale,
+  doneDefinition,
   onError,
 }: {
   item: ListItem;
   projectId: string;
   states: ProjectState[];
   pointScale: number[];
+  doneDefinition?: string | null;
   onError: (message: string) => void;
 }) {
   return (
     <SortableItem id={item.id}>
       {item.kind === "story" ? (
-        <StoryListRow story={item.story} projectId={projectId} states={states} pointScale={pointScale} onError={onError} />
+        <StoryListRow
+          story={item.story}
+          projectId={projectId}
+          states={states}
+          pointScale={pointScale}
+          doneDefinition={doneDefinition}
+          onError={onError}
+        />
       ) : item.kind === "divider" ? (
         // Unreachable in practice — Current/Icebox ListItems are always
         // stories (see the doc comment above) — kept type-correct.
@@ -681,6 +690,7 @@ function SortableBacklogRow({
   projectId,
   states,
   pointScale,
+  doneDefinition,
   insertAboveId,
   insertBelowId,
   onError,
@@ -689,6 +699,7 @@ function SortableBacklogRow({
   projectId: string;
   states: ProjectState[];
   pointScale: number[];
+  doneDefinition?: string | null;
   insertAboveId: string;
   insertBelowId: string | null;
   onError: (message: string) => void;
@@ -707,6 +718,7 @@ function SortableBacklogRow({
           projectId={projectId}
           states={states}
           pointScale={pointScale}
+          doneDefinition={doneDefinition}
           insertMenu={insertMenu}
           onError={onError}
         />
@@ -860,6 +872,7 @@ function ListSection({
   collapsed,
   onToggleCollapse,
   pointScale,
+  doneDefinition,
   draftAdd,
   onError,
 }: {
@@ -871,6 +884,7 @@ function ListSection({
   collapsed: boolean;
   onToggleCollapse: () => void;
   pointScale: number[];
+  doneDefinition?: string | null;
   onError: (message: string) => void;
   // Only the Current panel gets a draft-story trigger — Backlog/Icebox have
   // their own header trigger (BacklogSection/IceboxColumn), and ListSection
@@ -923,6 +937,7 @@ function ListSection({
               projectId={projectId}
               states={states}
               pointScale={pointScale}
+              doneDefinition={doneDefinition}
               onError={onError}
             />
           ))}
@@ -964,6 +979,7 @@ function BacklogSection({
   collapsedGroups,
   onToggleGroup,
   pointScale,
+  doneDefinition,
   members,
   labels,
   onError,
@@ -986,6 +1002,7 @@ function BacklogSection({
   collapsedGroups: ReadonlySet<string>;
   onToggleGroup: (key: string) => void;
   pointScale: number[];
+  doneDefinition?: string | null;
   // The draft story card's Assignee/Labels field options (TASK-82).
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
@@ -1101,6 +1118,7 @@ function BacklogSection({
                     projectId={projectId}
                     states={states}
                     pointScale={pointScale}
+                    doneDefinition={doneDefinition}
                     insertAboveId={aboveId}
                     insertBelowId={nextRealRowIds[index + 1]}
                     onError={onError}
@@ -1136,6 +1154,7 @@ function IceboxColumn({
   projectId,
   states,
   pointScale,
+  doneDefinition,
   members,
   labels,
   onError,
@@ -1144,6 +1163,7 @@ function IceboxColumn({
   projectId: string;
   states: ProjectState[];
   pointScale: number[];
+  doneDefinition?: string | null;
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
   onError: (message: string) => void;
@@ -1180,6 +1200,7 @@ function IceboxColumn({
                 projectId={projectId}
                 states={states}
                 pointScale={pointScale}
+                doneDefinition={doneDefinition}
                 onError={onError}
               />
             ))}
@@ -1408,6 +1429,7 @@ export function BoardListView({
   showIcebox,
   filter,
   pointScale,
+  doneDefinition,
   members,
   labels,
 }: {
@@ -1442,6 +1464,10 @@ export function BoardListView({
   // to every TransitionButtons render so an unestimated feature's estimation
   // picker offers the right scale (TASK-37).
   pointScale: number[];
+  // TASK-206: the project's Definition of Done, threaded to every
+  // TransitionButtons render alongside pointScale. Null/undefined = no DoD
+  // set for this project, nothing extra renders.
+  doneDefinition?: string | null;
   // The draft story card's Assignee/Labels field options (TASK-82).
   members: { id: string; name: string; isAgent?: boolean }[];
   labels: { id: string; name: string }[];
@@ -1698,6 +1724,7 @@ export function BoardListView({
             collapsed={collapsedGroups.has("current")}
             onToggleCollapse={() => onToggleGroup("current")}
             pointScale={pointScale}
+            doneDefinition={doneDefinition}
             onError={setMutationError}
           />
 
@@ -1715,6 +1742,7 @@ export function BoardListView({
             collapsedGroups={collapsedGroups}
             onToggleGroup={onToggleGroup}
             pointScale={pointScale}
+            doneDefinition={doneDefinition}
             members={members}
             labels={labels}
             onError={setMutationError}
@@ -1727,6 +1755,7 @@ export function BoardListView({
             projectId={projectId}
             states={states}
             pointScale={pointScale}
+            doneDefinition={doneDefinition}
             members={members}
             labels={labels}
             onError={setMutationError}
@@ -1742,7 +1771,13 @@ export function BoardListView({
             ) : activeItem.kind === "container" ? (
               <EpicRowGhost row={activeItem.row} />
             ) : (
-              <StoryListRow story={activeItem.story} projectId={projectId} states={states} pointScale={pointScale} />
+              <StoryListRow
+                story={activeItem.story}
+                projectId={projectId}
+                states={states}
+                pointScale={pointScale}
+                doneDefinition={doneDefinition}
+              />
             )}
           </div>
         )}

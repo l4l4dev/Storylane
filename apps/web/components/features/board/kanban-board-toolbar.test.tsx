@@ -43,6 +43,7 @@ vi.mock("@/lib/supabase/realtime", () => ({
 vi.mock("@/app/projects/[id]/board/actions", () => ({
   finishIteration: vi.fn(),
   updateIterationGoal: vi.fn(),
+  updateIterationRetroNotes: vi.fn(),
   dropStoryInList: vi.fn(),
   createBacklogDivider: vi.fn(),
   deleteBacklogDivider: vi.fn(),
@@ -124,6 +125,7 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
           id: "i3",
           number: 3,
           goal: null,
+          retro_notes: null,
           start_date: "2026-07-14",
           end_date: "2026-07-27",
           velocity: null,
@@ -137,6 +139,59 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
     expect(screen.getByText("0 / 8 pts committed")).toBeInTheDocument();
     expect(screen.getByText("2026/7/14 – 2026/7/27 (auto-finishes)")).toBeInTheDocument();
     expect(screen.getAllByText(/2026\/7\/27/)).toHaveLength(1);
+  });
+
+  // A viewer must not get the editable retro-notes control on the board
+  // (RLS would silently no-op the write) — only the saved text, same
+  // read-only treatment as the iterations-history page gives a non-owner/member.
+  it("shows retro notes as read-only text for a viewer (canFinishIteration false), never an editor", () => {
+    render(
+      <KanbanBoard
+        {...baseProps()}
+        canFinishIteration={false}
+        currentBudget={8}
+        currentIteration={{
+          id: "i3",
+          number: 3,
+          goal: null,
+          retro_notes: "Went well: shipped on time",
+          start_date: "2026-07-14",
+          end_date: "2026-07-27",
+          velocity: null,
+          capacity: null,
+          state: "current",
+          skipped: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Went well: shipped on time")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /retro notes/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Retro notes" })).not.toBeInTheDocument();
+  });
+
+  it("shows the editable retro-notes control for an owner/member (canFinishIteration true)", () => {
+    render(
+      <KanbanBoard
+        {...baseProps()}
+        canFinishIteration={true}
+        currentBudget={8}
+        currentIteration={{
+          id: "i3",
+          number: 3,
+          goal: null,
+          retro_notes: null,
+          start_date: "2026-07-14",
+          end_date: "2026-07-27",
+          velocity: null,
+          capacity: null,
+          state: "current",
+          skipped: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Add retro notes…")).toBeInTheDocument();
   });
 
   it("keeps the Icebox button mounted (not removed) across both views", () => {

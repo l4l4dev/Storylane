@@ -8,6 +8,7 @@ import { toGateStates } from "@/lib/utils/kanban";
 import type { ActionResult, ProjectState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DefinitionOfDonePopover } from "@/components/features/projects/definition-of-done-popover";
 
 type ButtonSpec = { key: string; label: string; targetStateId: string };
 
@@ -33,6 +34,7 @@ export function TransitionButtons({
   points,
   pointScale,
   isPersonal,
+  doneDefinition,
 }: {
   storyId: string;
   projectId: string;
@@ -47,6 +49,10 @@ export function TransitionButtons({
   // default) would show a needless "Estimate" popover blocking a one-click
   // Start the server would have allowed anyway.
   isPersonal?: boolean;
+  // TASK-206: the project's Definition of Done — shown as a reference (never
+  // blocking) next to any button whose target is a done-category state.
+  // Null/empty renders no icon at all (AC#3).
+  doneDefinition?: string | null;
 }) {
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,22 +157,26 @@ export function TransitionButtons({
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-1">
         {buttons.map((button) => (
-          <Button
-            key={button.key}
-            type="button"
-            variant="outline"
-            size="xs"
-            disabled={isPending}
-            onClick={() => {
-              const formData = new FormData();
-              formData.set("project_id", projectId);
-              formData.set("story_id", storyId);
-              formData.set("state_id", button.targetStateId);
-              run(button.key, () => setStoryState(formData));
-            }}
-          >
-            {pendingKey === button.key ? `${button.label}…` : button.label}
-          </Button>
+          <div key={button.key} className="flex items-center gap-0.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={isPending}
+              onClick={() => {
+                const formData = new FormData();
+                formData.set("project_id", projectId);
+                formData.set("story_id", storyId);
+                formData.set("state_id", button.targetStateId);
+                run(button.key, () => setStoryState(formData));
+              }}
+            >
+              {pendingKey === button.key ? `${button.label}…` : button.label}
+            </Button>
+            {doneDefinition && categoryOf(button.targetStateId) === "done" && (
+              <DefinitionOfDonePopover text={doneDefinition} />
+            )}
+          </div>
         ))}
       </div>
       {error && (

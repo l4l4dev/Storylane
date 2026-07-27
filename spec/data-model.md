@@ -53,6 +53,10 @@ projects (
   archived_at       timestamptz,          -- 2026-07-07: set = archived (owner only), NULL = active.
                                           -- Archived projects are hidden behind an "Archived"
                                           -- filter on the Projects page; unarchive sets NULL
+  definition_of_done text,                -- TASK-206: free-text reference checklist, owner-editable
+                                          -- (same policy as name/description). Shown alongside a
+                                          -- story's transition into a done-category state — informational
+                                          -- only, never a gate. NULL/empty shows nothing extra.
   created_by        uuid REFERENCES profiles(id),
   created_at        timestamptz DEFAULT now(),
   updated_at        timestamptz DEFAULT now()
@@ -309,6 +313,9 @@ iterations (
   project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
   number      int  NOT NULL,              -- sprint number (1, 2, 3...)
   goal        text,                       -- sprint goal (optional)
+  retro_notes text,                       -- TASK-205: retrospective (optional), the backward-looking
+                                          -- counterpart to goal. Same RLS as goal (owner/member write,
+                                          -- any member read) — no dedicated policy
   start_date  date NOT NULL,
   end_date    date NOT NULL,
   velocity    int,                        -- finalized done-category point sum, snapshotted when done

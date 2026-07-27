@@ -32,6 +32,7 @@ const baseDetail: StoryDetail = {
   stateId: "unstarted-id",
   states: [],
   points: 3,
+  doneDefinition: null,
   parentId: null,
   isContainer: false,
   childCount: 0,

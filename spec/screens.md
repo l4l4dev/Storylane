@@ -19,7 +19,7 @@
 /projects/[id]/board      Board (List / Kanban view, toggled in place — see "Board layout" below)
 /projects/[id]/epics      Epics: two panes — every epic with roll-up progress on the
                           left, the selected epic's children on the right (doc-20 §6)
-/projects/[id]/iterations Iteration history (past/done iterations with velocity and their stories)
+/projects/[id]/iterations Current and past iterations with burndown, velocity, retro notes, and stories
 /projects/[id]/activity   Project activity log (read-only feed of recent story/comment changes)
 /projects/[id]/settings   Project settings (members, integrations, point scale, etc.)
 /stories/[id]             Story detail (standalone deep-link page; primary editing happens
@@ -136,7 +136,8 @@ action at the visual center):
 
 - **Info row** (only when a current iteration exists): iteration number
   (bolder, for hierarchy), a "Current" badge, date range, committed
-  points, **"auto-finishes on <end_date>"**, and the iteration goal.
+  points, **"auto-finishes on <end_date>"**, the iteration goal, and its
+  retro notes (TASK-205).
   The goal (spec/ux-principles.md principle 5) renders as **text** — the
   saved goal, or italic **"Add goal…"** ghost text when empty — with a
   pencil affordance on hover; clicking opens an inline input. **Enter** or
@@ -144,6 +145,13 @@ action at the visual center):
   keeps the input open with the typed value and an inline error); **Esc**
   discards and returns to text. There is no separate "Saved" flash —
   returning to text view is the success feedback.
+- **Retro notes** sit next to the goal, same click-to-edit contract, but a
+  multi-line textarea (Enter inserts a newline instead of committing —
+  only **blur** commits, **Esc** discards). Editable on the current
+  iteration here and on past done iterations on
+  `/projects/[id]/iterations` (see below) — never on virtual future
+  iterations, which have no row to attach it to. Viewers see the saved
+  text read-only (no editor) on both pages.
 - **Controls row**: the **List / Kanban** toggle (**List is the
   default**; both views read/write the same stories, the toggle only
   changes grouping/dragging), the **Icebox toggle** (List view only —
@@ -339,6 +347,20 @@ a physical column.
   regardless of which virtual-iteration group that row belongs to — there is
   no per-group placement anymore). See "Quick-add: draft story card" below.
 - The side peek works the same as Kanban.
+
+#### Iterations view — current and history
+
+`/projects/[id]/iterations` lists the current iteration first, followed by
+past done iterations. Each iteration card shows its dates, goal, velocity /
+snapshotted person-day capacity where available, retro notes, stories, and a
+burndown chart. The actual line is reconstructed day by day from
+`activity_logs` `story.state_changed` rows and `project_states.category`
+(`done` is never inferred from a state name). The ideal line uses the shared
+`rate × capacity` forecast from spec/velocity.md: planned calendar capacity
+for the current iteration and its stored capacity for a done iteration.
+History from before activity coverage, or events whose deleted/renamed state
+can no longer be resolved, renders as an empty or explicitly partial chart
+instead of failing the page.
 
 ### Quick-add: draft story card (2026-07-07, reworked 2026-07-20 — TASK-82, Pivotal parity)
 
@@ -559,8 +581,8 @@ views reduce to List / Kanban.
 
 Sections, in order, each gated by its own RLS-matching role (see spec/rls.md):
 
-- **Details** — name, description, iteration term/length, point scale,
-  velocity window. Owner-editable; members see it read-only.
+- **Details** — name, description, definition of done, iteration term/length,
+  point scale, velocity window. Owner-editable; members see it read-only.
 - **Members** — invite (owner), role changes and removal (owner), list
   (everyone).
 - **Labels** — create (any member), delete (owner).

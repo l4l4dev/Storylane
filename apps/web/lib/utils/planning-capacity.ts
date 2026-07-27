@@ -42,11 +42,21 @@ export const MAX_PROJECTED_SPRINTS = 26;
  * from data known before the current iteration is: back far enough that an
  * iteration which hasn't rolled over in a while is still inside it, forward
  * through the full projection horizon at this cadence.
+ *
+ * `maxProjectedSprints` defaults to the board's backlog-forecast horizon —
+ * pass 0 for a caller (like the iterations/reporting page) that only ever
+ * needs the current iteration's own range, so the calendar/time-off reads
+ * this drives don't fetch years of future dates no `projectedSprints` will
+ * ever consume.
  */
-export function estimatePlanningRange(today: string, iterationLength: number): DateRange {
+export function estimatePlanningRange(
+  today: string,
+  iterationLength: number,
+  maxProjectedSprints: number = MAX_PROJECTED_SPRINTS,
+): DateRange {
   return {
     start: addDays(today, -(iterationLength + 1)),
-    end: addDays(today, iterationLength * (MAX_PROJECTED_SPRINTS + 1)),
+    end: addDays(today, iterationLength * (maxProjectedSprints + 1)),
   };
 }
 
@@ -73,8 +83,9 @@ export function startPlanningCapacityFetch(
   memberUserIds: ReadonlyArray<string>,
   today: string,
   iterationLength: number,
+  maxProjectedSprints?: number,
 ): PlanningCapacityFetch {
-  const range = estimatePlanningRange(today, iterationLength);
+  const range = estimatePlanningRange(today, iterationLength, maxProjectedSprints);
   return {
     range,
     exceptions: Promise.resolve(
