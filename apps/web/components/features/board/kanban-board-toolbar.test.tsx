@@ -141,10 +141,9 @@ describe("KanbanBoard toolbar — Icebox toggle layout stability", () => {
     expect(screen.getAllByText(/2026\/7\/27/)).toHaveLength(1);
   });
 
-  // TASK-205 fable-advisor/code-review finding: a viewer must not get the
-  // editable retro-notes control on the board (RLS would silently no-op
-  // the write) — only the saved text, same read-only treatment as the
-  // iterations-history page gives a non-owner/member.
+  // A viewer must not get the editable retro-notes control on the board
+  // (RLS would silently no-op the write) — only the saved text, same
+  // read-only treatment as the iterations-history page gives a non-owner/member.
   it("shows retro notes as read-only text for a viewer (canFinishIteration false), never an editor", () => {
     render(
       <KanbanBoard
