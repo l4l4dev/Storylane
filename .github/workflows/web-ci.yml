@@ -53,9 +53,12 @@ jobs:
       - name: Lint (web)
         run: pnpm --filter web run lint
 
+      # Pinned, not `latest`: the CLI version picks the local stack's container
+      # images, so `latest` lets an upstream release change what this job runs
+      # against with no commit here. Bump deliberately.
       - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: 2.109.1
 
       # `supabase start` applies every migration to an empty database, which is
       # what proves the chain still applies in order. On a pull_request it does
