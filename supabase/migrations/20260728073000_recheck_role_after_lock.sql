@@ -370,6 +370,10 @@ begin
           and case when v_new_state_id is null then state_id is null
                    else iteration_id is not distinct from v_new_iteration end;
       update public.stories set position = v_target where id = v_id;
+      -- Exit guard, on every return path. See the note at the function's end;
+      -- the two 'single'-zone branches return early, so guarding only the last
+      -- path would leave them unguarded.
+      perform public.require_project_role(p_project_id, variadic v_roles);
       return;
     end if;
 
@@ -402,6 +406,8 @@ begin
     end if;
 
     update public.stories set position = v_target where id = v_id;
+    -- Exit guard, on every return path (see the note at the function's end).
+    perform public.require_project_role(p_project_id, variadic v_roles);
     return;
   end if;
 

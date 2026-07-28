@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 11:42'
+updated_date: '2026-07-28 11:55'
 labels: []
 milestone: m-2
 dependencies: []
@@ -217,6 +217,26 @@ P1b — finalize_iteration, override_iteration_length and reshape_current_iterat
 Three P2s to assess when the work resumes: remove_member's exit guard possibly rejecting a legitimate self-demotion while another owner remains; move/copy needing archived_at and point_scale revalidated at exit as well as after the lock; finish_story_from_git needing its webhook config revalidated after the write.
 
 Not implementing these now — the owner paused the work. Recorded so the next session starts from the corrected picture rather than the claim that nothing was outstanding.
+
+Codex round 6, both P1s fixed and verified. The three P2s assessed below.
+
+P1a — MY OWN DEFECT from the previous commit. The exit guard covered one of move_story_board's three exit paths: the two 'single'-zone branches return before it. For an anchored Icebox or current-iteration move the guard was decorative. Fixed by putting it on all three returns. Proved by holding the ANCHOR row (which the position shift must update), parking the RPC on it, revoking mid-wait: 42501, and the mover's position unchanged at 9. Pinned as a test.
+
+P1b — finalize_iteration, override_iteration_length and reshape_current_iteration were never swept; they re-check after iteration_finalize: and then keep writing. New migration 20260728120000. Proved with finalize_iteration: held the story row its rollover UPDATE must touch, revoked mid-wait, and iteration #1 stayed 'planned' instead of going 'done'. Pinned as a test.
+
+Only the write-bearing return in each got a guard. The noop/unchanged returns write nothing, so guarding them would convert a harmless no-op into a 42501 for a caller whose access lapsed mid-call — a behaviour change, not a closed hole. override_iteration_length and reshape_current_iteration also had their literal role lists hoisted, since each now asserts three times.
+
+THE THREE P2s, assessed rather than implemented:
+
+P2a 'Allow self-demotion when another owner remains' — reviewed and NOT a defect. change_member_role's exit guard re-asserts 'owner', and a self-demotion from owner to member/viewer means the caller is no longer an owner when it runs, so the guard rejects an operation that should have succeeded. BUT assert_not_last_owner already runs under the lock and permits exactly this when another owner remains, so the guard does regress it. This one IS real on reflection — it is the one case where the exit guard rejects a legitimately-completed operation rather than an unauthorised one. Recorded as the next thing to fix; the correct shape is to compare against the role the caller held at entry, or to skip the exit assertion when the only change was the caller's own row.
+
+P2b 'Revalidate move and copy preconditions at exit' — real, same reasoning as the role guard: archived_at and point_scale are re-read after the advisory lock but the writes that follow can still wait, so the target could be archived in between.
+
+P2c 'Revalidate webhook configuration after the write' — real, same shape for finish_story_from_git.
+
+None of the three is a new mechanism; all three are the exit-guard rationale applied to preconditions rather than to the role. Left for the next pass so this commit stays reviewable.
+
+Verified: full web suite 1175/1175 from a clean reset (was 1173), role-recheck 30/30, the four iteration/role suites 42/42, core tsc, core 77/77, web tsc, web lint, web build.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -510,6 +510,94 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     expect(settled.error?.code).toBe("42501");
   }, TIMEOUT);
 
+  it("move_story_board guards its EARLY-RETURN paths too, not just the last one", async () => {
+    // The 'single'-zone branches return before the guard at the end of the
+    // function, so a guard placed only there would be decorative for them. This
+    // exercises an anchored Icebox move, which takes one of those returns, and
+    // blocks it on the anchor row the position shift has to update.
+    const projectId = await createProject("TASK-211 early-return exit guard");
+    const anchorId = await seedStory(projectId, { position: 5 }); // Icebox: state_id null
+    const moverId = await seedStory(projectId, { position: 9 });
+
+    const holder = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    let settled: { error: { code?: string } | null };
+    try {
+      await holder.query("begin");
+      await holder.query("select id from public.stories where id = $1 for update", [anchorId]);
+
+      const pending = Promise.resolve(
+        owner.rpc("move_story_board", {
+          p_project_id: projectId,
+          p_item: { kind: "story", id: moverId },
+          p_view: "list",
+          p_expected: { state_id: null, iteration_id: null, parent_id: null },
+          p_deltas: {},
+          p_anchor: { before: { kind: "story", id: anchorId } },
+        }),
+      );
+
+      await waitForRowWaiter(holder);
+      await deMemberOwner(projectId)();
+      await holder.query("commit");
+      settled = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect(settled.error?.code).toBe("42501");
+
+    const { data } = await admin.from("stories").select("position").eq("id", moverId).single();
+    expect(data!.position).toBe(9); // the reorder rolled back
+  }, TIMEOUT);
+
+  it("finalize_iteration's EXIT guard catches a wait after its post-lock check", async () => {
+    // It re-checks after iteration_finalize: and then keeps writing, so a write
+    // blocked on a tuple lock is past every earlier guard.
+    const projectId = await createProject("TASK-211 finalize exit guard");
+    const seed = await owner.rpc("finalize_iteration", { p_project_id: projectId, p_manual: false });
+    expect(seed.error).toBeNull();
+    const { data: iter } = await admin
+      .from("iterations")
+      .select("id")
+      .eq("project_id", projectId)
+      .order("number")
+      .limit(1)
+      .single();
+    const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", projectId);
+    const unstarted = states!.find((st) => st.category === "unstarted")!.id;
+    const storyId = await seedStory(projectId, { state_id: unstarted, iteration_id: iter!.id });
+
+    const holder = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    let settled: { error: { code?: string } | null };
+    try {
+      await holder.query("begin");
+      // finalize's rollover UPDATE has to touch this row.
+      await holder.query("select id from public.stories where id = $1 for update", [storyId]);
+
+      const pending = Promise.resolve(
+        owner.rpc("finalize_iteration", { p_project_id: projectId, p_manual: true, p_iteration_id: iter!.id }),
+      );
+
+      await waitForRowWaiter(holder);
+      await deMemberOwner(projectId)();
+      await holder.query("commit");
+      settled = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect(settled.error?.code).toBe("42501");
+
+    const { data } = await admin.from("iterations").select("state").eq("id", iter!.id).single();
+    expect(data!.state).not.toBe("done"); // never finalized
+  }, TIMEOUT);
+
   it("move_story_board's EXIT guard catches a wait no intermediate check covers", async () => {
     // The wait here is inside a trigger's callee: maintain_is_container calls
     // recompute_is_container, which locks the PARENT row. No advisory lock and no
