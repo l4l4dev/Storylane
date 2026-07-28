@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 10:20'
+updated_date: '2026-07-28 10:35'
 labels: []
 milestone: m-2
 dependencies: []
@@ -146,6 +146,18 @@ P2, fixture not asserted: the webhook test's integrations insert was fire-and-fo
 P3, provenance narration: the header said "Verbatim replacement of 20260728040300's finish_story_from_git except that move", which records how the patch was produced rather than a lasting constraint and goes stale the moment the function is replaced again. Removed, and while there I restated the rest of the header in the present tense — it had the same past-tense narration TASK-208 was already pulled up on.
 
 Verified with everything web-ci.yml runs: core tsc, core 77/77, web tsc, web lint, web build, full web suite 1165/1165 from a clean reset (was 1161), role-recheck 20/20.
+
+Codex review round 3 on PR #9: 3 findings, all P2, all confirmed and fixed. All three were direct answers to the question I keep putting to it — which guards exist but would not fail a test if removed — and the first one showed the previous round's fix was itself unverified.
+
+FINDING 1, the important one: the only webhook config race parked the RPC on iteration_finalize:<project>, never on the story's own `select ... for update`. So moving the config reads back ABOVE the row lock — exactly the race the previous commit fixed — left the suite green. Confirmed by building that variant and running it: 31/31 passed. Added a case that holds the story row in a raw transaction, waits until the RPC is genuinely blocked on that row (same scoped pg_locks poll the invite_member case uses), disables the integration, then commits. Verified it fails against the reverted ordering.
+
+FINDING 2: the scale races only swapped between two BUILT-IN scales, so they proved v_point_scale is refreshed but never touched custom_points, which the CASE consumes independently through v_custom_pts. Dropping custom_points from the post-lock read in either function left everything green while copying into a custom-scale project would clear every estimate. Added a {move, copy} race where point_scale stays 'custom' and only custom_points widens (1,2 -> 1,2,7 with a story at 7). Verified both fail when custom_points is dropped from the post-lock read.
+
+FINDING 3: the fixture write `update({point_scale: 'linear'})` was uninspected, and supabase-js reports failures through .error rather than throwing. A new project already defaults to fibonacci, so if the setup update AND the mid-wait mutation both failed silently, 8 stays valid throughout and the case passes even when the scale is read before the lock. Both writes are now asserted.
+
+Pattern worth naming, since this is the third round it has appeared in: every finding in this PR since the first has been a test that could not fail, not a defect in the migration. The migration logic has been right for several rounds; what kept being wrong was my evidence that it was right.
+
+Verified with everything web-ci.yml runs: core tsc, core 77/77, web tsc, web lint, web build, full web suite 1168/1168 from a clean reset (was 1165), role-recheck 23/23.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

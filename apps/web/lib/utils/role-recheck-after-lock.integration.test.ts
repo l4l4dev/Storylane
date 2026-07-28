@@ -323,7 +323,11 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
       // looks identical to a correct clamp.
       const source = await createProject(`TASK-211 ${rpc} scale source`);
       const target = await createProject(`TASK-211 ${rpc} scale target`);
-      await admin.from("projects").update({ point_scale: "linear" }).eq("id", target);
+      // Asserted: a project defaults to fibonacci, so a silently failed setup
+      // update plus a silently failed mutation would leave 8 valid throughout
+      // and the case would pass even reading the scale before the lock.
+      const { error: setupError } = await admin.from("projects").update({ point_scale: "linear" }).eq("id", target);
+      expect(setupError).toBeNull();
       const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", source);
       const unstarted = states!.find((s) => s.category === "unstarted")!.id;
       const storyId = await seedStory(source, { story_type: "feature", points: 8, state_id: unstarted });
@@ -331,7 +335,13 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
       const { error } = await callWhileRevoked(
         "story_number",
         target,
-        () => admin.from("projects").update({ point_scale: "fibonacci" }).eq("id", target),
+        async () => {
+          const { error: mutateError } = await admin
+            .from("projects")
+            .update({ point_scale: "fibonacci" })
+            .eq("id", target);
+          expect(mutateError).toBeNull();
+        },
         () => owner.rpc(rpc, { p_story_id: storyId, p_target_project_id: target }),
       );
 
@@ -339,6 +349,40 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
 
       const { data: landed } = await admin.from("stories").select("points").eq("project_id", target).single();
       expect(landed!.points).toBe(8); // kept, because the NEW scale allows it
+    }, TIMEOUT);
+
+    it(`${rpc} re-reads custom_points, not just point_scale, after the lock`, async () => {
+      // point_scale stays 'custom' throughout, so only custom_points changes —
+      // the scale-swap case above cannot detect a stale custom_points because
+      // the CASE branch it exercises never reads that array.
+      const source = await createProject(`TASK-211 ${rpc} custom source`);
+      const target = await createProject(`TASK-211 ${rpc} custom target`);
+      const { error: setupError } = await admin
+        .from("projects")
+        .update({ point_scale: "custom", custom_points: [1, 2] })
+        .eq("id", target);
+      expect(setupError).toBeNull();
+      const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", source);
+      const unstarted = states!.find((s) => s.category === "unstarted")!.id;
+      const storyId = await seedStory(source, { story_type: "feature", points: 7, state_id: unstarted });
+
+      const { error } = await callWhileRevoked(
+        "story_number",
+        target,
+        async () => {
+          const { error: mutateError } = await admin
+            .from("projects")
+            .update({ custom_points: [1, 2, 7] })
+            .eq("id", target);
+          expect(mutateError).toBeNull();
+        },
+        () => owner.rpc(rpc, { p_story_id: storyId, p_target_project_id: target }),
+      );
+
+      expect(error).toBeNull();
+
+      const { data: landed } = await admin.from("stories").select("points").eq("project_id", target).single();
+      expect(landed!.points).toBe(7); // kept only if the WIDENED array was read
     }, TIMEOUT);
   }
 
@@ -424,6 +468,87 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     );
 
     expect(error?.code).toBe("42501");
+  }, TIMEOUT);
+
+  it("finish_story_from_git honours an integration disabled while it waited on the STORY ROW", async () => {
+    // The advisory lock is not the only unbounded wait in this RPC: the story's
+    // own `select ... for update` is another. Parking on the advisory lock alone
+    // leaves the config reads movable back above the row lock with the suite
+    // still green, so this case blocks on the row itself.
+    const projectId = await createProject("TASK-211 webhook row-lock race");
+    const { data: states } = await admin.from("project_states").select("id, name").eq("project_id", projectId);
+    const byName = Object.fromEntries(states!.map((s) => [s.name, s.id])) as Record<string, string>;
+    const { error: fixtureError } = await admin.from("integrations").insert({
+      project_id: projectId,
+      provider: "github",
+      config: { merge_target_state_id: byName.Finished },
+      is_active: true,
+    });
+    expect(fixtureError).toBeNull();
+    const { data: story } = await admin
+      .from("stories")
+      .insert({ project_id: projectId, title: "row-locked", story_type: "chore", state_id: byName.Unstarted, created_by: ownerId })
+      .select("id, number")
+      .single();
+
+    const holder = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    let result: { data: unknown };
+    try {
+      await holder.query("begin");
+      await holder.query("select id from public.stories where id = $1 for update", [story!.id]);
+
+      const pending = Promise.resolve(
+        admin.rpc("finish_story_from_git", {
+          p_project_id: projectId,
+          p_story_number: story!.number,
+          p_provider: "github",
+        }),
+      );
+
+      // Wait until the RPC is genuinely blocked on THIS transaction's row lock.
+      const deadline = Date.now() + 15_000;
+      let waiting = 0;
+      while (Date.now() < deadline && waiting === 0) {
+        const { rows } = await holder.query(
+          `select count(*)::int as n
+             from pg_locks w
+            where not w.granted
+              and w.locktype in ('transactionid', 'tuple')
+              and w.pid <> pg_backend_pid()
+              and exists (
+                select 1 from pg_locks h
+                 where h.granted and h.pid = pg_backend_pid()
+                   and h.locktype = 'transactionid'
+                   and h.transactionid = w.transactionid
+              )`,
+        );
+        waiting = rows[0].n;
+        if (waiting === 0) await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(waiting).toBeGreaterThan(0);
+
+      const { error: disableError } = await admin
+        .from("integrations")
+        .update({ is_active: false })
+        .eq("project_id", projectId);
+      expect(disableError).toBeNull();
+
+      await holder.query("commit");
+      result = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect((result.data as { kind: string; reason?: string }[])[0]).toMatchObject({
+      kind: "ignored",
+      reason: "not_configured",
+    });
+
+    const { data: after } = await admin.from("stories").select("state_id").eq("id", story!.id).single();
+    expect(after!.state_id).toBe(byName.Unstarted); // untouched
   }, TIMEOUT);
 
   it("finish_story_from_git honours an integration disabled while it was blocked", async () => {
