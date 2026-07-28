@@ -1,11 +1,11 @@
 ---
 id: TASK-208
 title: Story business-rule mutations bypass via direct REST update
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 07:12'
+updated_date: '2026-07-28 07:22'
 labels: []
 milestone: m-2
 dependencies: []
