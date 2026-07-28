@@ -13,18 +13,23 @@
 --
 -- The two gates key off DIFFERENT changes, which is what keeps rollover working:
 --
---   * The estimation gate fires when the CATEGORY MOVES, and additionally when
---     POINTS are cleared on a row already resting in a done/rejected category.
---     Gating on category movement alone let the forbidden end state be reached
---     in two writes — estimate, move to done, then clear the estimate — leaving
---     an unestimated feature in done with completed_at still stamped, which is
---     the velocity-counting shape this whole migration exists to prevent.
---     The points condition is deliberately NOT applied to in_progress: a row
---     legitimately rests at "in_progress with points NULL" (set_story_state
---     starts an estimated feature, then update_story clears the estimate with no
---     state-based gate of its own), and finalize_iteration's rollover UPDATE
---     touches only iteration_id. Re-validating that shape would make the
---     rollover raise and fail the whole finalize RPC for the project.
+--   * The estimation gate fires when any of ITS OWN INPUTS move — the category,
+--     points, or story_type. Gating on the category alone let the forbidden end
+--     state be reached in two writes, with the second write disguised as
+--     something else: estimate then clear the estimate, or set a done chore's
+--     type to 'feature'. Both left an unestimated feature resting in a finished
+--     state with completed_at still stamped, which is the velocity-counting
+--     shape this migration exists to prevent.
+--
+--     Crucially it does NOT fire on a write that changes none of those, which is
+--     what keeps finalize_iteration's rollover working: that UPDATE touches only
+--     iteration_id, so a pre-existing row at "in_progress with points NULL"
+--     (reachable before this migration) still rolls over instead of failing the
+--     whole finalize RPC for the project.
+--
+--     Consequence worth knowing: clearing an estimate outright on a started or
+--     finished feature is now rejected, where before it silently produced that
+--     shape. Changing an estimate to a different value is unaffected.
 --
 --   * The iteration gate fires when the category moves OR the iteration changes,
 --     so it also catches a direct update that clears iteration_id while leaving
@@ -85,7 +90,7 @@ declare
   v_is_personal boolean;
   v_category_moved boolean;
   v_iteration_moved boolean;
-  v_estimate_dropped boolean;
+  v_estimation_input_moved boolean;
 begin
   -- The Icebox (state_id NULL) is always reachable and carries no iteration.
   if new.state_id is null then
@@ -100,20 +105,20 @@ begin
     end if;
     v_category_moved := v_old_category is distinct from v_new_category;
     v_iteration_moved := old.iteration_id is distinct from new.iteration_id;
-    -- Clearing the estimate while the story rests in a finished category is the
-    -- second half of the two-write route to the state this trigger forbids.
-    v_estimate_dropped := new.points is distinct from old.points
-                          and v_new_category in ('done', 'rejected');
+    -- points and story_type are the gate's other two inputs; a write that moves
+    -- either can reach the forbidden shape without touching the category.
+    v_estimation_input_moved := v_category_moved
+                                or new.points is distinct from old.points
+                                or new.story_type is distinct from old.story_type;
   else
     v_category_moved := true;
     v_iteration_moved := true;
-    v_estimate_dropped := false;
+    v_estimation_input_moved := true;
   end if;
 
-  -- Nothing this trigger governs has moved (a rename, a reorder, an estimate
-  -- edit outside a finished category, or a move between two states sharing one
-  -- category).
-  if not v_category_moved and not v_iteration_moved and not v_estimate_dropped then
+  -- Nothing this trigger governs has moved (a rename, a reorder, or a move
+  -- between two states sharing one category).
+  if not v_estimation_input_moved and not v_iteration_moved then
     return new;
   end if;
 
@@ -124,7 +129,7 @@ begin
     return new;
   end if;
 
-  if (v_category_moved or v_estimate_dropped)
+  if v_estimation_input_moved
      and v_new_category <> 'unstarted'
      and new.story_type = 'feature' and new.points is null then
     raise exception 'An unestimated feature can only be in the Icebox or an unstarted state'

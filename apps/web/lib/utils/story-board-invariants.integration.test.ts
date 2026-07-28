@@ -134,12 +134,43 @@ describe.skipIf(!RUN)("story board invariants (integration)", () => {
     expect(data!.points).toBe(3);
   });
 
-  it("still allows clearing the estimate on an in_progress story (rollover must keep working)", async () => {
-    // The mirror of the case above: this shape has to stay legal or
-    // finalize_iteration's rollover raises for the whole project.
+  it("rejects clearing the estimate on a started feature too", async () => {
     const id = await seed({ points: 3, state_id: inProgressId, iteration_id: iterationId });
 
     const { error } = await member.from("stories").update({ points: null }).eq("id", id);
+    expect(error?.message).toMatch(/unestimated feature/i);
+  });
+
+  it("still allows changing an estimate to a different value", async () => {
+    // Only clearing it outright reaches the forbidden shape; re-estimating does
+    // not, and must stay available on a started story.
+    const id = await seed({ points: 3, state_id: inProgressId, iteration_id: iterationId });
+
+    const { error } = await member.from("stories").update({ points: 5 }).eq("id", id);
+    expect(error).toBeNull();
+  });
+
+  it("rejects retyping a done chore as a feature while it has no estimate (Codex P1)", async () => {
+    // The gate's inputs are category, points AND story_type: flipping the type
+    // alone moved an unestimated feature into done with completed_at intact.
+    const id = await seed({ story_type: "chore", points: null, state_id: unstartedId, iteration_id: iterationId });
+    const moved = await member.from("stories").update({ state_id: doneId }).eq("id", id);
+    expect(moved.error).toBeNull();
+
+    const { error } = await member.from("stories").update({ story_type: "feature" }).eq("id", id);
+    expect(error?.message).toMatch(/unestimated feature/i);
+
+    const { data } = await admin.from("stories").select("story_type").eq("id", id).single();
+    expect(data!.story_type).toBe("chore");
+  });
+
+  it("does not re-check the estimate on an iteration-only write (rollover safety)", async () => {
+    // finalize_iteration's rollover writes iteration_id alone. It must not
+    // re-validate, or a pre-existing row at "in_progress with points NULL"
+    // (reachable before this migration) would fail the whole finalize RPC.
+    const id = await seed({ story_type: "chore", points: null, state_id: inProgressId, iteration_id: iterationId });
+
+    const { error } = await admin.from("stories").update({ iteration_id: nextIterationId }).eq("id", id);
     expect(error).toBeNull();
   });
 
@@ -170,14 +201,13 @@ describe.skipIf(!RUN)("story board invariants (integration)", () => {
     expect(data).toMatchObject({ is_container: true, state_id: null });
   });
 
-  it("still rolls an in_progress story whose estimate was cleared into the next iteration", async () => {
-    // The regression the fable-advisor review caught: finalize_iteration's
-    // rollover writes iteration_id ALONE, and "in_progress with points NULL" is
-    // reachable through update_story, which applies no state-based gate to
-    // points. Re-validating the estimate on any write touching the row would
-    // make the whole finalize RPC raise here.
+  it("blocks update_story from clearing a started feature's estimate", async () => {
+    // update_story applies no state-based gate of its own, which is how the
+    // pre-migration "in_progress with points NULL" shape arose. The trigger has
+    // to catch it through the RPC as well as through a raw table write.
     const id = await seed({ points: 3, state_id: inProgressId, iteration_id: iterationId });
-    await member.rpc("update_story", {
+
+    const { error } = await member.rpc("update_story", {
       p_story_id: id,
       p_title: "estimate cleared",
       p_description: null,
@@ -186,11 +216,10 @@ describe.skipIf(!RUN)("story board invariants (integration)", () => {
       p_parent_id: null,
       p_assignee_id: null,
     });
-    const { data: cleared } = await admin.from("stories").select("points").eq("id", id).single();
-    expect(cleared!.points).toBeNull();
+    expect(error?.message).toMatch(/unestimated feature/i);
 
-    const { error } = await admin.from("stories").update({ iteration_id: nextIterationId }).eq("id", id);
-    expect(error).toBeNull();
+    const { data } = await admin.from("stories").select("points").eq("id", id).single();
+    expect(data!.points).toBe(3);
   });
 
   it("leaves the sanctioned RPC path working, including its auto-assign (AC #3)", async () => {

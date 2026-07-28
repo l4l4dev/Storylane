@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 05:04'
+updated_date: '2026-07-28 06:02'
 labels: []
 milestone: m-2
 dependencies: []
@@ -110,6 +110,16 @@ Note on process: the reviewer ran supabase db reset against the shared local DB 
 #5 LOW, ADDRESSED (owner decision) — the trigger is forward-only and does not repair rows the pre-fix bypass already created. Added a detection query to the migration header so the owner can check production for both bad shapes; no automatic repair, since the right correction depends on the data.
 
 Re-verified after the fixes: the 12-case probe still behaves identically (including the rollover regression case), full web suite 1139/1139 from a clean supabase db reset (up from 1136 — three new regression tests for findings #1 and #2), MCP 29/29, lint clean.
+
+Codex review on PR #8: 2 findings. Both reproduced independently before acting, and they split.
+
+P1 CONFIRMED, FIXED — changing a done chore's story_type to 'feature' while points is NULL moved neither the category nor the iteration nor points, so the gate stayed quiet and left an unestimated feature resting in done with completed_at intact. Reproduced through a raw UPDATE and through the update_story RPC, i.e. the ordinary autosave path. Codex framed this as done-only; the same hole existed one category over (retyping a started chore), so rather than add a story_type special case the gate now fires whenever any of ITS OWN INPUTS move — category, points, or story_type. That subsumes the earlier points-cleared-in-done condition and closes both variants uniformly.
+
+Deliberate behaviour change this brings: clearing an estimate outright on a started or finished feature is now rejected, where before it silently produced the forbidden shape. Changing an estimate to a different VALUE is unaffected, and a test pins that. This supersedes the earlier note that 'in_progress with points NULL' stays creatable — it no longer is. The advisor's constraint is still honoured, and is what the input-based condition is built around: a write changing none of those three inputs never re-validates, so finalize_iteration's rollover (iteration_id alone) still succeeds on rows that already hold the bad shape from before this migration. Pinned by a test using a chore, since a feature in that shape can no longer be constructed post-fix.
+
+P2 NOT CONFIRMED — a false positive. Codex predicted that deleting a project with an in_progress story would fail because iterations_project_id_fkey was created before stories_project_id_fkey, so the iteration cascade would fire first and its ON DELETE SET NULL would hit the iteration gate. The constraint order is exactly as Codex described (oids 18719 vs 18746), but the predicted failure does not occur: DELETE on the project succeeded and left zero rows. Corroborating evidence from before the finding arrived — a full suite run from a clean reset left 0 leftover test projects, and every one of those suites deletes its project in afterAll while holding in_progress stories. Reported as not-a-defect rather than 'fixed'. Note this is distinct from the confirmed /code-review finding that deleting an ITERATION directly does fail, which is documented in the migration header.
+
+Re-verified after the fix: story-board-invariants 14 tests (was 9), full web suite 1142/1142 from a clean reset (was 1139), and the three probe cases whose setup relied on the now-impossible shape re-checked with a chore instead — rollover, title edit and same-category move all still fine.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
