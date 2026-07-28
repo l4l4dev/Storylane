@@ -159,6 +159,9 @@ describe.skipIf(!RUN)("story.iteration_changed activity logging (integration)", 
         project_id: projectId,
         title: "combined change",
         story_type: "feature",
+        // points: the UPDATE below moves this into an in_progress state, which
+        // stories_enforce_board_invariants (TASK-208) refuses unestimated.
+        points: 1,
         state_id: unstartedStateId,
         iteration_id: iteration1Id,
         created_by: ownerId,

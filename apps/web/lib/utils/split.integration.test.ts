@@ -172,7 +172,14 @@ describe.skipIf(!RUN)("split_story RPC + container move/copy guards (integration
   });
 
   it("lands children in the first unstarted state when the source is in an in_progress state", async () => {
-    const source = await createStory({ title: "WIP", state_id: inProgressId, points: 2 });
+    // An in_progress story needs an iteration: stories_enforce_board_invariants
+    // (TASK-208) rejects that category with iteration_id NULL on every path.
+    const { data: iter } = await admin
+      .from("iterations")
+      .insert({ project_id: projectId, number: 90, start_date: "2026-07-01", end_date: "2026-07-14" })
+      .select("id")
+      .single();
+    const source = await createStory({ title: "WIP", state_id: inProgressId, points: 2, iteration_id: iter!.id });
     const { data } = await owner.rpc("split_story", { p_story_id: source, p_children: [child()] });
     const kid = await admin.from("stories").select("state_id").eq("id", data.child_ids[0]).single();
     expect(kid.data!.state_id).toBe(unstartedId);
