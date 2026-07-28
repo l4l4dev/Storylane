@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 09:50'
+updated_date: '2026-07-28 10:20'
 labels: []
 milestone: m-2
 dependencies: []
@@ -132,6 +132,20 @@ FINDING 1: finish_story_from_git reads the integration row and merge_target_stat
 Fixed in a new migration rather than by editing 20260728040300, which is already on main. The config read is MOVED to after the lock rather than duplicated: nothing between the old read and the lock used the values, so re-reading would have left exactly the dead first read that was trimmed from move/copy_story_to_project in the previous round. Pinned by a test that disables the integration mid-wait and asserts the RPC returns ignored/not_configured with the story untouched; confirmed non-vacuous against the pre-fix definition.
 
 Verified with everything web-ci.yml runs, after the tsc miss on the first push: core tsc, core tests 77/77, web tsc, web lint, web build, full web suite 1161/1161 from a clean reset, MCP 29/29. Note two supabase db reset attempts failed with 'error running container: exit 1' before one succeeded — infrastructure flake, not the migrations; the successful run applied all 21 cleanly.
+
+Codex re-review on PR #9 (requested explicitly): 4 findings, all confirmed and fixed. Two of them answered the question I had asked it directly — whether other guards in this PR were present but untested — and both were hits.
+
+P2, story-row lock: moving the webhook config read after the ADVISORY lock was not enough. The config read still sat before the story's own `select ... for update`, which can also block for an unbounded time, so an integration disabled or repointed while that row lock was contended would still be missed. Confirmed by reading the live function: advisory lock at 28, config at 35, row lock at 59. Moved the config read after the row lock, i.e. after the LAST point the call can wait.
+
+That reorder broke three existing finish_story_from_git tests, which is worth recording because it shows what the reorder actually changes: a project with no configured integration was returning not_transitionable instead of ignored/not_configured. The cause is that FOUND reflects only the most recent statement, so the config SELECTs clobbered the row lookup's result before the existence check ran. Captured `v_story_exists := found` immediately after the row lock instead. The precedence the suite documents (configuration problems reported before story-state ones, but a nonexistent story number still not_transitionable) is preserved.
+
+P2, per-guard coverage: the two precondition tests covered move's TARGET archive and copy's point scale only. move and copy implement these guards independently, and each checks source and target separately, so four archive guards existed and two were removable without any failure. Parameterised the races over {move, copy} x {source, target} plus a scale case per RPC. Verified by deleting the post-lock SOURCE archive guard from both functions: previously green, now fails both new source cases.
+
+P2, fixture not asserted: the webhook test's integrations insert was fire-and-forget. Had it failed, the RPC would return ignored/not_configured naturally and every assertion would still pass with the post-lock read never running — the same vacuousness class as the previous round. Now asserted.
+
+P3, provenance narration: the header said "Verbatim replacement of 20260728040300's finish_story_from_git except that move", which records how the patch was produced rather than a lasting constraint and goes stale the moment the function is replaced again. Removed, and while there I restated the rest of the header in the present tense — it had the same past-tense narration TASK-208 was already pulled up on.
+
+Verified with everything web-ci.yml runs: core tsc, core 77/77, web tsc, web lint, web build, full web suite 1165/1165 from a clean reset (was 1161), role-recheck 20/20.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

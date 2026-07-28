@@ -279,49 +279,68 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
   // Without these, deleting the post-lock re-reads leaves every other test in
   // this file green — the role cases never touch archived_at or point_scale.
 
-  it("move_story_to_project rejects a target archived while the caller was blocked", async () => {
-    const source = await createProject("TASK-211 archive race source");
-    const target = await createProject("TASK-211 archive race target");
-    const storyId = await seedStory(source);
+  // move and copy implement these guards independently, and each checks the
+  // source and the target separately, so all four archive guards need their own
+  // race — covering one leaves the other three removable without a failure.
+  const CROSS_PROJECT_RPCS = ["move_story_to_project", "copy_story_to_project"] as const;
 
-    const { error } = await callWhileRevoked(
-      "story_number",
-      target,
-      () => admin.from("projects").update({ archived_at: new Date().toISOString() }).eq("id", target),
-      () => owner.rpc("move_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
-    );
+  for (const rpc of CROSS_PROJECT_RPCS) {
+    for (const side of ["source", "target"] as const) {
+      it(`${rpc} rejects a ${side} archived while the caller was blocked`, async () => {
+        const source = await createProject(`TASK-211 ${rpc} ${side} archive source`);
+        const target = await createProject(`TASK-211 ${rpc} ${side} archive target`);
+        const storyId = await seedStory(source);
+        const archived = side === "source" ? source : target;
 
-    expect(error?.message).toMatch(/target project is archived/i);
+        const { error } = await callWhileRevoked(
+          "story_number",
+          target,
+          () => admin.from("projects").update({ archived_at: new Date().toISOString() }).eq("id", archived),
+          () => owner.rpc(rpc, { p_story_id: storyId, p_target_project_id: target }),
+        );
 
-    const { data } = await admin.from("stories").select("project_id").eq("id", storyId).single();
-    expect(data!.project_id).toBe(source); // never moved
-  }, TIMEOUT);
+        expect(error?.message).toMatch(new RegExp(`${side} project is archived`, "i"));
 
-  it("copy_story_to_project clamps points against a scale WIDENED while the caller was blocked", async () => {
-    // Widening, not narrowing: 8 is off `linear` (0..3) but on `fibonacci`, so
-    // the post-lock read must let it through. A narrowing test cannot prove
-    // anything here — dropping the re-read leaves v_point_scale NULL, the CASE
-    // yields NULL, and the story lands unpointed for the wrong reason, which
-    // looks identical to a correct clamp.
-    const source = await createProject("TASK-211 scale race source");
-    const target = await createProject("TASK-211 scale race target");
-    await admin.from("projects").update({ point_scale: "linear" }).eq("id", target);
-    const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", source);
-    const unstarted = states!.find((s) => s.category === "unstarted")!.id;
-    const storyId = await seedStory(source, { story_type: "feature", points: 8, state_id: unstarted });
+        // Neither RPC may have written anything into the target.
+        const { count } = await admin
+          .from("stories")
+          .select("id", { count: "exact", head: true })
+          .eq("project_id", target);
+        expect(count ?? 0).toBe(0);
+        const { data } = await admin.from("stories").select("project_id").eq("id", storyId).single();
+        expect(data!.project_id).toBe(source);
 
-    const { error } = await callWhileRevoked(
-      "story_number",
-      target,
-      () => admin.from("projects").update({ point_scale: "fibonacci" }).eq("id", target),
-      () => owner.rpc("copy_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
-    );
+        // Leave them unarchived so afterAll's delete can still reach them.
+        await admin.from("projects").update({ archived_at: null }).eq("id", archived);
+      }, TIMEOUT);
+    }
 
-    expect(error).toBeNull();
+    it(`${rpc} clamps points against a scale WIDENED while the caller was blocked`, async () => {
+      // Widening, not narrowing: 8 is off `linear` (0..3) but on `fibonacci`, so
+      // the post-lock read must let it through. A narrowing test cannot prove
+      // anything here — dropping the re-read leaves v_point_scale NULL, the CASE
+      // yields NULL, and the story lands unpointed for the wrong reason, which
+      // looks identical to a correct clamp.
+      const source = await createProject(`TASK-211 ${rpc} scale source`);
+      const target = await createProject(`TASK-211 ${rpc} scale target`);
+      await admin.from("projects").update({ point_scale: "linear" }).eq("id", target);
+      const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", source);
+      const unstarted = states!.find((s) => s.category === "unstarted")!.id;
+      const storyId = await seedStory(source, { story_type: "feature", points: 8, state_id: unstarted });
 
-    const { data: copied } = await admin.from("stories").select("points").eq("project_id", target).single();
-    expect(copied!.points).toBe(8); // kept, because the NEW scale allows it
-  }, TIMEOUT);
+      const { error } = await callWhileRevoked(
+        "story_number",
+        target,
+        () => admin.from("projects").update({ point_scale: "fibonacci" }).eq("id", target),
+        () => owner.rpc(rpc, { p_story_id: storyId, p_target_project_id: target }),
+      );
+
+      expect(error).toBeNull();
+
+      const { data: landed } = await admin.from("stories").select("points").eq("project_id", target).single();
+      expect(landed!.points).toBe(8); // kept, because the NEW scale allows it
+    }, TIMEOUT);
+  }
 
   it("move_story_to_project rejects a caller de-membered from the TARGET while blocked", async () => {
     const source = await createProject("TASK-211 move source");
@@ -414,12 +433,16 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     const projectId = await createProject("TASK-211 webhook config race");
     const { data: states } = await admin.from("project_states").select("id, name").eq("project_id", projectId);
     const byName = Object.fromEntries(states!.map((s) => [s.name, s.id])) as Record<string, string>;
-    await admin.from("integrations").insert({
+    // Asserted, not fire-and-forget: a failed insert makes the RPC return
+    // ignored/not_configured for the wrong reason, and every assertion below
+    // would still pass without the post-lock read ever running.
+    const { error: fixtureError } = await admin.from("integrations").insert({
       project_id: projectId,
       provider: "github",
       config: { merge_target_state_id: byName.Finished },
       is_active: true,
     });
+    expect(fixtureError).toBeNull();
     const { data: story } = await admin
       .from("stories")
       .insert({ project_id: projectId, title: "merged", story_type: "chore", state_id: byName.Unstarted, created_by: ownerId })

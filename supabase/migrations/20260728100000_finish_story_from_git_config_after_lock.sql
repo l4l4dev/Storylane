@@ -1,22 +1,21 @@
 -- ============================================================
--- TASK-211: finish_story_from_git reads its webhook configuration after the
--- lock, not before it.
+-- TASK-211: finish_story_from_git reads its webhook configuration after every
+-- wait, not before them.
 --
--- The integration row and merge_target_state_id were read, then
--- pg_advisory_xact_lock('iteration_finalize:'||project_id) was taken, then the
--- story was written. An owner disabling the integration or repointing its merge
--- target while the webhook was parked on that lock would still see the story
--- transitioned against the configuration that was live when the delivery
--- arrived. Same class as the role window closed alongside this, and the rule
--- spec/rls.md now records covers it: any precondition enforced only inside the
--- RPC has to be read after the wait.
+-- The integration row and merge_target_state_id are preconditions enforced
+-- nowhere but inside this function, so they have to be read after the last
+-- point the call can block — the iteration_finalize advisory lock AND the
+-- story's own `for update`. Reading them earlier lets an owner disable the
+-- integration or repoint its merge target during either wait and still have the
+-- story transitioned against the configuration that was live when the delivery
+-- arrived (spec/rls.md "Re-check the role AFTER an advisory lock" covers every
+-- such precondition, not only the role).
 --
--- Moved rather than duplicated: nothing between the old read and the lock used
--- the values, so re-reading would have left a dead first read of exactly the
--- kind trimmed from move/copy_story_to_project.
+-- The read is placed after both waits rather than duplicated on either side of
+-- them: nothing before the row lock needs the values, so an earlier copy would
+-- only be dead weight.
 --
--- Verbatim replacement of 20260728040300's finish_story_from_git except that
--- move. Grants preserved (service-role only).
+-- Executable by service_role only.
 -- ============================================================
 
 create or replace function public.finish_story_from_git(p_project_id uuid, p_story_number integer, p_provider text)
@@ -38,6 +37,7 @@ declare
   v_current_id uuid;
   v_current_number int;
   v_needs_iteration boolean;
+  v_story_exists boolean;
 begin
   if not exists (select 1 from public.projects where id = p_project_id) then
     return jsonb_build_array(jsonb_build_object('kind', 'ignored', 'number', p_story_number, 'reason', 'project_not_found'));
@@ -48,11 +48,21 @@ begin
   -- the transition and the assignment below.
   perform pg_advisory_xact_lock(v_lock_key);
 
-  -- Read AFTER the lock, not before it: an integration disabled or repointed
-  -- while this call was parked would otherwise transition the story using the
-  -- configuration that was live when the webhook arrived (spec/rls.md
-  -- "Re-check the role AFTER an advisory lock" — the same rule covers every
-  -- precondition enforced only inside the RPC).
+
+  select id, iteration_id, state_id, story_type, points into v_story
+    from public.stories
+    where project_id = p_project_id and number = p_story_number
+    for update;
+  -- Captured immediately: the config reads below run their own statements, and
+  -- FOUND reflects only the most recent one.
+  v_story_exists := found;
+
+  -- Read after BOTH waits — the advisory lock and the row lock above. Either
+  -- can block for an unbounded time, so an integration disabled or repointed
+  -- during one of them would otherwise transition the story using whatever
+  -- configuration was live when the webhook arrived. spec/rls.md's rule covers
+  -- every precondition enforced only inside the RPC, and the last wait is the
+  -- only safe place to read one.
   select (i.config->>'merge_target_state_id')::uuid into v_target_state_id
     from public.integrations i
     where i.project_id = p_project_id and i.provider = p_provider and i.is_active
@@ -73,15 +83,11 @@ begin
   end if;
   v_target_rank := case v_target_category when 'unstarted' then 0 else 1 end; -- 'in_progress'
 
-
-  select id, iteration_id, state_id, story_type, points into v_story
-    from public.stories
-    where project_id = p_project_id and number = p_story_number
-    for update;
-
-  if not found then
+  if not v_story_exists then
     return jsonb_build_array(jsonb_build_object('kind', 'not_transitionable', 'number', p_story_number));
   end if;
+
+
 
   if v_story.state_id is not null then
     select category, position into v_story_category, v_story_position
