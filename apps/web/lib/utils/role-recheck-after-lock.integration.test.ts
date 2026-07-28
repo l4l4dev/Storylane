@@ -275,6 +275,54 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     expect(kids ?? []).toHaveLength(0);
   }, TIMEOUT);
 
+  // ── preconditions other than the role, re-read after the lock (AC #6) ─────
+  // Without these, deleting the post-lock re-reads leaves every other test in
+  // this file green — the role cases never touch archived_at or point_scale.
+
+  it("move_story_to_project rejects a target archived while the caller was blocked", async () => {
+    const source = await createProject("TASK-211 archive race source");
+    const target = await createProject("TASK-211 archive race target");
+    const storyId = await seedStory(source);
+
+    const { error } = await callWhileRevoked(
+      "story_number",
+      target,
+      () => admin.from("projects").update({ archived_at: new Date().toISOString() }).eq("id", target),
+      () => owner.rpc("move_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
+    );
+
+    expect(error?.message).toMatch(/target project is archived/i);
+
+    const { data } = await admin.from("stories").select("project_id").eq("id", storyId).single();
+    expect(data!.project_id).toBe(source); // never moved
+  }, TIMEOUT);
+
+  it("copy_story_to_project clamps points against a scale WIDENED while the caller was blocked", async () => {
+    // Widening, not narrowing: 8 is off `linear` (0..3) but on `fibonacci`, so
+    // the post-lock read must let it through. A narrowing test cannot prove
+    // anything here — dropping the re-read leaves v_point_scale NULL, the CASE
+    // yields NULL, and the story lands unpointed for the wrong reason, which
+    // looks identical to a correct clamp.
+    const source = await createProject("TASK-211 scale race source");
+    const target = await createProject("TASK-211 scale race target");
+    await admin.from("projects").update({ point_scale: "linear" }).eq("id", target);
+    const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", source);
+    const unstarted = states!.find((s) => s.category === "unstarted")!.id;
+    const storyId = await seedStory(source, { story_type: "feature", points: 8, state_id: unstarted });
+
+    const { error } = await callWhileRevoked(
+      "story_number",
+      target,
+      () => admin.from("projects").update({ point_scale: "fibonacci" }).eq("id", target),
+      () => owner.rpc("copy_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
+    );
+
+    expect(error).toBeNull();
+
+    const { data: copied } = await admin.from("stories").select("points").eq("project_id", target).single();
+    expect(copied!.points).toBe(8); // kept, because the NEW scale allows it
+  }, TIMEOUT);
+
   it("move_story_to_project rejects a caller de-membered from the TARGET while blocked", async () => {
     const source = await createProject("TASK-211 move source");
     const target = await createProject("TASK-211 move target");
@@ -357,6 +405,51 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     );
 
     expect(error?.code).toBe("42501");
+  }, TIMEOUT);
+
+  it("finish_story_from_git honours an integration disabled while it was blocked", async () => {
+    // The webhook path takes iteration_finalize:<project>. Its configuration is
+    // a precondition enforced only inside the RPC, so it has to be read after
+    // the wait — otherwise a disabled integration still transitions the story.
+    const projectId = await createProject("TASK-211 webhook config race");
+    const { data: states } = await admin.from("project_states").select("id, name").eq("project_id", projectId);
+    const byName = Object.fromEntries(states!.map((s) => [s.name, s.id])) as Record<string, string>;
+    await admin.from("integrations").insert({
+      project_id: projectId,
+      provider: "github",
+      config: { merge_target_state_id: byName.Finished },
+      is_active: true,
+    });
+    const { data: story } = await admin
+      .from("stories")
+      .insert({ project_id: projectId, title: "merged", story_type: "chore", state_id: byName.Unstarted, created_by: ownerId })
+      .select("number")
+      .single();
+
+    const { data } = await callWhileRevoked(
+      "iteration_finalize",
+      projectId,
+      () => admin.from("integrations").update({ is_active: false }).eq("project_id", projectId),
+      () =>
+        admin.rpc("finish_story_from_git", {
+          p_project_id: projectId,
+          p_story_number: story!.number,
+          p_provider: "github",
+        }),
+    );
+
+    expect((data as { kind: string; reason?: string }[])[0]).toMatchObject({
+      kind: "ignored",
+      reason: "not_configured",
+    });
+
+    const { data: after } = await admin
+      .from("stories")
+      .select("state_id")
+      .eq("project_id", projectId)
+      .eq("number", story!.number)
+      .single();
+    expect(after!.state_id).toBe(byName.Unstarted); // untouched
   }, TIMEOUT);
 
   // ── invite_member: no lock, but not waitless either (AC #4) ───────────────

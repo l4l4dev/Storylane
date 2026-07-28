@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 09:33'
+updated_date: '2026-07-28 09:50'
 labels: []
 milestone: m-2
 dependencies: []
@@ -32,6 +32,7 @@ change_member_role, remove_member, and invite_member (20260717000001_guard_helpe
 - [x] #5 invite_member takes no lock, but its on-conflict insert can still wait on a row a concurrent remove_member is deleting, so its re-check sits AFTER the insert where raising rolls it back
 - [x] #6 Preconditions other than the role that are read before the lock and enforced only inside the RPC (projects.archived_at, projects.point_scale) are re-read after it too
 - [x] #7 The role list is hoisted into a variable in every function so the pre- and post-lock checks cannot drift apart
+- [x] #8 Preconditions read before a lock are covered by tests that mutate them mid-wait, so removing a post-lock re-read fails the suite
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -117,6 +118,20 @@ Final: full web suite 1158/1158 from a clean reset, role-recheck 13/13, MCP 29/2
 CI failed on the first push with a type error I had not caught: pnpm --filter web exec tsc --noEmit, exit 2, ten occurrences in the new test file. callWhileRevoked declared its revoke parameter as () => Promise<unknown>, but supabase-js's query builder is a thenable rather than a real Promise (no catch/finally/Symbol.toStringTag), so every call site failed to typecheck. Fixed by declaring it PromiseLike<unknown>, which is what the call parameter next to it already used and what the builder actually is.
 
 My verification gap, not a flaky CI: I ran vitest and lint locally but never ran tsc, and vitest transpiles without typechecking so the tests passed against code that could not compile. Corrected by running every command web-ci.yml actually runs before pushing again — core tsc, core tests (77), web tsc, web lint, web build, and the integration suite — rather than the subset I had been checking.
+
+Codex review on PR #9: 2 findings, both P2, both confirmed and fixed.
+
+FINDING 2 first, because it is the one that matters most: the post-lock archived_at and point_scale re-reads added in the previous round were NOT covered by any test. Verified rather than assumed — I deleted both re-read blocks from the running functions and re-ran role-recheck-after-lock plus move-copy: 25/25 still green. Every existing case only mutates membership, and the older move/copy tests archive a project BEFORE invoking the RPC, so nothing exercised the window. Deleting or misplacing those reads would have gone unnoticed.
+
+Added two cases that hold story_number:<target>, mutate the precondition mid-wait, then release: one archives the target and asserts the move is rejected and the story never left, one changes the target's point scale and asserts the copy clamps against the NEW scale.
+
+The scale case needed a second attempt. A NARROWING test (fibonacci 8 -> linear) passes even with the re-read deleted: without it v_point_scale is NULL, the CASE yields NULL, and the story lands unpointed — which looks exactly like a correct clamp. Rewrote it to WIDEN instead (linear -> fibonacci, points 8), so the story keeps its 8 only if the new scale was actually read. Confirmed non-vacuous against a variant that reads the scale pre-lock as before the fix: 'expected null to be 8'.
+
+FINDING 1: finish_story_from_git reads the integration row and merge_target_state_id, then takes iteration_finalize:<project>, then writes. An owner disabling the integration or repointing its merge target while the webhook was parked would still get the story transitioned against the configuration that was live when the delivery arrived. Same class, and the rule I had just added to spec/rls.md explicitly covers it — so the commit introducing the rule was violating it. Confirmed by reading the live function (config at line 25, lock at 48, write at 121).
+
+Fixed in a new migration rather than by editing 20260728040300, which is already on main. The config read is MOVED to after the lock rather than duplicated: nothing between the old read and the lock used the values, so re-reading would have left exactly the dead first read that was trimmed from move/copy_story_to_project in the previous round. Pinned by a test that disables the integration mid-wait and asserts the RPC returns ignored/not_configured with the story untouched; confirmed non-vacuous against the pre-fix definition.
+
+Verified with everything web-ci.yml runs, after the tsc miss on the first push: core tsc, core tests 77/77, web tsc, web lint, web build, full web suite 1161/1161 from a clean reset, MCP 29/29. Note two supabase db reset attempts failed with 'error running container: exit 1' before one succeeded — infrastructure flake, not the migrations; the successful run applied all 21 cleanly.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
