@@ -1,11 +1,11 @@
 ---
 id: TASK-185
 title: Retire TASK.md — consolidate all task tracking into Backlog
-status: In Progress
+status: Done
 assignee:
   - '@codex-gpt-5'
 created_date: '2026-07-24 04:08'
-updated_date: '2026-07-27 06:22'
+updated_date: '2026-07-28 00:29'
 labels: []
 milestone: m-2
 dependencies: []
@@ -50,3 +50,9 @@ created: 2026-07-27 06:14
 Delegated to Codex CLI (@codex-gpt-5, ChatGPT quota) per owner request 2026-07-27: surplus Codex tokens available, task is mechanical/precisely-scoped so it fits the delegation policy without RLS/architecture concerns.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+TASK.md deleted, residual content preserved in Backlog (doc-22 iOS scope, TASK-217 web polish residual), all live references repointed. Re-verified 2026-07-28: TASK.md absent, grep for TASK.md across tracked files returns only TASK-185 itself and 2 immutable completed-task history mentions.
+<!-- SECTION:FINAL_SUMMARY:END -->

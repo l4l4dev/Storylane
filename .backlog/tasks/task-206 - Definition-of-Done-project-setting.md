@@ -1,11 +1,11 @@
 ---
 id: TASK-206
 title: Definition of Done project setting
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-27 01:48'
-updated_date: '2026-07-27 07:30'
+updated_date: '2026-07-28 00:29'
 labels: []
 milestone: m-0
 dependencies: []
@@ -98,4 +98,12 @@ No code-review has actually completed for this task yet. Retry after the 19:40 J
 /code-review attempt 4 (2026-07-27, this worktree/branch confirmed correct this time): Phase 0/1 ran correctly against feat/sprint-reporting's actual uncommitted diff — 8 finder agents completed, found candidates deduplicated to 15, Phase 2 verification (5 verifier agents) had just launched when the run failed outright on the session rate limit again ('resets 4:30pm (Asia/Tokyo)'). No verified findings exist from this attempt either — the 15 raw candidates never passed Phase 2 verification, so none should be acted on.
 
 Still no completed /code-review for this task. Retry after 16:30 JST.
+
+2026-07-28: /code-review never completed across 4 attempts (all hit the Claude session rate limit, no actual findings produced). Work was merged to main by another session in this same worktree before a completed pass happened. Substituting evidence: fable-advisor design review APPROVED, rls-security-reviewer NO FINDINGS on the migration, both already recorded above. Re-verified now on main (post-merge): pnpm run lint clean, pnpm test 860 passed/267 skipped (no failures), TASK-206's own files unchanged since the notes above were written.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added projects.definition_of_done (owner-editable, nullable text), shown as a reference-only popover at both done-category entry points (TransitionButtons, KanbanColumn header), hidden when empty. Verified: fable-advisor design review approved, rls-security-reviewer found no issues on the migration, integration test confirms owner-only write. Full /code-review never completed (session rate limits, see notes) but the code was merged to main and passed a full local re-verification (lint clean, 860/1127 tests passing, 267 skipped as expected without local Supabase).
+<!-- SECTION:FINAL_SUMMARY:END -->

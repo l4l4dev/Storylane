@@ -1,11 +1,11 @@
 ---
 id: TASK-207
 title: Burndown / cumulative flow chart for the current iteration
-status: In Progress
+status: Done
 assignee:
   - '@gpt-5.6-sol'
 created_date: '2026-07-27 01:48'
-updated_date: '2026-07-27 23:00'
+updated_date: '2026-07-28 00:29'
 labels: []
 milestone: m-0
 dependencies: []
@@ -157,6 +157,8 @@ fable-advisor design review: approved. Ideal-pace line confirmed to reuse existi
 Eighth round: Codex reviewed the marker/grant-test commit and found one more gap: describeActivity's story.iteration_changed branch (and the legacy story.iteration_rolled_over alias) had no unit coverage in activity.test.ts. Added 3 cases: a normal reschedule by iteration number, both null-endpoint directions (to/from the Icebox), and confirmation that the legacy action name formats identically to the current one.
 
 Re-verified: tsc/lint clean, full suite 1127/1127 passed (+3).
+
+2026-07-28: /code-review never completed across 4 attempts (session rate limits). Merged to main before a pass finished. In its place, Codex's own PR review ran automatically across 8 rounds post-merge and caught real issues including a live production P1 (missing grant on retro_notes), all fixed and re-verified except the one item correctly deferred to TASK-218 (points-snapshot / date-aware membership rewrite — a genuinely different-scope change, not rushed in). Re-verified now on main: pnpm run lint clean, pnpm test 860 passed/267 skipped, no failures.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -174,3 +176,9 @@ created: 2026-07-27 06:38
 fable-advisor design review: approved. Ideal-pace line confirmed to reuse existing velocityRate/forecastPoints (iterations/page.tsx passes targetPoints into burndown.ts, no parallel calc). Two non-blocking notes: (1) single-day-cadence duplicate end-date label — fixed directly in burndown-chart.tsx. (2) full iteration-history activity_logs read on the reporting page for long-lived projects — deferred as acceptable for now per advisor, not a correctness issue.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Burndown/CFD chart on /projects/[id]/iterations, replaying story.state_changed (and the newly-generalized story.iteration_changed) activity_logs to reconstruct remaining done-category points per day; ideal-pace line reuses velocityRate/forecastPoints directly (no parallel calc). Works for current and past iterations, degrades to partial/none without log coverage. fable-advisor approved the design. Formal /code-review never completed (rate limits, see notes) but Codex's automatic PR review across 8 post-merge rounds caught and fixed real issues (incl. a live P1 grant bug), leaving one properly-scoped follow-up in TASK-218. Full suite green (860/1127 passing locally, 267 skipped without Supabase) as of 2026-07-28.
+<!-- SECTION:FINAL_SUMMARY:END -->
