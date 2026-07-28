@@ -1,0 +1,456 @@
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { Client as PgClient } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+// TASK-211: every RPC that takes an advisory lock checked the caller's role
+// BEFORE the lock and never after, so a caller demoted or removed while parked
+// on it still wrote. These are all SECURITY DEFINER, so there is no RLS
+// re-evaluation on their writes to fall back on (20260728073000).
+//
+// Same harness shape as finalize-iteration-role-recheck.integration.test.ts
+// (TASK-142), generalised over the lock key: a raw pg connection holds the lock
+// so the RPC parks after its pre-lock check, the caller's access is revoked
+// while it waits, then the lock is released. supabase-js cannot do this — it
+// cannot hold an advisory lock across statements.
+//
+//   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/role-recheck-after-lock.integration.test.ts
+const RUN = process.env.SUPABASE_INTEGRATION === "1";
+
+// Each case parks a real RPC on a lock and polls for it, so the 5s default is
+// too tight even when everything works.
+const TIMEOUT = 30_000;
+
+const LOCK_SQL = (fn: "pg_advisory_lock" | "pg_advisory_unlock", prefix: string) =>
+  `select ${fn}(hashtext('${prefix}:' || $1))`;
+
+describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integration)", () => {
+  let admin: SupabaseClient;
+  let owner: SupabaseClient;
+  let ownerId: string;
+  let otherId: string;
+  const createdProjectIds: string[] = [];
+
+  beforeAll(async () => {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      try {
+        process.loadEnvFile(`${process.cwd()}/.env.local`);
+      } catch {
+        // fall through; missing env fails loudly below.
+      }
+    }
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !anonKey || !serviceKey) {
+      throw new Error("NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY / SUPABASE_SERVICE_ROLE_KEY must be set");
+    }
+    admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+    owner = createClient(url, anonKey, { auth: { persistSession: false } });
+    const auth = await owner.auth.signInWithPassword({
+      email: "dev@storylane.local",
+      password: "dev-local-only-password",
+    });
+    if (auth.error || !auth.data.user) {
+      throw new Error(`Dev-user sign-in failed (is 'supabase start' running?): ${auth.error?.message}`);
+    }
+    ownerId = auth.data.user.id;
+
+    const { data: made, error: makeError } = await admin.auth.admin.createUser({
+      email: `role-recheck-${Date.now()}@storylane.local`,
+      password: "integration-test-only-password",
+      email_confirm: true,
+    });
+    if (makeError || !made.user) throw new Error(`Failed to create second user: ${makeError?.message}`);
+    otherId = made.user.id;
+  });
+
+  // The dev user loses access during these tests, so cleanup goes through admin.
+  afterAll(async () => {
+    for (const id of createdProjectIds) {
+      await admin.from("projects").delete().eq("id", id);
+    }
+    if (otherId) await admin.auth.admin.deleteUser(otherId);
+  });
+
+  async function createProject(name: string): Promise<string> {
+    const { data, error } = await owner.from("projects").insert({ name }).select("id").single();
+    if (error || !data) throw new Error(`Failed to create test project: ${error?.message}`);
+    createdProjectIds.push(data.id);
+    return data.id;
+  }
+
+  /**
+   * Blocks until some OTHER backend is waiting on `prefix:<projectId>`, i.e.
+   * the RPC really is parked past its pre-lock check. pg_locks reports the
+   * advisory lock's key split across classid/objid as the high/low halves of
+   * the bigint, and granted=false is the waiter.
+   */
+  async function waitForWaiter(holder: PgClient, prefix: string, projectId: string): Promise<void> {
+    // Matched against the row for the lock THIS connection holds rather than by
+    // recomputing the key: advisory keys are split across classid/objid as the
+    // halves of a bigint, and hashtext returns a signed int, so reassembling it
+    // in SQL is easy to get subtly wrong and would silently match nothing.
+    const WAITER_SQL = `
+      select count(*)::int as n
+        from pg_locks w
+        join pg_locks g
+          on g.locktype = 'advisory' and g.granted and g.pid = pg_backend_pid()
+         and w.classid = g.classid and w.objid = g.objid and w.objsubid = g.objsubid
+       where w.locktype = 'advisory' and not w.granted`;
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const { rows } = await holder.query(WAITER_SQL);
+      if (rows[0].n > 0) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error(`RPC never parked on ${prefix}:${projectId} — the test would be vacuous`);
+  }
+
+  /**
+   * Parks `call()` on `prefix:<lockProjectId>`, applies `revoke()` while it
+   * waits, then releases the lock and returns what the call settled with.
+   */
+  async function callWhileRevoked<T>(
+    prefix: string,
+    lockProjectId: string,
+    revoke: () => Promise<unknown>,
+    call: () => PromiseLike<T>,
+  ): Promise<T> {
+    const holder = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    try {
+      await holder.query(LOCK_SQL("pg_advisory_lock", prefix), [lockProjectId]);
+      // supabase-js's builder is lazy — it only issues the request from its own
+      // .then(), so Promise.resolve is what actually dispatches it. Holding the
+      // builder unawaited would let the revoke land before the RPC even started,
+      // testing the pre-lock guard (which passes trivially) instead.
+      const pending = Promise.resolve(call());
+
+      // Wait for the RPC to actually PARK on the lock rather than sleeping a
+      // fixed interval and hoping. If the revoke lands before the call reaches
+      // its pre-lock check, the call fails at that check with the same error and
+      // the assertion passes while testing nothing — and remove_member's two
+      // guards raise identical messages, so nothing downstream could tell the
+      // difference.
+      await waitForWaiter(holder, prefix, lockProjectId);
+
+      await revoke();
+
+      await holder.query(LOCK_SQL("pg_advisory_unlock", prefix), [lockProjectId]);
+      return await pending;
+    } finally {
+      await holder.end();
+    }
+  }
+
+  const demoteOwner = (projectId: string) => () =>
+    admin.from("project_members").update({ role: "viewer" }).eq("project_id", projectId).eq("user_id", ownerId);
+
+  const deMemberOwner = (projectId: string) => () =>
+    admin.from("project_members").delete().eq("project_id", projectId).eq("user_id", ownerId);
+
+  async function seedStory(projectId: string, fields: Record<string, unknown> = {}): Promise<string> {
+    const { data, error } = await admin
+      .from("stories")
+      .insert({ project_id: projectId, title: "s", story_type: "chore", created_by: ownerId, ...fields })
+      .select("id")
+      .single();
+    if (error || !data) throw new Error(`Failed to seed story: ${error?.message}`);
+    return data.id;
+  }
+
+  // ── membership RPCs (AC #2) ───────────────────────────────────────────────
+
+  it("change_member_role rejects a caller demoted while blocked on the membership lock", async () => {
+    const projectId = await createProject("TASK-211 change_member_role");
+    await admin.from("project_members").insert({ project_id: projectId, user_id: otherId, role: "member" });
+
+    const { error } = await callWhileRevoked("membership", projectId, demoteOwner(projectId), () =>
+      owner.rpc("change_member_role", { p_project_id: projectId, p_user_id: otherId, p_role: "viewer" }),
+    );
+
+    expect(error?.code).toBe("42501"); // require_project_role: 'not authorized'
+
+    const { data } = await admin
+      .from("project_members")
+      .select("role")
+      .eq("project_id", projectId)
+      .eq("user_id", otherId)
+      .single();
+    expect(data!.role).toBe("member"); // unchanged
+  }, TIMEOUT);
+
+  it("remove_member rejects a caller demoted while blocked on the membership lock", async () => {
+    const projectId = await createProject("TASK-211 remove_member");
+    await admin.from("project_members").insert({ project_id: projectId, user_id: otherId, role: "member" });
+
+    const { error } = await callWhileRevoked("membership", projectId, demoteOwner(projectId), () =>
+      owner.rpc("remove_member", { p_project_id: projectId, p_user_id: otherId }),
+    );
+
+    expect(error?.message).toMatch(/only project owners can remove other members/i);
+
+    const { data } = await admin
+      .from("project_members")
+      .select("user_id")
+      .eq("project_id", projectId)
+      .eq("user_id", otherId);
+    expect(data ?? []).toHaveLength(1); // still a member
+  }, TIMEOUT);
+
+  it("remove_member still lets a demoted caller remove THEMSELVES (the bespoke guard survives)", async () => {
+    // The entry guard is deliberately not a plain role list: self-leave must
+    // keep working for a non-owner, so the re-check re-runs the whole shape.
+    const projectId = await createProject("TASK-211 self-leave");
+    await admin.from("project_members").insert({ project_id: projectId, user_id: otherId, role: "member" });
+
+    const { error } = await callWhileRevoked("membership", projectId, demoteOwner(projectId), () =>
+      owner.rpc("remove_member", { p_project_id: projectId, p_user_id: ownerId }),
+    );
+
+    expect(error).toBeNull();
+    const { data } = await admin
+      .from("project_members")
+      .select("user_id")
+      .eq("project_id", projectId)
+      .eq("user_id", ownerId);
+    expect(data ?? []).toHaveLength(0);
+  }, TIMEOUT);
+
+  it("remove_member stays idempotent when a self-leave is completed by someone else mid-wait", async () => {
+    // The re-check must not turn a benign race into an error toast: the caller
+    // asked to leave, and leaving is exactly what happened while they waited.
+    const projectId = await createProject("TASK-211 self-leave race");
+    await admin.from("project_members").insert({ project_id: projectId, user_id: otherId, role: "owner" });
+
+    const { error } = await callWhileRevoked("membership", projectId, deMemberOwner(projectId), () =>
+      owner.rpc("remove_member", { p_project_id: projectId, p_user_id: ownerId }),
+    );
+
+    expect(error).toBeNull();
+  }, TIMEOUT);
+
+  // ── board / story RPCs (AC #3) ────────────────────────────────────────────
+
+  it("move_story_board rejects a caller de-membered while blocked on the positions lock", async () => {
+    const projectId = await createProject("TASK-211 move_story_board");
+    const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", projectId);
+    const unstarted = states!.find((s) => s.category === "unstarted")!.id;
+    const storyId = await seedStory(projectId, { state_id: unstarted });
+
+    const { error } = await callWhileRevoked("positions", projectId, deMemberOwner(projectId), () =>
+      owner.rpc("move_story_board", {
+        p_project_id: projectId,
+        p_item: { kind: "story", id: storyId },
+        p_view: "list",
+        p_expected: { state_id: unstarted, iteration_id: null, parent_id: null },
+        p_deltas: {},
+        p_anchor: {},
+      }),
+    );
+
+    expect(error?.code).toBe("42501");
+  }, TIMEOUT);
+
+  it("split_story rejects a caller de-membered while blocked on the story_number lock", async () => {
+    const projectId = await createProject("TASK-211 split_story");
+    const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", projectId);
+    const unstarted = states!.find((s) => s.category === "unstarted")!.id;
+    const storyId = await seedStory(projectId, { state_id: unstarted });
+
+    const { error } = await callWhileRevoked("story_number", projectId, deMemberOwner(projectId), () =>
+      owner.rpc("split_story", {
+        p_story_id: storyId,
+        p_children: [{ title: "child", description: "", story_type: "chore", points: null, task_ids: [] }],
+      }),
+    );
+
+    expect(error?.code).toBe("42501");
+
+    const { data: kids } = await admin.from("stories").select("id").eq("parent_id", storyId);
+    expect(kids ?? []).toHaveLength(0);
+  }, TIMEOUT);
+
+  it("move_story_to_project rejects a caller de-membered from the TARGET while blocked", async () => {
+    const source = await createProject("TASK-211 move source");
+    const target = await createProject("TASK-211 move target");
+    const storyId = await seedStory(source);
+
+    const { error } = await callWhileRevoked("story_number", target, deMemberOwner(target), () =>
+      owner.rpc("move_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
+    );
+
+    expect(error?.code).toBe("42501");
+
+    const { data } = await admin.from("stories").select("project_id").eq("id", storyId).single();
+    expect(data!.project_id).toBe(source); // never moved
+  }, TIMEOUT);
+
+  it("copy_story_to_project rejects a caller de-membered from the SOURCE while blocked", async () => {
+    // The source side matters too: the caller can lose read/write access to the
+    // project the story came from while parked on the target's lock.
+    const source = await createProject("TASK-211 copy source");
+    const target = await createProject("TASK-211 copy target");
+    const storyId = await seedStory(source);
+
+    const { error } = await callWhileRevoked("story_number", target, deMemberOwner(source), () =>
+      owner.rpc("copy_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
+    );
+
+    expect(error?.code).toBe("42501");
+
+    const { count } = await admin
+      .from("stories")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", target);
+    expect(count ?? 0).toBe(0); // nothing copied in
+  }, TIMEOUT);
+
+  it("insert_board_item rejects a caller de-membered while blocked on the positions lock", async () => {
+    // Shares positions:<project> with move_story_board, so leaving quick-add
+    // open while the drag path is closed would be an odd half-fix.
+    const projectId = await createProject("TASK-211 insert_board_item");
+
+    const { error } = await callWhileRevoked("positions", projectId, deMemberOwner(projectId), () =>
+      owner.rpc("insert_board_item", {
+        p_project_id: projectId,
+        p_kind: "divider",
+        p_payload: { label: "note", kind: "note" },
+        p_anchor: {},
+      }),
+    );
+
+    expect(error?.code).toBe("42501");
+  }, TIMEOUT);
+
+  it("create_project_state rejects a caller de-membered while blocked on the states lock", async () => {
+    const projectId = await createProject("TASK-211 create_project_state");
+
+    const { error } = await callWhileRevoked("project_states_positions", projectId, deMemberOwner(projectId), () =>
+      owner.rpc("create_project_state", { p_project_id: projectId, p_name: "Nope", p_category: "unstarted" }),
+    );
+
+    expect(error?.code).toBe("42501");
+
+    const { data } = await admin.from("project_states").select("id").eq("project_id", projectId).eq("name", "Nope");
+    expect(data ?? []).toHaveLength(0);
+  }, TIMEOUT);
+
+  it("reorder_project_state rejects a caller de-membered while blocked on the states lock", async () => {
+    const projectId = await createProject("TASK-211 reorder_project_state");
+    const { data: states } = await admin
+      .from("project_states")
+      .select("id")
+      .eq("project_id", projectId)
+      .order("position");
+
+    const { error } = await callWhileRevoked("project_states_positions", projectId, deMemberOwner(projectId), () =>
+      owner.rpc("reorder_project_state", {
+        p_project_id: projectId,
+        p_state_id: states![states!.length - 1].id,
+        p_direction: "up",
+      }),
+    );
+
+    expect(error?.code).toBe("42501");
+  }, TIMEOUT);
+
+  // ── invite_member: no lock, but not waitless either (AC #4) ───────────────
+
+  it("invite_member still takes no advisory lock", async () => {
+    // Recorded as a test rather than a comment so a change that adds a lock here
+    // has to confront the decision: holding membership:<project> from another
+    // session would block this call indefinitely if it took the lock.
+    const projectId = await createProject("TASK-211 invite_member no lock");
+    const holder = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    try {
+      await holder.query(LOCK_SQL("pg_advisory_lock", "membership"), [projectId]);
+      const { error } = await owner.rpc("invite_member", {
+        p_project_id: projectId,
+        p_user_id: otherId,
+        p_role: "member",
+      });
+      expect(error).toBeNull();
+    } finally {
+      await holder.query(LOCK_SQL("pg_advisory_unlock", "membership"), [projectId]);
+      await holder.end();
+    }
+  }, TIMEOUT);
+
+  it("invite_member rejects a caller demoted while its insert waited on a concurrent removal", async () => {
+    // The insert is not waitless: `on conflict do nothing` blocks on a tuple an
+    // in-flight remove_member is deleting. The re-check therefore sits AFTER the
+    // insert, and raising there rolls it back.
+    const projectId = await createProject("TASK-211 invite_member insert wait");
+    await admin.from("project_members").insert({ project_id: projectId, user_id: otherId, role: "member" });
+
+    const blocker = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await blocker.connect();
+    try {
+      // Hold a delete of the exact tuple the invite will conflict on.
+      await blocker.query("begin");
+      await blocker.query("delete from public.project_members where project_id = $1 and user_id = $2", [
+        projectId,
+        otherId,
+      ]);
+
+      const pending = Promise.resolve(
+        owner.rpc("invite_member", { p_project_id: projectId, p_user_id: otherId, p_role: "member" }),
+      );
+      // Wait for the invite's insert to actually block on that tuple. Detected
+      // by lock type rather than by matching query text, which PostgREST
+      // rewrites: a speculative insert waiting on an uncommitted delete shows up
+      // as an ungranted transactionid/tuple lock.
+      const deadline = Date.now() + 15_000;
+      let waiting = 0;
+      while (Date.now() < deadline && waiting === 0) {
+        // Scoped to a waiter blocked on THIS connection's own transaction. An
+        // unscoped count would match any blocked write in the cluster, let the
+        // demote land before the RPC even reached its pre-lock check, and pass
+        // the 42501 assertion for the wrong reason.
+        const { rows } = await blocker.query(
+          `select count(*)::int as n
+             from pg_locks w
+            where not w.granted
+              and w.locktype in ('transactionid', 'tuple')
+              and w.pid <> pg_backend_pid()
+              and exists (
+                select 1 from pg_locks h
+                 where h.granted and h.pid = pg_backend_pid()
+                   and h.locktype = 'transactionid'
+                   and h.transactionid = w.transactionid
+              )`,
+        );
+        waiting = rows[0].n;
+        if (waiting === 0) await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(waiting).toBeGreaterThan(0);
+
+      await admin
+        .from("project_members")
+        .update({ role: "viewer" })
+        .eq("project_id", projectId)
+        .eq("user_id", ownerId);
+      await blocker.query("commit");
+
+      const { error } = await pending;
+      expect(error?.code).toBe("42501");
+
+      const { data } = await admin
+        .from("project_members")
+        .select("user_id")
+        .eq("project_id", projectId)
+        .eq("user_id", otherId);
+      expect(data ?? []).toHaveLength(0); // the insert was rolled back
+    } finally {
+      await blocker.end();
+    }
+  }, TIMEOUT);
+});

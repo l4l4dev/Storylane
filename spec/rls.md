@@ -143,3 +143,18 @@
   the old inline dialects — they are converted as each is next touched, not in
   one sweep. A guard that is not a plain role-list check (e.g. `remove_member`'s
   self-leave allowance) stays bespoke
+- Re-check the role AFTER an advisory lock (2026-07-22, TASK-116/142; extended
+  2026-07-28, TASK-211): a SECURITY DEFINER RPC that takes
+  `pg_advisory_xact_lock` must re-assert its guard once the lock is held, before
+  it writes. The wait is unbounded, so a caller demoted or removed while parked
+  on the lock would otherwise still write, and SECURITY DEFINER means there is
+  no RLS re-evaluation on the write to fall back on. `project_role()` is STABLE
+  but each PL/pgSQL statement gets its own READ COMMITTED snapshot, so the
+  second call does see a revocation that committed during the wait. Hoist the
+  role list into a variable and read it from both checks — if they can drift
+  apart, the window reopens silently. The same applies to any other precondition
+  read before the lock and enforced only in the RPC (`projects.archived_at`,
+  `projects.point_scale`): re-read it too, or it is just as stale as the role
+  was. A function whose write can wait without a lock (`invite_member`'s
+  `on conflict` insert blocking on a row a concurrent `remove_member` is
+  deleting) puts its re-check after that write, where raising rolls it back.
