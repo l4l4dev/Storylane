@@ -7,12 +7,13 @@ status: To Do
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-25 03:14'
-updated_date: '2026-07-26 09:03'
+updated_date: '2026-07-28 00:50'
 labels:
   - db
 milestone: m-6
 dependencies:
   - TASK-189
+priority: medium
 ordinal: 1790
 ---
 

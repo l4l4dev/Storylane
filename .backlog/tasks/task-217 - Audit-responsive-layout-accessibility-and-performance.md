@@ -5,9 +5,11 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-27 06:18'
+updated_date: '2026-07-28 00:50'
 labels: []
 milestone: m-2
 dependencies: []
+priority: low
 type: task
 ordinal: 5200
 ---

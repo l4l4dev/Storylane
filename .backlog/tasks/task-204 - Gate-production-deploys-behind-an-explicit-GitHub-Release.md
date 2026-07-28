@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-26 16:01'
-updated_date: '2026-07-26 16:14'
+updated_date: '2026-07-28 00:50'
 labels:
   - ci
 milestone: m-1
@@ -14,6 +14,7 @@ dependencies:
 references:
   - .github/workflows/deploy.yml
   - DEPLOY.md
+priority: medium
 ordinal: 1250
 ---
 

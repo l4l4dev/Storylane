@@ -3,16 +3,17 @@ id: TASK-218
 title: 'Burndown chart replays current points, not a historical snapshot'
 status: To Do
 assignee:
-  - '@claude-sonnet-5'
+  - '@claude-opus-5'
 created_date: '2026-07-27 15:43'
-updated_date: '2026-07-27 15:59'
+updated_date: '2026-07-28 00:50'
 labels:
   - tooling
-milestone: m-0
+milestone: m-2
 dependencies: []
 references:
   - apps/web/lib/utils/burndown.ts
   - supabase/migrations/20260727140000_generalize_iteration_change_log.sql
+priority: high
 ordinal: 2150
 ---
 
