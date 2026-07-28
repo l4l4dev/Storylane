@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 06:02'
+updated_date: '2026-07-28 06:22'
 labels: []
 milestone: m-2
 dependencies: []
@@ -120,6 +120,16 @@ Deliberate behaviour change this brings: clearing an estimate outright on a star
 P2 NOT CONFIRMED — a false positive. Codex predicted that deleting a project with an in_progress story would fail because iterations_project_id_fkey was created before stories_project_id_fkey, so the iteration cascade would fire first and its ON DELETE SET NULL would hit the iteration gate. The constraint order is exactly as Codex described (oids 18719 vs 18746), but the predicted failure does not occur: DELETE on the project succeeded and left zero rows. Corroborating evidence from before the finding arrived — a full suite run from a clean reset left 0 leftover test projects, and every one of those suites deletes its project in afterAll while holding in_progress stories. Reported as not-a-defect rather than 'fixed'. Note this is distinct from the confirmed /code-review finding that deleting an ITERATION directly does fail, which is documented in the migration header.
 
 Re-verified after the fix: story-board-invariants 14 tests (was 9), full web suite 1142/1142 from a clean reset (was 1139), and the three probe cases whose setup relied on the now-impossible shape re-checked with a chore instead — rollover, title edit and same-category move all still fine.
+
+Codex second review round on PR #8: 2 more findings, both P2, both reproduced and both fixed.
+
+2a CONFIRMED, FIXED (new migration 20260728061500) — after an owner narrows point_scale (fibonacci 5 -> linear 0..3), every subsequent detail autosave echoes the stored 5 back, update_story reads it as off-scale and maps it to NULL. Reproduced: a title-only autosave failed outright, so no unrelated field (title, assignee, parent, labels) could be saved until the story was re-estimated. Worth noting what this actually exposes: BEFORE this task that same path silently wiped the estimate off a started feature, i.e. it was itself a producer of the shape TASK-208 exists to prevent — the trigger turned silent corruption into a hard block. Fixed at the root: an off-scale value identical to what is already stored is not an edit, so update_story keeps it. A genuinely new off-scale value still normalises to NULL, mirroring the client's parsePoints, and a test pins both halves.
+
+2b CONFIRMED, FIXED — the trigger was BEFORE INSERT OR UPDATE with no column list, so it dispatched on every stories write and ran two project_states lookups before discovering nothing it governs had changed. In move_story_board's anchored moves, which shift a bounded range of rows, that was up to 2N extra SPI queries per reorder. Two changes: the trigger is now scoped to UPDATE OF state_id, iteration_id, points, story_type so a position-only write does not dispatch it at all, and the function compares those four raw columns before doing any lookup (UPDATE OF fires on a column appearing in SET, not on its value changing, so the in-function check is still needed). Pinned by a test repositioning an unestimated backlog feature.
+
+Both fixes went into the existing migration file rather than a fifth migration, since these three have never been deployed — they exist only on this PR branch.
+
+Re-verified from a clean supabase db reset: full web suite 1145/1145 (was 1142), MCP 29/29, lint clean, generated types unchanged.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

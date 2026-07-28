@@ -235,6 +235,62 @@ describe.skipIf(!RUN)("story board invariants (integration)", () => {
     expect(data!.iteration_id).not.toBeNull();
   });
 
+  it("keeps an unchanged off-scale estimate so autosave survives a point-scale change (Codex P2)", async () => {
+    // Narrowing point_scale leaves existing estimates off-scale. update_story
+    // used to map those to NULL, so an ordinary title autosave silently wiped a
+    // started feature's estimate — and once the trigger caught that shape, the
+    // whole save was rejected and no unrelated field could be edited at all.
+    const id = await seed({ points: 5, state_id: inProgressId, iteration_id: iterationId });
+    await admin.from("projects").update({ point_scale: "linear" }).eq("id", projectId);
+
+    const { error } = await member.rpc("update_story", {
+      p_story_id: id,
+      p_title: "renamed after scale change",
+      p_description: null,
+      p_story_type: "feature",
+      p_points: 5, // what the form echoes back: off-scale now, but unchanged
+      p_parent_id: null,
+      p_assignee_id: null,
+    });
+    expect(error).toBeNull();
+
+    const { data } = await admin.from("stories").select("title, points").eq("id", id).single();
+    expect(data).toMatchObject({ title: "renamed after scale change", points: 5 });
+
+    await admin.from("projects").update({ point_scale: "fibonacci" }).eq("id", projectId);
+  });
+
+  it("still normalizes a genuinely new off-scale estimate to null", async () => {
+    // Only the unchanged case is exempt; a new off-scale value must still parse
+    // to null the way the client's parsePoints does.
+    const id = await seed({ points: null, state_id: unstartedId, iteration_id: iterationId });
+
+    const { error } = await member.rpc("update_story", {
+      p_story_id: id,
+      p_title: "off-scale attempt",
+      p_description: null,
+      p_story_type: "feature",
+      p_points: 99,
+      p_parent_id: null,
+      p_assignee_id: null,
+    });
+    expect(error).toBeNull();
+
+    const { data } = await admin.from("stories").select("points").eq("id", id).single();
+    expect(data!.points).toBeNull();
+  });
+
+  it("does not fire on a position-only write (Codex P2: no category lookups per shifted row)", async () => {
+    // move_story_board's anchored moves shift a bounded range of rows. The
+    // trigger is scoped to the four columns the gates read, so a position write
+    // must not dispatch it — an unestimated feature parked in the backlog can be
+    // repositioned freely.
+    const id = await seed({ points: null, state_id: unstartedId, iteration_id: null });
+
+    const { error } = await admin.from("stories").update({ position: 9999 }).eq("id", id);
+    expect(error).toBeNull();
+  });
+
   it("exempts personal projects from both gates (doc-15)", async () => {
     const { data: personal } = await admin
       .from("projects")

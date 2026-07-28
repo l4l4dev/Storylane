@@ -97,6 +97,19 @@ begin
     return new;
   end if;
 
+  -- Raw column comparison BEFORE any lookup: a write listing one of the watched
+  -- columns without actually changing it must not pay for two project_states
+  -- queries. move_story_board's anchored moves shift a bounded range of rows, so
+  -- resolving categories first turned one reorder into 2N extra SPI queries.
+  if tg_op = 'UPDATE' then
+    if old.state_id is not distinct from new.state_id
+       and old.iteration_id is not distinct from new.iteration_id
+       and old.points is not distinct from new.points
+       and old.story_type is not distinct from new.story_type then
+      return new;
+    end if;
+  end if;
+
   select category into v_new_category from public.project_states where id = new.state_id;
 
   if tg_op = 'UPDATE' then
@@ -116,8 +129,7 @@ begin
     v_estimation_input_moved := true;
   end if;
 
-  -- Nothing this trigger governs has moved (a rename, a reorder, or a move
-  -- between two states sharing one category).
+  -- Two states sharing one category is not a move this trigger governs.
   if not v_estimation_input_moved and not v_iteration_moved then
     return new;
   end if;
@@ -149,10 +161,15 @@ $$;
 -- trigger function here carries (20260715000005).
 revoke execute on function public.enforce_story_board_invariants() from public, anon, authenticated;
 
+-- Scoped to the four columns the gates read, so a position-only write from
+-- move_story_board's reorder path does not dispatch this trigger at all. UPDATE
+-- OF fires on a column being listed in SET, not on its value changing, so the
+-- function still re-checks the values itself before doing any lookup.
+--
 -- No ordering prefix in the name: this trigger reads NEW and raises, so its
 -- position among the other BEFORE triggers cannot change its result.
 create trigger stories_enforce_board_invariants
-  before insert or update on public.stories
+  before insert or update of state_id, iteration_id, points, story_type on public.stories
   for each row execute function public.enforce_story_board_invariants();
 
 -- ============================================================
