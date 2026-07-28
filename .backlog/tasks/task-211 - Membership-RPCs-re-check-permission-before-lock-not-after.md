@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 10:59'
+updated_date: '2026-07-28 11:23'
 labels: []
 milestone: m-2
 dependencies: []
@@ -33,6 +33,7 @@ change_member_role, remove_member, and invite_member (20260717000001_guard_helpe
 - [x] #6 Preconditions other than the role that are read before the lock and enforced only inside the RPC (projects.archived_at, projects.point_scale) are re-read after it too
 - [x] #7 The role list is hoisted into a variable in every function so the pre- and post-lock checks cannot drift apart
 - [x] #8 Preconditions read before a lock are covered by tests that mutate them mid-wait, so removing a post-lock re-read fails the suite
+- [x] #9 Each function re-asserts its guard after its LAST WRITE (exit guard), rather than relying on an enumeration of wait points, which does not terminate
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -176,6 +177,28 @@ Also, unprompted: the spec rule I added two rounds ago said "after an advisory l
 Process note: my first attempt at the test edits used a regex substitution that mangled the file (it spliced one test's body into a helper). Restored from git and redid every edit as an exact-match replacement with asserted match counts. Also collapsed all four waiter polls onto two shared helpers (waitForWaiter for advisory, waitForRowWaiter for row locks) — there were four near-identical inline copies, and the previous round's finding was about one of them being mis-scoped.
 
 Verified: both new cases fail against variants with their guard deleted. Everything web-ci.yml runs: core tsc, core 77/77, web tsc, web lint, web build, full web suite 1172/1172 from a clean reset (was 1168), role-recheck 27/27.
+
+Codex review round 5 on PR #9: 4 findings (three P1, one P3). This round answered the question I asked — whether my enumeration of wait points was complete — with a clear NO, and the answer changed the design.
+
+MY VERIFICATION METHOD WAS BROKEN. I claimed assign_story_number was the only waiting trigger on stories, having grepped every trigger function body for 'advisory|for update'. That grep did not follow CALL CHAINS: maintain_is_container calls recompute_is_container, which does `select ... for update` on the parent row (20260724181957:110). Confirmed directly. So the claim was false, and false for a reason my method could never have caught.
+
+Codex also named two mechanisms I had never considered at all:
+ - an ordinary UPDATE waiting on a tuple lock another transaction holds (e.g. a member editing project_states through the direct UPDATE policy, without ever taking project_states_positions:)
+ - an INSERT waiting on a foreign-key row locked by a concurrent key-changing UPDATE
+
+Both are effectively unbounded: almost any statement touching a row another transaction might hold can wait. So enumerating wait points DOES NOT TERMINATE, and the whole strategy this task was built on — place a re-check after each wait — was wrong in principle, not just incomplete.
+
+DESIGN CHANGE, taken rather than papered over: guard the EXIT. Each function now re-asserts its guard after its LAST WRITE. Nothing a PL/pgSQL function writes is durable until its transaction commits, so raising after the last write rolls every earlier write back, whatever it waited on along the way. Nine functions got an exit guard; invite_member already had one, since its post-insert re-check IS its exit guard. The post-advisory-lock checks stay — they fail fast before the expensive work — but the exit guard is what makes each function sound.
+
+remove_member's exit guard re-runs its bespoke shape rather than require_project_role, and had to be written carefully: a caller who has just removed THEMSELVES is legitimately no longer a member, so the guard only rejects when auth.uid() differs from p_user_id.
+
+Proved the exit guard closes a window nothing else could, using exactly the mechanism Codex named: held the PARENT story row in a raw transaction, called move_story_board with a parent_id delta so maintain_is_container -> recompute_is_container blocked on that row, revoked membership mid-wait, committed. Result: 42501 not authorized, and the reparent rolled back. No advisory lock and no intermediate check waits on that row, so this is the exit guard alone. Pinned as a test, and verified it fails against a variant with the exit guard deleted.
+
+spec/rls.md reworked from 'Re-check the role AFTER EVERY WAIT' to 'Guard the EXIT'. The previous wording told the next person to enumerate the waits — which this round proves is impossible — so shipping it would have been actively harmful guidance. It now says explicitly not to enumerate, lists the mechanisms as examples of why, and records that TASK-211 tried the enumeration and got it wrong three times.
+
+P3: removed the remaining provenance paragraph from the migration header ('Each body below is the CURRENT definition read back from the database...'), which narrated how the patch was produced and reassured a reviewer rather than recording a constraint.
+
+Verified: full web suite 1173/1173 from a clean reset (was 1172), the five suites covering the changed functions 84/84, core tsc, core 77/77, web tsc, web lint, web build.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

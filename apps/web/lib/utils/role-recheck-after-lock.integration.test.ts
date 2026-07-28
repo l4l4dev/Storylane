@@ -510,6 +510,55 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     expect(settled.error?.code).toBe("42501");
   }, TIMEOUT);
 
+  it("move_story_board's EXIT guard catches a wait no intermediate check covers", async () => {
+    // The wait here is inside a trigger's callee: maintain_is_container calls
+    // recompute_is_container, which locks the PARENT row. No advisory lock and no
+    // check in this function waits on that row, so only the exit guard can see a
+    // revocation that lands during it. This is the case that showed enumerating
+    // wait points does not terminate.
+    const projectId = await createProject("TASK-211 exit guard via trigger callee");
+    const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", projectId);
+    const unstarted = states!.find((st) => st.category === "unstarted")!.id;
+    const parentId = await seedStory(projectId);
+    const childId = await seedStory(projectId, { state_id: unstarted });
+    // Makes parentId a container, so the reparent below fires the trigger.
+    await admin.from("stories").update({ parent_id: parentId }).eq("id", childId);
+    const moverId = await seedStory(projectId, { state_id: unstarted });
+
+    const holder = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    let settled: { error: { code?: string } | null };
+    try {
+      await holder.query("begin");
+      await holder.query("select id from public.stories where id = $1 for update", [parentId]);
+
+      const pending = Promise.resolve(
+        owner.rpc("move_story_board", {
+          p_project_id: projectId,
+          p_item: { kind: "story", id: moverId },
+          p_view: "list",
+          p_expected: { state_id: unstarted, iteration_id: null, parent_id: null },
+          p_deltas: { parent_id: parentId },
+          p_anchor: {},
+        }),
+      );
+
+      await waitForRowWaiter(holder);
+      await deMemberOwner(projectId)();
+      await holder.query("commit");
+      settled = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect(settled.error?.code).toBe("42501");
+
+    const { data } = await admin.from("stories").select("parent_id").eq("id", moverId).single();
+    expect(data!.parent_id).toBeNull(); // the reparent rolled back
+  }, TIMEOUT);
+
   it("insert_board_item rejects a caller de-membered while the story INSERT waited on story_number", async () => {
     // The story branch waits a second time inside assign_story_number's trigger,
     // after the pre-insert check. The divider branch never reaches it.

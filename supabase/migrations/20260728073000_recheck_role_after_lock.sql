@@ -32,12 +32,6 @@
 --     found". Splitting them apart would confirm that a story exists in a project
 --     the caller cannot see. The post-lock re-check keys off the project_id that
 --     read already established, which leaks nothing new.
---
--- Each body below is the CURRENT definition read back from the database, so the
--- behaviour that accumulated since each function's first migration is preserved
--- (remove_member's my_work_story_state purge, split_story's duplicate-task_id
--- rejection, the cross-project container and archive guards). Grants survive
--- CREATE OR REPLACE.
 -- ============================================================
 
 -- ── change_member_role ─────────────────────────────────────────────────────
@@ -82,6 +76,12 @@ begin
 
   update public.project_members set role = p_role
   where project_id = p_project_id and user_id = p_user_id;
+
+  -- Exit guard. Enumerating this function's waits does not terminate — an UPDATE
+  -- waits on a tuple lock, an INSERT on a foreign-key row, a trigger on whatever
+  -- it calls — so the guard goes after every write rather than after each wait.
+  -- Nothing above is durable until commit, so raising here rolls all of it back.
+  perform public.require_project_role(p_project_id, variadic v_roles);
 end;
 $function$;
 
@@ -147,6 +147,22 @@ begin
 
   delete from public.project_members
   where project_id = p_project_id and user_id = p_user_id;
+
+  -- Exit guard. Enumerating this function's waits does not terminate — an UPDATE
+  -- waits on a tuple lock, an INSERT on a foreign-key row, a trigger on whatever
+  -- it calls — so the guard goes after every write rather than after each wait.
+  -- Nothing above is durable until commit, so raising here rolls all of it back.
+  -- Re-run the bespoke shape, not require_project_role: a caller who just
+  -- removed THEMSELVES is legitimately no longer a member.
+  v_caller_role := public.project_role(p_project_id);
+  if auth.uid() is distinct from p_user_id then
+    if v_caller_role is null then
+      raise exception 'Not a member of this project';
+    end if;
+    if v_caller_role <> 'owner' then
+      raise exception 'Only project owners can remove other members';
+    end if;
+  end if;
 end;
 $function$;
 
@@ -390,6 +406,12 @@ begin
   end if;
 
   perform public._splice_backlog(p_project_id, v_kind, v_id, v_before_kind, v_before_id);
+
+  -- Exit guard. Enumerating this function's waits does not terminate — an UPDATE
+  -- waits on a tuple lock, an INSERT on a foreign-key row, a trigger on whatever
+  -- it calls — so the guard goes after every write rather than after each wait.
+  -- Nothing above is durable until commit, so raising here rolls all of it back.
+  perform public.require_project_role(p_project_id, variadic v_roles);
 end;
 $function$;
 
@@ -542,6 +564,13 @@ begin
     v_source.project_id, p_story_id, auth.uid(), 'story.split',
     jsonb_build_object('child_ids', to_jsonb(v_child_ids), 'child_count', array_length(v_child_ids, 1))
   );
+
+
+  -- Exit guard. Enumerating this function's waits does not terminate — an UPDATE
+  -- waits on a tuple lock, an INSERT on a foreign-key row, a trigger on whatever
+  -- it calls — so the guard goes after every write rather than after each wait.
+  -- Nothing above is durable until commit, so raising here rolls all of it back.
+  perform public.require_project_role(v_source.project_id, variadic v_roles);
 
   return jsonb_build_object('parent_id', p_story_id, 'child_ids', to_jsonb(v_child_ids));
 end;
@@ -702,6 +731,14 @@ begin
     jsonb_build_object('source_project_id', v_story.project_id, 'title', v_story.title)
   );
 
+
+  -- Exit guard. Enumerating this function's waits does not terminate — an UPDATE
+  -- waits on a tuple lock, an INSERT on a foreign-key row, a trigger on whatever
+  -- it calls — so the guard goes after every write rather than after each wait.
+  -- Nothing above is durable until commit, so raising here rolls all of it back.
+  perform public.require_project_role(v_story.project_id, variadic v_roles);
+  perform public.require_project_role(p_target_project_id, variadic v_roles);
+
   return jsonb_build_object('story_id', v_new_id, 'project_id', p_target_project_id, 'number', v_new_number);
 end;
 $function$;
@@ -851,6 +888,14 @@ begin
     jsonb_build_object('source_project_id', v_story.project_id, 'source_story_id', p_story_id, 'title', v_story.title)
   );
 
+
+  -- Exit guard. Enumerating this function's waits does not terminate — an UPDATE
+  -- waits on a tuple lock, an INSERT on a foreign-key row, a trigger on whatever
+  -- it calls — so the guard goes after every write rather than after each wait.
+  -- Nothing above is durable until commit, so raising here rolls all of it back.
+  perform public.require_project_role(v_story.project_id, variadic v_roles);
+  perform public.require_project_role(p_target_project_id, variadic v_roles);
+
   return jsonb_build_object('story_id', v_new_id, 'project_id', p_target_project_id, 'number', v_new_number);
 end;
 $function$;
@@ -929,6 +974,13 @@ begin
 
   perform public._splice_backlog(p_project_id, p_kind, v_new_id, v_before_kind, v_before_id);
 
+
+  -- Exit guard. Enumerating this function's waits does not terminate — an UPDATE
+  -- waits on a tuple lock, an INSERT on a foreign-key row, a trigger on whatever
+  -- it calls — so the guard goes after every write rather than after each wait.
+  -- Nothing above is durable until commit, so raising here rolls all of it back.
+  perform public.require_project_role(p_project_id, variadic v_roles);
+
   return v_new_id;
 end;
 $function$;
@@ -988,6 +1040,13 @@ begin
   insert into public.project_states (project_id, name, action_label, category, position)
     values (p_project_id, trim(p_name), p_action_label, p_category, v_position)
     returning id into v_id;
+
+
+  -- Exit guard. Enumerating this function's waits does not terminate — an UPDATE
+  -- waits on a tuple lock, an INSERT on a foreign-key row, a trigger on whatever
+  -- it calls — so the guard goes after every write rather than after each wait.
+  -- Nothing above is durable until commit, so raising here rolls all of it back.
+  perform public.require_project_role(p_project_id, variadic v_roles);
 
   return v_id;
 end;
@@ -1054,6 +1113,12 @@ begin
 
   update public.project_states set position = v_neighbor_position where id = p_state_id;
   update public.project_states set position = v_position where id = v_neighbor_id;
+
+  -- Exit guard. Enumerating this function's waits does not terminate — an UPDATE
+  -- waits on a tuple lock, an INSERT on a foreign-key row, a trigger on whatever
+  -- it calls — so the guard goes after every write rather than after each wait.
+  -- Nothing above is durable until commit, so raising here rolls all of it back.
+  perform public.require_project_role(p_project_id, variadic v_roles);
 end;
 $function$;
 
