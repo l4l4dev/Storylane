@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 11:23'
+updated_date: '2026-07-28 11:33'
 labels: []
 milestone: m-2
 dependencies: []
@@ -199,6 +199,12 @@ spec/rls.md reworked from 'Re-check the role AFTER EVERY WAIT' to 'Guard the EXI
 P3: removed the remaining provenance paragraph from the migration header ('Each body below is the CURRENT definition read back from the database...'), which narrated how the patch was produced and reassured a reviewer rather than recording a constraint.
 
 Verified: full web suite 1173/1173 from a clean reset (was 1172), the five suites covering the changed functions 84/84, core tsc, core 77/77, web tsc, web lint, web build.
+
+While reacting to the Codex comment threads across PRs 5-9 (42 findings), found one that had NEVER been addressed: 'Keep the Slack gate tests from passing on rejected writes', posted on PR #8 at 07:21Z — after that PR merged — so it landed on main unhandled.
+
+It was valid. TASK-208's estimation gate rejects both transitions those two notification-gate cases perform (an unestimated feature into Started with no iteration, and another into Accepted), and both discarded the returned error. Their 'no outbox rows' assertions were passing because nothing was written at all, not because the gate held. Fixed here rather than in a separate PR since this branch is already about test non-vacuousness and needed a CI run anyway: both cases now seed points (and an iteration for the in_progress target) and assert the transition itself succeeded. Verified by stripping the is_active check out of notify_slack_event — previously green, now both fail.
+
+Reaction tally on the Codex threads, recorded because it is the evidence for how much weight to give this reviewer: 40 thumbs-up, 2 thumbs-down. The two down-votes are the only findings across five PRs that did not reproduce, and both were checked empirically rather than argued: PR #7's 'add a deterministic tiebreaker before paging stories' (stories_position_seq plus promote_position_compaction make position unique per project — inserted across two iterations and read back 192-197 with no duplicates) and PR #8's 'preserve project deletion when iterations cascade' (the constraint order is as described, but DELETE succeeds leaving zero rows, and a full suite run from a clean reset leaves no orphaned test projects while every one of those suites deletes a project holding in_progress stories).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
