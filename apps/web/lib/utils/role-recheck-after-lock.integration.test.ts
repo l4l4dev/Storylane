@@ -242,6 +242,51 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     expect(data!.role).toBe("member"); // unchanged
   }, TIMEOUT);
 
+  it("change_member_role still allows a legal self-demotion (the exit guard must not block it)", async () => {
+    // An owner demoting themselves is legal while another owner remains —
+    // assert_not_last_owner is what enforces that. Re-asserting 'owner' at the
+    // exit would reject the operation for having succeeded, so the guard skips
+    // the caller's own row.
+    const projectId = await createProject("TASK-211 legal self-demotion");
+    await admin.from("project_members").insert({ project_id: projectId, user_id: otherId, role: "owner" });
+
+    const { error } = await owner.rpc("change_member_role", {
+      p_project_id: projectId,
+      p_user_id: ownerId,
+      p_role: "member",
+    });
+    expect(error).toBeNull();
+
+    const { data } = await admin
+      .from("project_members")
+      .select("role")
+      .eq("project_id", projectId)
+      .eq("user_id", ownerId)
+      .single();
+    expect(data!.role).toBe("member");
+  }, TIMEOUT);
+
+  it("change_member_role still refuses a self-demotion that would strip the last owner", async () => {
+    // The exemption above must not reach past assert_not_last_owner: with no
+    // second owner, the demotion is still rejected.
+    const projectId = await createProject("TASK-211 last-owner self-demotion");
+
+    const { error } = await owner.rpc("change_member_role", {
+      p_project_id: projectId,
+      p_user_id: ownerId,
+      p_role: "member",
+    });
+    expect(error).not.toBeNull();
+
+    const { data } = await admin
+      .from("project_members")
+      .select("role")
+      .eq("project_id", projectId)
+      .eq("user_id", ownerId)
+      .single();
+    expect(data!.role).toBe("owner"); // untouched
+  }, TIMEOUT);
+
   it("remove_member rejects a caller demoted while blocked on the membership lock", async () => {
     const projectId = await createProject("TASK-211 remove_member");
     await admin.from("project_members").insert({ project_id: projectId, user_id: otherId, role: "member" });

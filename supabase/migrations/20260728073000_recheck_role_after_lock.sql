@@ -81,7 +81,16 @@ begin
   -- waits on a tuple lock, an INSERT on a foreign-key row, a trigger on whatever
   -- it calls — so the guard goes after every write rather than after each wait.
   -- Nothing above is durable until commit, so raising here rolls all of it back.
-  perform public.require_project_role(p_project_id, variadic v_roles);
+  --
+  -- Skipped when the caller changed their OWN row: an owner demoting themselves
+  -- is legal while another owner remains (assert_not_last_owner enforces that
+  -- above), and re-asserting 'owner' here would reject the operation for having
+  -- succeeded. Authorisation was already established at entry and re-established
+  -- under the lock, and the only row this branch can have touched is the
+  -- caller's own, so there is nothing left for the guard to protect.
+  if auth.uid() is distinct from p_user_id then
+    perform public.require_project_role(p_project_id, variadic v_roles);
+  end if;
 end;
 $function$;
 
@@ -745,6 +754,20 @@ begin
   perform public.require_project_role(v_story.project_id, variadic v_roles);
   perform public.require_project_role(p_target_project_id, variadic v_roles);
 
+  -- archived_at rides along for the same reason the role does: it is enforced
+  -- nowhere but in this function, and the writes above can wait, so the value
+  -- checked before them is as stale as the role was. point_scale is NOT re-read
+  -- here — it only feeds the clamp that has already run, so a later value could
+  -- not change what was stored.
+  select archived_at into v_source_archived from public.projects where id = v_story.project_id;
+  if v_source_archived is not null then
+    raise exception 'Source project is archived';
+  end if;
+  select archived_at into v_target_archived from public.projects where id = p_target_project_id;
+  if v_target_archived is not null then
+    raise exception 'Target project is archived';
+  end if;
+
   return jsonb_build_object('story_id', v_new_id, 'project_id', p_target_project_id, 'number', v_new_number);
 end;
 $function$;
@@ -901,6 +924,20 @@ begin
   -- Nothing above is durable until commit, so raising here rolls all of it back.
   perform public.require_project_role(v_story.project_id, variadic v_roles);
   perform public.require_project_role(p_target_project_id, variadic v_roles);
+
+  -- archived_at rides along for the same reason the role does: it is enforced
+  -- nowhere but in this function, and the writes above can wait, so the value
+  -- checked before them is as stale as the role was. point_scale is NOT re-read
+  -- here — it only feeds the clamp that has already run, so a later value could
+  -- not change what was stored.
+  select archived_at into v_source_archived from public.projects where id = v_story.project_id;
+  if v_source_archived is not null then
+    raise exception 'Source project is archived';
+  end if;
+  select archived_at into v_target_archived from public.projects where id = p_target_project_id;
+  if v_target_archived is not null then
+    raise exception 'Target project is archived';
+  end if;
 
   return jsonb_build_object('story_id', v_new_id, 'project_id', p_target_project_id, 'number', v_new_number);
 end;

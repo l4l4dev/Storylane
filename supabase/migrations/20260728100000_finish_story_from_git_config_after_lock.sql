@@ -156,6 +156,25 @@ begin
         iteration_id = case when v_needs_iteration then v_current_id else iteration_id end
     where id = v_story.id;
 
+  -- Exit guard for the configuration (spec/rls.md "Guard the EXIT of a SECURITY
+  -- DEFINER RPC"): the UPDATE above fires log_story_activity, whose INSERT can
+  -- wait on a tuple or foreign-key lock, so an integration disabled or repointed
+  -- during that wait would otherwise still have moved the story.
+  --
+  -- RAISE, not a return: a return would commit the UPDATE this is meant to undo.
+  -- Unlike the unestimated case above, raising here cannot wedge the webhook —
+  -- that one is permanent, so redelivery could never succeed, whereas this is a
+  -- transient race and the retry's own opening read reports ignored/not_configured
+  -- and terminates.
+  if not exists (
+    select 1 from public.integrations i
+    where i.project_id = p_project_id and i.provider = p_provider and i.is_active
+      and (i.config->>'merge_target_state_id')::uuid = v_target_state_id
+  ) then
+    raise exception 'Integration configuration changed while the transition was in flight'
+      using errcode = 'P0001';
+  end if;
+
   if v_needs_iteration then
     return jsonb_build_array(jsonb_build_object(
       'kind', 'finished', 'number', p_story_number, 'iteration_number', v_current_number

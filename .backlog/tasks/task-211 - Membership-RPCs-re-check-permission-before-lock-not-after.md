@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 11:55'
+updated_date: '2026-07-28 12:07'
 labels: []
 milestone: m-2
 dependencies: []
@@ -237,6 +237,24 @@ P2c 'Revalidate webhook configuration after the write' — real, same shape for 
 None of the three is a new mechanism; all three are the exit-guard rationale applied to preconditions rather than to the role. Left for the next pass so this commit stays reviewable.
 
 Verified: full web suite 1175/1175 from a clean reset (was 1173), role-recheck 30/30, the four iteration/role suites 42/42, core tsc, core 77/77, web tsc, web lint, web build.
+
+Codex round 6's three P2s now implemented as well, so all five findings from that round are closed.
+
+P2a, the self-demotion regression — reproduced first: an owner demoting themselves with a second owner present got 42501 and the role stayed 'owner'. My exit guard re-asserted 'owner' after a write that legitimately removes the caller's ownership, so it rejected the operation for having succeeded. assert_not_last_owner is what actually enforces the last-owner rule, and it already permits this case.
+
+Fixed by skipping the exit guard when auth.uid() = p_user_id. That is safe rather than a loophole: authorisation was established at entry and re-established under the lock, and on that branch the only row the function can have touched is the caller's own. Two tests pin both sides — the legal self-demotion now succeeds, and a self-demotion that would strip the LAST owner is still refused (so the exemption does not reach past assert_not_last_owner). Verified against the pre-fix unconditional guard: the first fails there, the second passes in both, which is the shape it should have.
+
+P2b, move/copy — archived_at is now re-asserted at the exit as well as after the advisory lock, since the writes in between can wait. point_scale is deliberately NOT re-read there: it only feeds the clamp that has already run, so a later value could not change what was stored. Recorded in the comment so the asymmetry does not read as an oversight.
+
+P2c, finish_story_from_git — the config is re-validated after the UPDATE, because that UPDATE fires log_story_activity whose INSERT can wait on tuple or FK locks.
+
+I got this one wrong on the first attempt and caught it before running anything: I wrote a `return jsonb ... 'ignored'`, and a return COMMITS the update it was supposed to undo. The comment I had written ('raising here rolls the UPDATE back') did not match the code. Switched to `raise`.
+
+Worth recording why raising is safe here when it was not for the unestimated case two rounds ago: that condition is permanent, so a redelivery could never succeed and the webhook would wedge. This one is a transient race — the retry's own opening read finds the integration disabled and returns ignored/not_configured, so it terminates. The distinction is in the migration comment.
+
+Verified: full web suite 1177/1177 from a clean reset (was 1175), the three affected suites 55/55, core tsc, core 77/77, web tsc, web lint, web build.
+
+Round 6 is fully addressed. Not requesting a seventh review — the owner asked for work up to the point of requesting one.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
