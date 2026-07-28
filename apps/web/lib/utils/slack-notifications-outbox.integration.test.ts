@@ -148,13 +148,33 @@ describe.skipIf(!RUN)("slack notifications outbox (integration)", () => {
     const unstarted = plainStates!.find((s) => s.name === "Unstarted")!.id;
     const started = plainStates!.find((s) => s.name === "Started")!.id;
 
+    // The transition has to actually happen, or "no outbox rows" passes because
+    // nothing was written at all: stories_enforce_board_invariants (TASK-208)
+    // rejects an unestimated feature leaving unstarted, and an in_progress state
+    // with no iteration. Rolling the iteration first supplies the latter.
+    await owner.rpc("finalize_iteration", { p_project_id: plainProjectId, p_manual: false });
+    const { data: iter } = await admin
+      .from("iterations")
+      .select("id")
+      .eq("project_id", plainProjectId)
+      .order("number", { ascending: false })
+      .limit(1)
+      .single();
     const { data: story } = await admin
       .from("stories")
-      .insert({ project_id: plainProjectId, title: "no notify", story_type: "feature", state_id: unstarted, created_by: ownerId })
+      .insert({
+        project_id: plainProjectId,
+        title: "no notify",
+        story_type: "feature",
+        points: 1,
+        state_id: unstarted,
+        iteration_id: iter!.id,
+        created_by: ownerId,
+      })
       .select("id")
       .single();
-    await admin.from("stories").update({ state_id: started }).eq("id", story!.id);
-    await owner.rpc("finalize_iteration", { p_project_id: plainProjectId, p_manual: false });
+    const { error: moveError } = await admin.from("stories").update({ state_id: started }).eq("id", story!.id);
+    expect(moveError).toBeNull();
 
     expect(await outboxRows(plainProjectId)).toHaveLength(0);
   });
@@ -162,13 +182,17 @@ describe.skipIf(!RUN)("slack notifications outbox (integration)", () => {
   it("stops recording once the integration is deactivated", async () => {
     await owner.from("integrations").update({ is_active: false }).eq("project_id", slackProjectId).eq("provider", "slack");
 
+    // points: same reason as above — an unestimated feature cannot reach a done
+    // state, so without it the update is rejected and the count is unchanged for
+    // the wrong reason.
     const { data: story } = await admin
       .from("stories")
-      .insert({ project_id: slackProjectId, title: "after deactivation", story_type: "feature", state_id: states.Unstarted, created_by: ownerId })
+      .insert({ project_id: slackProjectId, title: "after deactivation", story_type: "feature", points: 1, state_id: states.Unstarted, created_by: ownerId })
       .select("id")
       .single();
     const before = (await outboxRows(slackProjectId, "story_state_changed")).length;
-    await admin.from("stories").update({ state_id: states.Accepted }).eq("id", story!.id);
+    const { error: moveError } = await admin.from("stories").update({ state_id: states.Accepted }).eq("id", story!.id);
+    expect(moveError).toBeNull();
     expect((await outboxRows(slackProjectId, "story_state_changed")).length).toBe(before);
   });
 });
