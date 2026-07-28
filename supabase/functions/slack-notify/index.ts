@@ -94,6 +94,41 @@ function timingSafeEqual(a: string, b: string): boolean {
 
 type NotifyBody = { type?: string; ref_id?: string };
 
+// Slack Incoming Webhooks all live on this one host (spec/integrations.md
+// "Slack Notifications"; the Settings field placeholder says the same).
+const SLACK_WEBHOOK_HOST = "hooks.slack.com";
+
+/**
+ * The stored `integrations.config.webhook_url` is attacker-controllable by any
+ * project owner and is fetched from here with the service role, so it is
+ * validated at delivery rather than at write time — PostgREST accepts a raw
+ * upsert, so a UI-side check alone secures nothing.
+ *
+ * Pinning the host (rather than resolving the name and rejecting private IP
+ * ranges) is what makes internal/link-local/metadata targets unreachable: an
+ * IP-range check has to resolve, then hand the name to `fetch`, which resolves
+ * again — a DNS rebind between the two passes the check and still connects
+ * inside the network. A fixed host has no such window.
+ */
+export function safeWebhookUrl(raw: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") {
+    return null;
+  }
+  // `https://hooks.slack.com@169.254.169.254/…` parses with hostname
+  // 169.254.169.254 — reject userinfo outright rather than rely on readers
+  // spotting that the host check below already covers it.
+  if (url.username || url.password) {
+    return null;
+  }
+  return url.hostname === SLACK_WEBHOOK_HOST ? url : null;
+}
+
 // Builds the Slack text for one event, or null when the referenced row is
 // gone (a delete racing the async delivery) — a missing row is a no-op, not
 // an error, so a stale queue entry never wedges the worker with a retry loop.
@@ -218,10 +253,23 @@ export async function handleSlackNotifyRequest(req: Request, client?: NotifyClie
     return json(200, { skipped: "no active slack integration" });
   }
 
-  const response = await fetch(webhookUrl, {
+  const target = safeWebhookUrl(webhookUrl);
+  if (!target) {
+    // A rejected URL is a stored-config problem, not a transient one, so it
+    // takes the same 200 no-op path as an inactive integration — a 5xx would
+    // make pg_net retry it forever. The URL itself stays out of the log: it
+    // is the untrusted value, and this log lands in a shared project.
+    console.error(`Slack notification skipped: webhook_url for project ${built.projectId} is not an allowed Slack webhook`);
+    return json(200, { skipped: "invalid webhook url" });
+  }
+
+  const response = await fetch(target, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text: built.text }),
+    // A 3xx from Slack must not become a second request to a host that never
+    // passed the check above.
+    redirect: "manual",
   });
   if (!response.ok) {
     // Log and 200 anyway: the originating DB write is already committed, and

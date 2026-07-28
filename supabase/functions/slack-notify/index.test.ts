@@ -7,6 +7,7 @@ import {
   iterationLabel,
   iterationSkippedMessage,
   iterationStartedMessage,
+  safeWebhookUrl,
   storyStateChangeMessage,
   type NotifyClient,
 } from "./index.ts";
@@ -65,16 +66,19 @@ function fakeSupabase(tables: Record<string, FakeResult>) {
 // Supabase client is injected). A wrapper object rather than a bare `let` so
 // TS doesn't narrow the capture to `null` across the awaited handler call
 // (it can't see the fetch closure assign it).
-const posted: { last: { url: string; text: string } | null } = { last: null };
+const posted: { last: { url: string; text: string; redirect?: RequestRedirect } | null } = { last: null };
 globalThis.fetch = (url: string | URL | Request, init?: RequestInit) => {
-  posted.last = { url: String(url), text: JSON.parse(String(init?.body)).text };
+  posted.last = { url: String(url), text: JSON.parse(String(init?.body)).text, redirect: init?.redirect };
   return Promise.resolve(new Response("ok", { status: 200 }));
 };
 // Read through a function so TS returns the declared union rather than
 // narrowing `posted.last` to the `null` it was reset to (it can't see the
 // fetch closure reassign it across the awaited handler call).
+function lastPost(): { url: string; text: string; redirect?: RequestRedirect } | null {
+  return posted.last;
+}
 function lastText(): string | null {
-  return posted.last ? posted.last.text : null;
+  return lastPost()?.text ?? null;
 }
 
 function req(body: unknown, secret: string = SECRET): Request {
@@ -86,9 +90,24 @@ function req(body: unknown, secret: string = SECRET): Request {
 }
 
 const ACTIVE_SLACK: FakeResult = {
-  data: { config: { webhook_url: "https://hooks.slack.test/xxx" }, is_active: true },
+  data: { config: { webhook_url: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX" }, is_active: true },
   error: null,
 };
+
+// Delivery is gated on safeWebhookUrl, so the fixture has to be a URL that
+// really passes it — a placeholder host would make every test below assert
+// the rejection path instead of the message it names.
+function slackIntegration(webhookUrl: string): FakeResult {
+  return { data: { config: { webhook_url: webhookUrl }, is_active: true }, error: null };
+}
+
+function storyStateChangeClient(integration: FakeResult): NotifyClient {
+  return fakeSupabase({
+    activity_logs: { data: { project_id: "p1", story_id: "s1", payload: { to: "Started" } }, error: null },
+    stories: { data: { number: 12, title: "Add login" }, error: null },
+    integrations: integration,
+  });
+}
 
 Deno.test("rejects a non-POST", async () => {
   const res = await handleSlackNotifyRequest(
@@ -187,4 +206,77 @@ Deno.test("a deleted row (no message) is a 200 no-op, never a retryable error", 
   const res = await handleSlackNotifyRequest(req({ type: "iteration_finalized", ref_id: "gone" }), client);
   assertEquals(res.status, 200);
   assertEquals(posted.last, null);
+});
+
+// ── Webhook URL validation (TASK-210) ─────────────────────────────────────
+// The stored URL is owner-controlled and fetched with the service role, so
+// each of these would otherwise be a request this function makes on an
+// attacker's behalf.
+
+Deno.test("safeWebhookUrl accepts a real Slack webhook", () => {
+  const url = safeWebhookUrl("https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX");
+  assertEquals(url?.href, "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX");
+});
+
+Deno.test("safeWebhookUrl rejects non-HTTPS schemes", () => {
+  assertEquals(safeWebhookUrl("http://hooks.slack.com/services/T0/B0/X"), null);
+  assertEquals(safeWebhookUrl("file:///etc/passwd"), null);
+  assertEquals(safeWebhookUrl("gopher://hooks.slack.com/"), null);
+  assertEquals(safeWebhookUrl("not a url"), null);
+});
+
+Deno.test("safeWebhookUrl rejects userinfo smuggling the real host", () => {
+  // Parses with hostname 169.254.169.254 — the cloud metadata endpoint.
+  assertEquals(safeWebhookUrl("https://hooks.slack.com@169.254.169.254/latest/meta-data/"), null);
+  assertEquals(safeWebhookUrl("https://user:pass@hooks.slack.com/services/T0/B0/X"), null);
+});
+
+Deno.test("safeWebhookUrl rejects private, loopback and link-local targets", () => {
+  for (
+    const host of [
+      "127.0.0.1",
+      "localhost",
+      "10.0.0.1",
+      "172.16.0.1",
+      "192.168.1.1",
+      "169.254.169.254",
+      "[::1]",
+      "[fd00::1]",
+      "metadata.google.internal",
+      "kong",
+    ]
+  ) {
+    assertEquals(safeWebhookUrl(`https://${host}/services/T0/B0/X`), null, `expected ${host} to be rejected`);
+  }
+});
+
+Deno.test("safeWebhookUrl rejects lookalike hosts", () => {
+  assertEquals(safeWebhookUrl("https://hooks.slack.com.evil.test/x"), null);
+  assertEquals(safeWebhookUrl("https://evil.test/hooks.slack.com"), null);
+  assertEquals(safeWebhookUrl("https://hooks-slack.com/x"), null);
+  assertEquals(safeWebhookUrl("https://hooks.slack.test/xxx"), null);
+});
+
+Deno.test("a rejected webhook_url is a 200 no-op and sends nothing", async () => {
+  posted.last = null;
+  const res = await handleSlackNotifyRequest(
+    req({ type: "story_state_changed", ref_id: "log1" }),
+    storyStateChangeClient(slackIntegration("http://169.254.169.254/latest/meta-data/")),
+  );
+  // 200, not 5xx: a bad stored config is permanent, and pg_net would retry a
+  // 5xx forever.
+  assertEquals(res.status, 200);
+  assertEquals(posted.last, null);
+});
+
+Deno.test("a valid hooks.slack.com webhook still delivers, without following redirects", async () => {
+  posted.last = null;
+  const res = await handleSlackNotifyRequest(
+    req({ type: "story_state_changed", ref_id: "log1" }),
+    storyStateChangeClient(slackIntegration("https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX")),
+  );
+  assertEquals(res.status, 200);
+  assertEquals(lastPost()?.url, "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX");
+  assertEquals(lastText(), '#12 "Add login" is now *Started*');
+  assertEquals(lastPost()?.redirect, "manual");
 });

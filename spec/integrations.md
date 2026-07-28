@@ -42,6 +42,13 @@
 
 ### Slack Notifications
 - Register an Incoming Webhook URL in project settings（`integrations.config.webhook_url`）
+  - **The URL must be on `hooks.slack.com`, over HTTPS, with no userinfo.** `slack-notify`
+    re-checks this at delivery and drops anything else as a no-op (TASK-210). Deliberate
+    restriction: the stored value is owner-controlled and fetched with the service role, and
+    pinning the host is what makes internal/link-local/metadata targets unreachable —
+    resolving the name and rejecting private IP ranges instead would still leave a
+    DNS-rebinding window between the check and `fetch`'s own lookup. Slack-compatible
+    third-party endpoints (Mattermost and the like) are not supported as a consequence.
 - **送信経路（TASK-24, 2026-07-21・decision-1 §3 に基づき 2026-07-07 の「server action から直接 POST」決定を差し戻し）**:
   DB トリガーが通知を発火する。story の状態遷移は `log_story_activity` が書く
   `activity_logs`（`action='story.state_changed'`）の AFTER INSERT トリガー、iteration の
