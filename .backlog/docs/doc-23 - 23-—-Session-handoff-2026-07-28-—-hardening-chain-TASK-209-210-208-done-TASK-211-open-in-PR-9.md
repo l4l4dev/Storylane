@@ -12,8 +12,9 @@ updated_date: '2026-07-28 11:38'
 ## State
 
 `main` is at `b84c8eb`, everything through TASK-208 merged and deployed-ready.
-**PR #9 (TASK-211) is open, CI green, and deliberately NOT merged** — the owner
-paused it for time reasons, not because anything is wrong with it.
+**PR #9 (TASK-211) is open and MUST NOT be merged as it stands** — a sixth Codex
+review landed after the owner paused the work and raised two P1s that are both
+real (verified). The pause was for time reasons; the block is now technical.
 
 | Task | State |
 |---|---|
@@ -27,16 +28,40 @@ paused it for time reasons, not because anything is wrong with it.
 Branch `fix/recheck-role-after-lock`, 7 commits, PR
 https://github.com/l4l4dev/Storylane/pull/9
 
-Nothing is outstanding. CI is green on `3c6e56a`, the full web suite is
-1173/1173 from a clean reset, `rls-security-reviewer` passed twice, and all 17
-Codex findings on this PR are addressed. The only reason it is unmerged is that
-the owner stepped away.
+CI is green on `3c6e56a`, the full web suite is 1173/1173 from a clean reset, and
+`rls-security-reviewer` passed twice. But **five findings from Codex round 6 are
+open**, two of them P1, so the branch is not finishable without addressing them.
 
-**To finish it:** confirm CI is still green, merge with a merge commit (matching
-PRs 5-8), delete the branch, then set TASK-211 to Done and commit that.
+### Open, verified — fix before merging
 
-A sixth `@codex review` was requested and never arrived — Codex is out of quota.
-That review is optional; the five that did run are recorded in the task notes.
+1. **P1, `move_story_board`'s exit guard is bypassed on two of three exit paths.**
+   The `v_zone = 'single'` branches `return;` at lines 373 and 405, before the
+   exit guard at 414. Verified by reading the applied function. An anchored
+   current-iteration or Icebox move that blocks while shifting a tuple, with the
+   caller removed during that wait, still commits. The guard as it stands is
+   decorative for those paths — route all three returns through it.
+
+2. **P1, three lock-taking RPCs were never swept:** `finalize_iteration`,
+   `override_iteration_length`, `reshape_current_iteration`. They re-check only
+   after `iteration_finalize:` (from `20260722000006` / `20260722000010`) and then
+   perform several more writes, so the exit-guard rationale applies to them
+   identically. They live in migrations already on `main`, so this needs a new
+   migration.
+
+3. P2, `remove_member`'s exit guard may reject a legitimate self-demotion while
+   another owner remains — needs checking against the last-owner rule.
+4. P2, move/copy should revalidate `archived_at` and `point_scale` at exit too,
+   not only after the advisory lock.
+5. P2, `finish_story_from_git` should revalidate its webhook config after the
+   write, on the same reasoning.
+
+### Then
+
+Merge with a merge commit (matching PRs 5-8), delete the branch, set TASK-211
+Done, commit that.
+
+An earlier version of this doc claimed the sixth review never arrived and that
+nothing was outstanding. Both were wrong — it arrived ~20 minutes later.
 
 ## What TASK-211 turned out to be
 
@@ -88,7 +113,10 @@ record point changes, so it is architecture-sensitive.
 
 ## First prompt for the next session
 
-> PR #9 (TASK-211) が CI green で未マージのまま残っています。状態を確認して、
-> 問題なければ merge commit でマージ、ブランチ削除、TASK-211 を Done にして
-> ください。詳細は backlog doc-23 にあります。そのあと実装順どおり TASK-212
-> に進んでください(@claude-opus-5 想定)。
+> PR #9 (TASK-211) が未マージで残っています。Codex round 6 の指摘5件(P1 が
+> 2件)が未対応なので、マージ前にそれを片付けてください。内容と検証結果は
+> backlog doc-23 と TASK-211 のノートにあります。特に P1 の1件目は、私が追加
+> した出口ガードが早期 return 2本を迂回しているという指摘で、実際にそうなって
+> いることを確認済みです。片付いたら merge commit でマージ、ブランチ削除、
+> TASK-211 を Done にして、実装順どおり TASK-212 へ進んでください
+> (@claude-opus-5 想定)。

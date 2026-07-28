@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 11:33'
+updated_date: '2026-07-28 11:42'
 labels: []
 milestone: m-2
 dependencies: []
@@ -205,6 +205,18 @@ While reacting to the Codex comment threads across PRs 5-9 (42 findings), found 
 It was valid. TASK-208's estimation gate rejects both transitions those two notification-gate cases perform (an unestimated feature into Started with no iteration, and another into Accepted), and both discarded the returned error. Their 'no outbox rows' assertions were passing because nothing was written at all, not because the gate held. Fixed here rather than in a separate PR since this branch is already about test non-vacuousness and needed a CI run anyway: both cases now seed points (and an iteration for the in_progress target) and assert the transition itself succeeded. Verified by stripping the is_active check out of notify_slack_event — previously green, now both fail.
 
 Reaction tally on the Codex threads, recorded because it is the evidence for how much weight to give this reviewer: 40 thumbs-up, 2 thumbs-down. The two down-votes are the only findings across five PRs that did not reproduce, and both were checked empirically rather than argued: PR #7's 'add a deterministic tiebreaker before paging stories' (stories_position_seq plus promote_position_compaction make position unique per project — inserted across two iterations and read back 192-197 with no duplicates) and PR #8's 'preserve project deletion when iterations cascade' (the constraint order is as described, but DELETE succeeds leaving zero rows, and a full suite run from a clean reset leaves no orphaned test projects while every one of those suites deletes a project holding in_progress stories).
+
+Codex round 6 arrived ~20 minutes after the owner paused the work, so the doc-23 handoff and my report to the owner were both wrong on two counts: the review did arrive, and the PR is NOT finishable as it stands. Corrected in doc-23.
+
+Five findings, two P1, both verified rather than taken on trust:
+
+P1a — the exit guard I added to move_story_board covers ONE of its THREE exit paths. The v_zone = 'single' branches return at lines 373 and 405; the guard sits at 414. Confirmed by reading the applied function. For an anchored current-iteration or Icebox move that blocks while shifting a tuple, the guard is decorative — the caller can be removed mid-wait and the writes still commit. This is my own defect from the previous commit, not a pre-existing one.
+
+P1b — finalize_iteration, override_iteration_length and reshape_current_iteration were never swept. They re-check only after iteration_finalize: (20260722000006 / 20260722000010) and then perform several further writes, so the exit-guard rationale applies to them identically. Their migrations are already on main, so closing this needs a new migration and widens the sweep from ten functions to thirteen.
+
+Three P2s to assess when the work resumes: remove_member's exit guard possibly rejecting a legitimate self-demotion while another owner remains; move/copy needing archived_at and point_scale revalidated at exit as well as after the lock; finish_story_from_git needing its webhook config revalidated after the write.
+
+Not implementing these now — the owner paused the work. Recorded so the next session starts from the corrected picture rather than the claim that nothing was outstanding.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
