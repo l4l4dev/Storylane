@@ -47,14 +47,14 @@ async function main() {
     "list_stories",
     {
       title: "List stories",
-      description: "Compact story rows (id, number, title, type, state, category, points, epic, labels), optionally filtered by state_id (null for the Icebox), iteration, epic, label, text, or zone (backlog/icebox/current). Read valid state_id values from board_summary.",
+      description: "Compact story rows (id, number, title, type, state, category, points, parent_id, is_container, labels), optionally filtered by state_id (null for the Icebox), iteration, parent (container), label, text, or zone (backlog/icebox/current). Read valid state_id values from board_summary.",
       inputSchema: {
         project_id: z.string().uuid(),
         filter: z
           .object({
             state_id: z.string().uuid().nullable().optional(),
             iteration_id: z.string().uuid().optional(),
-            epic_id: z.string().uuid().optional(),
+            parent_id: z.string().uuid().optional(),
             label: z.string().optional(),
             text: z.string().optional(),
             zone: z.enum(["backlog", "icebox", "current"]).optional(),
@@ -86,7 +86,7 @@ async function main() {
         description: z.string().optional(),
         story_type: STORY_TYPE.optional(),
         points: z.number().int().min(0).optional(),
-        epic_id: z.string().uuid().optional(),
+        parent_id: z.string().uuid().optional(),
         labels: z.array(z.string()).optional(),
         destination: z.enum(["backlog_bottom", "icebox", "current_iteration"]).optional(),
       },
@@ -98,13 +98,13 @@ async function main() {
     "update_story",
     {
       title: "Update story",
-      description: "Partial update of the passed fields only (title, description, points, epic_id, assignee_id, labels).",
+      description: "Partial update of the passed fields only (title, description, points, parent_id, assignee_id, labels).",
       inputSchema: {
         story_id: z.string().uuid(),
         title: z.string().min(1).optional(),
         description: z.string().nullable().optional(),
         points: z.number().int().min(0).nullable().optional(),
-        epic_id: z.string().uuid().nullable().optional(),
+        parent_id: z.string().uuid().nullable().optional(),
         assignee_id: z.string().uuid().nullable().optional(),
         labels: z.array(z.string()).optional(),
       },

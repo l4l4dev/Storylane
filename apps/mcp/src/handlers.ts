@@ -298,7 +298,8 @@ type StoryRow = {
   state_id: string | null;
   state: { name: string; category: StateCategory; action_label: string | null } | null;
   points: number | null;
-  epic: { name: string } | null;
+  parent_id: string | null;
+  is_container: boolean;
   story_labels: { labels: { name: string } | null }[] | null;
 };
 
@@ -312,7 +313,8 @@ function compactStory(row: StoryRow) {
     state: row.state?.name ?? "Icebox",
     category: row.state?.category ?? null,
     points: row.points,
-    epic: row.epic?.name ?? null,
+    parent_id: row.parent_id,
+    is_container: row.is_container,
     labels: (row.story_labels ?? []).map((sl) => sl.labels?.name).filter(Boolean),
   };
 }
@@ -320,7 +322,7 @@ function compactStory(row: StoryRow) {
 export type StoryFilter = {
   state_id?: string | null;
   iteration_id?: string;
-  epic_id?: string;
+  parent_id?: string;
   label?: string;
   text?: string;
   zone?: "backlog" | "icebox" | "current";
@@ -328,7 +330,7 @@ export type StoryFilter = {
 
 const STATE_SELECT = "state_id, state:project_states(name, category, action_label)";
 
-const STORY_SELECT = `id, number, title, story_type, ${STATE_SELECT}, points, epic:epics(name), story_labels(labels(name))`;
+const STORY_SELECT = `id, number, title, story_type, ${STATE_SELECT}, points, parent_id, is_container, story_labels(labels(name))`;
 
 export async function listStories(supabase: Db, args: { project_id: string; filter?: StoryFilter }) {
   const { project_id, filter } = args;
@@ -338,7 +340,7 @@ export async function listStories(supabase: Db, args: { project_id: string; filt
   if (filter?.state_id !== undefined) {
     query = filter.state_id === null ? query.is("state_id", null) : query.eq("state_id", filter.state_id);
   }
-  if (filter?.epic_id) query = query.eq("epic_id", filter.epic_id);
+  if (filter?.parent_id) query = query.eq("parent_id", filter.parent_id);
   if (filter?.iteration_id) query = query.eq("iteration_id", filter.iteration_id);
   if (filter?.text) query = query.ilike("title", `%${filter.text}%`);
 
@@ -375,8 +377,8 @@ export async function getStory(supabase: Db, args: { story_id: string }) {
   const { data: raw, error } = await supabase
     .from("stories")
     .select(
-      `id, number, title, description, story_type, ${STATE_SELECT}, points, iteration_id, assignee_id, created_by, ` +
-        "epic:epics(id, name), story_labels(labels(id, name, color)), " +
+      `id, number, title, description, story_type, ${STATE_SELECT}, points, parent_id, is_container, iteration_id, assignee_id, created_by, ` +
+        "story_labels(labels(id, name, color)), " +
         "tasks(id, title, is_done, position), comments(id, body, author_id, created_at)",
     )
     .eq("id", story_id)
@@ -392,9 +394,10 @@ export async function getStory(supabase: Db, args: { story_id: string }) {
     state_id: string | null;
     state: { name: string; category: StateCategory; action_label: string | null } | null;
     points: number | null;
+    parent_id: string | null;
+    is_container: boolean;
     iteration_id: string | null;
     assignee_id: string | null;
-    epic: unknown;
     story_labels: { labels: unknown }[] | null;
     tasks: { id: string; title: string; is_done: boolean; position: number }[] | null;
     comments: { id: string; body: string; author_id: string; created_at: string }[] | null;
@@ -417,9 +420,10 @@ export async function getStory(supabase: Db, args: { story_id: string }) {
     state: data.state?.name ?? "Icebox",
     category: data.state?.category ?? null,
     points: data.points,
+    parent_id: data.parent_id,
+    is_container: data.is_container,
     iteration_id: data.iteration_id,
     assignee_id: data.assignee_id,
-    epic: data.epic ?? null,
     labels: (data.story_labels ?? []).map((sl: { labels: unknown }) => sl.labels).filter(Boolean),
     tasks: (data.tasks ?? []).sort((a: { position: number }, b: { position: number }) => a.position - b.position),
     comments: (data.comments ?? []).sort(
@@ -437,7 +441,7 @@ export type CreateStoryArgs = {
   description?: string;
   story_type?: string;
   points?: number;
-  epic_id?: string;
+  parent_id?: string;
   labels?: string[];
   destination?: "backlog_bottom" | "icebox" | "current_iteration";
 };
@@ -485,7 +489,7 @@ export async function createStory(supabase: Db, args: CreateStoryArgs) {
     p_description: args.description ?? null,
     p_story_type: args.story_type ?? null,
     p_points: args.points ?? null,
-    p_epic_id: args.epic_id ?? null,
+    p_parent_id: args.parent_id ?? null,
     p_label_ids: labelIds,
   });
   if (error) {
@@ -502,7 +506,7 @@ export type UpdateStoryArgs = {
   title?: string;
   description?: string | null;
   points?: number | null;
-  epic_id?: string | null;
+  parent_id?: string | null;
   assignee_id?: string | null;
   labels?: string[];
 };
@@ -518,7 +522,7 @@ export async function updateStory(supabase: Db, args: UpdateStoryArgs) {
   if (args.title !== undefined) patch.title = args.title;
   if (args.description !== undefined) patch.description = args.description;
   if (args.points !== undefined) patch.points = args.points;
-  if (args.epic_id !== undefined) patch.epic_id = args.epic_id;
+  if (args.parent_id !== undefined) patch.parent_id = args.parent_id;
   if (args.assignee_id !== undefined) patch.assignee_id = args.assignee_id;
 
   if (Object.keys(patch).length > 0) {
@@ -584,7 +588,7 @@ export async function setStoryState(supabase: Db, args: { story_id: string; stat
 export async function moveStory(supabase: Db, args: { story_id: string; destination: "current_iteration" | "backlog" | "icebox" }) {
   const { data: story, error: readErr } = await supabase
     .from("stories")
-    .select("project_id, state_id, iteration_id")
+    .select("project_id, state_id, iteration_id, parent_id")
     .eq("id", args.story_id)
     .maybeSingle();
   if (readErr) throw new Error(`Could not read story: ${readErr.message}`);
@@ -622,6 +626,7 @@ export async function moveStory(supabase: Db, args: { story_id: string; destinat
     p_expected: {
       state_id: story.state_id,
       iteration_id: story.iteration_id,
+      parent_id: story.parent_id,
     },
     p_deltas: { state_id: targetStateId, iteration: targetIteration },
     p_anchor: {},

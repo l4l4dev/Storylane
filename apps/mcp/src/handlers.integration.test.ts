@@ -364,7 +364,7 @@ describe.skipIf(!RUN)("Storylane MCP tools (integration, member-role bot)", () =
       p_description: null,
       p_story_type: "feature",
       p_points: null,
-      p_epic_id: null,
+      p_parent_id: null,
       p_label_ids: [BOGUS_UUID],
     });
     // 42501 = the story_labels INSERT policy's WITH CHECK, confirming this is
