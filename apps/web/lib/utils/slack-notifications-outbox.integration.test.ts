@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/slack-notifications-outbox.integration.test.ts
 const RUN = process.env.SUPABASE_INTEGRATION === "1";
 
-type StateName = "Unstarted" | "Started" | "Accepted";
+type StateName = "Unstarted" | "Started" | "Accepted" | "Rejected";
 
 describe.skipIf(!RUN)("slack notifications outbox (integration)", () => {
   let admin: SupabaseClient;
@@ -89,14 +89,18 @@ describe.skipIf(!RUN)("slack notifications outbox (integration)", () => {
   it("records a story_state_changed row from a DIRECT state_id write (no web action)", async () => {
     const { data: story } = await admin
       .from("stories")
-      .insert({ project_id: slackProjectId, title: "notify me", story_type: "feature", state_id: states.Unstarted, created_by: ownerId })
+      // points: any state change out of unstarted needs an estimate on a feature
+      // (stories_enforce_board_invariants, TASK-208).
+      .insert({ project_id: slackProjectId, title: "notify me", story_type: "feature", points: 1, state_id: states.Unstarted, created_by: ownerId })
       .select("id")
       .single();
 
     // Direct table UPDATE — the path an iOS/MCP/other client takes, never the
     // Web server action. log_story_activity fires -> activity_logs row ->
-    // the slack-notify trigger.
-    const { error } = await admin.from("stories").update({ state_id: states.Started }).eq("id", story!.id);
+    // the slack-notify trigger. Rejected rather than Started only because this
+    // project has no iteration yet and an in_progress state now requires one;
+    // the trigger under test keys off the state change, not which state.
+    const { error } = await admin.from("stories").update({ state_id: states.Rejected }).eq("id", story!.id);
     expect(error).toBeNull();
 
     const { data: log } = await admin

@@ -242,7 +242,9 @@ describe.skipIf(!RUN)("move_story_board RPC (integration)", () => {
     // A scheduled story at a non-dense position 5 — if the buggy 'single' path
     // renumbers the current iteration, this becomes 0.
     const { data: iterStory } = await asService.from("stories")
-      .insert({ project_id: projectId, title: "scheduled", state_id: states.Started, iteration_id: iter!.id, position: 5, created_by: ownerId }).select("id").single();
+      // points: an unestimated feature cannot enter a non-unstarted state at all
+      // now (stories_enforce_board_invariants, TASK-208).
+      .insert({ project_id: projectId, title: "scheduled", state_id: states.Started, points: 2, iteration_id: iter!.id, position: 5, created_by: ownerId }).select("id").single();
     // Backlog: story sb0(pos0), divider d(pos1), story sb1(pos2).
     const { data: sb0 } = await asService.from("stories")
       .insert({ project_id: projectId, title: "sb0", state_id: states.Unstarted, iteration_id: null, position: 0, created_by: ownerId }).select("id").single();

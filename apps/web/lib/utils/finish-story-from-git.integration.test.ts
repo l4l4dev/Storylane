@@ -124,8 +124,12 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
     }
   });
 
-  it("finishes a started story and assigns the current iteration when it had none (AC #1/#2)", async () => {
-    const number = await seedStory(states.Started, null);
+  it("finishes a backlog story and assigns the current iteration when it had none (AC #1/#2)", async () => {
+    // Seeded Unstarted rather than Started: stories_enforce_board_invariants
+    // (TASK-208) makes "in_progress with no iteration" unreachable on every
+    // write path, so the Backlog is now the only way a story reaches this RPC
+    // without one.
+    const number = await seedStory(states.Unstarted, null);
 
     const { data, error } = await asService.rpc("finish_story_from_git", {
       p_project_id: projectId,
@@ -196,6 +200,30 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
 
     const row = await storyRow(number);
     expect(row?.state_id).toBe(states.Accepted); // untouched
+  });
+
+  it("ignores (never raises for) an unestimated feature, so the webhook can't wedge on redelivery", async () => {
+    // /code-review high finding on TASK-208: the merged write hits
+    // stories_enforce_board_invariants, and git-webhook turns any RPC error
+    // into a 500 — so a merged PR for a never-estimated story would be
+    // redelivered forever and take every later story number in the same push
+    // with it. It has to decline like every other precondition here.
+    const { data: story } = await asUser
+      .from("stories")
+      .insert({ project_id: projectId, title: "never estimated", story_type: "feature", points: null, state_id: states.Unstarted })
+      .select("number")
+      .single();
+
+    const { data, error } = await asService.rpc("finish_story_from_git", {
+      p_project_id: projectId,
+      p_story_number: story!.number,
+      p_provider: "github",
+    });
+    expect(error).toBeNull();
+    expect((data as FinishEvent[])[0]).toMatchObject({ kind: "ignored", reason: "unestimated" });
+
+    const row = await storyRow(story!.number);
+    expect(row?.state_id).toBe(states.Unstarted); // untouched
   });
 
   it("returns not_transitionable for a story number that doesn't exist", async () => {
@@ -288,7 +316,7 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
 
     const { data: freshStory } = await asUser
       .from("stories")
-      .insert({ project_id: freshProject!.id, title: "No iteration yet", state_id: freshByName.Started, points: 2, iteration_id: null })
+      .insert({ project_id: freshProject!.id, title: "No iteration yet", state_id: freshByName.Unstarted, points: 2, iteration_id: null })
       .select("number")
       .single();
 
@@ -306,7 +334,7 @@ describe.skipIf(!RUN)("finish_story_from_git RPC (integration)", () => {
       .eq("project_id", freshProject!.id)
       .eq("number", freshStory!.number)
       .single();
-    expect(row?.state_id).toBe(freshByName.Started); // untouched — not stranded in Finished with no iteration
+    expect(row?.state_id).toBe(freshByName.Unstarted); // untouched — not stranded in Finished with no iteration
     expect(row?.iteration_id).toBeNull();
 
     await asService.from("projects").delete().eq("id", freshProject!.id);

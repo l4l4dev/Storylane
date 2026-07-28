@@ -110,6 +110,9 @@ describe.skipIf(!RUN)("iteration-wide position backfill (TASK-135 integration)",
         project_id: projectId,
         iteration_id: iteration,
         state_id: stateByName[stateName],
+        // points: an unestimated feature cannot be seeded into a started state
+        // any more (stories_enforce_board_invariants, TASK-208).
+        points: 1,
         position,
         title,
         created_by: ownerId,

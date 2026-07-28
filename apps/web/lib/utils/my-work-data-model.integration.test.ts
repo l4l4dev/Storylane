@@ -22,6 +22,7 @@ describe.skipIf(!RUN)("My Work data model (TASK-130/176 integration)", () => {
   let projectId: string;
   let startedStateId: string; // in_progress
   let doneStateId: string; // done category (classic "Accepted")
+  let iterationId: string;
 
   beforeAll(async () => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -62,6 +63,16 @@ describe.skipIf(!RUN)("My Work data model (TASK-130/176 integration)", () => {
       .eq("project_id", projectId);
     startedStateId = stateRows!.find((s) => s.name === "Started")!.id;
     doneStateId = stateRows!.find((s) => s.category === "done")!.id;
+
+    // A story in an in_progress state must carry an iteration
+    // (stories_enforce_board_invariants, TASK-208), and this project is created
+    // without one because no board visit ever triggers the lazy rollover here.
+    const { data: iteration } = await admin
+      .from("iterations")
+      .insert({ project_id: projectId, number: 1, start_date: "2026-07-01", end_date: "2026-07-14" })
+      .select("id")
+      .single();
+    iterationId = iteration!.id;
   });
 
   afterAll(async () => {
@@ -71,7 +82,21 @@ describe.skipIf(!RUN)("My Work data model (TASK-130/176 integration)", () => {
   async function createStory(stateId: string | null, assigneeId: string | null): Promise<string> {
     const { data, error } = await admin
       .from("stories")
-      .insert({ project_id: projectId, title: "t", state_id: stateId, assignee_id: assigneeId, created_by: ownerId })
+      // points: these stories are seeded straight into started/done states, which
+      // stories_enforce_board_invariants (TASK-208) refuses for an unestimated
+      // feature on every write path, service role included.
+      .insert({
+        project_id: projectId,
+        title: "t",
+        state_id: stateId,
+        // points + iteration: stories_enforce_board_invariants (TASK-208)
+        // refuses an unestimated feature outside unstarted, and an in_progress
+        // story with no iteration, on every write path — service role included.
+        points: 1,
+        iteration_id: stateId === null ? null : iterationId,
+        assignee_id: assigneeId,
+        created_by: ownerId,
+      })
       .select("id")
       .single();
     if (error || !data) throw new Error(`Failed to seed story: ${error?.message}`);
