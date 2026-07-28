@@ -3,33 +3,28 @@
 -- DB instead of only inside set_story_state.
 --
 -- stories UPDATE RLS (20260719000002) lets any project member write any column,
--- so a direct PostgREST `.update()` reached a done-category state on an
--- unestimated feature and left an in_progress story with no iteration. Both were
--- reproduced against a live DB before this migration; the first also stamped
--- completed_at via maintain_story_completed_at, making the row count toward
--- velocity. decision-1 principle 2: invariants live in the DB, so the rules move
--- to a trigger every write path inherits rather than gaining a third copy per
--- caller.
+-- so a direct PostgREST `.update()` can reach any state on any story. Enforcing
+-- the rules only in set_story_state left two shapes reachable: an unestimated
+-- feature in a done category — which maintain_story_completed_at then stamps
+-- completed_at on, making it count toward velocity — and an in_progress story
+-- with no iteration, invisible on the board. decision-1 principle 2 puts
+-- invariants in the DB, so they live here rather than in a copy per caller.
 --
--- The two gates key off DIFFERENT changes, which is what keeps rollover working:
+-- The two gates key off DIFFERENT changes, which is what lets both hold at once:
 --
 --   * The estimation gate fires when any of ITS OWN INPUTS move — the category,
---     points, or story_type. Gating on the category alone let the forbidden end
---     state be reached in two writes, with the second write disguised as
---     something else: estimate then clear the estimate, or set a done chore's
---     type to 'feature'. Both left an unestimated feature resting in a finished
---     state with completed_at still stamped, which is the velocity-counting
---     shape this migration exists to prevent.
+--     points, or story_type. All three are needed: keying off the category alone
+--     leaves the forbidden shape reachable in two writes, the second disguised as
+--     something unrelated (clearing an estimate, or retyping a done chore as a
+--     feature).
 --
---     Crucially it does NOT fire on a write that changes none of those, which is
---     what keeps finalize_iteration's rollover working: that UPDATE touches only
---     iteration_id, so a pre-existing row at "in_progress with points NULL"
---     (reachable before this migration) still rolls over instead of failing the
---     whole finalize RPC for the project.
+--     It must NOT fire when none of those move, which is what keeps
+--     finalize_iteration's rollover working: that UPDATE touches iteration_id
+--     alone, and a row already sitting at "in_progress with points NULL" has to
+--     roll over rather than fail the whole finalize RPC for the project.
 --
---     Consequence worth knowing: clearing an estimate outright on a started or
---     finished feature is now rejected, where before it silently produced that
---     shape. Changing an estimate to a different value is unaffected.
+--     Consequence: clearing an estimate outright on a started or finished feature
+--     is rejected. Changing it to a different value is not.
 --
 --   * The iteration gate fires when the category moves OR the iteration changes,
 --     so it also catches a direct update that clears iteration_id while leaving

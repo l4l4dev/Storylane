@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 06:22'
+updated_date: '2026-07-28 07:12'
 labels: []
 milestone: m-2
 dependencies: []
@@ -130,6 +130,14 @@ Codex second review round on PR #8: 2 more findings, both P2, both reproduced an
 Both fixes went into the existing migration file rather than a fifth migration, since these three have never been deployed — they exist only on this PR branch.
 
 Re-verified from a clean supabase db reset: full web suite 1145/1145 (was 1142), MCP 29/29, lint clean, generated types unchanged.
+
+Codex third review round (requested explicitly via @codex review, since Codex only re-reviews on PR open / ready-for-review / an @codex review comment, not on push): 1 finding, P3, and a fair one — the migration headers violated this repo's own Code Comment Policy. They carried a 'Codex review on PR #8' attribution and narrated the before/after of the change ('Before stories_enforce_board_invariants that silently wiped...', 'reproduced against a live DB before this migration', 'It then did exactly that anyway'). CLAUDE.md reserves history narration and reviewer-directed notes for commit messages precisely because they go stale on merge.
+
+Rewrote all four headers to state the constraint in the present tense — why the rule exists and what breaks without it — and dropped the process narration. The reasoning content is preserved; only the framing changed. Verified with a diff filtered to non-comment lines that nothing but comments moved.
+
+Note on the earlier claim in these notes that the trigger 'surfaced' the finish_story_from_git window: that framing is exactly what the policy excludes from code comments, so it now lives only here and in the commit message.
+
+Infra hiccup during re-verification, not a code issue: one supabase db reset aborted with 'error running container: exit 1' after dropping the schema but before applying migrations, leaving an empty DB and 100+ integration failures. Re-running the reset fixed it. Full web suite 1145/1145 afterwards.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

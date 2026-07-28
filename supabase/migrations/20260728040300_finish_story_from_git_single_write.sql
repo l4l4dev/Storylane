@@ -2,18 +2,16 @@
 -- TASK-208: make finish_story_from_git write state_id and iteration_id in one
 -- statement.
 --
--- The function already resolves the current iteration BEFORE writing, and its
--- own comment explains why: writing the state first "would leave such a story
--- with its target state but no iteration — invisible on the board". It then did
--- exactly that anyway, in two UPDATEs. The window was invisible until
--- stories_enforce_board_invariants (20260728040100) started rejecting that row
--- shape, which is what surfaced it.
+-- The current iteration is resolved before either column is written, for the
+-- reason the body's own comment gives: a story left at its target state with no
+-- iteration is invisible on the board. Splitting the write across two UPDATEs
+-- creates exactly that row between them, which
+-- stories_enforce_board_invariants (20260728040100) rejects — so the two columns
+-- have to land together rather than this path being exempted from the invariant.
 --
--- Merging the writes closes the window instead of exempting this path from the
--- invariant. The `and iteration_id is null` guard the second UPDATE carried is
--- unnecessary now: the whole function already runs under
--- pg_advisory_xact_lock('iteration_finalize:'||project_id), and the value is
--- read and written inside that lock.
+-- No `and iteration_id is null` guard is needed on the merged write: the whole
+-- function runs under pg_advisory_xact_lock('iteration_finalize:'||project_id),
+-- and the value is read and written inside that lock.
 --
 -- Verbatim replacement of 20260719000012's finish_story_from_git except that
 -- write. Grants preserved across CREATE OR REPLACE (service-role only).

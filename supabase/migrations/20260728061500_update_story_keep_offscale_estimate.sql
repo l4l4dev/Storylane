@@ -1,19 +1,16 @@
 -- ============================================================
--- TASK-208 (Codex review on PR #8): stop update_story treating an unchanged
--- off-scale estimate as an edit.
+-- TASK-208: an unchanged off-scale estimate is not an edit.
 --
--- update_story maps any points value outside the project's scale to NULL. That
--- fires on ORDINARY autosaves after an owner narrows point_scale (fibonacci 5 ->
--- linear 0..3): the detail form echoes the stored 5 back, the RPC reads it as
--- off-scale, and nulls it. Before stories_enforce_board_invariants that silently
--- wiped the estimate off a started/done feature — precisely the shape TASK-208
--- exists to prevent — and once the trigger started catching it, the whole save
--- was rejected instead, so title/assignee/parent/label edits could not be saved
--- until the story was re-estimated.
+-- Narrowing a project's point_scale (fibonacci 5 -> linear 0..3) leaves existing
+-- estimates outside the scale. The detail form then echoes the stored value back
+-- on every autosave, so mapping any off-scale value to NULL would treat an
+-- untouched field as a deliberate clear — wiping the estimate off a started or
+-- done feature, which stories_enforce_board_invariants forbids, and taking the
+-- rest of the save (title, assignee, parent, labels) down with it.
 --
--- Fix: an off-scale value that is IDENTICAL to what is already stored is not an
--- edit, so keep it. A genuinely new off-scale value still normalises to NULL,
--- which is what mirrors the client's parsePoints.
+-- So an off-scale value IDENTICAL to what is already stored is kept. A genuinely
+-- new off-scale value still normalises to NULL, mirroring the client's
+-- parsePoints.
 --
 -- Verbatim replacement of 20260724051506's update_story except the declaration,
 -- the locked read (now also reading points), and that one branch. Grants
@@ -79,10 +76,8 @@ begin
     v_points := p_points;
   elsif p_points is not distinct from v_current_points then
     -- Off-scale but unchanged: the caller echoed back what is already stored,
-    -- which happens on every autosave after an owner narrows point_scale. Nulling
-    -- it treated an untouched field as an edit — silently wiping the estimate
-    -- before TASK-208, and rejecting the whole save (title, assignee, labels and
-    -- all) once stories_enforce_board_invariants started catching that shape.
+    -- which every autosave does once point_scale has been narrowed. Nulling it
+    -- here would clear an estimate the user never touched.
     v_points := v_current_points;
   else
     v_points := null;
