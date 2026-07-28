@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 09:25'
+updated_date: '2026-07-28 09:33'
 labels: []
 milestone: m-2
 dependencies: []
@@ -113,6 +113,10 @@ rls-security-reviewer, second pass over all ten: NO BLOCKING ISSUES, verified em
 Its one optional nit — that the pre-lock point_scale fetch became dead weight once the post-lock re-read was added — was verified independently (nothing reads those variables between the two reads) and trimmed to fetch only archived_at.
 
 Final: full web suite 1158/1158 from a clean reset, role-recheck 13/13, MCP 29/29, lint clean, generated types unchanged.
+
+CI failed on the first push with a type error I had not caught: pnpm --filter web exec tsc --noEmit, exit 2, ten occurrences in the new test file. callWhileRevoked declared its revoke parameter as () => Promise<unknown>, but supabase-js's query builder is a thenable rather than a real Promise (no catch/finally/Symbol.toStringTag), so every call site failed to typecheck. Fixed by declaring it PromiseLike<unknown>, which is what the call parameter next to it already used and what the builder actually is.
+
+My verification gap, not a flaky CI: I ran vitest and lint locally but never ran tsc, and vitest transpiles without typechecking so the tests passed against code that could not compile. Corrected by running every command web-ci.yml actually runs before pushing again — core tsc, core tests (77), web tsc, web lint, web build, and the integration suite — rather than the subset I had been checking.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

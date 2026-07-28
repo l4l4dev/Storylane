@@ -113,7 +113,9 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
   async function callWhileRevoked<T>(
     prefix: string,
     lockProjectId: string,
-    revoke: () => Promise<unknown>,
+    // PromiseLike, not Promise: supabase-js's query builder is a thenable that
+    // only dispatches from its own .then(), and is not a real Promise.
+    revoke: () => PromiseLike<unknown>,
     call: () => PromiseLike<T>,
   ): Promise<T> {
     const holder = new PgClient({
