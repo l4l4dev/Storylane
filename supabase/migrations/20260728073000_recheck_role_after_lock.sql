@@ -208,6 +208,12 @@ begin
       raise exception 'story not found' using errcode = 'P0002';
     end if;
 
+    -- A third wait: this row lock is as unbounded as the two advisory locks
+    -- above, so the role has to hold here too. Placed after the existence
+    -- branch, not before it — `perform` sets FOUND and would clobber the result
+    -- the branch reads.
+    perform public.require_project_role(p_project_id, variadic v_roles);
+
     -- parent_id joins the snapshot now that this RPC writes it: a concurrent
     -- Split or Parent-picker reparent must be caught here, exactly as a
     -- concurrent state/iteration change already is.
@@ -914,6 +920,12 @@ begin
   else
     raise exception 'invalid item kind' using errcode = 'P0001';
   end if;
+
+  -- The story INSERT above waits again: assign_story_number takes
+  -- story_number:<project> from its trigger, after the pre-insert check. Nothing
+  -- is durable until this function's transaction commits, so re-checking here
+  -- rolls the insert back if access was lost during that wait.
+  perform public.require_project_role(p_project_id, variadic v_roles);
 
   perform public._splice_backlog(p_project_id, p_kind, v_new_id, v_before_kind, v_before_id);
 

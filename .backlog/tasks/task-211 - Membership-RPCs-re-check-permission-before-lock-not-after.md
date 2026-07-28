@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 10:35'
+updated_date: '2026-07-28 10:59'
 labels: []
 milestone: m-2
 dependencies: []
@@ -158,6 +158,24 @@ FINDING 3: the fixture write `update({point_scale: 'linear'})` was uninspected, 
 Pattern worth naming, since this is the third round it has appeared in: every finding in this PR since the first has been a test that could not fail, not a defect in the migration. The migration logic has been right for several rounds; what kept being wrong was my evidence that it was right.
 
 Verified with everything web-ci.yml runs: core tsc, core 77/77, web tsc, web lint, web build, full web suite 1168/1168 from a clean reset (was 1165), role-recheck 23/23.
+
+Codex review round 4 on PR #9: 4 findings, all P2, all confirmed. Two were real code holes, not test gaps — the first time since round 1 that the migration itself was wrong.
+
+CODE HOLE 1, move_story_board: after both advisory locks it takes `select ... for update` on the story row, which blocks just as unboundedly. The re-check sat before that, so a caller removed during the row-lock wait still had the UPDATE go through. Verified against the live function (re-check at 40, `for update` at 53).
+
+While fixing it I walked straight into the trap I had just fixed in finish_story_from_git: `perform` sets FOUND, so placing the re-check between the SELECT and the `if not found` that reads it would have broken the existence branch. The re-check goes after that branch instead, with a comment saying why.
+
+CODE HOLE 2, insert_board_item: the story branch's INSERT fires assign_story_number, which takes story_number:<project> inside the trigger — a wait that happens AFTER the pre-insert role check. Nothing is durable until the function commits, so the re-check goes after the INSERT, where raising rolls it back. The existing test used the divider branch and never reached that trigger at all.
+
+TEST GAP 3: cross-project ROLE races covered move-TARGET and copy-SOURCE only, though each function re-checks both sides independently, so move-source and copy-target were removable with 23/23 green. Parameterised over {move, copy} x {source, target}, matching what the archive guards already had.
+
+TEST GAP 4: demoteOwner/deMemberOwner discarded their mutation result, and supabase-js reports failures through .error rather than throwing. A silently failed revocation would leave access intact — and the two POSITIVE self-leave cases would then pass by performing an ordinary self-removal, never touching the branch they are named for. Both helpers now assert the result and read the row back.
+
+Also, unprompted: the spec rule I added two rounds ago said "after an advisory lock", which these two holes prove is the wrong boundary. Rewritten as "after EVERY WAIT", naming row locks and trigger-taken locks explicitly, because the enumeration is the part that keeps being got wrong — by me, twice.
+
+Process note: my first attempt at the test edits used a regex substitution that mangled the file (it spliced one test's body into a helper). Restored from git and redid every edit as an exact-match replacement with asserted match counts. Also collapsed all four waiter polls onto two shared helpers (waitForWaiter for advisory, waitForRowWaiter for row locks) — there were four near-identical inline copies, and the previous round's finding was about one of them being mis-scoped.
+
+Verified: both new cases fail against variants with their guard deleted. Everything web-ci.yml runs: core tsc, core 77/77, web tsc, web lint, web build, full web suite 1172/1172 from a clean reset (was 1168), role-recheck 27/27.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

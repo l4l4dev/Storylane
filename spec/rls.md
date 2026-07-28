@@ -143,12 +143,17 @@
   the old inline dialects — they are converted as each is next touched, not in
   one sweep. A guard that is not a plain role-list check (e.g. `remove_member`'s
   self-leave allowance) stays bespoke
-- Re-check the role AFTER an advisory lock (2026-07-22, TASK-116/142; extended
-  2026-07-28, TASK-211): a SECURITY DEFINER RPC that takes
-  `pg_advisory_xact_lock` must re-assert its guard once the lock is held, before
-  it writes. The wait is unbounded, so a caller demoted or removed while parked
-  on the lock would otherwise still write, and SECURITY DEFINER means there is
-  no RLS re-evaluation on the write to fall back on. `project_role()` is STABLE
+- Re-check the role AFTER EVERY WAIT (2026-07-22, TASK-116/142; extended
+  2026-07-28, TASK-211): a SECURITY DEFINER RPC must re-assert its guard after
+  the LAST point it can block, before it writes. Advisory locks are only the
+  obvious wait — `select ... for update` on a row another transaction holds, and
+  a lock a trigger takes during an INSERT (`assign_story_number` takes
+  `story_number:<project>`), block just as unboundedly. Enumerate every wait, not
+  just the `pg_advisory_xact_lock` calls.
+
+  Every one of them is unbounded, so a caller demoted or removed while parked
+  would otherwise still write, and SECURITY DEFINER means there is no RLS
+  re-evaluation on the write to fall back on. `project_role()` is STABLE
   but each PL/pgSQL statement gets its own READ COMMITTED snapshot, so the
   second call does see a revocation that committed during the wait. Hoist the
   role list into a variable and read it from both checks — if they can drift

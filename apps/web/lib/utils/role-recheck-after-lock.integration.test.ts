@@ -107,6 +107,34 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
   }
 
   /**
+   * Blocks until another backend is waiting on a row THIS connection's open
+   * transaction has locked. Scoped to the holder's own transaction id: an
+   * unscoped count matches any blocked write in the cluster and would let the
+   * revocation land before the RPC ever parked.
+   */
+  async function waitForRowWaiter(holder: PgClient): Promise<void> {
+    const SQL = `
+      select count(*)::int as n
+        from pg_locks w
+       where not w.granted
+         and w.locktype in ('transactionid', 'tuple')
+         and w.pid <> pg_backend_pid()
+         and exists (
+           select 1 from pg_locks h
+            where h.granted and h.pid = pg_backend_pid()
+              and h.locktype = 'transactionid'
+              and h.transactionid = w.transactionid
+         )`;
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const { rows } = await holder.query(SQL);
+      if (rows[0].n > 0) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error("nothing ever blocked on the held row — the test would be vacuous");
+  }
+
+  /**
    * Parks `call()` on `prefix:<lockProjectId>`, applies `revoke()` while it
    * waits, then releases the lock and returns what the call settled with.
    */
@@ -147,11 +175,41 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     }
   }
 
-  const demoteOwner = (projectId: string) => () =>
-    admin.from("project_members").update({ role: "viewer" }).eq("project_id", projectId).eq("user_id", ownerId);
+  // Both assert their own result and read the row back. supabase-js reports a
+  // failed mutation through .error rather than rejecting, so a silently failed
+  // revocation would leave the caller's access intact — and the positive
+  // self-leave cases would then pass by performing an ordinary self-removal,
+  // never exercising the branch they are named for.
+  const demoteOwner = (projectId: string) => async () => {
+    const { error } = await admin
+      .from("project_members")
+      .update({ role: "viewer" })
+      .eq("project_id", projectId)
+      .eq("user_id", ownerId);
+    expect(error).toBeNull();
+    const { data } = await admin
+      .from("project_members")
+      .select("role")
+      .eq("project_id", projectId)
+      .eq("user_id", ownerId)
+      .single();
+    expect(data!.role).toBe("viewer");
+  };
 
-  const deMemberOwner = (projectId: string) => () =>
-    admin.from("project_members").delete().eq("project_id", projectId).eq("user_id", ownerId);
+  const deMemberOwner = (projectId: string) => async () => {
+    const { error } = await admin
+      .from("project_members")
+      .delete()
+      .eq("project_id", projectId)
+      .eq("user_id", ownerId);
+    expect(error).toBeNull();
+    const { data } = await admin
+      .from("project_members")
+      .select("user_id")
+      .eq("project_id", projectId)
+      .eq("user_id", ownerId);
+    expect(data ?? []).toHaveLength(0);
+  };
 
   async function seedStory(projectId: string, fields: Record<string, unknown> = {}): Promise<string> {
     const { data, error } = await admin
@@ -386,30 +444,84 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     }, TIMEOUT);
   }
 
-  it("move_story_to_project rejects a caller de-membered from the TARGET while blocked", async () => {
-    const source = await createProject("TASK-211 move source");
-    const target = await createProject("TASK-211 move target");
-    const storyId = await seedStory(source);
+  // Each cross-project RPC re-checks source and target membership
+  // independently, so covering one side per RPC leaves the other two removable.
+  for (const rpc of CROSS_PROJECT_RPCS) {
+    for (const side of ["source", "target"] as const) {
+      it(`${rpc} rejects a caller de-membered from the ${side.toUpperCase()} while blocked`, async () => {
+        const source = await createProject(`TASK-211 ${rpc} ${side} role source`);
+        const target = await createProject(`TASK-211 ${rpc} ${side} role target`);
+        const storyId = await seedStory(source);
+        const revoked = side === "source" ? source : target;
 
-    const { error } = await callWhileRevoked("story_number", target, deMemberOwner(target), () =>
-      owner.rpc("move_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
-    );
+        const { error } = await callWhileRevoked("story_number", target, deMemberOwner(revoked), () =>
+          owner.rpc(rpc, { p_story_id: storyId, p_target_project_id: target }),
+        );
 
-    expect(error?.code).toBe("42501");
+        expect(error?.code).toBe("42501");
 
-    const { data } = await admin.from("stories").select("project_id").eq("id", storyId).single();
-    expect(data!.project_id).toBe(source); // never moved
+        const { count } = await admin
+          .from("stories")
+          .select("id", { count: "exact", head: true })
+          .eq("project_id", target);
+        expect(count ?? 0).toBe(0);
+        const { data } = await admin.from("stories").select("project_id").eq("id", storyId).single();
+        expect(data!.project_id).toBe(source);
+      }, TIMEOUT);
+    }
+  }
+
+  it("move_story_board rejects a caller de-membered while it waited on the STORY ROW", async () => {
+    // Its third wait: after both advisory locks it takes `select ... for update`
+    // on the story. Parking on the positions lock alone cannot expose this.
+    const projectId = await createProject("TASK-211 msb row-lock race");
+    const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", projectId);
+    const unstarted = states!.find((st) => st.category === "unstarted")!.id;
+    const storyId = await seedStory(projectId, { state_id: unstarted });
+
+    const holder = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    let settled: { error: { code?: string } | null };
+    try {
+      await holder.query("begin");
+      await holder.query("select id from public.stories where id = $1 for update", [storyId]);
+
+      const pending = Promise.resolve(
+        owner.rpc("move_story_board", {
+          p_project_id: projectId,
+          p_item: { kind: "story", id: storyId },
+          p_view: "list",
+          p_expected: { state_id: unstarted, iteration_id: null, parent_id: null },
+          p_deltas: {},
+          p_anchor: {},
+        }),
+      );
+
+      await waitForRowWaiter(holder);
+      await deMemberOwner(projectId)();
+      await holder.query("commit");
+      settled = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect(settled.error?.code).toBe("42501");
   }, TIMEOUT);
 
-  it("copy_story_to_project rejects a caller de-membered from the SOURCE while blocked", async () => {
-    // The source side matters too: the caller can lose read/write access to the
-    // project the story came from while parked on the target's lock.
-    const source = await createProject("TASK-211 copy source");
-    const target = await createProject("TASK-211 copy target");
-    const storyId = await seedStory(source);
+  it("insert_board_item rejects a caller de-membered while the story INSERT waited on story_number", async () => {
+    // The story branch waits a second time inside assign_story_number's trigger,
+    // after the pre-insert check. The divider branch never reaches it.
+    const projectId = await createProject("TASK-211 ibi story-number race");
 
-    const { error } = await callWhileRevoked("story_number", target, deMemberOwner(source), () =>
-      owner.rpc("copy_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
+    const { error } = await callWhileRevoked("story_number", projectId, deMemberOwner(projectId), () =>
+      owner.rpc("insert_board_item", {
+        p_project_id: projectId,
+        p_kind: "story",
+        p_payload: { title: "quick add" },
+        p_anchor: {},
+      }),
     );
 
     expect(error?.code).toBe("42501");
@@ -417,8 +529,8 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     const { count } = await admin
       .from("stories")
       .select("id", { count: "exact", head: true })
-      .eq("project_id", target);
-    expect(count ?? 0).toBe(0); // nothing copied in
+      .eq("project_id", projectId);
+    expect(count ?? 0).toBe(0); // the insert was rolled back
   }, TIMEOUT);
 
   it("insert_board_item rejects a caller de-membered while blocked on the positions lock", async () => {
@@ -508,27 +620,7 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
         }),
       );
 
-      // Wait until the RPC is genuinely blocked on THIS transaction's row lock.
-      const deadline = Date.now() + 15_000;
-      let waiting = 0;
-      while (Date.now() < deadline && waiting === 0) {
-        const { rows } = await holder.query(
-          `select count(*)::int as n
-             from pg_locks w
-            where not w.granted
-              and w.locktype in ('transactionid', 'tuple')
-              and w.pid <> pg_backend_pid()
-              and exists (
-                select 1 from pg_locks h
-                 where h.granted and h.pid = pg_backend_pid()
-                   and h.locktype = 'transactionid'
-                   and h.transactionid = w.transactionid
-              )`,
-        );
-        waiting = rows[0].n;
-        if (waiting === 0) await new Promise((r) => setTimeout(r, 25));
-      }
-      expect(waiting).toBeGreaterThan(0);
+      await waitForRowWaiter(holder);
 
       const { error: disableError } = await admin
         .from("integrations")
@@ -651,30 +743,7 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
       // by lock type rather than by matching query text, which PostgREST
       // rewrites: a speculative insert waiting on an uncommitted delete shows up
       // as an ungranted transactionid/tuple lock.
-      const deadline = Date.now() + 15_000;
-      let waiting = 0;
-      while (Date.now() < deadline && waiting === 0) {
-        // Scoped to a waiter blocked on THIS connection's own transaction. An
-        // unscoped count would match any blocked write in the cluster, let the
-        // demote land before the RPC even reached its pre-lock check, and pass
-        // the 42501 assertion for the wrong reason.
-        const { rows } = await blocker.query(
-          `select count(*)::int as n
-             from pg_locks w
-            where not w.granted
-              and w.locktype in ('transactionid', 'tuple')
-              and w.pid <> pg_backend_pid()
-              and exists (
-                select 1 from pg_locks h
-                 where h.granted and h.pid = pg_backend_pid()
-                   and h.locktype = 'transactionid'
-                   and h.transactionid = w.transactionid
-              )`,
-        );
-        waiting = rows[0].n;
-        if (waiting === 0) await new Promise((r) => setTimeout(r, 25));
-      }
-      expect(waiting).toBeGreaterThan(0);
+      await waitForRowWaiter(blocker);
 
       await admin
         .from("project_members")
