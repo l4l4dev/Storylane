@@ -23,22 +23,22 @@ technical blocker as of the last commit on the branch.
 | TASK-208 board invariants trigger | Done, merged (PR #8, `1c5d43d`) |
 | TASK-211 role/exit guards | **In Progress, PR #9 open** |
 
-## Resuming TASK-211
+## TASK-211 as shipped
 
-Branch `fix/recheck-role-after-lock`, PR
-https://github.com/l4l4dev/Storylane/pull/9
-
-Seven Codex rounds ran; 26 findings, all addressed, 2 of the 42 across all PRs
-rejected as non-reproducible (both argued with measurements, not opinion). The
-sweep grew from the three RPCs the task named to **sixteen** functions:
-the ten in `20260728073000`, three iteration RPCs in `20260728120000`, three
-story RPCs in `20260728140000`, plus `finish_story_from_git` in
+Eight Codex rounds ran on PR #9: 30 findings, 28 real, 2 rejected with
+measurements. The sweep grew from the three RPCs the task named to **sixteen**
+functions — ten in `20260728073000`, three iteration RPCs in `20260728120000`,
+three story RPCs in `20260728140000`, plus `finish_story_from_git` in
 `20260728100000`.
 
-**To finish it:** confirm CI is green, request one more `@codex review` if the
-quota allows (round 7's findings were all real, so the curve had not flattened),
-merge with a merge commit to match PRs 5-8, delete the branch, set TASK-211
-Done and commit that.
+Rounds 5-8 each produced 4-5 findings of one shape: another value read before a
+wait, enforced only inside the RPC, stale by the time the write landed. Role,
+webhook config, `archived_at` and `point_scale` are closed here. The remaining
+three — retained assignee, `reshape_current_iteration`'s `iteration_length`, and
+`finish_story_from_git`'s forward-only state positions — went to **TASK-219**,
+because "preconditions enforced only in the RPC" is an open set and enumerating
+it fails the same way enumerating wait points did. TASK-219 also carries the
+seven copies of the point-scale literals across five DB functions.
 
 ## What TASK-211 turned out to be
 
@@ -90,9 +90,9 @@ record point changes, so it is architecture-sensitive.
 
 ## First prompt for the next session
 
-> PR #9 (TASK-211) が CI green・Codex round 7 まで全対応済みで未マージのまま
-> 残っています。状態を確認して、Codex の quota が残っていればもう一度
-> `@codex review` を投げてください(round 7 の指摘も全件本物だったので、まだ
-> 収束していません)。指摘が無ければ merge commit でマージ、ブランチ削除、
-> TASK-211 を Done にして、実装順どおり TASK-212 へ進んでください
-> (@claude-opus-5 想定)。詳細は TASK-211 のノートにあります。
+> TASK-211 (PR #9) は 8 ラウンドのレビューを経てマージ済みです。構造的な残件は
+> TASK-219 に切り出してあります。実装順どおり TASK-212 (createDraftStory の
+> 部分行残留、@claude-opus-5 想定) から進めてください。TASK-211 で学んだこと
+> — CREATE OR REPLACE の本体は稼働中DBから取る / perform は FOUND を壊す /
+> 削除して落ちないテストは証拠にならない / vitest は型を見ない — は下の
+> 「Carry-forward lessons」にあります。
