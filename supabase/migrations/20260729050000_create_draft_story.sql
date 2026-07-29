@@ -1,58 +1,40 @@
 -- ============================================================
--- TASK-212: create_draft_story — quick-add in one transaction.
+-- create_draft_story — the draft card's save (spec/screens.md "Quick-add") as a
+-- single transaction: insert, fields, position. Any failure leaves no row.
 --
--- The draft card's save used to be three round trips from the server action:
--- create, then reposition, then apply the remaining fields. A failure in the
--- last step left a title-only story behind and a retry created a second one,
--- because nothing tied the three together. Wrapping the same three steps in one
--- RPC makes the save atomic, so any failure leaves no row.
---
--- Deliberately a wrapper, not a reimplementation: it inserts the row and then
--- delegates to update_story and move_story_board, the exact RPCs the action
--- called. Re-doing their work here would fork the point-scale clamp, the label
--- replacement and the splice into a second copy each, and the point of this task
--- is atomicity, not new semantics.
+-- A wrapper, not a reimplementation. It delegates to update_story and
+-- move_story_board rather than doing their work, because open-coding it would
+-- fork the point-scale clamp, the label replacement and the backlog splice into
+-- a second copy each.
 --
 -- Not folded into insert_board_item: that is a shared primitive the divider path
 -- ("+ Add note") also calls, so story-only keys there would make which parts of
 -- the payload are meaningful depend on the caller.
 --
--- The `unstarted` target resolves the current iteration and the landing state
--- AFTER taking iteration_finalize, not before and not from a parameter. Resolving
--- it first — as the server action did — lets a concurrent finalize_iteration land
--- the new story in an iteration that has just been finalized
--- (spec/velocity.md "Finalization concurrency & permissions").
+-- The `unstarted` target resolves the current iteration AFTER taking
+-- iteration_finalize, never from a parameter: resolving it first lets a
+-- concurrent finalize_iteration land the story in an iteration that has just
+-- closed (spec/velocity.md "Finalization concurrency & permissions").
 --
--- SECURITY INVOKER, matching create_story_tracker / update_story and unlike
--- insert_board_item. This is load-bearing, not stylistic: the cross-project label
--- guard is an RLS WITH CHECK on story_labels, and DEFINER would bypass RLS
--- entirely and silently accept a foreign-project label. Under INVOKER the policy
--- fires and, in one transaction, rolls the story back with it — which is the
--- orphan fix. Labels therefore need no pre-validation here, the same way its
--- sibling create paths need none.
+-- SECURITY INVOKER, unlike insert_board_item, and load-bearing rather than
+-- stylistic: the cross-project label guard is an RLS WITH CHECK on story_labels,
+-- which DEFINER bypasses entirely, silently accepting a foreign-project label.
+-- Under INVOKER the policy fires and rolls the story back with it. That is why
+-- labels need no pre-validation here.
 --
--- Being INVOKER, the backstop on every write is RLS itself: stories' INSERT
--- policy already demands owner/member and created_by = auth.uid().
--- require_project_role is NOT used for the explicit guards below, because it is
--- revoked from authenticated (it exists for SECURITY DEFINER callers, which is
--- why insert_board_item is DEFINER) and calling it would fail every request;
--- project_role is granted, being policy-referenced, so the guards call that.
+-- Being INVOKER also decides which helpers are reachable: require_project_role,
+-- _splice_backlog and assert_points_on_scale are all revoked from authenticated
+-- (they exist for SECURITY DEFINER callers), so the guards below call
+-- project_role, which is granted because policies reference it, and positioning
+-- and the point scale go through the two granted RPCs.
 --
--- For the same reason this function calls no other revoked helper:
--- _splice_backlog and assert_points_on_scale are both revoked from authenticated
--- too, so an INVOKER caller cannot reach them — which is why positioning goes
--- through move_story_board and the point scale through update_story rather than
--- being open-coded here.
---
--- It still needs TASK-211's exit guard, though, and being INVOKER is NOT a reason
--- to skip it. Per-statement RLS closes the INSERT — a WITH CHECK violation always
--- raises — but update_story's writes are an UPDATE and a DELETE, and there a
--- failed USING clause matches zero rows and raises nothing at all. So a caller
--- demoted to viewer mid-transaction (they keep SELECT visibility, so nothing else
--- notices) had every field silently dropped and still got a success back, leaving
--- the title-only row this whole migration exists to prevent. Measured, not
--- theorised: see create-draft-story.integration.test.ts's demotion case, which
--- fails without the guard below.
+-- INVOKER is NOT a reason to skip TASK-211's exit guard. Per-statement RLS closes
+-- the INSERT, because a WITH CHECK violation always raises. But update_story's
+-- writes are an UPDATE and a DELETE, where a failed USING clause matches zero
+-- rows and raises nothing — so a caller demoted mid-transaction keeps SELECT
+-- visibility, has every field silently dropped, and gets success back. The
+-- demotion case in create-draft-story.integration.test.ts fails without the
+-- guard.
 -- ============================================================
 
 create or replace function public.create_draft_story(
@@ -140,9 +122,9 @@ begin
     end if;
   end if;
 
-  -- Title only, exactly as the action's plain insert did. Every other field is
-  -- update_story's job below; position defaults from stories_position_seq, which
-  -- lands the row at the zone's end until the splice moves it.
+  -- Title only; every other field is update_story's job below. position defaults
+  -- from stories_position_seq, landing the row at the zone's end until the splice
+  -- moves it.
   insert into public.stories (project_id, title, state_id, iteration_id)
   values (p_project_id, v_title, v_state_id, v_iteration_id)
   returning id into v_new_id;

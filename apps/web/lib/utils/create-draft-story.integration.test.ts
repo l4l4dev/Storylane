@@ -257,6 +257,47 @@ describe.skipIf(!RUN)("create_draft_story RPC (integration)", () => {
     expect(landed).toEqual({ state_id: null, iteration_id: null });
   }, TIMEOUT);
 
+  it("rejects a blank title at the RPC, not only in the action", async () => {
+    // The action returns early on a blank title, but the RPC is granted to
+    // `authenticated` and callable directly, so its own guard needs its own test:
+    // without this, deleting the SQL check leaves every test green.
+    const projectId = await createProject("TASK-212 blank title");
+
+    const { error } = await asOwner.rpc("create_draft_story", {
+      p_project_id: projectId,
+      p_target: "icebox",
+      p_title: "   ",
+    });
+
+    expect(error?.message).toMatch(/title required/i);
+    expect(await storyCount(projectId)).toBe(0);
+  }, TIMEOUT);
+
+  it("cannot be given a project with no unstarted-category state — the schema forbids it", async () => {
+    // Recorded as a test because the RPC's `no unstarted-category state` raise
+    // looks like an untested branch and is in fact unreachable: 20260719000005
+    // refuses to remove a project's last unstarted state, so the configuration
+    // that would trigger it cannot be built, even through the service role. The
+    // raise stays as a defensive backstop (insert_board_item carries the same
+    // one), and this test is what says so — if the invariant is ever relaxed,
+    // this fails and the branch becomes reachable and worth testing directly.
+    const projectId = await createProject("TASK-212 unstarted state invariant");
+
+    const { error: wipeError } = await asService
+      .from("project_states")
+      .delete()
+      .eq("project_id", projectId)
+      .eq("category", "unstarted");
+
+    expect(wipeError?.message).toMatch(/at least one unstarted-category state/i);
+    const { data: left } = await asService
+      .from("project_states")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("category", "unstarted");
+    expect((left ?? []).length).toBeGreaterThan(0);
+  }, TIMEOUT);
+
   it("rejects a null target instead of quietly filing it in the Icebox", async () => {
     // `NULL not in (...)` is NULL, which `if` reads as false, so a null target
     // used to pass validation and then read false at every branch below it —
