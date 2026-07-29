@@ -89,14 +89,20 @@ begin
     raise exception 'not authorized' using errcode = '42501';
   end if;
 
-  -- Both locks, in move_story_board's order, for every target — not only for
-  -- `unstarted`, which is the only one that reads the current iteration. Taking
-  -- just positions here and letting move_story_board add iteration_finalize
-  -- underneath it would invert the order against every other board RPC and
-  -- deadlock against a concurrent finalize. Re-taking them inside
-  -- move_story_board is a no-op: advisory locks are re-entrant per transaction.
+  -- iteration_finalize for every target, not only `unstarted` (the one that
+  -- reads the current iteration): taking just positions here and letting
+  -- move_story_board add iteration_finalize underneath would invert the order
+  -- against every other board RPC and deadlock against a concurrent finalize.
+  -- Re-taking it there is a no-op — advisory locks are re-entrant per
+  -- transaction.
   perform pg_advisory_xact_lock(hashtext('iteration_finalize:' || p_project_id::text));
-  perform pg_advisory_xact_lock(hashtext('positions:' || p_project_id::text));
+  -- positions only when something is actually spliced, but taken HERE rather
+  -- than beside the move_story_board call below: the INSERT's numbering trigger
+  -- takes story_number, and the order is positions -> story_number
+  -- (insert_board_item, split_story).
+  if p_anchor ? 'before' then
+    perform pg_advisory_xact_lock(hashtext('positions:' || p_project_id::text));
+  end if;
 
   if p_target = 'unstarted' then
     select id into v_iteration_id
@@ -118,6 +124,8 @@ begin
       order by position, id
       limit 1;
     if v_state_id is null then
+      -- board/actions.ts's draftErrorMessage matches on this string to swap in a
+      -- user-facing message; reword it there too.
       raise exception 'project has no unstarted-category state' using errcode = 'P0001';
     end if;
   end if;

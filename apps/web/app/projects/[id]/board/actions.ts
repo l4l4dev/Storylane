@@ -100,6 +100,8 @@ export type DraftStoryInput = {
 // the union type doesn't allow.
 const NO_UNSTARTED_STATE_MESSAGE = "This project has no unstarted state to create stories in";
 
+// The match below is on create_draft_story's raise text (20260729050000), which
+// carries the matching pointer back here.
 function draftErrorMessage(error: { message: string }): string {
   return error.message.includes("no unstarted-category state") ? NO_UNSTARTED_STATE_MESSAGE : error.message;
 }
