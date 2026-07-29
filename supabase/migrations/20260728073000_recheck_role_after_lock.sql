@@ -65,7 +65,14 @@ begin
     else array[0, 1, 2, 3, 5, 8, 13]
   end;
 
-  if not (v_points = any(v_allowed)) then
+  -- `= any()` yields NULL, not false, when the array holds a NULL — and
+  -- projects.custom_points has no constraint forbidding one — so `not (...)`
+  -- would also be NULL and `if` would treat it as false, silently accepting an
+  -- off-scale value. Match over the non-NULL elements explicitly instead.
+  if not exists (
+    select 1 from unnest(v_allowed) as allowed
+    where allowed is not null and allowed = v_points
+  ) then
     raise exception 'Points % are not on the project''s current scale', v_points
       using errcode = 'P0001';
   end if;

@@ -1014,6 +1014,62 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     expect(after!.state_id).toBe(byName.Unstarted); // the UPDATE rolled back
   }, TIMEOUT);
 
+  it("rejects an off-scale estimate even when custom_points contains a NULL", async () => {
+    // `= any(array[...,NULL])` yields NULL, not false, so `not (...)` is NULL and
+    // `if` treats it as false — the check would silently accept. custom_points has
+    // no constraint forbidding a NULL element, so this is reachable.
+    const source = await createProject("TASK-211 null-in-custom source");
+    const target = await createProject("TASK-211 null-in-custom target");
+    // Starts on a scale that ALLOWS 8, so the clamp keeps it; the NULL-bearing
+    // custom scale arrives during the wait, which is what the exit check reads.
+    const { error: setupError } = await admin
+      .from("projects")
+      .update({ point_scale: "fibonacci" })
+      .eq("id", target);
+    expect(setupError).toBeNull();
+    const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", source);
+    const unstarted = states!.find((st) => st.category === "unstarted")!.id;
+    const storyId = await seedStory(source, {
+      story_type: "feature",
+      points: 8,
+      state_id: unstarted,
+      assignee_id: ownerId,
+    });
+
+    const holder = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    let settled: { error: { message?: string } | null };
+    try {
+      await holder.query("begin");
+      await holder.query("select id from public.profiles where id = $1 for update", [ownerId]);
+
+      const pending = Promise.resolve(
+        owner.rpc("copy_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
+      );
+
+      await waitForRowWaiter(holder);
+      const { error: narrowError } = await admin
+        .from("projects")
+        .update({ point_scale: "custom", custom_points: [1, 2, null] })
+        .eq("id", target);
+      expect(narrowError).toBeNull();
+      await holder.query("commit");
+      settled = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect(settled.error?.message).toMatch(/not on the project's current scale/i);
+
+    const { count } = await admin
+      .from("stories")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", target);
+    expect(count ?? 0).toBe(0);
+  }, TIMEOUT);
+
   // ── invite_member: no lock, but not waitless either (AC #4) ───────────────
 
   it("invite_member still takes no advisory lock", async () => {

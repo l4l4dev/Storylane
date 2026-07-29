@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-29 03:37'
+updated_date: '2026-07-29 03:57'
 labels: []
 milestone: m-2
 dependencies: []
@@ -285,6 +285,22 @@ Third attempt worked: hold the PROJECT row. The activity_logs INSERT that log_st
 Verified the test catches both ways of breaking the guard, which is what Codex asked for specifically: deleting the branch fails it, and reverting the raise to the committing return fails it too. That second one matters because a `return` there looks harmless and silently commits the UPDATE it was meant to undo — the mistake I made writing it.
 
 Round 7 is fully closed. Sixteen functions carry exit guards; the suite is 1180/1180 from a clean reset (was 1179), core tsc, core 77/77, web tsc, web lint, web build all clean.
+
+Inventoried the point-scale duplication I asked Codex about, and it is worse than the question implied. The fibonacci/linear lists appear SEVEN times across five DB functions — assert_points_on_scale (2, one per scale branch), update_story (2), split_story (1), move_story_to_project (1), copy_story_to_project (1) — plus the client-side canonical copy in packages/core/src/story-types.ts, which decision-1 principle 4 makes the intended single source for the pure version.
+
+So the helper I added to avoid a fourth copy actually added the seventh and eighth. Reducing them to one DB-side source (a scale-values function the others call, mirroring pointScaleValues in packages/core) is the obvious cleanup, but it touches update_story and create_story_tracker, which this PR otherwise leaves alone. Recorded rather than done: it is a refactor with its own blast radius, and folding it into a PR already at sixteen functions would make the diff harder to review, not easier. Worth its own task if Codex agrees the drift risk is real.
+
+Codex round 8: 4 findings. One was a real bug in the helper I added last round; the other three are the same class and are being split out rather than chased here (owner decision).
+
+FIXED — NULL in custom_points defeated assert_points_on_scale. `v_points = any(array[1,2,NULL])` evaluates to NULL rather than false for an off-scale value, so `not (...)` is also NULL and `if` treats it as false: the check silently ACCEPTED. Confirmed directly in psql before fixing. projects.custom_points has no constraint forbidding a NULL element, so an owner can reach this. Replaced with an explicit `exists` over the non-NULL elements.
+
+Writing the test for it took a second attempt, and the reason is worth keeping: I set the target to the NULL-bearing custom scale BEFORE the call, so the post-lock clamp already cleared 8 to NULL and the helper returned early on a null points value — the test passed for the wrong reason. The scale has to ALLOW 8 at clamp time and become the NULL-bearing one during the wait. Verified the corrected test fails against the `= any` version.
+
+SPLIT OUT — the remaining three (retained assignee, reshape_current_iteration's iteration_length, finish_story_from_git's forward-only state positions) all have one cause: a value read before a wait, enforced only inside the RPC, and stale by the time the write lands. Rounds 5 through 8 have each produced 4-5 findings of exactly this shape — role, then webhook config and archived_at, then point_scale, now assignee and iteration_length and state positions. Adding a fourth, fifth and sixth per-precondition exit check would not change that trajectory.
+
+The findings-per-round curve on this PR is 2, 4, 3, 4, 4, 5, 4, 4. It is not converging, and the reason is structural: "preconditions enforced only in the RPC" is an open set, so enumerating them fails the same way enumerating wait points did in round 5. The likely answers are to re-derive inputs after the last wait rather than re-validate them, or to serialise these RPCs against settings changes with a broader lock — either is a design decision, not a patch.
+
+This PR keeps what it set out to fix (the role TOCTOU, its original AC) plus the preconditions already covered, and the structural problem goes to its own task.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
