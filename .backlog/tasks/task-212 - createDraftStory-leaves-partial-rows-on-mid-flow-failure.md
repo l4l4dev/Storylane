@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-29 06:03'
+updated_date: '2026-07-29 09:06'
 labels: []
 milestone: m-2
 dependencies: []
@@ -131,4 +131,56 @@ across 135 files on a database rebuilt from the migration chain.
 Caveat: two earlier full-suite runs each reported a single failure whose name
 could not be captured; five subsequent full runs, including two immediately after
 a `supabase db reset`, were clean. Unidentified, not dismissed.
+
+Codex review round 1 — four findings, all closed in a82b4ef:
+
+- P1, lock-order inversion. CONFIRMED and it is a regression, but not the one
+  Codex described, and its suggested remedy would not have worked. Measured with
+  a two-connection probe: create_draft_story (backlog + anchor) got 40P01;
+  insert_board_item, the target's previous route, did not; move_story_board, which
+  this branch does not touch, DID. So the inversion is pre-existing in
+  set_story_state (row lock, then iteration_finalize, the reverse of every
+  sibling) and routing backlog through move_story_board merely exposed it.
+  Dropping create_draft_story's own lock acquisition cannot fix it, because
+  move_story_board takes iteration_finalize itself.
+  Fixed at the root in 0177080 + migration 20260729090000.
+- P2, blank title untested at the RPC. Valid. Note Codex's stated consequence was
+  wrong: without the guard update_story still raises 'Title cannot be empty', so
+  no blank-titled story was reachable. Test added anyway.
+- P2, no-unstarted-state guard untested. Codex's setup is impossible:
+  20260719000005 refuses to remove a project's last unstarted state, even for the
+  service role, so the branch is unreachable, not untested. Replaced with a test
+  of the invariant that makes it unreachable.
+- P3, history narration in the migration header. Valid per the Code Comment
+  Policy. Trimmed to the two "why not"s.
+
+rls-security-reviewer on 20260729090000: confirmed the unlocked key read does not
+weaken authorization, creates no new existence oracle, reverts nothing shipped,
+and preserves grants. One new Medium of its own: hoisting the lock put it ahead of
+the FOR UPDATE that rejects a viewer, making this the only RPC where a caller who
+can merely SEE the story queues on a project-wide lock. Added a pre-lock
+project_role gate raising the same code and message the FOR UPDATE already did.
+Verified the gate is load-bearing: removing it makes the viewer's call park.
+
+Test-design lesson worth keeping: the first version of
+set-story-state-lock-order.integration.test.ts raced two real RPCs and PASSED
+against the inverted body. set_story_state only reaches for the advisory lock once
+it holds the row, and nothing outside can freeze it in between, so the race is
+decided by whoever wins the row. Rewritten to assert the ordering as an observable
+property (while the lock is held elsewhere, is the row still lockable by a third
+session?), which does discriminate.
+
+The earlier unnamed intermittent failure is IDENTIFIED. It is
+`Dev-user sign-in failed ... : {}` in beforeAll, hitting many files at once,
+including files this branch does not touch (capacity, profiles-is-agent). Forty
+integration files sign in as the same dev user, and supabase/config.toml sets
+sign_in_sign_ups = 30 per 5 minutes per IP, so back-to-back full-suite runs
+saturate the window. Direct sign-in succeeds once the window clears and the suite
+then passes. Harness limitation, unrelated to this work; raising that limit for
+local runs is worth considering separately.
+
+Final: core tsc/test OK (77), web tsc/lint/build OK, full web suite 1201 passed
+across 136 files. database.types.ts unchanged by the second migration
+(set_story_state's signature is untouched). All eight functions touching
+iteration_finalize audited for acquisition order.
 <!-- SECTION:NOTES:END -->
