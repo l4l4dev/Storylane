@@ -1,11 +1,11 @@
 ---
 id: TASK-211
 title: 'Membership RPCs re-check permission before lock, not after'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-29 03:57'
+updated_date: '2026-07-29 04:11'
 labels: []
 milestone: m-2
 dependencies: []
@@ -306,13 +306,13 @@ This PR keeps what it set out to fix (the role TOCTOU, its original AC) plus the
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Closed the before-lock-only authorization window in every RPC that takes an advisory lock: a caller demoted or removed while parked on one still completed the write, because these are SECURITY DEFINER and get no RLS re-evaluation. Reproduced first (a demoted owner successfully changed another member's role), then fixed by re-asserting the guard after the lock — the pattern 20260722000006 and 20260722000010 already established, now with a written rule in spec/rls.md so the next one has something to follow.
+Closed the role TOCTOU this task was filed for, and along the way replaced the strategy twice.
 
-Ten functions, not the three the task named: change_member_role, remove_member, move_story_board, split_story, move_story_to_project, copy_story_to_project, insert_board_item, create_project_state, reorder_project_state, invite_member. Two rounds of review grew that list — the advisor added the cross-project moves, /code-review added the three board/state RPCs and showed invite_member was not waitless after all (its on-conflict insert blocks on a row a concurrent remove_member is deleting), so its re-check sits after the insert where raising rolls it back.
+The task named three membership RPCs checking their role before an advisory lock. Sixteen functions ended up carrying a guard: change_member_role, remove_member, invite_member, move_story_board, split_story, move_story_to_project, copy_story_to_project, insert_board_item, create_project_state, reorder_project_state, finalize_iteration, override_iteration_length, reshape_current_iteration, create_epic, set_story_parent, set_epic_pinned — plus finish_story_from_git's configuration.
 
-The most valuable catch was not a bug in the code but in how it was going to be built: rebuilding these bodies from the migrations the task References point at would have silently reverted remove_member's my_work_story_state purge and split_story's duplicate-task_id rejection, because CREATE OR REPLACE needs the whole body and those files are no longer the latest definitions. Every body is taken from the live database instead, and both RLS passes diffed them to confirm nothing was dropped.
+Two strategy reversals, both forced by review rather than foresight. First: "re-check after the advisory lock" does not hold, because a function can also block on a row lock, an ordinary tuple-lock wait, a foreign-key check, a lock a trigger takes, or a lock a function that trigger CALLS takes. Enumerating waits does not terminate. Second: guarding the exit fixes that for the role, but the same argument applies to every precondition enforced only inside the RPC, and that set is open too — which is why the remaining three cases went to TASK-219 instead of becoming a fourth, fifth and sixth per-value check.
 
-Three further classes of the same TOCTOU were closed along the way: archived_at and point_scale are re-read after the lock too (both are enforced only inside these RPCs — no policy or trigger backs them up), and the role list is hoisted into a variable in every function so the pre- and post-lock checks cannot drift apart.
+Verified: reproduced the original hole before fixing it (a demoted owner successfully changed another member's role), proved each guard with a staged race rather than by reading the code, and checked every new test against a deliberately broken variant. Full web suite 1181/1181 from a clean reset on merged main; core tsc, core 77/77, web tsc, web lint, web build all clean. rls-security-reviewer passed twice.
 
-Verified: 13 new integration cases that park a real RPC on the lock and revoke access mid-wait, proven non-vacuous by reverting the bodies (6 of 8 failed at the time) and by a waiter poll that fails loudly rather than passing when the RPC never parks — which is how a wrong p_direction argument was caught instead of silently testing nothing. Full web suite 1158/1158 from a clean reset, MCP 29/29, lint clean, types unchanged. rls-security-reviewer passed twice, the second time over all ten.
+Eight Codex rounds produced 30 findings; 28 were real and 2 were rejected with measurements. Four were defects I had introduced in earlier rounds of this same task — an exit guard covering one of three return paths, a `return` where a `raise` was needed, an exit guard rejecting a legal self-demotion, and a NULL-in-array comparison that silently accepted off-scale values. Most of the rest were guards that existed but had no test that would fail if they were removed, which is the habit this task should be remembered for: deleting the guard and re-running is cheap, and it caught something every time it was applied.
 <!-- SECTION:FINAL_SUMMARY:END -->
