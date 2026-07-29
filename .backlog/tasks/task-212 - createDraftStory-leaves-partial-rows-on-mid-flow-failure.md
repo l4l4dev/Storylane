@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-29 04:33'
+updated_date: '2026-07-29 06:03'
 labels: []
 milestone: m-2
 dependencies: []
@@ -47,27 +47,88 @@ createDraftStory (board/actions.ts) creates a story, positions it, and applies i
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Reproduced the orphan before designing anything. Mirrored createDraftStory's icebox path — plain insert, then update_story with a label belonging to a different project — and the update failed with 42501 (story_labels' WITH CHECK) while the title-only story survived. A retry would create a second one. That is AC #1's failure exactly.
+Implementation complete; awaiting /code-review high.
 
-Baseline facts gathered for the design:
-- Three targets take two different paths. `backlog` uses insert_board_item (insert+anchor in one call, SECURITY DEFINER, holds positions:<project>). `unstarted` and `icebox` do a plain .from("stories").insert() then optionally move_story_board with empty p_deltas.
-- The `unstarted` target resolves the current iteration and the lowest unstarted state IN THE SERVER ACTION, before inserting, and returns "No active iteration" / "no unstarted state" as user-facing messages. Moving that into an RPC trades those messages for a raise.
-- create_story_tracker already does story+labels in one transaction (used by MCP) but has no assignee_id and no positioning.
-- The reposition error is discarded deliberately per the code's own comment, which is AC #2.
+FINDING that invalidated the previous session's verification: the committed
+create_draft_story could never have run for a real user. It is SECURITY INVOKER
+but called _splice_backlog and assert_points_on_scale, both revoked from
+`authenticated` — every call died with "permission denied for function
+_splice_backlog". The earlier "all three targets work" check had been run as
+`postgres`, which has execute on everything. Same root cause as the DEFINER/label
+mistake recorded above: verifying as the wrong role.
 
-Test surface to expect: actions.test.ts has ELEVEN createDraftStory cases, and most assert the internal shape — that insert_board_item is called for backlog and not a plain insert, that move_story_board is called with a particular view, that update_story applies the field set. Collapsing three steps into one RPC invalidates most of those assertions, so this task is as much a test rewrite as an implementation change. Worth knowing before estimating it.
+Rewrote the RPC as a wrapper rather than a reimplementation. It inserts the row
+and then delegates to update_story (fields, labels, point-scale clamp) and
+move_story_board (positioning) — the exact RPCs the server action used to call,
+both already granted to `authenticated`. This removes the grant problem, avoids
+forking three pieces of logic, and fixes a second regression the hand-written
+version had introduced: it stored points on a chore, where update_story nulls
+them for non-pointed types.
 
-create_draft_story written and the orphan is closed: a foreign-project label now returns 42501 and leaves the row count unchanged (3 -> 3), where the three-step version left a title-only story behind. All three targets work, "No active iteration" still surfaces for unstarted before a rollover, and a valid label attaches.
+Lock order changed: both iteration_finalize and positions are now taken for every
+target, in move_story_board's order. Taking only `positions` and letting the
+nested move_story_board acquire iteration_finalize underneath would invert the
+order against every other board RPC.
 
-Getting the security mode right took two wrong turns, and both are worth recording because the advisor and I shared the same wrong assumption.
+rls-security-reviewer pass: claims 1-4 confirmed (INVOKER is load-bearing for the
+label guard; the stories INSERT policy does cover viewer/non-member; delegates
+are reachable and reintroduce no bypass; lock order matches every sibling). It
+rejected claim 5 — the "INVOKER needs no exit guard" argument — and was right.
+Per-statement RLS closes the INSERT, because a WITH CHECK violation always
+raises, but update_story's writes are an UPDATE and a DELETE, where a failed
+USING clause matches zero rows and raises NOTHING. Reproduced: a caller demoted
+owner->viewer mid-transaction got `error: undefined` and a surviving title-only
+row with description and points silently discarded — this task's own bug, through
+a different door. Added entry + exit guards on project_role.
 
-I wrote it SECURITY DEFINER first. Tested: the foreign label was ACCEPTED and the story survived. The reason is that the cross-project label guard is an RLS WITH CHECK on story_labels, and DEFINER bypasses RLS entirely — so the plan's premise ("story_labels' WITH CHECK already rejects it, so no pre-validation is needed") silently stopped holding the moment the function became DEFINER. The advisor's ruling on labels was right for create_story_tracker, which is INVOKER, and I carried it to a DEFINER function without noticing the dependency.
+Null-safety matters in those guards: project_role returns NULL for a non-member
+and `NULL not in (...)` is NULL, which `if` treats as false, so the obvious
+spelling never fires. Used move_story_board's `v_role is null or not (v_role =
+any(v_roles))` shape. Both spellings are covered by tests.
 
-Switching to INVOKER then failed every call with "permission denied for function require_project_role" — that helper is revoked from authenticated, because it exists for DEFINER callers. That is precisely why insert_board_item is DEFINER. Checked how the INVOKER sibling handles it: create_story_tracker calls no role helper at all and delegates authorization to RLS. Matched that, so the function is INVOKER with no explicit guard.
+Tests: 8 unit cases (down from 11 — the old ones asserted the three-step
+internals) plus 10 new integration cases in
+apps/web/lib/utils/create-draft-story.integration.test.ts. create_draft_story
+added to grant-lockdown's AUTHENTICATED_ALLOWLIST (that existing test caught the
+omission).
 
-One consequence for the TASK-211 convention: an INVOKER function needs no exit guard, because RLS re-evaluates on every statement as the caller, including after a wait. The exit-guard rule exists because DEFINER suppresses that. Recorded in the migration header so the absence does not read as an oversight.
+Every guard was verified by removing it and confirming a test fails:
+- iteration resolved before the lock -> "Cannot assign a story to a finalized iteration"
+- reposition made best-effort -> expected 42501, got undefined
+- field-save failure swallowed -> no error raised, orphan survives
+- naive `not in` role guard -> all three non-member cases fall through
 
-Also per the advisor: points validation calls the shared assert_points_on_scale rather than inlining the scale values, which would have been an eighth copy of a literal TASK-219 is trying to reduce.
+/code-review high — three findings, all fixed:
 
-Still to do: rewrite the server action to a single call and delete its pre-resolution and best-effort-reposition blocks (AC #2), rewrite the eleven unit tests that assert the old three-step shape, add integration coverage (orphan, reposition error propagating, and unstarted refusing an iteration finalized during the wait), then rls-security-reviewer and /code-review high.
+1. MEDIUM, confirmed and reproduced: p_target = NULL passed validation. `NULL not
+   in (...)` is NULL, which `if` reads as false, and every branch below then read
+   false too, so the row was inserted with no state and no iteration — a silent
+   Icebox create returning a uuid and no error. The same NULL-vs-false trap just
+   fixed for project_role, missed one line above it. Fixed with an explicit
+   `p_target is null or`; test added, and it fails against the naive spelling.
+
+2. MEDIUM: no coverage of the backlog target's landing zone. Correct — the
+   rewritten unit tests only assert argument forwarding, and `backlog` no longer
+   touches insert_board_item (it routes through move_story_board's backlog
+   splice), so insert-board-item's suite no longer covers it either. Added
+   landing-zone cases for all three targets; the backlog one puts a divider
+   between the two stories so the splice has to resequence across both tables.
+   Verified by making backlog land in the Icebox — the test fails.
+
+3. LOW: the RPC's SQL-worded raises reached the draft card verbatim, losing
+   "This project has no unstarted state to create stories in". Restored via a
+   small mapper in the action. Only that one message is rewritten: the rest are
+   either already user-facing ("No active iteration") or unreachable from the
+   card, which trims the title itself and cannot send an out-of-union target.
+
+Reviewer note not acted on: doc-24 is a consumed handoff and its title now lies
+("action not yet switched"). Left for the owner to archive at merge time, since
+until then it is still this branch's recovery path.
+
+Final: core tsc/test OK (77), web tsc/lint/build OK, full web suite 1193 passed
+across 135 files on a database rebuilt from the migration chain.
+
+Caveat: two earlier full-suite runs each reported a single failure whose name
+could not be captured; five subsequent full runs, including two immediately after
+a `supabase db reset`, were clean. Unidentified, not dismissed.
 <!-- SECTION:NOTES:END -->
