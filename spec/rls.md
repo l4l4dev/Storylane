@@ -143,3 +143,33 @@
   the old inline dialects — they are converted as each is next touched, not in
   one sweep. A guard that is not a plain role-list check (e.g. `remove_member`'s
   self-leave allowance) stays bespoke
+- Guard the EXIT of a SECURITY DEFINER RPC (2026-07-22, TASK-116/142; reworked
+  2026-07-28, TASK-211): re-assert the role guard after the function's LAST
+  WRITE, not only at its entry.
+
+  Do not try to enumerate where the function can block — that does not
+  terminate. `pg_advisory_xact_lock` is the obvious wait, but so is
+  `select ... for update` on a contended row, an ordinary UPDATE waiting on a
+  tuple lock another transaction holds, an INSERT waiting on a foreign-key row,
+  and any lock taken by a trigger or by a function that trigger CALLS
+  (`maintain_is_container` -> `recompute_is_container` locks the parent row;
+  `assign_story_number` takes `story_number:<project>`). TASK-211 tried the
+  enumeration and got it wrong three times.
+
+  Guarding the exit sidesteps all of it: nothing a PL/pgSQL function writes is
+  durable until its transaction commits, so raising after the last write rolls
+  every earlier write back. Intermediate checks after the advisory locks are
+  still worth keeping — they fail fast, before the expensive work — but the exit
+  guard is what makes the function sound.
+
+  Why an explicit check at all: SECURITY DEFINER means RLS never re-evaluates on
+  these writes, so there is no implicit equivalent. `project_role()` is STABLE,
+  but each PL/pgSQL statement gets its own READ COMMITTED snapshot, so a later
+  call does see a revocation that committed mid-transaction. Hoist the role list
+  into a variable and read it from every check — if they can drift apart, the
+  window reopens silently. A guard that is not a plain role list
+  (`remove_member`'s self-leave allowance) re-runs its own shape instead.
+
+  The same applies to any other precondition enforced only inside the RPC
+  (`projects.archived_at`, `projects.point_scale`): read it after the waits, or
+  it is as stale as the role was.
