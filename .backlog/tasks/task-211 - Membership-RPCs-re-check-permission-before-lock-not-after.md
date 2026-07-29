@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-28 12:07'
+updated_date: '2026-07-29 03:28'
 labels: []
 milestone: m-2
 dependencies: []
@@ -255,6 +255,22 @@ Worth recording why raising is safe here when it was not for the unestimated cas
 Verified: full web suite 1177/1177 from a clean reset (was 1175), the three affected suites 55/55, core tsc, core 77/77, web tsc, web lint, web build.
 
 Round 6 is fully addressed. Not requesting a seventh review — the owner asked for work up to the point of requesting one.
+
+Codex round 7: 4 findings, one P1, all valid. Note the monitor initially reported "no findings" — it detected the reviews count incrementing before the inline comments landed, so that signal was wrong; the comments went 22 -> 26.
+
+P1, three more story RPCs omitted from the sweep — confirmed by reading all three. create_epic authorizes then inserts a story, and assign_story_number parks in story_number:<project> after that check; set_story_parent and set_epic_pinned authorize through a `select ... for update` that is itself a wait, then UPDATE. New migration 20260728140000. Proved with create_epic: held story_number:<project>, revoked mid-wait, got 42501 and zero stories created. The sweep is now sixteen functions.
+
+P2, point_scale at the exit — I WAS WRONG and Codex was right. My reasoning ("a later scale change cannot alter the already-computed variable") answered the wrong question: spec/features.md line 95 constrains the STORED value against the target's scale, and that variable is what got stored. Added assert_points_on_scale as one shared SECURITY DEFINER helper (revoked from public/anon/authenticated, verified by grant-lockdown) called at the exit of move, copy AND split — Codex flagged split too, which reads its scale before all child writes.
+
+Proving that one took two attempts, and the first attempt's failure is worth recording. I staged the scale change while the RPC was parked on story_number, and it passed with points cleared — because the clamp happens AFTER that lock, so the RPC simply read the new scale and clamped correctly. The real window is after the clamp. Staged it properly by holding the profiles row for the story's assignee so the child INSERT blocked on its foreign key — exactly the FK-wait mechanism Codex named two rounds earlier — then narrowed the scale: P0001 'Points 8 are not on the project's current scale', nothing landed. Pinned as a test.
+
+P2, the post-write config guard in finish_story_from_git was untested — correct, both existing webhook races block BEFORE the config read, so they return not_configured without ever reaching the new branch. Not yet covered; see below.
+
+P2, doc-23 obsolete — correct and my fault twice over. I rewrote it to say "MUST NOT be merged, five findings open", then closed all five and never touched it again, so it was actively directing the next session to redo finished work and to block a mergeable PR. Refreshed to the real state, with the sixteen-function scope and a first-prompt that says to try one more review round rather than merging blind.
+
+STILL OPEN from this round: a test for finish_story_from_git's post-write config guard. Deleting that branch, or reverting the raise to the committing return, currently leaves the suite green. It needs a case that blocks the UPDATE or one of its triggers AFTER the config read and then changes the integration — the same FK-wait trick that worked for the scale check should stage it.
+
+Verified: full web suite 1179/1179 from a clean reset (was 1177), the four suites over the newly guarded functions 77/77, grant-lockdown 3/3, core tsc, core 77/77, web tsc, web lint, web build.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

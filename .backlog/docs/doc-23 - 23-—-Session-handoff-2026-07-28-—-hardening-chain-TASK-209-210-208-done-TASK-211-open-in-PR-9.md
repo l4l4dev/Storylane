@@ -12,56 +12,33 @@ updated_date: '2026-07-28 11:38'
 ## State
 
 `main` is at `b84c8eb`, everything through TASK-208 merged and deployed-ready.
-**PR #9 (TASK-211) is open and MUST NOT be merged as it stands** — a sixth Codex
-review landed after the owner paused the work and raised two P1s that are both
-real (verified). The pause was for time reasons; the block is now technical.
+**PR #9 (TASK-211) is open, CI green, and every Codex finding through round 7 is
+addressed.** It is unmerged only because the owner paused it; there is no
+technical blocker as of the last commit on the branch.
 
 | Task | State |
 |---|---|
 | TASK-209 MCP epics -> parent_id | Done, merged (`7d4c64c`) |
 | TASK-210 Slack webhook SSRF | Done, merged (`f0e5a3b`) |
 | TASK-208 board invariants trigger | Done, merged (PR #8, `1c5d43d`) |
-| TASK-211 role re-check after lock | **In Progress, PR #9 open** |
+| TASK-211 role/exit guards | **In Progress, PR #9 open** |
 
 ## Resuming TASK-211
 
-Branch `fix/recheck-role-after-lock`, 7 commits, PR
+Branch `fix/recheck-role-after-lock`, PR
 https://github.com/l4l4dev/Storylane/pull/9
 
-CI is green on `3c6e56a`, the full web suite is 1173/1173 from a clean reset, and
-`rls-security-reviewer` passed twice. But **five findings from Codex round 6 are
-open**, two of them P1, so the branch is not finishable without addressing them.
+Seven Codex rounds ran; 26 findings, all addressed, 2 of the 42 across all PRs
+rejected as non-reproducible (both argued with measurements, not opinion). The
+sweep grew from the three RPCs the task named to **sixteen** functions:
+the ten in `20260728073000`, three iteration RPCs in `20260728120000`, three
+story RPCs in `20260728140000`, plus `finish_story_from_git` in
+`20260728100000`.
 
-### Open, verified — fix before merging
-
-1. **P1, `move_story_board`'s exit guard is bypassed on two of three exit paths.**
-   The `v_zone = 'single'` branches `return;` at lines 373 and 405, before the
-   exit guard at 414. Verified by reading the applied function. An anchored
-   current-iteration or Icebox move that blocks while shifting a tuple, with the
-   caller removed during that wait, still commits. The guard as it stands is
-   decorative for those paths — route all three returns through it.
-
-2. **P1, three lock-taking RPCs were never swept:** `finalize_iteration`,
-   `override_iteration_length`, `reshape_current_iteration`. They re-check only
-   after `iteration_finalize:` (from `20260722000006` / `20260722000010`) and then
-   perform several more writes, so the exit-guard rationale applies to them
-   identically. They live in migrations already on `main`, so this needs a new
-   migration.
-
-3. P2, `remove_member`'s exit guard may reject a legitimate self-demotion while
-   another owner remains — needs checking against the last-owner rule.
-4. P2, move/copy should revalidate `archived_at` and `point_scale` at exit too,
-   not only after the advisory lock.
-5. P2, `finish_story_from_git` should revalidate its webhook config after the
-   write, on the same reasoning.
-
-### Then
-
-Merge with a merge commit (matching PRs 5-8), delete the branch, set TASK-211
-Done, commit that.
-
-An earlier version of this doc claimed the sixth review never arrived and that
-nothing was outstanding. Both were wrong — it arrived ~20 minutes later.
+**To finish it:** confirm CI is green, request one more `@codex review` if the
+quota allows (round 7's findings were all real, so the curve had not flattened),
+merge with a merge commit to match PRs 5-8, delete the branch, set TASK-211
+Done and commit that.
 
 ## What TASK-211 turned out to be
 
@@ -113,10 +90,9 @@ record point changes, so it is architecture-sensitive.
 
 ## First prompt for the next session
 
-> PR #9 (TASK-211) が未マージで残っています。Codex round 6 の指摘5件(P1 が
-> 2件)が未対応なので、マージ前にそれを片付けてください。内容と検証結果は
-> backlog doc-23 と TASK-211 のノートにあります。特に P1 の1件目は、私が追加
-> した出口ガードが早期 return 2本を迂回しているという指摘で、実際にそうなって
-> いることを確認済みです。片付いたら merge commit でマージ、ブランチ削除、
+> PR #9 (TASK-211) が CI green・Codex round 7 まで全対応済みで未マージのまま
+> 残っています。状態を確認して、Codex の quota が残っていればもう一度
+> `@codex review` を投げてください(round 7 の指摘も全件本物だったので、まだ
+> 収束していません)。指摘が無ければ merge commit でマージ、ブランチ削除、
 > TASK-211 を Done にして、実装順どおり TASK-212 へ進んでください
-> (@claude-opus-5 想定)。
+> (@claude-opus-5 想定)。詳細は TASK-211 のノートにあります。

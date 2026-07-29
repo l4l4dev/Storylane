@@ -34,6 +34,46 @@
 --     read already established, which leaks nothing new.
 -- ============================================================
 
+-- ── assert_points_on_scale ───────────────────────
+-- Shared by the exit guards below: re-reads the project's scale and rejects a
+-- stored points value the CURRENT scale excludes. Separate function so the three
+-- callers cannot drift, and so the scale list lives in exactly one place.
+create or replace function public.assert_points_on_scale(p_project_id uuid, p_story_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  v_scale text;
+  v_custom int[];
+  v_points int;
+  v_allowed int[];
+begin
+  select points into v_points from public.stories where id = p_story_id;
+  if v_points is null then
+    return;
+  end if;
+
+  select point_scale, custom_points into v_scale, v_custom
+    from public.projects where id = p_project_id;
+
+  v_allowed := case v_scale
+    when 'fibonacci' then array[0, 1, 2, 3, 5, 8, 13]
+    when 'linear' then array[0, 1, 2, 3]
+    when 'custom' then coalesce(v_custom, array[]::int[])
+    else array[0, 1, 2, 3, 5, 8, 13]
+  end;
+
+  if not (v_points = any(v_allowed)) then
+    raise exception 'Points % are not on the project''s current scale', v_points
+      using errcode = 'P0001';
+  end if;
+end;
+$function$;
+
+revoke execute on function public.assert_points_on_scale(uuid, uuid) from public, anon, authenticated;
+
 -- ── change_member_role ─────────────────────────────────────────────────────
 create or replace function public.change_member_role(p_project_id uuid, p_user_id uuid, p_role text)
  RETURNS void
@@ -587,6 +627,14 @@ begin
   -- Nothing above is durable until commit, so raising here rolls all of it back.
   perform public.require_project_role(v_source.project_id, variadic v_roles);
 
+  -- The stored points must be valid under the CURRENT target scale, not the one
+  -- read before these writes. spec/features.md ("points are kept only if the
+  -- value exists in the target's point scale") constrains the STORED value, so
+  -- it is not enough that a later scale change cannot alter the already-computed
+  -- variable — that variable is what got written.
+  perform public.assert_points_on_scale(v_source.project_id, c)
+    from unnest(v_child_ids) as c;
+
   return jsonb_build_object('parent_id', p_story_id, 'child_ids', to_jsonb(v_child_ids));
 end;
 $function$;
@@ -768,6 +816,13 @@ begin
     raise exception 'Target project is archived';
   end if;
 
+  -- The stored points must be valid under the CURRENT target scale, not the one
+  -- read before these writes. spec/features.md ("points are kept only if the
+  -- value exists in the target's point scale") constrains the STORED value, so
+  -- it is not enough that a later scale change cannot alter the already-computed
+  -- variable — that variable is what got written.
+  perform public.assert_points_on_scale(p_target_project_id, v_new_id);
+
   return jsonb_build_object('story_id', v_new_id, 'project_id', p_target_project_id, 'number', v_new_number);
 end;
 $function$;
@@ -938,6 +993,13 @@ begin
   if v_target_archived is not null then
     raise exception 'Target project is archived';
   end if;
+
+  -- The stored points must be valid under the CURRENT target scale, not the one
+  -- read before these writes. spec/features.md ("points are kept only if the
+  -- value exists in the target's point scale") constrains the STORED value, so
+  -- it is not enough that a later scale change cannot alter the already-computed
+  -- variable — that variable is what got written.
+  perform public.assert_points_on_scale(p_target_project_id, v_new_id);
 
   return jsonb_build_object('story_id', v_new_id, 'project_id', p_target_project_id, 'number', v_new_number);
 end;

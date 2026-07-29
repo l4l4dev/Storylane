@@ -874,6 +874,81 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     expect(after!.state_id).toBe(byName.Unstarted); // untouched
   }, TIMEOUT);
 
+  it("create_epic rejects a caller de-membered while its INSERT waited on story_number", async () => {
+    // It authorizes, then inserts a story, and assign_story_number parks in
+    // story_number:<project> after that check.
+    const projectId = await createProject("TASK-211 create_epic exit guard");
+
+    const { error } = await callWhileRevoked("story_number", projectId, deMemberOwner(projectId), () =>
+      owner.rpc("create_epic", { p_project_id: projectId, p_title: "epic" }),
+    );
+
+    expect(error?.code).toBe("42501");
+
+    const { count } = await admin
+      .from("stories")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId);
+    expect(count ?? 0).toBe(0); // the insert rolled back
+  }, TIMEOUT);
+
+  it("copy_story_to_project rejects points the target's CURRENT scale excludes", async () => {
+    // The window is after the clamp: the scale is narrowed while the story INSERT
+    // blocks on its assignee foreign key, so the clamp used a scale that is no
+    // longer current. spec/features.md constrains the STORED value, so checking
+    // the computed variable is not enough.
+    const source = await createProject("TASK-211 scale-at-exit source");
+    const target = await createProject("TASK-211 scale-at-exit target");
+    const { error: setupError } = await admin
+      .from("projects")
+      .update({ point_scale: "fibonacci" })
+      .eq("id", target);
+    expect(setupError).toBeNull();
+    const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", source);
+    const unstarted = states!.find((st) => st.category === "unstarted")!.id;
+    // assignee is a member of the target, so the copy keeps it and its INSERT
+    // must FK-check the profiles row we hold below.
+    const storyId = await seedStory(source, {
+      story_type: "feature",
+      points: 8,
+      state_id: unstarted,
+      assignee_id: ownerId,
+    });
+
+    const holder = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    let settled: { error: { code?: string; message?: string } | null };
+    try {
+      await holder.query("begin");
+      await holder.query("select id from public.profiles where id = $1 for update", [ownerId]);
+
+      const pending = Promise.resolve(
+        owner.rpc("copy_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
+      );
+
+      await waitForRowWaiter(holder);
+      const { error: narrowError } = await admin
+        .from("projects")
+        .update({ point_scale: "linear" })
+        .eq("id", target);
+      expect(narrowError).toBeNull();
+      await holder.query("commit");
+      settled = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect(settled.error?.message).toMatch(/not on the project's current scale/i);
+
+    const { count } = await admin
+      .from("stories")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", target);
+    expect(count ?? 0).toBe(0); // nothing landed
+  }, TIMEOUT);
+
   // ── invite_member: no lock, but not waitless either (AC #4) ───────────────
 
   it("invite_member still takes no advisory lock", async () => {
