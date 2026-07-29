@@ -3,14 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertReadOk, assertRowAffected } from "@/lib/supabase/assert";
-import { updateStory } from "@/app/stories/[id]/actions";
 import type { ActionResult, ProjectState } from "@/lib/types";
 import {
   BACKLOG_COLUMN_ID,
   columnForStory,
   evaluateDrop,
   evaluateListDrop,
-  lowestUnstartedStateId,
   toGateStates,
   zoneForStory,
   type KanbanColumnId,
@@ -94,20 +92,33 @@ export type DraftStoryInput = {
   labelIds: string[];
 };
 
+// The RPC's raises are worded for a SQL reader; the draft card shows whatever
+// comes back verbatim (draft-story-card.tsx's `setError`). Only the one message
+// a user can actually act on is rewritten — "No active iteration" already reads
+// as intended, and the rest ("title required", "invalid target") are unreachable
+// from the card, which trims the title itself and has no way to send a target
+// the union type doesn't allow.
+const NO_UNSTARTED_STATE_MESSAGE = "This project has no unstarted state to create stories in";
+
+// The match below is on create_draft_story's raise text (20260729050000), which
+// carries the matching pointer back here.
+function draftErrorMessage(error: { message: string }): string {
+  return error.message.includes("no unstarted-category state") ? NO_UNSTARTED_STATE_MESSAGE : error.message;
+}
+
 /**
  * Creates a story from the Pivotal-parity draft card (spec/screens.md
  * "Quick-add"): the full field set in one save, landing at the top of
- * whichever panel opened it. Two DB round trips, reusing existing paths
- * rather than a new RPC (TASK-82 plan item 4):
+ * whichever panel opened it.
  *
- * 1. Create + position: `backlog` reuses `insert_board_item` (already
- *    insert-plus-anchor in one call). `icebox`/`unstarted` insert plainly
- *    (position defaults from `stories_position_seq` — TASK-58 — landing at
- *    the zone's end), then reuse `move_story_board`'s reposition-only path
- *    (empty `p_deltas`, same mechanism as a drag) to splice it in at
- *    `beforeItemId` instead.
- * 2. `updateStory` (existing RPC) applies every other field in one
- *    transaction, the same validation path a later edit would use.
+ * One call to `create_draft_story` (20260729050000), which does the insert,
+ * the field application and the positioning in a single transaction. It used
+ * to be three separate round trips from here, and a failure in any but the
+ * first left a title-only story behind that a retry then duplicated
+ * (TASK-212). The current iteration is resolved inside the RPC under
+ * `iteration_finalize:<project>` rather than read here first, so a finalize
+ * that lands mid-save cannot put the story into an iteration that has just
+ * closed.
  */
 export async function createDraftStory(input: DraftStoryInput): Promise<ActionResult> {
   const title = input.title.trim();
@@ -116,82 +127,24 @@ export async function createDraftStory(input: DraftStoryInput): Promise<ActionRe
   }
 
   const supabase = await createClient();
-  let storyId: string;
-
-  if (input.target === "backlog") {
-    const { data, error } = await supabase.rpc("insert_board_item", {
-      p_project_id: input.projectId,
-      p_kind: "story",
-      p_payload: { title },
-      p_anchor: moveAnchor(input.beforeItemId),
-    });
-    if (error) {
-      return { ok: false, message: error.message };
-    }
-    storyId = data as string;
-  } else {
-    let iterationId: string | null = null;
-    let stateId: string | null = null;
-    if (input.target === "unstarted") {
-      const { data: currentRows } = await supabase
-        .from("iterations")
-        .select("id")
-        .eq("project_id", input.projectId)
-        .neq("state", "done")
-        .order("number", { ascending: false })
-        .limit(1);
-      iterationId = currentRows?.[0]?.id ?? null;
-      if (!iterationId) {
-        return { ok: false, message: "No active iteration" };
-      }
-      const states = await fetchProjectStates(supabase, input.projectId);
-      stateId = lowestUnstartedStateId(toGateStates(states));
-      if (!stateId) {
-        return { ok: false, message: "This project has no unstarted state to create stories in" };
-      }
-    }
-    // target === "icebox": stateId/iterationId stay null.
-
-    const { data: inserted, error: insertError } = await supabase
-      .from("stories")
-      .insert({ project_id: input.projectId, title, story_type: "feature", state_id: stateId, iteration_id: iterationId })
-      .select("id")
-      .single();
-    if (insertError || !inserted) {
-      return { ok: false, message: insertError?.message ?? "Failed to create story" };
-    }
-    storyId = inserted.id;
-
-    if (input.beforeItemId) {
-      // Best-effort: the story already exists with its fields about to be
-      // saved below, so a reposition failure isn't worth failing the whole
-      // create over — it just lands at the zone's end instead of the top.
-      await supabase.rpc("move_story_board", {
-        p_project_id: input.projectId,
-        p_item: { kind: "story", id: storyId },
-        p_view: input.target === "icebox" ? "list" : (input.view ?? "list"),
-        // Freshly inserted above, so it cannot have a parent yet.
-        p_expected: moveExpected({ state_id: stateId, iteration_id: iterationId, parent_id: null }),
-        p_deltas: {},
-        p_anchor: moveAnchor(input.beforeItemId),
-      });
-    }
-  }
-
-  const result = await updateStory({
-    storyId,
-    title,
-    description: input.description,
-    storyType: input.storyType,
-    points: input.points,
-    // New stories start top-level (no parent); nesting happens via the Parent
-    // picker / Split Studio (doc-18), never at quick-create time.
-    parentId: null,
-    assigneeId: input.assigneeId,
-    labelIds: input.labelIds,
+  // The `as` casts are the same generated-types null gap setStoryParent notes:
+  // the generator types a defaulted argument as optional-non-null, while the
+  // RPC's SQL body takes null for each of these (unestimated, unassigned, no
+  // description).
+  const { error } = await supabase.rpc("create_draft_story", {
+    p_project_id: input.projectId,
+    p_target: input.target,
+    p_title: title,
+    p_view: input.view ?? "list",
+    p_description: input.description as string,
+    p_story_type: input.storyType,
+    p_points: input.points as number,
+    p_assignee_id: input.assigneeId as string,
+    p_label_ids: input.labelIds,
+    p_anchor: moveAnchor(input.beforeItemId),
   });
-  if (!result.ok) {
-    return { ok: false, message: result.reason === "error" ? result.message : "Story was created but its fields could not be saved" };
+  if (error) {
+    return { ok: false, message: draftErrorMessage(error) };
   }
 
   revalidatePath(`/projects/${input.projectId}/board`);

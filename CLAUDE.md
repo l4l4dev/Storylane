@@ -100,7 +100,9 @@ chore/update-supabase-client
 ### PR vs. Direct Push to `main`
 
 Branch protection is intentionally off — direct push to `main` stays available for small work.
-Codex reviews every PR automatically, so opening one is a free extra check.
+Codex reviews a PR when it is opened for review, so opening one is a free extra check. It does
+NOT re-review commits pushed to an already-open PR — comment `@codex review` on the PR after
+each round of fixes, or the new commits merge unreviewed.
 
 - **Open a PR** for anything covered by the `/advisor` rule above (new tables/RLS, algorithm
   rewrites, concurrency-sensitive changes), or any feature/fix that touches multiple
