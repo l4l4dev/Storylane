@@ -1,39 +1,20 @@
 -- ============================================================
--- set_story_state: take iteration_finalize BEFORE the story's row lock.
+-- Board lock-order invariant: iteration_finalize:<project> is acquired before
+-- any story row lock, by every RPC that takes both. Reversing it in one function
+-- is enough to deadlock it against the others (40P01) — see
+-- set-story-state-lock-order.integration.test.ts.
 --
--- Every other board RPC acquires iteration_finalize:<project> first and only
--- then touches rows — move_story_board, insert_board_item's positions sibling,
--- finalize_iteration. set_story_state was the one exception: it took the story's
--- FOR UPDATE first and asked for iteration_finalize afterwards, and only on the
--- branch that auto-assigns the current iteration. Two callers on the same story
--- could therefore hold each half of the pair and wait for the other:
+-- The key is derived from the story, so the lock cannot sit at the top of the
+-- function: the unlocked read below exists only to resolve project_id, and the
+-- authoritative locked read still follows it. That unlocked read is RLS-filtered,
+-- so it grants nothing; it uses an `is null` test rather than `perform ... if not
+-- found` because `perform` sets FOUND and nothing could then be placed between
+-- the probe and the branch reading it.
 --
---   set_story_state   holds the story row, waits for iteration_finalize
---   move_story_board  holds iteration_finalize, waits for the story row
---
--- which Postgres resolves by aborting one with 40P01. Reproducible today against
--- a drag; create_draft_story reaches the same splice, so quick-add shares it.
--- See set-story-state-lock-order.integration.test.ts.
---
--- The lock key is derived from the story, so it cannot simply move to the top of
--- the function: an unlocked read resolves project_id purely to build the key,
--- and the authoritative locked read follows unchanged. That first read is
--- RLS-filtered exactly as the existence probe it replaces was, so a caller who
--- cannot see the story still gets 'Story not found'. It also replaces
--- `perform 1 ... if not found` with an `is null` test on purpose: `perform` sets
--- FOUND, so a lock acquisition could not have been placed between that probe and
--- the branch reading it.
---
--- The lock is now unconditional, where it used to guard only the
--- in_progress-from-no-iteration branch. That serializes a project's state
--- changes against each other and against a finalize — the cost move_story_board
--- already pays on every drag, and board mutations are human-paced. The
--- alternative, keeping it conditional, needs the condition evaluated before the
--- lock and re-checked after it, which is the staleness problem TASK-219 exists
--- to address; it does not belong in a deadlock fix.
---
--- Rebuilt from the live definition (pg_get_functiondef), not from an earlier
--- migration, so nothing shipped since 20260728040200 is reverted.
+-- The lock is unconditional, so a project's state changes serialize against each
+-- other and against a finalize. Taking it only on the branch that needs it would
+-- require the condition evaluated before the lock and re-checked under it, which
+-- is the staleness problem TASK-219 covers.
 -- ============================================================
 
 create or replace function public.set_story_state(p_story_id uuid, p_state_id uuid)
@@ -52,20 +33,17 @@ declare
   v_rows int;
 begin
   -- Unlocked, and only to build the advisory-lock key below. RLS applies, so a
-  -- caller who cannot see the story lands on the same 'Story not found' the
-  -- existence probe this replaces produced.
+  -- caller who cannot see the story cannot tell it from one that does not exist.
   select project_id into v_project_id from public.stories where id = p_story_id;
   if v_project_id is null then
     raise exception 'Story not found' using errcode = 'P0002';
   end if;
 
-  -- Ahead of the lock, matching every sibling RPC: authorize, then serialize.
-  -- Hoisting the lock without this would make this the one RPC where a caller who
-  -- can merely SEE the story (the SELECT policy admits a viewer) queues on — and
-  -- briefly holds — a project-wide lock on a call certain to be refused. Raises
-  -- the same code and message the FOR UPDATE below produces, so nothing a client
-  -- sees changes. That FOR UPDATE remains the authoritative check; this is a
-  -- gate, not a replacement. `is null` first because project_role returns NULL
+  -- Authorize, then serialize — the order every sibling RPC uses. Without this a
+  -- caller who can merely SEE the story (the SELECT policy admits a viewer) would
+  -- queue on, and briefly hold, a project-wide lock on a call certain to be
+  -- refused. The FOR UPDATE below stays authoritative; this only raises the same
+  -- code and message earlier. `is null` first because project_role returns NULL
   -- for a non-member and `NULL not in (...)` is NULL, which `if` reads as false.
   v_role := public.project_role(v_project_id);
   if v_role is null or not (v_role = any(array['owner', 'member'])) then
