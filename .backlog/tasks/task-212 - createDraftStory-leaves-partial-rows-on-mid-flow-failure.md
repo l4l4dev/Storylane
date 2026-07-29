@@ -1,11 +1,11 @@
 ---
 id: TASK-212
 title: createDraftStory leaves partial rows on mid-flow failure
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-29 10:10'
+updated_date: '2026-07-29 14:29'
 labels: []
 milestone: m-2
 dependencies: []
@@ -24,9 +24,9 @@ createDraftStory (board/actions.ts) creates a story, positions it, and applies i
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A failure in the position or field-update step for a new draft story does not leave an orphaned title-only row — either the whole creation rolls back or the caller can resume/complete the same row
-- [ ] #2 The position-move error is surfaced to the caller instead of being silently ignored
-- [ ] #3 All three creation paths (backlog, unstarted, icebox) keep working
+- [x] #1 A failure in the position or field-update step for a new draft story does not leave an orphaned title-only row — either the whole creation rolls back or the caller can resume/complete the same row
+- [x] #2 The position-move error is surfaced to the caller instead of being silently ignored
+- [x] #3 All three creation paths (backlog, unstarted, icebox) keep working
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -206,3 +206,13 @@ TASK-220. It fell outside this task's iteration_finalize audit because
 split_story never takes iteration_finalize — that audit covered the
 iteration_finalize/row-lock pair only.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+createDraftStory's insert-then-position-then-apply sequence is replaced by one RPC, create_draft_story (20260729050000), so a failure at any step rolls the whole creation back instead of leaving a title-only row that a retry duplicates. The RPC is a SECURITY INVOKER wrapper: it inserts the title, then delegates fields and labels to update_story and positioning to move_story_board, which keeps the point-scale clamp, the label replacement and the backlog splice in one place each. INVOKER is load-bearing — the cross-project label guard is an RLS WITH CHECK that DEFINER would bypass — and it still needs entry and exit role guards, because update_story's UPDATE and DELETE fail silently under RLS for a caller demoted mid-transaction.
+
+Two lock-order fixes came out of the work: set_story_state now takes iteration_finalize before the row lock (20260729090000), removing a pre-existing inversion that routing the backlog target through move_story_board exposed as a live 40P01; and create_draft_story takes positions only on the splice path, above the INSERT so the positions -> story_number order holds.
+
+Verified: 16 integration cases in apps/web/lib/utils/create-draft-story.integration.test.ts (orphan rollback, reposition error propagation, all three landing zones, the finalize race, the demotion case), each guard confirmed load-bearing by removing it and watching a test fail; full web suite 858 passed / 0 failed, tsc and lint clean, against a database rebuilt from the migration chain. rls-security-reviewer passed on both migrations. Codex round 1 (4 findings) and /code-review high rounds 1-2 (3 + 3 findings) are all closed or filed; round 3 found nothing. Deferred: TASK-220 (split_story's row-lock-before-positions inversion, pre-existing).
+<!-- SECTION:FINAL_SUMMARY:END -->
