@@ -46,6 +46,7 @@ const AUTHENTICATED_ALLOWLIST = new Set([
   "create_epic",
   "set_epic_pinned",
   "set_story_parent",
+  "create_draft_story",
   // MCP entry-point RPCs (apps/mcp/src/handlers.ts), also granted to
   // `authenticated` since the MCP bot signs in as an ordinary Supabase user
   "set_story_tasks",

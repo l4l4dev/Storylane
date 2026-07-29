@@ -408,37 +408,20 @@ describe("backlog insert actions -> insert_board_item", () => {
   });
 });
 
-// TASK-82: the Pivotal-parity draft card's full-field create. These assert
-// the action's call sequence per target and that failures surface the right
-// message; the underlying RPCs' own correctness (splice/reorder/update
-// atomicity) is proven in insert-board-item/move-story-board/update-story's
-// own integration tests.
+// TASK-82 / TASK-212: the Pivotal-parity draft card's full-field create. It is
+// now a thin caller of create_draft_story, which does insert + fields +
+// positioning in one transaction — so these assert only what the action itself
+// still owns: the arguments it builds, and that it surfaces the RPC's error
+// rather than swallowing it. The RPC's own behaviour (atomicity, the iteration
+// resolved under the finalize lock, the three targets' landing zones) is proven
+// against a real database in create-draft-story.integration.test.ts.
 describe("createDraftStory", () => {
-  const CURRENT_ITERATION = "iter-cur";
-
   beforeEach(() => {
     rpcMock.mockReset();
     insertMock.mockReset();
     for (const key of Object.keys(rpcResults)) {
       delete rpcResults[key];
     }
-    fixtures.iterations = { list: { data: [{ id: CURRENT_ITERATION }], error: null } };
-    fixtures.project_states = { list: { data: CLASSIC_STATE_ROWS, error: null } };
-    fixtures.stories = { insertResult: { data: { id: "new-story-id" }, error: null } };
-    rpcResults.update_story = {
-      data: [
-        {
-          title: "Draft title",
-          description: null,
-          story_type: "feature",
-          points: null,
-          parent_id: null,
-          assignee_id: null,
-          label_ids: [],
-        },
-      ],
-      error: null,
-    };
   });
 
   function baseInput(overrides: Partial<Parameters<typeof import("./actions")["createDraftStory"]>[0]> = {}) {
@@ -456,109 +439,26 @@ describe("createDraftStory", () => {
     };
   }
 
-  it("returns an error for a blank title without creating anything", async () => {
+  const draftCall = () => rpcMock.mock.calls.find(([fn]) => fn === "create_draft_story")?.[1] as Record<string, unknown>;
+
+  it("returns an error for a blank title without calling the RPC", async () => {
     const { createDraftStory } = await import("./actions");
 
     const result = await createDraftStory(baseInput({ title: "   " }));
 
     expect(result).toEqual({ ok: false, message: "Title is required" });
-    expect(insertMock).not.toHaveBeenCalled();
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it("errors for target unstarted with no active iteration, without inserting", async () => {
-    fixtures.iterations = { list: { data: [], error: null } };
+  it("sends the whole draft in a single RPC call, with the title trimmed", async () => {
     const { createDraftStory } = await import("./actions");
 
-    const result = await createDraftStory(baseInput({ target: "unstarted" }));
-
-    expect(result).toEqual({ ok: false, message: "No active iteration" });
-    expect(insertMock).not.toHaveBeenCalled();
-  });
-
-  it("inserts into the current iteration's unstarted state for target unstarted", async () => {
-    const { createDraftStory } = await import("./actions");
-
-    await createDraftStory(baseInput({ target: "unstarted" }));
-
-    expect(insertMock).toHaveBeenCalledWith("stories", {
-      project_id: "project-1",
-      title: "Draft title",
-      story_type: "feature",
-      state_id: "unstarted",
-      iteration_id: CURRENT_ITERATION,
-    });
-  });
-
-  it("repositions to the given anchor for target unstarted when the zone isn't empty", async () => {
-    const { createDraftStory } = await import("./actions");
-
-    await createDraftStory(baseInput({ target: "unstarted", beforeItemId: "story:top", view: "tracker" }));
-
-    const call = rpcMock.mock.calls.find(([fn]) => fn === "move_story_board");
-    expect(call?.[1]).toEqual({
-      p_project_id: "project-1",
-      p_item: { kind: "story", id: "new-story-id" },
-      p_view: "tracker",
-      p_expected: { state_id: "unstarted", iteration_id: CURRENT_ITERATION, parent_id: null },
-      p_deltas: {},
-      p_anchor: { before: { kind: "story", id: "top" } },
-    });
-  });
-
-  it("skips the reposition call when the zone is empty (no anchor)", async () => {
-    const { createDraftStory } = await import("./actions");
-
-    await createDraftStory(baseInput({ target: "unstarted", beforeItemId: null }));
-
-    expect(rpcMock.mock.calls.some(([fn]) => fn === "move_story_board")).toBe(false);
-  });
-
-  it("inserts with no state/iteration for target icebox", async () => {
-    const { createDraftStory } = await import("./actions");
-
-    await createDraftStory(baseInput({ target: "icebox" }));
-
-    expect(insertMock).toHaveBeenCalledWith("stories", {
-      project_id: "project-1",
-      title: "Draft title",
-      story_type: "feature",
-      state_id: null,
-      iteration_id: null,
-    });
-  });
-
-  it("always uses list view to reposition an icebox draft, ignoring any view override", async () => {
-    const { createDraftStory } = await import("./actions");
-
-    await createDraftStory(baseInput({ target: "icebox", beforeItemId: "story:top", view: "tracker" }));
-
-    const call = rpcMock.mock.calls.find(([fn]) => fn === "move_story_board");
-    expect((call?.[1] as { p_view: string }).p_view).toBe("list");
-  });
-
-  it("calls insert_board_item (not a plain insert) for target backlog", async () => {
-    rpcResults.insert_board_item = { data: "new-story-id", error: null };
-    const { createDraftStory } = await import("./actions");
-
-    await createDraftStory(baseInput({ target: "backlog", beforeItemId: "divider:d1" }));
-
-    const call = rpcMock.mock.calls.find(([fn]) => fn === "insert_board_item");
-    expect(call?.[1]).toEqual({
-      p_project_id: "project-1",
-      p_kind: "story",
-      p_payload: { title: "Draft title" },
-      p_anchor: { before: { kind: "divider", id: "d1" } },
-    });
-    expect(insertMock).not.toHaveBeenCalled();
-  });
-
-  it("applies the full field set via update_story after creating the story", async () => {
-    const { createDraftStory } = await import("./actions");
-
-    await createDraftStory(
+    const result = await createDraftStory(
       baseInput({
         target: "unstarted",
+        view: "tracker",
+        beforeItemId: "story:top",
+        title: "  Draft title  ",
         description: "Details",
         points: 3,
         assigneeId: "user-1",
@@ -566,37 +466,81 @@ describe("createDraftStory", () => {
       }),
     );
 
-    const call = rpcMock.mock.calls.find(([fn]) => fn === "update_story");
-    expect(call?.[1]).toEqual({
-      p_story_id: "new-story-id",
+    expect(result).toEqual({ ok: true });
+    expect(draftCall()).toEqual({
+      p_project_id: "project-1",
+      p_target: "unstarted",
       p_title: "Draft title",
+      p_view: "tracker",
       p_description: "Details",
       p_story_type: "feature",
       p_points: 3,
-      p_parent_id: null,
       p_assignee_id: "user-1",
       p_label_ids: ["label-1"],
+      p_anchor: { before: { kind: "story", id: "top" } },
     });
+    // The three-step path is gone: no plain insert, and no second RPC that a
+    // failure could strand a title-only row behind (TASK-212 AC #1).
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(rpcMock).toHaveBeenCalledTimes(1);
   });
 
-  it("surfaces the create RPC's error message instead of throwing", async () => {
-    rpcResults.insert_board_item = { data: null, error: { message: "Backlog insert failed" } };
+  it("passes an empty anchor when the panel is empty, rather than omitting it", async () => {
+    // The RPC keys "reposition or not" off `p_anchor ? 'before'`, so an empty
+    // object is the append case — not a missing argument.
     const { createDraftStory } = await import("./actions");
 
-    await expect(createDraftStory(baseInput({ target: "backlog" }))).resolves.toEqual({
-      ok: false,
-      message: "Backlog insert failed",
-    });
+    await createDraftStory(baseInput({ beforeItemId: null }));
+
+    expect(draftCall().p_anchor).toEqual({});
   });
 
-  it("surfaces update_story's error message when the field save fails", async () => {
-    rpcResults.update_story = { data: null, error: { message: "Points must be on the point scale" } };
+  it("defaults the view to list when the caller doesn't pass one", async () => {
+    // Only the unstarted zone is ordered per-view; List callers and the Icebox
+    // leave `view` unset, and the RPC ignores it for the other two targets.
+    const { createDraftStory } = await import("./actions");
+
+    await createDraftStory(baseInput({ target: "icebox", view: undefined }));
+
+    expect(draftCall().p_view).toBe("list");
+  });
+
+  for (const target of ["backlog", "unstarted", "icebox"] as const) {
+    it(`forwards target ${target} to the RPC rather than branching per target (AC #3)`, async () => {
+      const { createDraftStory } = await import("./actions");
+
+      await createDraftStory(baseInput({ target }));
+
+      expect(draftCall().p_target).toBe(target);
+      expect(rpcMock).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  // AC #2: the reposition error used to be discarded here on a best-effort
+  // basis. One RPC means every failure — including the splice's — comes back
+  // through this single error path.
+  it("surfaces the RPC's error message instead of reporting success", async () => {
+    rpcResults.create_draft_story = { data: null, error: { message: "stale story state; refresh and retry" } };
     const { createDraftStory } = await import("./actions");
 
     await expect(createDraftStory(baseInput({ target: "unstarted" }))).resolves.toEqual({
       ok: false,
-      message: "Points must be on the point scale",
+      message: "stale story state; refresh and retry",
     });
+  });
+
+  it("surfaces 'No active iteration' from the RPC, which resolves it under the lock", async () => {
+    // The action no longer reads iterations itself — doing so before the RPC
+    // took iteration_finalize is what let a concurrent finalize land the story
+    // in a just-closed iteration.
+    rpcResults.create_draft_story = { data: null, error: { message: "No active iteration" } };
+    const { createDraftStory } = await import("./actions");
+
+    await expect(createDraftStory(baseInput({ target: "unstarted" }))).resolves.toEqual({
+      ok: false,
+      message: "No active iteration",
+    });
+    expect(rpcMock.mock.calls.every(([fn]) => fn === "create_draft_story")).toBe(true);
   });
 });
 

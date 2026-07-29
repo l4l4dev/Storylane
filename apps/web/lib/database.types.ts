@@ -922,6 +922,10 @@ export type Database = {
         Args: { p_project_id: string; p_user_id: string }
         Returns: undefined
       }
+      assert_points_on_scale: {
+        Args: { p_project_id: string; p_story_id: string }
+        Returns: undefined
+      }
       change_member_role: {
         Args: { p_project_id: string; p_role: string; p_user_id: string }
         Returns: undefined
@@ -929,6 +933,21 @@ export type Database = {
       copy_story_to_project: {
         Args: { p_story_id: string; p_target_project_id: string }
         Returns: Json
+      }
+      create_draft_story: {
+        Args: {
+          p_anchor?: Json
+          p_assignee_id?: string
+          p_description?: string
+          p_label_ids?: string[]
+          p_points?: number
+          p_project_id: string
+          p_story_type?: string
+          p_target: string
+          p_title: string
+          p_view?: string
+        }
+        Returns: string
       }
       create_epic: {
         Args: {
