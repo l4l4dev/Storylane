@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-29 09:06'
+updated_date: '2026-07-29 10:10'
 labels: []
 milestone: m-2
 dependencies: []
@@ -183,4 +183,26 @@ Final: core tsc/test OK (77), web tsc/lint/build OK, full web suite 1201 passed
 across 136 files. database.types.ts unchanged by the second migration
 (set_story_state's signature is untouched). All eight functions touching
 iteration_finalize audited for acquisition order.
+
+Review round 2 (/code-review high, 2026-07-29): no correctness bugs; three low
+findings.
+
+Two closed on this branch (commit aa90dd1):
+- positions:<project> was held for the whole transaction even when p_anchor
+  carried no `before`, serialising the anchor-less quick-add against concurrent
+  drags for a splice it never performs. Now taken only on the splice path. The
+  reviewer's suggested placement (inside the `if p_anchor ? 'before'` block) was
+  NOT used: that block sits after the INSERT, whose numbering trigger takes
+  story_number:<project>, so acquiring positions there inverts the documented
+  positions -> story_number order and opens an AB-BA pair with
+  insert_board_item. The acquisition stays above the INSERT; only its condition
+  changed.
+- draftErrorMessage matched a substring of the SQL raise text with nothing tying
+  the two together; both sides now carry a pointer at the other.
+
+One deferred as pre-existing and out of scope: split_story takes the source row
+lock before positions, inverting the order every other board RPC uses. Filed as
+TASK-220. It fell outside this task's iteration_finalize audit because
+split_story never takes iteration_finalize — that audit covered the
+iteration_finalize/row-lock pair only.
 <!-- SECTION:NOTES:END -->
