@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:08'
-updated_date: '2026-07-29 03:28'
+updated_date: '2026-07-29 03:37'
 labels: []
 milestone: m-2
 dependencies: []
@@ -271,6 +271,20 @@ P2, doc-23 obsolete — correct and my fault twice over. I rewrote it to say "MU
 STILL OPEN from this round: a test for finish_story_from_git's post-write config guard. Deleting that branch, or reverting the raise to the committing return, currently leaves the suite green. It needs a case that blocks the UPDATE or one of its triggers AFTER the config read and then changes the integration — the same FK-wait trick that worked for the scale check should stage it.
 
 Verified: full web suite 1179/1179 from a clean reset (was 1177), the four suites over the newly guarded functions 77/77, grant-lockdown 3/3, core tsc, core 77/77, web tsc, web lint, web build.
+
+The last item from round 7 is now covered: finish_story_from_git's post-write config guard has a test.
+
+Staging the window took three attempts, and the failures are the informative part.
+
+First attempt held the projects row but never got past `no_active_iteration` — the RPC declines long before the write when the project has no iteration, so the window never opened. Seeded one with finalize_iteration.
+
+Second attempt held the STORY row, which blocks the function's own `select ... for update` — and that sits BEFORE the config read, so the call returned not_configured from the early path rather than reaching the post-write branch. That is exactly the shape Codex described as leaving the branch uncovered.
+
+Third attempt worked: hold the PROJECT row. The activity_logs INSERT that log_story_activity fires has a project_id foreign key, FK checks take FOR KEY SHARE on the referenced row, and FOR UPDATE conflicts with it — so the block lands after the story UPDATE. Disabling the integration during that wait produced P0001 and the story rolled back to Unstarted.
+
+Verified the test catches both ways of breaking the guard, which is what Codex asked for specifically: deleting the branch fails it, and reverting the raise to the committing return fails it too. That second one matters because a `return` there looks harmless and silently commits the UPDATE it was meant to undo — the mistake I made writing it.
+
+Round 7 is fully closed. Sixteen functions carry exit guards; the suite is 1180/1180 from a clean reset (was 1179), core tsc, core 77/77, web tsc, web lint, web build all clean.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -949,6 +949,71 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     expect(count ?? 0).toBe(0); // nothing landed
   }, TIMEOUT);
 
+  it("finish_story_from_git rolls back when the integration changes AFTER the write", async () => {
+    // Distinct from the two races above, which block before the config read and
+    // return not_configured without reaching this branch. Here the story UPDATE
+    // has already happened and log_story_activity's activity_logs INSERT is
+    // blocked on its project_id foreign key, so only the post-write guard can
+    // see the change — and it has to RAISE, since a return would commit the
+    // UPDATE it is meant to undo.
+    const projectId = await createProject("TASK-211 webhook post-write guard");
+    const { data: states } = await admin.from("project_states").select("id, name").eq("project_id", projectId);
+    const byName = Object.fromEntries(states!.map((st) => [st.name, st.id])) as Record<string, string>;
+    const { error: fixtureError } = await admin.from("integrations").insert({
+      project_id: projectId,
+      provider: "github",
+      config: { merge_target_state_id: byName.Finished },
+      is_active: true,
+    });
+    expect(fixtureError).toBeNull();
+    // Without an iteration the RPC declines with no_active_iteration long before
+    // the write, so the window never opens.
+    const seeded = await owner.rpc("finalize_iteration", { p_project_id: projectId, p_manual: false });
+    expect(seeded.error).toBeNull();
+    const { data: story } = await admin
+      .from("stories")
+      .insert({ project_id: projectId, title: "post-write", story_type: "chore", state_id: byName.Unstarted, created_by: ownerId })
+      .select("id, number")
+      .single();
+
+    const holder = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await holder.connect();
+    let settled: { error: { code?: string; message?: string } | null };
+    try {
+      await holder.query("begin");
+      // FK checks take FOR KEY SHARE on the referenced row, which FOR UPDATE
+      // conflicts with. Holding the PROJECT row (not the story's — that one is
+      // locked before the config read) blocks the activity_logs insert.
+      await holder.query("select id from public.projects where id = $1 for update", [projectId]);
+
+      const pending = Promise.resolve(
+        admin.rpc("finish_story_from_git", {
+          p_project_id: projectId,
+          p_story_number: story!.number,
+          p_provider: "github",
+        }),
+      );
+
+      await waitForRowWaiter(holder);
+      const { error: disableError } = await admin
+        .from("integrations")
+        .update({ is_active: false })
+        .eq("project_id", projectId);
+      expect(disableError).toBeNull();
+      await holder.query("commit");
+      settled = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect(settled.error?.message).toMatch(/configuration changed while the transition was in flight/i);
+
+    const { data: after } = await admin.from("stories").select("state_id").eq("id", story!.id).single();
+    expect(after!.state_id).toBe(byName.Unstarted); // the UPDATE rolled back
+  }, TIMEOUT);
+
   // ── invite_member: no lock, but not waitless either (AC #4) ───────────────
 
   it("invite_member still takes no advisory lock", async () => {
