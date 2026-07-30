@@ -196,6 +196,11 @@ describe.skipIf(!RUN)("set_story_state lock order (integration)", () => {
     // its own — the case above is what does — but it is what a user actually does,
     // and it would catch a fix that serialized itself into a hang.
     const fx = await seed("lock order: quick-add vs transition");
+    // Without an active iteration, entering an in_progress state always fails
+    // with "No active iteration" — the transition assertion below would pass on
+    // a broken lock order just as easily as a working one.
+    const seeded = await asOwner.rpc("finalize_iteration", { p_project_id: fx.projectId, p_manual: false });
+    expect(seeded.error).toBeNull();
 
     const holder = new PgClient({ connectionString: DB_URL() });
     await holder.connect();
@@ -229,6 +234,7 @@ describe.skipIf(!RUN)("set_story_state lock order (integration)", () => {
     expect(created.error?.code).not.toBe("40P01");
     expect(transition.error?.code).not.toBe("40P01");
     expect(created.error).toBeNull();
+    expect(transition.error).toBeNull();
 
     const { data: rows } = await asService
       .from("stories")

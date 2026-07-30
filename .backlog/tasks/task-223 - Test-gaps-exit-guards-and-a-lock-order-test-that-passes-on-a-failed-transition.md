@@ -3,10 +3,11 @@ id: TASK-223
 title: >-
   Test gaps: exit guards and a lock-order test that passes on a failed
   transition
-status: To Do
+status: In Progress
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-30 05:58'
+updated_date: '2026-07-30 17:52'
 labels: []
 milestone: m-2
 dependencies: []
@@ -27,7 +28,47 @@ Two Codex findings from the review sweep (PR #9 comment 3670890052, PR #10 comme
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A race test revokes the caller while set_story_parent is blocked after authorization and asserts the write rolled back (42501); it fails when that RPC's exit guard is removed
-- [ ] #2 The same for set_epic_pinned
-- [ ] #3 The quick-add-vs-transition test seeds an active iteration and requires transition.error to be null, so a transition that does not complete fails the test
+- [x] #1 A race test revokes the caller while set_story_parent is blocked after authorization and asserts the write rolled back (42501); it fails when that RPC's exit guard is removed
+- [x] #2 The same for set_epic_pinned
+- [x] #3 The quick-add-vs-transition test seeds an active iteration and requires transition.error to be null, so a transition that does not complete fails the test
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. set-story-state-lock-order.integration.test.ts (AC#3): seed an active iteration in the quick-add-vs-transition test (finalize_iteration, p_manual: false) before racing the two RPCs, and assert transition.error is null. Without an iteration the transition always fails with 'No active iteration' regardless of lock order, so the existing 40P01-only assertions passed on a transition that never completed.
+2. set-story-parent.integration.test.ts / epic-pinned.integration.test.ts (AC#1, AC#2): add a race test per RPC that holds the target story's own row FOR UPDATE on a second connection, calls the RPC (which blocks on that same row inside its own SELECT ... FOR UPDATE), de-members the caller while it is genuinely parked, then releases the row and asserts 42501 with the write rolled back.
+   Verified first, empirically, against local PG 17 with throwaway tables: a SELECT ... FOR UPDATE that blocks on a locked row and then unblocks re-evaluates its WHERE clause via EvalPlanQual, but a subquery on ANOTHER table (project_members, in these RPCs' own membership filter) still sees the snapshot from before the wait, not the value committed while blocked. So a caller de-membered during the wait still passes the RPC's own initial select+lock, and only the RPC's later, separate exit-guard SELECT (a fresh statement, fresh snapshot) can catch it — which is exactly what AC#1/#2 ask the test to isolate.
+3. Both new tests confirmed to discriminate: guard temporarily removed from the live set_story_parent / set_epic_pinned definitions (comment-only edits, restored from 20260728140000_story_rpc_exit_guards.sql afterward) — each RPC's new test failed alone while the rest of its file passed.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+AC evidence:
+#1 set-story-parent.integration.test.ts gained "rejects a caller de-membered while blocked on the story's own row (exit guard)". Guard removed from the live function: that test alone failed with 'expected undefined to be 42501', the other 10 in the file passed. Restored and re-verified.
+#2 epic-pinned.integration.test.ts gained the analogous test for set_epic_pinned. Same removal/restore cycle: that test alone failed, the other 19 passed.
+#3 set-story-state-lock-order.integration.test.ts's "a backlog quick-add and a concurrent state transition both complete" now seeds an active iteration via finalize_iteration and asserts transition.error is null, so a transition that fails for any reason (not just 40P01) fails the test.
+
+Why the row-lock shape works for #1/#2 rather than needing a trigger-based second wait: verified directly (not inferred) that PostgreSQL's Read Committed EvalPlanQual, on unblocking a FOR UPDATE wait, re-fetches only the row that was locked — a subquery referencing another table (project_members) in the same WHERE clause still evaluates against the pre-wait snapshot. Two throwaway tables, two psql sessions: session B blocked on session A's row lock while a plain UPDATE to the OTHER table committed during the wait; once A released, B's re-evaluated query still returned the row as if the other table's change had not happened. This is what makes holding the story's own row a valid, guard-specific test rather than one that would also be caught by the RPC's own initial authorization.
+
+Verification: SUPABASE_INTEGRATION=1 pnpm test = 1242 passed / 141 files (+2 from TASK-222's baseline). pnpm run lint and tsc --noEmit clean.
+
+Codex review of PR #15, round 1 — one P2, accepted; it invalidated the AC#1 test's design (not the exit guard itself, which was always correct).
+
+The original set_story_parent test held the CHILD's own row externally, same as set_epic_pinned's. Codex pointed out that only proves SOME fresh membership check runs after the initial select unblocks — not specifically the guard at the function's true exit. Confirmed empirically by moving require_project_role to right after the initial select (before the UPDATE): the original test still passed.
+
+Fixed by holding the OLD PARENT's row instead: detaching fires maintain_is_container AFTER UPDATE, which calls recompute_is_container(old.parent_id) — a `select ... for update` on the parent taken even when it ends up writing nothing (an epic_pinned parent keeps is_container regardless of child count). That wait sits strictly after the child's own write, so a guard placed anywhere earlier — including right after the initial select — cannot see a de-membering that lands during it. Re-verified against the same three variants: guard removed (fails), guard moved to right-after-select (now correctly fails too), guard at the true exit, current definition (passes). Also strengthened the rollback assertion to cover the cascading is_container flip, not just the child's own parent_id.
+
+set_epic_pinned's test (AC#2) was checked against the same concern and left as originally designed: this RPC has no wait between "right after the select" and its true exit (traced every trigger on stories — stories_maintain_is_container only fires on UPDATE OF parent_id, which this RPC never touches), so a guard placed at either point protects identically. Confirmed empirically — moving its guard to right-after-select still passes the existing test, because there is no real difference in protection to detect there. Comment expanded to record this reasoning so a future review does not have to re-derive it or assume the two tests should be symmetric.
+
+Re-verified after the fix: SUPABASE_INTEGRATION=1 pnpm test = 1242 passed / 141 files, lint and tsc clean.
+
+Codex review of PR #15, round 2 — one P2, one P3, both accepted.
+
+P2: re-raised for epic-pinned.integration.test.ts specifically — the round-1 fix only addressed set_story_parent. Codex proposed the mechanism: lock the project row so the activity_logs insert (project_id foreign key check, taken for a points-bearing story) waits on it. Verified the FK check does take a conflicting lock: two raw psql sessions, an INSERT into activity_logs blocked for the full duration of a FOR UPDATE held on the referenced projects row by another session, then proceeded once released. Rewrote the test around that wait (holding public.projects instead of the story's own row) and confirmed the same three-variant cycle as set_story_parent: guard removed (fails), guard moved to right-after-select (now correctly fails too — previously passed), current definition (passes). Hit one assertion bug while measuring this: the first version's activity_logs rollback check counted ALL rows for the story_id, which included the unrelated 'story.created' row from the story's own insert (a leftover from the failed guard-moved-early run made this visible in the live catalog); narrowed to action = 'story.containerized'.
+
+P3: dropped the TASK-223/Codex/PR-number narration from both new-test comments (set-story-parent and epic-pinned), keeping only the concurrency reasoning.
+
+Re-verified after both fixes: SUPABASE_INTEGRATION=1 pnpm test = 1242 passed / 141 files, lint and tsc clean.
+<!-- SECTION:NOTES:END -->

@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { Client as PgClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Exercises doc-20 §5: attaching a story to an epic (and detaching it) writes
@@ -10,12 +11,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/set-story-parent.integration.test.ts
 const RUN = process.env.SUPABASE_INTEGRATION === "1";
 
+const TIMEOUT = 30_000;
+const DB_URL = () => process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+
 describe.skipIf(!RUN)("set_story_parent (integration)", () => {
   let owner: SupabaseClient;
   let admin: SupabaseClient;
   let projectId: string;
   let unstartedId: string;
   let iterationId: string;
+  let ownerId: string;
   let otherProjectId: string | undefined;
   let outsiderUserId: string | undefined;
   let viewerUserId: string | undefined;
@@ -43,6 +48,7 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
     if (auth.error || !auth.data.user) {
       throw new Error(`Dev-user sign-in failed (is 'supabase start' running?): ${auth.error?.message}`);
     }
+    ownerId = auth.data.user.id;
 
     const p = await owner.from("projects").insert({ name: "set_story_parent test" }).select("id").single();
     if (p.error || !p.data) throw new Error(`Project setup failed: ${p.error?.message}`);
@@ -95,6 +101,106 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
       .single();
     return data!;
   }
+
+  /** Blocks until another backend is waiting on a row THIS connection's transaction holds. */
+  async function waitForRowWaiter(holder: PgClient): Promise<void> {
+    const SQL = `
+      select count(*)::int as n
+        from pg_locks w
+       where not w.granted
+         and w.locktype in ('transactionid', 'tuple')
+         and w.pid <> pg_backend_pid()
+         and exists (
+           select 1 from pg_locks h
+            where h.granted and h.pid = pg_backend_pid()
+              and h.locktype = 'transactionid'
+              and h.transactionid = w.transactionid
+         )`;
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const { rows } = await holder.query(SQL);
+      if (rows[0].n > 0) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error("nothing ever blocked on the held row — the test would be vacuous");
+  }
+
+  // Blocking on the CHILD's own row only proves some fresh membership check
+  // runs after the initial select — moving require_project_role to right
+  // after that select (before the UPDATE) still satisfies that shape, so it
+  // does not isolate the true exit guard.
+  //
+  // The wait that only a guard remaining at the very end can cover is the OLD
+  // PARENT's row lock: detaching fires maintain_is_container AFTER UPDATE,
+  // which calls recompute_is_container(old.parent_id) — a `select ... for
+  // update` on the parent, taken regardless of whether it ends up writing
+  // anything. Holding that row externally blocks the trigger, which runs
+  // strictly after the child's own UPDATE, so a guard placed anywhere earlier
+  // (including right after the initial select) cannot see a de-membering that
+  // lands during this wait — only the guard at the function's actual exit can.
+  it("rejects a caller de-membered while a detach's trigger waited on the OLD PARENT row (exit guard)", async () => {
+    const { data: project } = await owner
+      .from("projects")
+      .insert({ name: "TASK-223 set_story_parent exit guard" })
+      .select("id")
+      .single();
+    const raceProjectId = project!.id;
+    // Plain container (is_container via child membership, not epic_pinned):
+    // losing its last child is what makes recompute_is_container write to it,
+    // so the rollback assertion below proves the WHOLE cascade unwound, not
+    // just the child's own parent_id.
+    const { data: parent } = await admin
+      .from("stories")
+      .insert({ project_id: raceProjectId, story_type: "feature", title: "parent", created_by: ownerId })
+      .select("id")
+      .single();
+    const { data: child } = await admin
+      .from("stories")
+      .insert({
+        project_id: raceProjectId,
+        story_type: "feature",
+        title: "child",
+        parent_id: parent!.id,
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    expect((await admin.from("stories").select("is_container").eq("id", parent!.id).single()).data!.is_container).toBe(
+      true,
+    );
+
+    const holder = new PgClient({ connectionString: DB_URL() });
+    await holder.connect();
+    let settled: { error: { code?: string } | null };
+    try {
+      await holder.query("begin");
+      await holder.query("select id from public.stories where id = $1 for update", [parent!.id]);
+
+      const pending = Promise.resolve(
+        owner.rpc("set_story_parent", { p_story_id: child!.id, p_parent_id: null }),
+      );
+
+      await waitForRowWaiter(holder);
+      await admin
+        .from("project_members")
+        .delete()
+        .eq("project_id", raceProjectId)
+        .eq("user_id", ownerId);
+      await holder.query("commit");
+      settled = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect(settled.error?.code).toBe("42501");
+
+    const { data: afterChild } = await admin.from("stories").select("parent_id").eq("id", child!.id).single();
+    expect(afterChild!.parent_id).toBe(parent!.id); // the detach rolled back
+    const { data: afterParent } = await admin.from("stories").select("is_container").eq("id", parent!.id).single();
+    expect(afterParent!.is_container).toBe(true); // the cascading un-containerize rolled back too
+
+    await admin.from("projects").delete().eq("id", raceProjectId);
+  }, TIMEOUT);
 
   // AC#1. The neighbour is asserted too: a resequencing bug would leave the
   // moved row's own position intact while quietly renumbering everything
