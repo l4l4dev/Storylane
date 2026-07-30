@@ -201,6 +201,60 @@ describe.skipIf(!RUN)("split_story lock order (integration)", () => {
     expect({ rowLockable, probeCode }).toEqual({ rowLockable: true, probeCode: undefined });
   }, TIMEOUT);
 
+  it("parks on iteration_finalize before it takes positions — the key that makes the iterations read sound", async () => {
+    // The read that decides whether children inherit the source's iteration is a
+    // plain select on iterations.state, so the whole guarantee is that no
+    // finalize_iteration can commit between it and the child inserts. Same shape
+    // as the positions case above and for the same reason: a two-caller race is
+    // decided by whoever wins, and comes out green either way.
+    //
+    // Two observations while split_story is parked, one per failure mode:
+    //   key dropped   -> it never parks at all, and waitForLockWaiter throws
+    //   key taken late -> positions is already held, so the try-lock returns false
+    // The key is taken unconditionally, before the source row is read, so a
+    // backlog story with no iteration exercises it just as well.
+    const fx = await seed("split lock order: finalize key before positions");
+
+    const lockHolder = new PgClient({ connectionString: DB_URL() });
+    const prober = new PgClient({ connectionString: DB_URL() });
+    await lockHolder.connect();
+    await prober.connect();
+    let rowLockable: boolean;
+    let positionsFree: boolean;
+    try {
+      await lockHolder.query("select pg_advisory_lock(hashtext('iteration_finalize:' || $1))", [fx.projectId]);
+
+      const pending = Promise.resolve(
+        asOwner.rpc("split_story", { p_story_id: fx.sourceId, p_children: [{ title: "child" }] }),
+      );
+
+      await waitForLockWaiter(lockHolder);
+
+      await prober.query("begin");
+      const { rows } = await prober.query<{ free: boolean }>(
+        "select pg_try_advisory_xact_lock(hashtext('positions:' || $1)) as free",
+        [fx.projectId],
+      );
+      positionsFree = rows[0].free;
+      try {
+        await prober.query("select id from public.stories where id = $1 for update nowait", [fx.sourceId]);
+        rowLockable = true;
+      } catch {
+        rowLockable = false;
+      }
+      await prober.query("rollback");
+
+      await lockHolder.query("select pg_advisory_unlock(hashtext('iteration_finalize:' || $1))", [fx.projectId]);
+      const settled = (await pending) as { error: unknown };
+      expect(settled.error).toBeNull();
+    } finally {
+      await prober.end();
+      await lockHolder.end();
+    }
+
+    expect({ positionsFree, rowLockable }).toEqual({ positionsFree: true, rowLockable: true });
+  }, TIMEOUT);
+
   it("a backlog quick-add and a concurrent split both complete", async () => {
     // End-to-end over the two real RPCs. It does NOT discriminate the ordering on
     // its own — the case above is what does, and which of the two wins the row is

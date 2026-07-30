@@ -250,6 +250,23 @@
   UPDATE policy admits a direct REST PATCH, so a convention only RPCs follow
   cannot cover the writes that would need it.
 
+  `iterations.state` is held by an advisory key instead (2026-07-30, TASK-222).
+  `split_story` decides from it whether children inherit the source's iteration,
+  and `create_draft_story` / `set_story_state` decide which iteration a story
+  lands in; all three take `iteration_finalize:<project>` first, ahead of
+  `positions:` and `story_number:` (`20260730040000`, `20260729050000`,
+  `20260729090000`). A row pin is not available to `split_story` in tier — the
+  iteration's id is only known from the locked story read, the caveat that made
+  `project_states` a per-project set — and pinning the set would block the
+  unrelated `goal` / `retro_notes` edits. Unlike the `membership:` proposal
+  rejected above, the key is not a convention a direct write could ignore: table
+  UPDATE on `iterations` is revoked from `authenticated` and granted back column
+  by column — `goal` (`20260720000002`) and `retro_notes` (`20260727130000`)
+  only — so a PATCH of `state` is refused by the column privilege before the
+  `members can update iterations` policy is even consulted. Every writer of the
+  column is therefore a SECURITY DEFINER RPC, and every one of them takes the
+  key.
+
   Three things this rule does NOT cover:
 
   - The role stays on the exit-guard pattern above. `project_members` has no
