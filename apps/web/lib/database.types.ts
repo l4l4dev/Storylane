@@ -724,6 +724,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "stories_assignee_project_fkey"
+            columns: ["project_id", "assignee_id"]
+            isOneToOne: false
+            referencedRelation: "project_members"
+            referencedColumns: ["project_id", "user_id"]
+          },
+          {
             foreignKeyName: "stories_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false

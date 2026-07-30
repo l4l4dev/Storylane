@@ -6,6 +6,10 @@ const writeResults: Record<
   { data: ReadonlyArray<unknown> | null; error: { message: string } | null }
 > = {};
 const selectRows: Record<string, ReadonlyArray<Record<string, unknown>>> = {};
+const rpcResults: Record<
+  string,
+  { data: unknown; error: { code?: string; message: string } | null }
+> = {};
 let authUser: { id: string } | null = { id: "user-1" };
 
 function writeChain(table: string) {
@@ -39,6 +43,7 @@ function selectChain(table: string) {
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     auth: { getUser: async () => ({ data: { user: authUser } }) },
+    rpc: async (fn: string) => rpcResults[fn] ?? { data: null, error: null },
     from: (table: string) => ({
       insert: () => Promise.resolve(insertResults[table] ?? { error: null }),
       update: () => writeChain(table),
@@ -61,6 +66,9 @@ describe("story mutation action results", () => {
     }
     for (const key of Object.keys(selectRows)) {
       delete selectRows[key];
+    }
+    for (const key of Object.keys(rpcResults)) {
+      delete rpcResults[key];
     }
     authUser = { id: "user-1" };
   });
@@ -132,5 +140,65 @@ describe("story mutation action results", () => {
     await expect(getMoveTargetProjects("project-1")).resolves.toEqual([
       { id: "project-3", name: "Project Three" },
     ]);
+  });
+
+  const storyInput = {
+    storyId: "story-1",
+    title: "Ship it",
+    description: null,
+    storyType: "feature",
+    points: null,
+    parentId: null,
+    assigneeId: "user-2",
+    labelIds: [],
+  };
+
+  it("returns the pick-someone-else message when update_story rejects a non-member assignee", async () => {
+    rpcResults.update_story = {
+      data: null,
+      error: {
+        code: "23503",
+        message:
+          'insert or update on table "stories" violates foreign key constraint "stories_assignee_project_fkey"',
+      },
+    };
+    const { updateStory } = await import("./actions");
+
+    await expect(updateStory(storyInput)).resolves.toEqual({
+      ok: false,
+      reason: "error",
+      message: expect.stringMatching(/pick a different assignee/i),
+    });
+  });
+
+  it("returns the retry message when update_story loses a deadlock", async () => {
+    rpcResults.update_story = {
+      data: null,
+      error: { code: "40P01", message: "deadlock detected" },
+    };
+    const { updateStory } = await import("./actions");
+
+    await expect(updateStory(storyInput)).resolves.toEqual({
+      ok: false,
+      reason: "error",
+      message: expect.stringMatching(/try again/i),
+    });
+  });
+
+  it("words the non-member assignee rejection for Move, which has no assignee field to correct", async () => {
+    rpcResults.move_story_to_project = {
+      data: null,
+      error: {
+        code: "23503",
+        message:
+          'insert or update on table "stories" violates foreign key constraint "stories_assignee_project_fkey"',
+      },
+    };
+    const { moveStoryToProject } = await import("./actions");
+
+    await expect(moveStoryToProject("story-1", "project-2")).resolves.toEqual({
+      ok: false,
+      message: "The assignee left the target project mid-transfer — try again.",
+    });
   });
 });

@@ -226,14 +226,29 @@
   `reorder_project_state` and `create_project_state` hold while they each write
   two rows in an order of their own.
 
-  One exception is left: the retained assignee's `project_members` row in
-  move/copy, pinned below the story row lock. It is safe only while no writer
-  holds that row exclusively and then waits on a story row — true today, since
-  nothing references `project_members` and `remove_member` reads `stories` and
-  locks none. TASK-221's composite FK would give `remove_member` exactly that
-  story row lock; it has to revisit this. The automatic KEY SHARE lock a foreign
-  key takes on its referenced row is outside the tier order for the same reason it
-  is safe: it touches one leaf row and waits on nothing beyond it.
+  Nothing is pinned out of tier any more. The one exception — the retained
+  assignee's `project_members` row in move/copy, pinned below the story row lock —
+  was removed with TASK-221's composite FK
+  (`stories (project_id, assignee_id) -> project_members (project_id, user_id)`,
+  `20260730030000`), which takes the same row's KEY SHARE as part of the INSERT's
+  own check. move/copy still test the membership in plain SQL, because dropping a
+  non-member assignee is normal-case behaviour rather than a race.
+
+  The automatic KEY SHARE lock a foreign key takes on its referenced row is
+  outside the tier order, and for `project_members` it is now a genuine cycle:
+  `remove_member` holds that row exclusively and then updates the referencing
+  `stories` rows through `on delete set null`, while every story write holds a
+  `stories` row and then takes KEY SHARE on the membership row. Both halves are
+  taken by the engine, so no ordering of the SQL separates them. This is accepted,
+  not fixed: Postgres detects the cycle and aborts one side with `40P01`,
+  `remove_member` is a rare admin action, and the loser retries — the same class
+  of self-healing outcome `deleteProjectState` already treats as expected for
+  `23503`. `lib/utils/write-error.ts` maps `40P01` centrally so any caller can be
+  the loser. Considered and rejected:
+  `pg_advisory_xact_lock_shared(hashtext('membership:' || project))` at the entry
+  of every story RPC. `assignee_id` is not trigger-guarded and the `stories`
+  UPDATE policy admits a direct REST PATCH, so a convention only RPCs follow
+  cannot cover the writes that would need it.
 
   Three things this rule does NOT cover:
 

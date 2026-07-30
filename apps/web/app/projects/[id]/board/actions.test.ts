@@ -529,6 +529,36 @@ describe("createDraftStory", () => {
     });
   });
 
+  it("returns the pick-someone-else message when the RPC rejects a non-member assignee", async () => {
+    rpcResults.create_draft_story = {
+      data: null,
+      error: {
+        code: "23503",
+        message:
+          'insert or update on table "stories" violates foreign key constraint "stories_assignee_project_fkey"',
+      },
+    };
+    const { createDraftStory } = await import("./actions");
+
+    await expect(createDraftStory(baseInput({ assigneeId: "user-2" }))).resolves.toEqual({
+      ok: false,
+      message: expect.stringMatching(/pick a different assignee/i),
+    });
+  });
+
+  it("returns the retry message when the RPC loses a deadlock", async () => {
+    rpcResults.create_draft_story = {
+      data: null,
+      error: { code: "40P01", message: "deadlock detected" },
+    };
+    const { createDraftStory } = await import("./actions");
+
+    await expect(createDraftStory(baseInput())).resolves.toEqual({
+      ok: false,
+      message: expect.stringMatching(/try again/i),
+    });
+  });
+
   it("surfaces 'No active iteration' from the RPC, which resolves it under the lock", async () => {
     // The action no longer reads iterations itself — doing so before the RPC
     // took iteration_finalize is what let a concurrent finalize land the story

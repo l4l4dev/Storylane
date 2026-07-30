@@ -406,6 +406,10 @@ stories (
                                           -- 値はプロジェクトの point_scale からの選択のみ（アプリ層で検証、Task 12.5）
   position     int  NOT NULL DEFAULT 0,   -- order within the backlog
   assignee_id  uuid REFERENCES profiles(id) ON DELETE SET NULL,
+  -- also FOREIGN KEY (project_id, assignee_id)
+  --   REFERENCES project_members(project_id, user_id) ON DELETE SET NULL (assignee_id):
+  -- the assignee must be a member of the story's own project, and removing a
+  -- member unassigns their stories. Lock-order consequences in spec/rls.md.
   created_by   uuid REFERENCES profiles(id),
   created_at   timestamptz DEFAULT now(),
   updated_at   timestamptz DEFAULT now()

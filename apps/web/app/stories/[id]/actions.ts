@@ -8,6 +8,7 @@ import type { ActionResult, ProjectState } from "@/lib/types";
 import { pointScaleValues } from "@/lib/utils/stories";
 import { buildContainerListItems, buildEpicBandChildren, type EpicBandChild } from "@/lib/utils/epics-list";
 import { currentIterationOf } from "@/lib/utils/kanban";
+import { isNonMemberAssigneeError, writeErrorMessage } from "@/lib/utils/write-error";
 import type { ContainerRollup } from "@storylane/core";
 
 export type StoryDetail = {
@@ -358,7 +359,11 @@ export async function updateStory(input: UpdateStoryInput): Promise<UpdateStoryR
   });
 
   if (error) {
-    return { ok: false, reason: "error", message: error.message };
+    return {
+      ok: false,
+      reason: "error",
+      message: writeErrorMessage(error, "You don't have permission to edit this story."),
+    };
   }
 
   const row = data?.[0];
@@ -426,7 +431,14 @@ async function transferStoryToProject(
     p_target_project_id: targetProjectId,
   });
   if (error) {
-    return { ok: false, message: error.message };
+    // The assignee FK can only fire here when the target membership disappears
+    // between the RPC's probe and its INSERT. Move/Copy has no assignee field to
+    // correct, and the retry's probe drops the assignee and succeeds, so the
+    // shared "pick a different assignee" wording would send the user nowhere.
+    if (isNonMemberAssigneeError(error)) {
+      return { ok: false, message: "The assignee left the target project mid-transfer — try again." };
+    }
+    return { ok: false, message: writeErrorMessage(error, "You don't have permission to do that.") };
   }
   const result = data as { story_id: string; project_id: string } | null;
   return result
