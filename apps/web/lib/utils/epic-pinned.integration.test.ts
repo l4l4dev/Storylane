@@ -110,27 +110,19 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
     throw new Error("nothing ever blocked on the held row — the test would be vacuous");
   }
 
-  // TASK-223 AC#2. This RPC's own SELECT ... FOR UPDATE embeds the membership
-  // check, but a membership change committed while genuinely blocked on that
-  // row is not visible when the wait unblocks and the row is re-evaluated
-  // (verified directly against local PG 17 with throwaway tables). The write
-  // that follows still proceeds, so a guard has to sit somewhere after this
-  // select to catch it.
+  // Holding the story's own row only proves a fresh membership check runs
+  // somewhere after the initial select unblocks, not specifically the guard at
+  // the function's true exit — a guard moved to right after that select would
+  // satisfy it too.
   //
-  // Unlike set_story_parent (Codex on PR #15), holding the story's own row is
-  // sufficient here rather than just necessary: set_story_parent has a real
-  // wait between "right after the select" and its true exit (the detach
-  // trigger's lock on the OLD PARENT row), so a guard placed early enough to
-  // miss that wait would still satisfy a test that only holds the child's own
-  // row. set_epic_pinned has no such gap — after the initial select, every
-  // remaining step (the is_personal/child-membership reads, the activity_logs
-  // insert, the UPDATE on this already-locked row) either reads unlocked or
-  // writes a row this transaction already holds, so nothing between "right
-  // after the select" and the function's actual end can block on anything
-  // external. Confirmed empirically: moving the guard to immediately after
-  // the select still passes this test (there being no real difference in
-  // protection to detect), while removing it entirely still fails it.
-  it("set_epic_pinned rejects a caller de-membered while blocked on the story's own row (exit guard)", async () => {
+  // The wait only the true exit can cover: pinning a points-bearing story
+  // inserts into activity_logs, whose project_id foreign key takes KEY SHARE
+  // on the projects row as part of the INSERT. Holding that row FOR UPDATE
+  // externally (FOR UPDATE is the one mode KEY SHARE conflicts with) blocks
+  // strictly after the story's own row lock and the is_personal/child checks,
+  // so a guard placed any earlier cannot see a de-membering that lands during
+  // this wait.
+  it("set_epic_pinned rejects a caller de-membered while its activity_logs insert waited on the PROJECT row", async () => {
     const { data: project } = await owner
       .from("projects")
       .insert({ name: "TASK-223 set_epic_pinned exit guard" })
@@ -148,7 +140,7 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
     let settled: { error: { code?: string } | null };
     try {
       await holder.query("begin");
-      await holder.query("select id from public.stories where id = $1 for update", [story!.id]);
+      await holder.query("select id from public.projects where id = $1 for update", [raceProjectId]);
 
       const pending = Promise.resolve(owner.rpc("set_epic_pinned", { p_story_id: story!.id, p_pinned: true }));
 
@@ -172,6 +164,12 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
       .eq("id", story!.id)
       .single();
     expect(after).toMatchObject({ epic_pinned: false, points: 3 }); // the pin rolled back
+    const { count } = await admin
+      .from("activity_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("story_id", story!.id)
+      .eq("action", "story.containerized");
+    expect(count ?? 0).toBe(0); // the audit insert rolled back too (story.created from setup stays)
 
     await admin.from("projects").delete().eq("id", raceProjectId);
   }, TIMEOUT);

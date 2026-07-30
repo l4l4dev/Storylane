@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-30 05:58'
-updated_date: '2026-07-30 17:38'
+updated_date: '2026-07-30 17:52'
 labels: []
 milestone: m-2
 dependencies: []
@@ -63,4 +63,12 @@ Fixed by holding the OLD PARENT's row instead: detaching fires maintain_is_conta
 set_epic_pinned's test (AC#2) was checked against the same concern and left as originally designed: this RPC has no wait between "right after the select" and its true exit (traced every trigger on stories — stories_maintain_is_container only fires on UPDATE OF parent_id, which this RPC never touches), so a guard placed at either point protects identically. Confirmed empirically — moving its guard to right-after-select still passes the existing test, because there is no real difference in protection to detect there. Comment expanded to record this reasoning so a future review does not have to re-derive it or assume the two tests should be symmetric.
 
 Re-verified after the fix: SUPABASE_INTEGRATION=1 pnpm test = 1242 passed / 141 files, lint and tsc clean.
+
+Codex review of PR #15, round 2 — one P2, one P3, both accepted.
+
+P2: re-raised for epic-pinned.integration.test.ts specifically — the round-1 fix only addressed set_story_parent. Codex proposed the mechanism: lock the project row so the activity_logs insert (project_id foreign key check, taken for a points-bearing story) waits on it. Verified the FK check does take a conflicting lock: two raw psql sessions, an INSERT into activity_logs blocked for the full duration of a FOR UPDATE held on the referenced projects row by another session, then proceeded once released. Rewrote the test around that wait (holding public.projects instead of the story's own row) and confirmed the same three-variant cycle as set_story_parent: guard removed (fails), guard moved to right-after-select (now correctly fails too — previously passed), current definition (passes). Hit one assertion bug while measuring this: the first version's activity_logs rollback check counted ALL rows for the story_id, which included the unrelated 'story.created' row from the story's own insert (a leftover from the failed guard-moved-early run made this visible in the live catalog); narrowed to action = 'story.containerized'.
+
+P3: dropped the TASK-223/Codex/PR-number narration from both new-test comments (set-story-parent and epic-pinned), keeping only the concurrency reasoning.
+
+Re-verified after both fixes: SUPABASE_INTEGRATION=1 pnpm test = 1242 passed / 141 files, lint and tsc clean.
 <!-- SECTION:NOTES:END -->

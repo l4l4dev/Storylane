@@ -125,12 +125,10 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
     throw new Error("nothing ever blocked on the held row — the test would be vacuous");
   }
 
-  // TASK-223 AC#1. Codex on PR #15: blocking on the CHILD's own row only
-  // proves some fresh membership check runs after the initial select — moving
-  // require_project_role to right after that select (before the UPDATE) still
-  // satisfies that shape, so it does not isolate the true exit guard.
-  // Confirmed by testing exactly that variant against a local copy of the
-  // function: the earlier-placed check still passed.
+  // Blocking on the CHILD's own row only proves some fresh membership check
+  // runs after the initial select — moving require_project_role to right
+  // after that select (before the UPDATE) still satisfies that shape, so it
+  // does not isolate the true exit guard.
   //
   // The wait that only a guard remaining at the very end can cover is the OLD
   // PARENT's row lock: detaching fires maintain_is_container AFTER UPDATE,
