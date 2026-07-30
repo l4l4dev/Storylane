@@ -184,7 +184,10 @@ export async function removeMember(
   });
 
   if (error) {
-    return { error: error.message };
+    // This call is one half of the deadlock pair the assignee FK creates
+    // (spec/rls.md), so it can be the side Postgres aborts — writeErrorMessage
+    // is what turns that into a retry prompt rather than "deadlock detected".
+    return { error: writeErrorMessage(error, "Only project owners can remove other members.") };
   }
   revalidatePath(`/projects/${id}/settings`);
   return {};

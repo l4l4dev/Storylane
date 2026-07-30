@@ -16,6 +16,7 @@ import {
 } from "@/lib/utils/kanban";
 import { utcTodayKey } from "@/lib/utils/format";
 import { parsePoints, pointScaleValues } from "@/lib/utils/stories";
+import { writeErrorMessage } from "@/lib/utils/write-error";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -102,8 +103,10 @@ const NO_UNSTARTED_STATE_MESSAGE = "This project has no unstarted state to creat
 
 // The match below is on create_draft_story's raise text (20260729050000), which
 // carries the matching pointer back here.
-function draftErrorMessage(error: { message: string }): string {
-  return error.message.includes("no unstarted-category state") ? NO_UNSTARTED_STATE_MESSAGE : error.message;
+function draftErrorMessage(error: { code?: string; message: string }): string {
+  return error.message.includes("no unstarted-category state")
+    ? NO_UNSTARTED_STATE_MESSAGE
+    : writeErrorMessage(error, "You don't have permission to create stories here.");
 }
 
 /**

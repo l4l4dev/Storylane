@@ -301,11 +301,15 @@ describe.skipIf(!RUN)("RPC config pinned with FOR SHARE (integration)", () => {
   }, TIMEOUT);
 
   for (const rpc of ["move_story_to_project", "copy_story_to_project"] as const) {
-    it(`${rpc} parks on the retained assignee's pinned project_members row`, async () => {
+    it(`${rpc} holds the retained assignee's project_members row through the FK`, async () => {
       const source = await createProject(`config pin: ${rpc} source`);
       const target = await createProject(`config pin: ${rpc} target`);
       // The assignee is kept only if they are a member of the TARGET
-      // (spec/features.md), so that is the row the RPC has to hold.
+      // (spec/features.md), so that is the row the RPC has to hold. TASK-219
+      // held it with an explicit `for share`; TASK-221's composite FK took that
+      // job over, so the holder below locks FOR UPDATE rather than FOR NO KEY
+      // UPDATE — the latter does not conflict with the KEY SHARE an FK check
+      // takes, and asserting against it would only re-test the removed clause.
       await asService.from("project_members").insert([
         { project_id: source, user_id: secondUserId, role: "member" },
         { project_id: target, user_id: secondUserId, role: "member" },
@@ -324,7 +328,7 @@ describe.skipIf(!RUN)("RPC config pinned with FOR SHARE (integration)", () => {
       expect(seedError).toBeNull();
 
       const settled = await whileRowLocked(
-        "select user_id from public.project_members where project_id = $1 and user_id = $2 for no key update",
+        "select user_id from public.project_members where project_id = $1 and user_id = $2 for update",
         [target, secondUserId],
         () => asOwner.rpc(rpc, { p_story_id: story!.id, p_target_project_id: target }),
       );
