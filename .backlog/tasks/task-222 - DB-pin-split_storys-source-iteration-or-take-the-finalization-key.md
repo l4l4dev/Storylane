@@ -1,11 +1,11 @@
 ---
 id: TASK-222
 title: 'DB: pin split_story''s source iteration, or take the finalization key'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-30 05:58'
-updated_date: '2026-07-30 13:30'
+updated_date: '2026-07-30 13:40'
 labels: []
 milestone: m-2
 dependencies: []
@@ -84,3 +84,13 @@ The spec paragraph and the migration comment said iterations carries an UPDATE p
 
 fable-advisor, rls-security-reviewer and /code-review high all read pg_policies and none checked the column grants; TASK-225 was created on their agreement and has been archived with the measurement recorded. spec/rls.md now states that the key is not a convention — every writer of iterations.state is a SECURITY DEFINER RPC because nothing else can write the column — and the migration comment says the same.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+split_story now takes pg_advisory_xact_lock('iteration_finalize:<project>') before its positions:/story_number: keys, so the unlocked read of iterations.state that decides whether children inherit the source's iteration can no longer be overtaken by a concurrent finalize_iteration. One statement in a new migration (20260730040000); the rest of the function is byte-identical to its previous definition.
+
+Chose the advisory key over a 'for share' row pin because the iteration's id is only known from the locked story read, so the row cannot be pinned in tier — the caveat that made project_states a per-project set — and because the key is the order create_draft_story and set_story_state already state. spec/rls.md records the choice, including that column grants (not the row-level policy) are what make it airtight: table UPDATE on iterations is revoked from authenticated and granted back for goal and retro_notes only, so no non-RPC writer of state exists.
+
+Verified: SUPABASE_INTEGRATION=1 pnpm test = 1240 passed / 141 files, lint and tsc clean, migration applied locally, Web CI green on a fresh database (PR #14). AC#4 proven by removing the guard from the live function — the new lock-order test alone failed, the other six passed — then restoring it and re-checking the catalog. Reviews: fable-advisor approved option (b) with two corrections (both applied), rls-security-reviewer found nothing, /code-review high raised one Low (fixed), Codex round 1 raised one P2 that invalidated a claim all three had agreed on (column grants already refuse the direct PATCH — TASK-225 was opened on that wrong premise and is archived), round 2 clean. Merged as 3e82fb6.
+<!-- SECTION:FINAL_SUMMARY:END -->
