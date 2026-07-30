@@ -1,11 +1,11 @@
 ---
 id: TASK-219
 title: 'Re-derive RPC preconditions after the last wait, not per-value at the exit'
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-29 03:59'
-updated_date: '2026-07-30 03:43'
+updated_date: '2026-07-30 05:01'
 labels: []
 milestone: m-2
 dependencies: []
@@ -30,15 +30,25 @@ Also in scope, found while inventorying the above: the fibonacci/linear point-sc
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The three known open cases are closed: retained assignee, reshape_current_iteration's iteration_length, and finish_story_from_git's forward-only state positions
-- [ ] #2 The approach is a single mechanism (re-derivation or a broader lock), not one more per-value check, and spec/rls.md records it
-- [ ] #3 Each closed case has a test that fails when its guard is removed
-- [ ] #4 The DB-side point-scale literals are reduced to one source
-- [ ] #5 split_story is closed by the same mechanism: its pre-write point-scale read is pinned (owner-approved scope addition 2026-07-30; it retains no assignee — the insert writes NULL per doc-18 §7, so the pattern it shares with move/copy is the scale, not the assignee)
+- [x] #1 The three known open cases are closed: retained assignee, reshape_current_iteration's iteration_length, and finish_story_from_git's forward-only state positions
+- [x] #2 The approach is a single mechanism (re-derivation or a broader lock), not one more per-value check, and spec/rls.md records it
+- [x] #3 Each closed case has a test that fails when its guard is removed
+- [x] #4 The DB-side point-scale literals are reduced to one source
+- [x] #5 split_story is closed by the same mechanism: its pre-write point-scale read is pinned (owner-approved scope addition 2026-07-30; it retains no assignee — the insert writes NULL per doc-18 §7, so the pattern it shares with move/copy is the scale, not the assignee)
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Design settled 2026-07-30 by fable-advisor: mechanism is (B) a single `SELECT ... FOR SHARE` on the config rows an RPC reads, taken once, then read-and-trust — the per-value exit re-reads are deleted, not extended. (A) re-derivation after the last wait was rejected: an unlocked read always races the COMMIT itself, and 20260728100000 already implements A's shape in finish_story_from_git yet still has the hole. Lock order becomes three tiers: advisory locks -> config-row FOR SHARE -> story row locks, with the FK-induced automatic KEY SHARE lock as a documented exception. The composite-FK answer for assignee membership was split out to TASK-221; split_story's copy of the same pattern was folded IN here at the owner's request.
+
+Shipped on branch fix/pin-rpc-config-for-share (PR #12), held from Done until that merges.
+
+Verification behind the checked ACs: 99 passing assertions across the 6 affected integration files, plus apps/web `pnpm test` (858 passed) and `pnpm run lint`. AC #3 was verified negatively as well — the state-set pin and move/copy's projects pins were removed from the local DB's function definitions and 4 tests failed, then restored.
+
+/code-review high raised four findings, all fixed in the same branch. The load-bearing one: the first draft pinned the story's own project_states row BELOW the story row lock, which deadlocks against `delete from project_states` — its NO ACTION FK check takes FOR KEY SHARE on the referencing stories while the delete holds the state row, so a writer does hold a state row exclusively while waiting on a story row (reproduced: 40P01, victim = the webhook). finish_story_from_git now pins the project's whole project_states set in tier, above the story row lock, and takes project_states_positions: so a reorder cannot interleave. Only one out-of-tier pin is left (the assignee's project_members row, TASK-221).
+
+finalize_iteration also reads projects.iteration_length unpinned; it was not in this task's inventory, so it is recorded in spec/rls.md's "does NOT cover" list instead of changed.
+
+rls-security-reviewer pass: no blocking findings.
 <!-- SECTION:NOTES:END -->
