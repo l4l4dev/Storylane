@@ -3,11 +3,11 @@ id: TASK-220
 title: >-
   split_story takes the source row lock before positions, inverting the board
   RPC lock order
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-29 10:08'
-updated_date: '2026-07-30 01:55'
+updated_date: '2026-07-30 02:17'
 labels: []
 milestone: m-2
 dependencies: []
@@ -30,10 +30,11 @@ The fix is to hoist the positions lock above the FOR UPDATE read, which needs ca
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 split_story acquires positions:<project> before taking any row lock on stories, matching insert_board_item / move_story_board / create_draft_story
-- [ ] #2 Hoisting the lock does not weaken the authorization or leak the existence of a story in a project the caller cannot see
-- [ ] #3 An integration test drives the T1/T2 interleaving above and fails with 40P01 against the current function
-- [ ] #4 The lock-order invariant stated in the create_draft_story migration header is extended to cover the positions/row-lock pair, or moved somewhere both functions point at
+- [x] #1 split_story acquires positions:<project> and story_number:<project> before taking any row lock on stories, matching insert_board_item / move_story_board / create_draft_story
+- [x] #2 Hoisting the locks does not weaken the authorization or leak the existence of a story in a project the caller cannot see
+- [x] #3 The acquisition order is pinned by a test that fails against the pre-fix body. Reworded at finalization: the original text asked for a test driving the T1/T2 race to 40P01, which does not discriminate — the race is decided by whoever wins the row and passes against the inverted body (TASK-212's recorded false pass). What is asserted instead is the property that rules the cycle out: while the advisory lock is held elsewhere, the story row stays lockable by a third session (55P03 against the old body). A two-RPC race is kept only as an end-to-end 'no 40P01' check
+- [x] #4 The lock-order invariant covering the advisory/row-lock pair is stated in a migration header, and create_draft_story's inline comment points at it
+- [x] #5 Added after Codex found a four-party cycle across two projects: move_story_to_project and copy_story_to_project also take story_number:<target> before their locked read, so no function acquires an advisory lock while holding a story row
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -104,3 +105,17 @@ Verified: old move/copy bodies -> both ordering tests fail with 55P03; no source
 
 Commits: f24b348 (migration), b4d7f3e (test).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Board RPCs disagreed on whether an advisory lock or a story row lock comes first, and split_story was on the wrong side: it row-locked the source and only then took positions:<project>. Against a quick-add anchored before that story — which holds positions and waits on the row inside its splice — that is a reachable 40P01.
+
+Fixed in 20260730000000 by hoisting positions and story_number above the locked read. The lock key comes from the story, so an unlocked probe resolves project_id first; because split_story is SECURITY DEFINER that probe is not RLS-filtered, so a project_role gate sits between it and the locks, raising the same bare 'Story not found' the locked read does. Without the gate the probe answers whether a story exists in a project the caller cannot see, and a non-member can park a project-wide lock by guessing an id.
+
+Codex then found that fixing split_story alone opens a four-party cycle across two projects, because move_story_to_project and copy_story_to_project still took story_number:<target> while holding the source row. Scope was expanded on the owner's call: 20260730010000 hoists that lock in both, making "every advisory lock before any story row lock" uniform — no row->advisory edge remains, and each takes one advisory lock, so there is no advisory->advisory edge to order. A source gate goes ahead of their existing target membership check to keep viewer-of-source folded into the read's generic rejection.
+
+One behaviour change kept deliberately: a caller de-membered from the SOURCE while parked is now rejected by the locked read's membership subquery ('Story not found') rather than by require_project_role (42501), since the authoritative read moved below the lock. The target side still raises 42501. Restoring the code would mean two authorization sites whose messages can drift.
+
+Verified by breaking each guard in turn: old split body -> ordering test fails 55P03; no gate -> viewer parks; gate without its `is null` test -> non-member parks (viewer still passes); old move/copy bodies -> both ordering tests fail 55P03; no source gate -> viewer cases report the target instead. Full suite WITH integration, on a database rebuilt from the whole migration chain: 138 files, 1210 passed, 0 failed; tsc and lint clean. rls-security-reviewer passed; /code-review high round 1 closed two low findings (one by disproving its premise); Codex round 1's P2 is the scope expansion above and round 2 found nothing. Merged as PR #11 (e311495).
+<!-- SECTION:FINAL_SUMMARY:END -->
