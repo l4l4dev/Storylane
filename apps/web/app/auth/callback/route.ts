@@ -11,7 +11,13 @@ export async function GET(request: Request) {
   // TASK-104 (doc-11 D2): default landing is My Work, not the home page's own
   // redirect chain. An explicit `next` (deep link) still wins — that branch
   // is unchanged.
-  const next = searchParams.get("next") ?? "/my-work";
+  //
+  // `next` must be a same-origin relative path: a single leading `/` only —
+  // `//host/path` and `/\host/path` are both browser-normalized to a
+  // protocol-relative URL, which would hand a just-authenticated session to
+  // whatever host follows.
+  const rawNext = searchParams.get("next");
+  const next = rawNext && /^\/(?!\/|\\)/.test(rawNext) ? rawNext : "/my-work";
 
   if (code) {
     const supabase = await createClient();
