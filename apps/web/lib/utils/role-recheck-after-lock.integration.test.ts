@@ -372,7 +372,12 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
       }),
     );
 
-    expect(error?.code).toBe("42501");
+    // 20260730000000 moved the locked read below the lock, so what rejects here is
+    // that read's own membership subquery rather than the require_project_role
+    // after it — a de-membered caller now gets the same 'Story not found' a
+    // non-member always got. Still a rejection with nothing written, which is what
+    // TASK-211 was about.
+    expect(error?.message).toBe("Story not found");
 
     const { data: kids } = await admin.from("stories").select("id").eq("parent_id", storyId);
     expect(kids ?? []).toHaveLength(0);
@@ -503,7 +508,16 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
           owner.rpc(rpc, { p_story_id: storyId, p_target_project_id: target }),
         );
 
-        expect(error?.code).toBe("42501");
+        // Which guard speaks depends on the side, since 20260730010000 moved the
+        // locked read below the lock: the source is re-derived by that read's own
+        // membership subquery, which folds a de-membered caller into the same
+        // 'Story not found' a non-member always gets, while the target is still
+        // re-asserted by require_project_role after it.
+        if (side === "source") {
+          expect(error?.message).toBe("Story not found");
+        } else {
+          expect(error?.code).toBe("42501");
+        }
 
         const { count } = await admin
           .from("stories")
