@@ -36,8 +36,32 @@
 create index if not exists stories_project_assignee_idx
   on public.stories (project_id, assignee_id);
 
--- Rows written before the constraint existed would fail the ALTER. Dropping the
--- assignee is the same answer move/copy already give for a non-member.
+-- NOT VALID first, and the cleanup after it. `not valid` skips only the EXISTING
+-- rows — it enforces every write from the moment it lands — so this ordering is
+-- what closes the window a cleanup-then-validate order leaves open: a
+-- remove_member committing between the two statements would find no constraint
+-- to cascade through, leave its stories assigned, and the validating ALTER would
+-- then abort the whole migration on the row it just created. Correct whether or
+-- not the runner wraps this file in a transaction: wrapped, the ALTER's
+-- SHARE ROW EXCLUSIVE parks concurrent writers until commit; unwrapped, the
+-- constraint is simply live before the scan starts.
+--
+-- MATCH SIMPLE (the default) skips the check whenever a referencing column is
+-- null, so an unassigned story is unconstrained even though project_id is NOT
+-- NULL. Column-specific ON DELETE SET NULL matches stories_iteration_project_fkey.
+-- stories_assignee_id_fkey -> profiles is left in place: it is implied by this
+-- one (a profile delete cascades to project_members, which then lands here), and
+-- dropping it buys nothing.
+alter table public.stories
+  add constraint stories_assignee_project_fkey
+  foreign key (project_id, assignee_id)
+  references public.project_members (project_id, user_id)
+  on delete set null (assignee_id)
+  not valid;
+
+-- Rows written before the constraint existed are the only ones left to fix, and
+-- VALIDATE below would fail on them. Dropping the assignee is the same answer
+-- move/copy already give for a non-member.
 --
 -- Wrapped only for the count: this discards data, log_story_activity does not
 -- record assignee changes, and the local count says nothing about production —
@@ -57,17 +81,7 @@ begin
   raise notice 'TASK-221: cleared % story assignee(s) who were not members of their project', v_cleared;
 end $$;
 
--- MATCH SIMPLE (the default) skips the check whenever a referencing column is
--- null, so an unassigned story is unconstrained even though project_id is NOT
--- NULL. Column-specific ON DELETE SET NULL matches stories_iteration_project_fkey.
--- stories_assignee_id_fkey -> profiles is left in place: it is implied by this
--- one (a profile delete cascades to project_members, which then lands here), and
--- dropping it buys nothing.
-alter table public.stories
-  add constraint stories_assignee_project_fkey
-  foreign key (project_id, assignee_id)
-  references public.project_members (project_id, user_id)
-  on delete set null (assignee_id);
+alter table public.stories validate constraint stories_assignee_project_fkey;
 
 -- ── move_story_to_project ────────────────────────────────────────────────────
 create or replace function public.move_story_to_project(p_story_id uuid, p_target_project_id uuid)
