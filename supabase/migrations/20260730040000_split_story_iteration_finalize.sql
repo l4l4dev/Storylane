@@ -154,11 +154,11 @@ begin
   if v_child_state is null or v_source.iteration_id is null then
     v_child_iter := null; -- Icebox children never carry an iteration
   else
-    -- Unlocked, and sound against every RPC: all of them take iteration_finalize:
-    -- before writing iterations.state. Not a database-level guarantee — the
-    -- UPDATE policy still admits a direct PATCH of the column (spec/rls.md,
-    -- TASK-225). One committing mid-call costs a P0001 from
-    -- reject_done_iteration_assignment, not a child in a closed iteration.
+    -- Unlocked, and sound because every writer of iterations.state takes
+    -- iteration_finalize: first. There is no non-RPC writer to worry about:
+    -- table UPDATE on iterations is revoked from authenticated and granted back
+    -- for goal and retro_notes only (20260720000002, 20260727130000), so a
+    -- direct PATCH of the column is refused by the column privilege.
     select state = 'done' into v_iter_done from public.iterations where id = v_source.iteration_id;
     v_child_iter := case when coalesce(v_iter_done, false) then null else v_source.iteration_id end;
   end if;

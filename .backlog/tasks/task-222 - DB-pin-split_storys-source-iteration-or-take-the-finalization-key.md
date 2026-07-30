@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-30 05:58'
-updated_date: '2026-07-30 12:48'
+updated_date: '2026-07-30 13:30'
 labels: []
 milestone: m-2
 dependencies: []
@@ -77,4 +77,10 @@ Verification: supabase migration up --local applied cleanly. SUPABASE_INTEGRATIO
 The review's own verification, read-only against the live catalog: a lock-order sweep over every public function (comments stripped from prosrc) found that all eight functions taking iteration_finalize: take it first, and none takes positions:/story_number:/a stories row lock before it — no 40P01 cycle. Writers of iterations.state are finalize_iteration, override_iteration_length and reshape_current_iteration, all of which hold the key. The live split_story body matches the migration file, so the guard-removal experiment left no drift.
 
 Re-verified after the fix: SUPABASE_INTEGRATION=1 pnpm test = 1240 passed / 141 files.
+
+Codex review of PR #14, round 1 — one P2, accepted; it invalidated a claim three earlier reviews had agreed on.
+
+The spec paragraph and the migration comment said iterations carries an UPDATE policy with no column restriction, so the advisory key was only a convention a direct PATCH could ignore. Column privileges already refuse that PATCH: table UPDATE on iterations is revoked from authenticated (20260720000002:37) and granted back for goal and retro_notes only (that file, and 20260727130000:13). Verified in the live catalog — has_column_privilege(authenticated, iterations, state, update) is false. The column privilege is checked before the row-level policy, so the policy's lack of a column restriction never comes into play.
+
+fable-advisor, rls-security-reviewer and /code-review high all read pg_policies and none checked the column grants; TASK-225 was created on their agreement and has been archived with the measurement recorded. spec/rls.md now states that the key is not a convention — every writer of iterations.state is a SECURITY DEFINER RPC because nothing else can write the column — and the migration comment says the same.
 <!-- SECTION:NOTES:END -->
