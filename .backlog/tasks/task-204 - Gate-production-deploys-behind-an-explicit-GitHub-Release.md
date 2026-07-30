@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-26 16:01'
-updated_date: '2026-07-30 18:31'
+updated_date: '2026-07-30 19:26'
 labels:
   - ci
 milestone: m-1
@@ -59,4 +59,10 @@ AC evidence:
 #6 deploy.yml only fires on a published release; a push to main (including one CI is still validating) can no longer trigger it at all, so there is no push-triggered deploy left to race web-ci.yml's migration-chain check. Updated that check's comment in web-ci.yml, which previously described the race as still-open and pointed at this task to close it.
 
 Verification: `.github/workflows/deploy.yml` and `.github/workflows/web-ci.yml` parse as valid YAML (checked with the repo's own js-yaml dependency). No application code touched, so no JS test/lint/tsc run applies. `gh release create`'s default-publishes / `--draft` / `--target` behavior confirmed against `gh release create --help` rather than assumed.
+
+HOLD (owner, 2026-07-31): Codex P1 on PR #16 found that the final Vercel Deploy Hook step builds Vercel's configured production branch (main) rather than the exact commit checked out for migrations/Edge Functions — the Deploy Hook URL has no way to pin a commit. This is reachable through the --target <sha> release procedure this task's DEPLOY.md documented (releasing an older commit), and more narrowly even without it (another commit landing on main mid-job). It defeats the "new code never runs against an old schema" guarantee deploy.yml's own header comment claims.
+
+Fix requires switching the last step to a Vercel CLI prebuilt deploy of the checked-out workspace (vercel pull --environment=production / vercel build --prod / vercel deploy --prebuilt --prod), which needs three new secrets only the owner can create: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID (from the Vercel dashboard or `vercel link`). Owner chose to hold rather than proceed now.
+
+PR #16 (branch chore/gate-deploy-behind-release) stays open, unmerged, with the trigger-gating change (AC#1/#2/#4/#6) and the DEPLOY.md/web-ci.yml updates (AC#3/#5) already on it — the P1 blocks merge. Resume by adding the three secrets, replacing the "Trigger Vercel production deploy" step, and updating DEPLOY.md's setup table + the deploy.yml header comment to match.
 <!-- SECTION:NOTES:END -->
