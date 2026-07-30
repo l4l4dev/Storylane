@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { Client as PgClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Exercises doc-20 §5: attaching a story to an epic (and detaching it) writes
@@ -10,12 +11,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/set-story-parent.integration.test.ts
 const RUN = process.env.SUPABASE_INTEGRATION === "1";
 
+const TIMEOUT = 30_000;
+const DB_URL = () => process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+
 describe.skipIf(!RUN)("set_story_parent (integration)", () => {
   let owner: SupabaseClient;
   let admin: SupabaseClient;
   let projectId: string;
   let unstartedId: string;
   let iterationId: string;
+  let ownerId: string;
   let otherProjectId: string | undefined;
   let outsiderUserId: string | undefined;
   let viewerUserId: string | undefined;
@@ -43,6 +48,7 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
     if (auth.error || !auth.data.user) {
       throw new Error(`Dev-user sign-in failed (is 'supabase start' running?): ${auth.error?.message}`);
     }
+    ownerId = auth.data.user.id;
 
     const p = await owner.from("projects").insert({ name: "set_story_parent test" }).select("id").single();
     if (p.error || !p.data) throw new Error(`Project setup failed: ${p.error?.message}`);
@@ -95,6 +101,86 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
       .single();
     return data!;
   }
+
+  /** Blocks until another backend is waiting on a row THIS connection's transaction holds. */
+  async function waitForRowWaiter(holder: PgClient): Promise<void> {
+    const SQL = `
+      select count(*)::int as n
+        from pg_locks w
+       where not w.granted
+         and w.locktype in ('transactionid', 'tuple')
+         and w.pid <> pg_backend_pid()
+         and exists (
+           select 1 from pg_locks h
+            where h.granted and h.pid = pg_backend_pid()
+              and h.locktype = 'transactionid'
+              and h.transactionid = w.transactionid
+         )`;
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const { rows } = await holder.query(SQL);
+      if (rows[0].n > 0) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error("nothing ever blocked on the held row — the test would be vacuous");
+  }
+
+  // TASK-223 AC#1. set_story_parent's own SELECT ... FOR UPDATE embeds the
+  // membership check, but a membership change committed while genuinely
+  // blocked on that row is NOT visible when the wait unblocks and the row is
+  // re-evaluated — Read Committed re-fetches only the locked row itself; the
+  // subquery on project_members still runs against the snapshot from before
+  // the wait (verified directly against local PG 17 with throwaway tables: a
+  // blocked `for update ... and exists(select ... other_table)` did not see a
+  // committed change to `other_table` made while it was parked). So the write
+  // that follows still goes through, and only the RPC's own later, fresh
+  // SELECT — the exit guard — can see the membership change. That makes
+  // holding the story's own row the one race that isolates the exit guard,
+  // rather than re-testing the authorization the RPC starts with.
+  it("rejects a caller de-membered while blocked on the story's own row (exit guard)", async () => {
+    const { data: project } = await owner
+      .from("projects")
+      .insert({ name: "TASK-223 set_story_parent exit guard" })
+      .select("id")
+      .single();
+    const raceProjectId = project!.id;
+    const { data: epicId } = await owner.rpc("create_epic", { p_project_id: raceProjectId, p_title: "epic" });
+    const { data: child } = await owner
+      .from("stories")
+      .insert({ project_id: raceProjectId, story_type: "feature", title: "child", parent_id: epicId as string })
+      .select("id")
+      .single();
+
+    const holder = new PgClient({ connectionString: DB_URL() });
+    await holder.connect();
+    let settled: { error: { code?: string } | null };
+    try {
+      await holder.query("begin");
+      await holder.query("select id from public.stories where id = $1 for update", [child!.id]);
+
+      const pending = Promise.resolve(
+        owner.rpc("set_story_parent", { p_story_id: child!.id, p_parent_id: null }),
+      );
+
+      await waitForRowWaiter(holder);
+      await admin
+        .from("project_members")
+        .delete()
+        .eq("project_id", raceProjectId)
+        .eq("user_id", ownerId);
+      await holder.query("commit");
+      settled = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect(settled.error?.code).toBe("42501");
+
+    const { data: after } = await admin.from("stories").select("parent_id").eq("id", child!.id).single();
+    expect(after!.parent_id).toBe(epicId as string); // the detach rolled back
+
+    await admin.from("projects").delete().eq("id", raceProjectId);
+  }, TIMEOUT);
 
   // AC#1. The neighbour is asserted too: a resequencing bug would leave the
   // moved row's own position intact while quietly renumbering everything

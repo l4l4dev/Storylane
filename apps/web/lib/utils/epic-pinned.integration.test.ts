@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { Client as PgClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Exercises doc-20 §2: epic_pinned, the derived is_container = has_children OR
@@ -9,11 +10,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/epic-pinned.integration.test.ts
 const RUN = process.env.SUPABASE_INTEGRATION === "1";
 
+const TIMEOUT = 30_000;
+const DB_URL = () => process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+
 describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)", () => {
   let owner: SupabaseClient;
   let admin: SupabaseClient;
   let projectId: string;
   let unstartedId: string;
+  let ownerId: string;
   let otherProjectId: string | undefined;
   let outsiderUserId: string | undefined;
   let viewerUserId: string | undefined;
@@ -41,6 +46,7 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
     if (auth.error || !auth.data.user) {
       throw new Error(`Dev-user sign-in failed (is 'supabase start' running?): ${auth.error?.message}`);
     }
+    ownerId = auth.data.user.id;
 
     const p = await owner.from("projects").insert({ name: "epic pinned test" }).select("id").single();
     if (p.error || !p.data) throw new Error(`Project setup failed: ${p.error?.message}`);
@@ -80,6 +86,82 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
       .single();
     return data!;
   }
+
+  /** Blocks until another backend is waiting on a row THIS connection's transaction holds. */
+  async function waitForRowWaiter(holder: PgClient): Promise<void> {
+    const SQL = `
+      select count(*)::int as n
+        from pg_locks w
+       where not w.granted
+         and w.locktype in ('transactionid', 'tuple')
+         and w.pid <> pg_backend_pid()
+         and exists (
+           select 1 from pg_locks h
+            where h.granted and h.pid = pg_backend_pid()
+              and h.locktype = 'transactionid'
+              and h.transactionid = w.transactionid
+         )`;
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const { rows } = await holder.query(SQL);
+      if (rows[0].n > 0) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error("nothing ever blocked on the held row — the test would be vacuous");
+  }
+
+  // TASK-223 AC#2. Same shape as set_story_parent's exit-guard race: this
+  // RPC's own SELECT ... FOR UPDATE embeds the membership check, but a
+  // membership change committed while genuinely blocked on that row is not
+  // visible when the wait unblocks and the row is re-evaluated (verified
+  // directly against local PG 17 with throwaway tables). The write that
+  // follows still proceeds, so only the exit guard's own later SELECT can
+  // catch it.
+  it("set_epic_pinned rejects a caller de-membered while blocked on the story's own row (exit guard)", async () => {
+    const { data: project } = await owner
+      .from("projects")
+      .insert({ name: "TASK-223 set_epic_pinned exit guard" })
+      .select("id")
+      .single();
+    const raceProjectId = project!.id;
+    const { data: story } = await owner
+      .from("stories")
+      .insert({ project_id: raceProjectId, story_type: "feature", title: "story", points: 3 })
+      .select("id")
+      .single();
+
+    const holder = new PgClient({ connectionString: DB_URL() });
+    await holder.connect();
+    let settled: { error: { code?: string } | null };
+    try {
+      await holder.query("begin");
+      await holder.query("select id from public.stories where id = $1 for update", [story!.id]);
+
+      const pending = Promise.resolve(owner.rpc("set_epic_pinned", { p_story_id: story!.id, p_pinned: true }));
+
+      await waitForRowWaiter(holder);
+      await admin
+        .from("project_members")
+        .delete()
+        .eq("project_id", raceProjectId)
+        .eq("user_id", ownerId);
+      await holder.query("commit");
+      settled = await pending;
+    } finally {
+      await holder.end();
+    }
+
+    expect(settled.error?.code).toBe("42501");
+
+    const { data: after } = await admin
+      .from("stories")
+      .select("epic_pinned, points")
+      .eq("id", story!.id)
+      .single();
+    expect(after).toMatchObject({ epic_pinned: false, points: 3 }); // the pin rolled back
+
+    await admin.from("projects").delete().eq("id", raceProjectId);
+  }, TIMEOUT);
 
   it("create_epic makes a childless container", async () => {
     const { data: id, error } = await owner.rpc("create_epic", {
