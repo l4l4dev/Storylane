@@ -98,8 +98,8 @@ begin
   perform pg_advisory_xact_lock(hashtext('iteration_finalize:' || p_project_id::text));
   -- positions only when something is actually spliced, but taken HERE rather
   -- than beside the move_story_board call below: the INSERT's numbering trigger
-  -- takes story_number, and the order is positions -> story_number
-  -- (insert_board_item, split_story).
+  -- takes story_number, and the order is positions -> story_number -> story row
+  -- lock (invariant stated in 20260730000000_split_story_lock_order.sql).
   if p_anchor ? 'before' then
     perform pg_advisory_xact_lock(hashtext('positions:' || p_project_id::text));
   end if;
