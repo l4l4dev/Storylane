@@ -205,6 +205,13 @@
   for nothing. Pin two config rows in a fixed order (move/copy does source project
   then target) so two mirror-image calls cannot build a cycle out of them.
 
+  Inside the config tier the `projects` row comes before any child config row. A
+  project DELETE locks the parent row first, but its cascade reaches `stories`
+  before `integrations` and `project_states` — FK triggers fire in
+  constraint-creation order and `stories_project_id_fkey` is the oldest — so a
+  function that pins only children can end up waiting on a story row the deletion
+  already holds. Pinning the parent stops the cascade before it starts.
+
   A row whose identity is only known from the locked story read cannot be pinned
   in tier row by row. `project_states` is therefore pinned as a whole set per
   project — `finish_story_from_git` compares the merge target against the story's

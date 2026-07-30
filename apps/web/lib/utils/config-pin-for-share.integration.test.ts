@@ -251,21 +251,26 @@ describe.skipIf(!RUN)("RPC config pinned with FOR SHARE (integration)", () => {
     }, TIMEOUT);
   }
 
-  it("finish_story_from_git pins the project's state rows ABOVE the story row lock", async () => {
-    // A state row pinned below the story row lock deadlocks against a routine
-    // column delete: `delete from project_states` holds the state row and then
-    // waits FOR KEY SHARE on the stories referencing it, because
-    // stories_state_project_fkey is NO ACTION. Asserted as the lock order rather
-    // than as that race, whose outcome depends on the interleaving: park the RPC
-    // on the story row and show it ALREADY holds the story's own state row — the
-    // one whose identity is only known from the story read.
+  it("finish_story_from_git pins the project and its state rows ABOVE the story row lock", async () => {
+    // Two deadlocks live below that lock. A state row pinned under it loses to a
+    // routine column delete: `delete from project_states` holds the state row and
+    // then waits FOR KEY SHARE on the stories referencing it, because
+    // stories_state_project_fkey is NO ACTION. And a `projects` row merely probed
+    // loses to a project delete, whose cascade reaches stories before the other
+    // children. Asserted as the lock order rather than as either race, whose
+    // outcome depends on the interleaving: park the RPC on the story row and show
+    // it ALREADY holds both — the project row, and the story's own state row,
+    // whose identity is only known from the story read.
     const { projectId, states, story } = await seedGitProject("config pin: finish lock order");
 
     const settled = await whileRowLocked(
       "select id from public.stories where id = $1 for update",
       [story.id],
       () => finishFromGit(projectId, story.number),
-      () => expectBlocked("select id from public.project_states where id = $1 for update", [states.Unstarted]),
+      async () => {
+        await expectBlocked("select id from public.projects where id = $1 for update", [projectId]);
+        await expectBlocked("select id from public.project_states where id = $1 for update", [states.Unstarted]);
+      },
     );
 
     expect(settled.error).toBeNull();

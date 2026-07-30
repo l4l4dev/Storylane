@@ -24,6 +24,14 @@
 -- create_project_state and reorder_project_state take their advisory lock before
 -- writing, and a settings PATCH holds one row lock and waits for nothing.
 --
+-- Within the config tier, the `projects` row comes before any child config row.
+-- A project DELETE takes the parent row first, but its cascade reaches stories
+-- before integrations and project_states (FK triggers fire in constraint-creation
+-- order), so a function that pins only children can find itself waiting on a
+-- story row the deletion already holds. Pinning the parent stops the cascade
+-- before it starts. move/copy, split_story and reshape_current_iteration pin a
+-- `projects` row for their own reasons and get this for free.
+--
 -- project_states is pinned per project as a whole set, not row by row, because
 -- one of the two rows finish_story_from_git compares is only known after the
 -- story read. A state row pinned BELOW the story row lock deadlocks against a
@@ -833,10 +841,6 @@ declare
   v_current_number int;
   v_needs_iteration boolean;
 begin
-  if not exists (select 1 from public.projects where id = p_project_id) then
-    return jsonb_build_array(jsonb_build_object('kind', 'ignored', 'number', p_story_number, 'reason', 'project_not_found'));
-  end if;
-
   -- Same key finalize_iteration uses: serializes this finish+assign against
   -- rollover/manual finish so the current iteration can't finalize between
   -- the transition and the assignment below.
@@ -847,6 +851,17 @@ begin
   -- holds several of them in share, so without this the two interleave into a
   -- cycle. No function takes these two keys in the opposite order.
   perform pg_advisory_xact_lock(hashtext('project_states_positions:' || p_project_id::text));
+
+  -- The parent row before its children, and pinned rather than probed: `delete
+  -- from projects` cascades to stories BEFORE integrations and project_states,
+  -- since the FK triggers fire in constraint-creation order and stories' is the
+  -- oldest. A deletion racing this call would hold the story row while waiting for
+  -- the config rows below, and this function would then wait on that story row.
+  -- Holding the parent means the delete cannot begin its cascade at all.
+  perform 1 from public.projects where id = p_project_id for share;
+  if not found then
+    return jsonb_build_array(jsonb_build_object('kind', 'ignored', 'number', p_story_number, 'reason', 'project_not_found'));
+  end if;
 
   -- The integration row and its merge target are enforced nowhere but inside this
   -- function, so both are pinned rather than re-checked: an owner disabling the
