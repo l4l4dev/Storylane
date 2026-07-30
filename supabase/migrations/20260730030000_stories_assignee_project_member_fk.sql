@@ -183,13 +183,12 @@ begin
     v_points := (select v_story.points where v_story.points = any(v_allowed_points));
   end if;
 
-  -- The explicit `for share` TASK-219 put here — the one row pinned out of tier
-  -- order, because its identity is only known from the locked story read — is
-  -- gone: the INSERT below takes the same row's KEY SHARE as part of its own FK
-  -- check. The branch stays, and is not something the FK could replace: dropping
-  -- a non-member assignee is the normal-case behaviour spec/features.md asks for,
-  -- not a race. Only a membership that disappears between this read and the
-  -- INSERT is left to the constraint, which raises 23503 instead.
+  -- Unlocked probe: the INSERT below takes this row's KEY SHARE anyway, as part
+  -- of its own assignee FK check. The branch is not something the FK could
+  -- replace — dropping a non-member assignee is the normal-case behaviour
+  -- spec/features.md asks for, not a race. Only a membership that disappears
+  -- between this read and the INSERT is left to the constraint, which raises
+  -- 23503 instead.
   if v_story.assignee_id is null then
     v_assignee := null;
   else
@@ -356,13 +355,12 @@ begin
     v_points := (select v_story.points where v_story.points = any(v_allowed_points));
   end if;
 
-  -- The explicit `for share` TASK-219 put here — the one row pinned out of tier
-  -- order, because its identity is only known from the locked story read — is
-  -- gone: the INSERT below takes the same row's KEY SHARE as part of its own FK
-  -- check. The branch stays, and is not something the FK could replace: dropping
-  -- a non-member assignee is the normal-case behaviour spec/features.md asks for,
-  -- not a race. Only a membership that disappears between this read and the
-  -- INSERT is left to the constraint, which raises 23503 instead.
+  -- Unlocked probe: the INSERT below takes this row's KEY SHARE anyway, as part
+  -- of its own assignee FK check. The branch is not something the FK could
+  -- replace — dropping a non-member assignee is the normal-case behaviour
+  -- spec/features.md asks for, not a race. Only a membership that disappears
+  -- between this read and the INSERT is left to the constraint, which raises
+  -- 23503 instead.
   if v_story.assignee_id is null then
     v_assignee := null;
   else
