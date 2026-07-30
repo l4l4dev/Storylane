@@ -5,10 +5,18 @@ name: Deploy
 # apps/web/vercel.json, so the Deploy Hook at the end of this job is the only
 # thing that puts new app code live — new code can never run against an old
 # schema. See DEPLOY.md for the one-time setup.
+#
+# Triggered by a published GitHub Release, not a push to main: merges batch on
+# main un-deployed, and publishing a release is the deliberate act that ships
+# them. It also closes a race a push trigger has no way to avoid — CI (the
+# "Start Supabase" job in web-ci.yml) applies the whole migration chain to a
+# fresh database on every push to main too, but has no dependency on this
+# workflow, so a bad migration could reach production before that check goes
+# red. Nothing here fires on push, so there is nothing left for CI to lose to.
 
 on:
-  push:
-    branches: [main]
+  release:
+    types: [published]
 
 concurrency:
   group: production-deploy
