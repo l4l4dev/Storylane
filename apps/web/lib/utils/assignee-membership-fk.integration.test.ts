@@ -1,18 +1,16 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// TASK-221: stories(project_id, assignee_id) -> project_members(project_id, user_id)
-// (20260730030000). The rule "the assignee is a member of the story's project"
-// used to be nobody's job — assignee_id referenced profiles alone — so the
-// cases below are the three things the constraint now decides:
+// What stories(project_id, assignee_id) -> project_members(project_id, user_id)
+// (20260730030000) decides, and nothing else does:
 //
-//  - a non-member assignee is rejected on every write path, not just the two
-//    cross-project RPCs that happened to check (AC #2)
-//  - removing a member unassigns their stories, which remove_member never did
-//    for itself (AC #3)
-//  - move/copy still DROP a non-member assignee rather than failing, which is
-//    the behaviour spec/features.md asks for and the reason their membership
-//    branch survived the removal of its `for share` (AC #6)
+//  - a non-member assignee is rejected on every write path, not only the two
+//    cross-project RPCs that probe membership themselves
+//  - removing a member unassigns their stories in that project, through
+//    ON DELETE SET NULL rather than any code in remove_member
+//  - move/copy still DROP a non-member assignee instead of failing, the
+//    behaviour spec/features.md asks for and the reason their unlocked
+//    membership branch is not redundant with the constraint
 //
 //   SUPABASE_INTEGRATION=1 pnpm exec vitest run lib/utils/assignee-membership-fk.integration.test.ts
 const RUN = process.env.SUPABASE_INTEGRATION === "1";
