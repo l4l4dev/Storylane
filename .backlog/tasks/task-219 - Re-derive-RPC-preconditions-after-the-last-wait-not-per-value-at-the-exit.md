@@ -1,11 +1,11 @@
 ---
 id: TASK-219
 title: 'Re-derive RPC preconditions after the last wait, not per-value at the exit'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-29 03:59'
-updated_date: '2026-07-30 05:01'
+updated_date: '2026-07-30 05:46'
 labels: []
 milestone: m-2
 dependencies: []
@@ -52,3 +52,13 @@ finalize_iteration also reads projects.iteration_length unpinned; it was not in 
 
 rls-security-reviewer pass: no blocking findings.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Preconditions a SECURITY DEFINER RPC is the only enforcement of are now pinned with a single `select ... for share` per config row, read once and trusted to commit; the per-value exit re-reads are deleted (an unlocked exit read races the COMMIT itself). Applies to split_story, move/copy_story_to_project, reshape_current_iteration and finish_story_from_git; the role keeps the TASK-211 exit-guard pattern, and update_story stays on a plain read because a locking clause under RLS also needs the UPDATE policy's USING. The seven copies of the point-scale literals collapse into point_scale_values(), and assert_points_on_scale is dropped.
+
+Lock order is three tiers (advisory locks -> config-row `for share` -> story row locks), with the `projects` row ahead of any child config row and one out-of-tier pin left (the assignee's project_members row, TASK-221). Two deadlocks were found by review and both were reproduced on a local DB before fixing: a project_states row pinned below the story row lock loses to `delete from project_states` (NO ACTION FK check locks the referencing stories), and an unlocked `projects` probe loses to a project delete whose cascade reaches stories first. Both re-verified as serialised after the fix.
+
+Verified with 99 passing assertions across the 6 affected integration files, apps/web `pnpm test` (858 passed) and `pnpm run lint`; each pin was also checked negatively by removing it from the local DB's function definition and watching the matching test fail. rls-security-reviewer: no blocking findings. Codex on the final head (ab7ce28): no issues. Merged as 8c86115 (PR #12).
+<!-- SECTION:FINAL_SUMMARY:END -->
