@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-30 05:58'
-updated_date: '2026-07-30 13:51'
+updated_date: '2026-07-30 17:38'
 labels: []
 milestone: m-2
 dependencies: []
@@ -53,4 +53,14 @@ AC evidence:
 Why the row-lock shape works for #1/#2 rather than needing a trigger-based second wait: verified directly (not inferred) that PostgreSQL's Read Committed EvalPlanQual, on unblocking a FOR UPDATE wait, re-fetches only the row that was locked — a subquery referencing another table (project_members) in the same WHERE clause still evaluates against the pre-wait snapshot. Two throwaway tables, two psql sessions: session B blocked on session A's row lock while a plain UPDATE to the OTHER table committed during the wait; once A released, B's re-evaluated query still returned the row as if the other table's change had not happened. This is what makes holding the story's own row a valid, guard-specific test rather than one that would also be caught by the RPC's own initial authorization.
 
 Verification: SUPABASE_INTEGRATION=1 pnpm test = 1242 passed / 141 files (+2 from TASK-222's baseline). pnpm run lint and tsc --noEmit clean.
+
+Codex review of PR #15, round 1 — one P2, accepted; it invalidated the AC#1 test's design (not the exit guard itself, which was always correct).
+
+The original set_story_parent test held the CHILD's own row externally, same as set_epic_pinned's. Codex pointed out that only proves SOME fresh membership check runs after the initial select unblocks — not specifically the guard at the function's true exit. Confirmed empirically by moving require_project_role to right after the initial select (before the UPDATE): the original test still passed.
+
+Fixed by holding the OLD PARENT's row instead: detaching fires maintain_is_container AFTER UPDATE, which calls recompute_is_container(old.parent_id) — a `select ... for update` on the parent taken even when it ends up writing nothing (an epic_pinned parent keeps is_container regardless of child count). That wait sits strictly after the child's own write, so a guard placed anywhere earlier — including right after the initial select — cannot see a de-membering that lands during it. Re-verified against the same three variants: guard removed (fails), guard moved to right-after-select (now correctly fails too), guard at the true exit, current definition (passes). Also strengthened the rollback assertion to cover the cascading is_container flip, not just the child's own parent_id.
+
+set_epic_pinned's test (AC#2) was checked against the same concern and left as originally designed: this RPC has no wait between "right after the select" and its true exit (traced every trigger on stories — stories_maintain_is_container only fires on UPDATE OF parent_id, which this RPC never touches), so a guard placed at either point protects identically. Confirmed empirically — moving its guard to right-after-select still passes the existing test, because there is no real difference in protection to detect there. Comment expanded to record this reasoning so a future review does not have to re-derive it or assume the two tests should be symmetric.
+
+Re-verified after the fix: SUPABASE_INTEGRATION=1 pnpm test = 1242 passed / 141 files, lint and tsc clean.
 <!-- SECTION:NOTES:END -->

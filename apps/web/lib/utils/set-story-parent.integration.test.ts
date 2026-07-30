@@ -125,38 +125,58 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
     throw new Error("nothing ever blocked on the held row — the test would be vacuous");
   }
 
-  // TASK-223 AC#1. set_story_parent's own SELECT ... FOR UPDATE embeds the
-  // membership check, but a membership change committed while genuinely
-  // blocked on that row is NOT visible when the wait unblocks and the row is
-  // re-evaluated — Read Committed re-fetches only the locked row itself; the
-  // subquery on project_members still runs against the snapshot from before
-  // the wait (verified directly against local PG 17 with throwaway tables: a
-  // blocked `for update ... and exists(select ... other_table)` did not see a
-  // committed change to `other_table` made while it was parked). So the write
-  // that follows still goes through, and only the RPC's own later, fresh
-  // SELECT — the exit guard — can see the membership change. That makes
-  // holding the story's own row the one race that isolates the exit guard,
-  // rather than re-testing the authorization the RPC starts with.
-  it("rejects a caller de-membered while blocked on the story's own row (exit guard)", async () => {
+  // TASK-223 AC#1. Codex on PR #15: blocking on the CHILD's own row only
+  // proves some fresh membership check runs after the initial select — moving
+  // require_project_role to right after that select (before the UPDATE) still
+  // satisfies that shape, so it does not isolate the true exit guard.
+  // Confirmed by testing exactly that variant against a local copy of the
+  // function: the earlier-placed check still passed.
+  //
+  // The wait that only a guard remaining at the very end can cover is the OLD
+  // PARENT's row lock: detaching fires maintain_is_container AFTER UPDATE,
+  // which calls recompute_is_container(old.parent_id) — a `select ... for
+  // update` on the parent, taken regardless of whether it ends up writing
+  // anything. Holding that row externally blocks the trigger, which runs
+  // strictly after the child's own UPDATE, so a guard placed anywhere earlier
+  // (including right after the initial select) cannot see a de-membering that
+  // lands during this wait — only the guard at the function's actual exit can.
+  it("rejects a caller de-membered while a detach's trigger waited on the OLD PARENT row (exit guard)", async () => {
     const { data: project } = await owner
       .from("projects")
       .insert({ name: "TASK-223 set_story_parent exit guard" })
       .select("id")
       .single();
     const raceProjectId = project!.id;
-    const { data: epicId } = await owner.rpc("create_epic", { p_project_id: raceProjectId, p_title: "epic" });
-    const { data: child } = await owner
+    // Plain container (is_container via child membership, not epic_pinned):
+    // losing its last child is what makes recompute_is_container write to it,
+    // so the rollback assertion below proves the WHOLE cascade unwound, not
+    // just the child's own parent_id.
+    const { data: parent } = await admin
       .from("stories")
-      .insert({ project_id: raceProjectId, story_type: "feature", title: "child", parent_id: epicId as string })
+      .insert({ project_id: raceProjectId, story_type: "feature", title: "parent", created_by: ownerId })
       .select("id")
       .single();
+    const { data: child } = await admin
+      .from("stories")
+      .insert({
+        project_id: raceProjectId,
+        story_type: "feature",
+        title: "child",
+        parent_id: parent!.id,
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    expect((await admin.from("stories").select("is_container").eq("id", parent!.id).single()).data!.is_container).toBe(
+      true,
+    );
 
     const holder = new PgClient({ connectionString: DB_URL() });
     await holder.connect();
     let settled: { error: { code?: string } | null };
     try {
       await holder.query("begin");
-      await holder.query("select id from public.stories where id = $1 for update", [child!.id]);
+      await holder.query("select id from public.stories where id = $1 for update", [parent!.id]);
 
       const pending = Promise.resolve(
         owner.rpc("set_story_parent", { p_story_id: child!.id, p_parent_id: null }),
@@ -176,8 +196,10 @@ describe.skipIf(!RUN)("set_story_parent (integration)", () => {
 
     expect(settled.error?.code).toBe("42501");
 
-    const { data: after } = await admin.from("stories").select("parent_id").eq("id", child!.id).single();
-    expect(after!.parent_id).toBe(epicId as string); // the detach rolled back
+    const { data: afterChild } = await admin.from("stories").select("parent_id").eq("id", child!.id).single();
+    expect(afterChild!.parent_id).toBe(parent!.id); // the detach rolled back
+    const { data: afterParent } = await admin.from("stories").select("is_container").eq("id", parent!.id).single();
+    expect(afterParent!.is_container).toBe(true); // the cascading un-containerize rolled back too
 
     await admin.from("projects").delete().eq("id", raceProjectId);
   }, TIMEOUT);

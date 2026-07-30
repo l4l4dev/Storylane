@@ -110,13 +110,26 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
     throw new Error("nothing ever blocked on the held row — the test would be vacuous");
   }
 
-  // TASK-223 AC#2. Same shape as set_story_parent's exit-guard race: this
-  // RPC's own SELECT ... FOR UPDATE embeds the membership check, but a
-  // membership change committed while genuinely blocked on that row is not
-  // visible when the wait unblocks and the row is re-evaluated (verified
-  // directly against local PG 17 with throwaway tables). The write that
-  // follows still proceeds, so only the exit guard's own later SELECT can
-  // catch it.
+  // TASK-223 AC#2. This RPC's own SELECT ... FOR UPDATE embeds the membership
+  // check, but a membership change committed while genuinely blocked on that
+  // row is not visible when the wait unblocks and the row is re-evaluated
+  // (verified directly against local PG 17 with throwaway tables). The write
+  // that follows still proceeds, so a guard has to sit somewhere after this
+  // select to catch it.
+  //
+  // Unlike set_story_parent (Codex on PR #15), holding the story's own row is
+  // sufficient here rather than just necessary: set_story_parent has a real
+  // wait between "right after the select" and its true exit (the detach
+  // trigger's lock on the OLD PARENT row), so a guard placed early enough to
+  // miss that wait would still satisfy a test that only holds the child's own
+  // row. set_epic_pinned has no such gap — after the initial select, every
+  // remaining step (the is_personal/child-membership reads, the activity_logs
+  // insert, the UPDATE on this already-locked row) either reads unlocked or
+  // writes a row this transaction already holds, so nothing between "right
+  // after the select" and the function's actual end can block on anything
+  // external. Confirmed empirically: moving the guard to immediately after
+  // the select still passes this test (there being no real difference in
+  // protection to detect), while removing it entirely still fails it.
   it("set_epic_pinned rejects a caller de-membered while blocked on the story's own row (exit guard)", async () => {
     const { data: project } = await owner
       .from("projects")
