@@ -47,6 +47,11 @@ const AUTHENTICATED_ALLOWLIST = new Set([
   "set_epic_pinned",
   "set_story_parent",
   "create_draft_story",
+  // Not an entry point: update_story is SECURITY INVOKER, so it needs the
+  // caller's own EXECUTE on the literal helper it calls (TASK-219). It reads no
+  // table — its arguments are the scale and the custom array — so being reachable
+  // over PostgREST discloses nothing.
+  "point_scale_values",
   // MCP entry-point RPCs (apps/mcp/src/handlers.ts), also granted to
   // `authenticated` since the MCP bot signs in as an ordinary Supabase user
   "set_story_tasks",

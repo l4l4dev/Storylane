@@ -170,6 +170,89 @@
   window reopens silently. A guard that is not a plain role list
   (`remove_member`'s self-leave allowance) re-runs its own shape instead.
 
-  The same applies to any other precondition enforced only inside the RPC
-  (`projects.archived_at`, `projects.point_scale`): read it after the waits, or
-  it is as stale as the role was.
+  This covers the ROLE. Every other precondition enforced only inside the RPC is
+  pinned instead — see the next rule, which supersedes the "read it after the
+  waits" advice this rule used to give for them.
+- Pin the config a SECURITY DEFINER RPC enforces itself (2026-07-30, TASK-219):
+  read `projects.archived_at`, `projects.point_scale`, `projects.iteration_length`,
+  the `integrations` row, a `project_states.position` — anything the RPC is the
+  only enforcement of — ONCE, with `select ... for share`, and trust it for the
+  rest of the transaction. Do not re-read it at the exit.
+
+  Re-reading is unsound, not merely incomplete. An unlocked read races the COMMIT
+  itself: a settings PATCH can commit between the exit guard's read and the RPC's
+  own commit, so the guard narrows the window without closing it. Re-deriving the
+  values "after the last wait" fails for the same reason, and there is no last
+  wait to find — `finish_story_from_git` did read its configuration after both of
+  its waits (20260728100000) and still decided a forward-only transition on
+  unlocked `project_states` rows. `for share` holds the row until commit, so the
+  value cannot change under the transaction and a concurrent writer waits.
+
+  Why a row lock and not an advisory key: `projects`, `project_states` and
+  `integrations` each have a direct UPDATE policy for `authenticated`, and the
+  settings server actions PATCH them without going through any RPC, so a writer
+  holding no advisory lock is the normal case. A row lock needs no cooperation
+  from the writer.
+
+  Lock order is three tiers (extends the board invariant in
+  `20260730000000_split_story_lock_order.sql`):
+
+      advisory locks -> config-row `for share` -> story row locks
+
+  Every config writer already agrees with it: `change_member_role`,
+  `remove_member`, `create_project_state` and `reorder_project_state` take their
+  advisory lock before writing, and a settings PATCH holds one row lock and waits
+  for nothing. Pin two config rows in a fixed order (move/copy does source project
+  then target) so two mirror-image calls cannot build a cycle out of them.
+
+  A row whose identity is only known from the locked story read cannot be pinned
+  in tier row by row. `project_states` is therefore pinned as a whole set per
+  project — `finish_story_from_git` compares the merge target against the story's
+  own state, and the set is known from `project_id` alone, so one
+  `... where project_id = $1 order by id for share` above the story row lock
+  covers both. Pinning the story's own row below that lock deadlocks: `delete from
+  project_states` (a routine Settings action — `deleteProjectState` treats the
+  resulting 23503 as an expected outcome) holds the state row and then waits FOR
+  KEY SHARE on the stories referencing it, because `stories_state_project_fkey` is
+  NO ACTION and its check locks them. A function that pins several
+  `project_states` rows also takes `project_states_positions:<project>`, the key
+  `reorder_project_state` and `create_project_state` hold while they each write
+  two rows in an order of their own.
+
+  One exception is left: the retained assignee's `project_members` row in
+  move/copy, pinned below the story row lock. It is safe only while no writer
+  holds that row exclusively and then waits on a story row — true today, since
+  nothing references `project_members` and `remove_member` reads `stories` and
+  locks none. TASK-221's composite FK would give `remove_member` exactly that
+  story row lock; it has to revisit this. The automatic KEY SHARE lock a foreign
+  key takes on its referenced row is outside the tier order for the same reason it
+  is safe: it touches one leaf row and waits on nothing beyond it.
+
+  Three things this rule does NOT cover:
+
+  - The role stays on the exit-guard pattern above. `project_members` has no
+    UPDATE or DELETE policy, so every change goes through `change_member_role` or
+    `remove_member`, both of which take `membership:<project>` before writing.
+    The read-vs-commit gap therefore still exists for the role; closing it means
+    `pg_advisory_xact_lock_shared(hashtext('membership:' || project))` at the
+    entry of every story RPC (tier 0), which is a repo-wide change and has not
+    been made.
+  - SECURITY INVOKER functions cannot pin. Under RLS a locking clause also
+    requires the row to pass the UPDATE policy's USING, so a non-owner member
+    locking its own project's row gets zero rows — measured, not inferred. That
+    is why `update_story` keeps a plain read (TASK-208 makes the off-scale value
+    it can store deliberate anyway), and why `point_scale_values(scale, custom)`
+    takes the columns as arguments instead of reading the row itself: a helper
+    that read it would have to be SECURITY DEFINER, which would hand a project's
+    scale to non-members.
+  - `finalize_iteration` still reads `projects.iteration_length` unpinned to date
+    the iteration it creates, so a settings PATCH committing mid-call can leave
+    the successor on the old length (`reshape_current_iteration` only ever
+    reshapes the latest row, so it does not always correct it). Left as it is
+    because it is not a precondition the RPC refuses on, only a derivation input,
+    and TASK-219 did not inventory it.
+
+  `point_scale_values` is the DB's only copy of the point-scale literals
+  (`packages/core/src/story-types.ts` is the client's). Compare against its result
+  with a positive `= any(...)`: `projects.custom_points` may contain NULL, and a
+  negated test yields NULL for an off-scale value, which `if` reads as false.
