@@ -326,7 +326,7 @@ describe.skipIf(!RUN)("create_draft_story RPC (integration)", () => {
       // read `iterations` and `project_states`, both invisible to a non-member,
       // so the reported failure became "No active iteration": a plausible,
       // wrong, and unactionable message. This is the same NULL-vs-false trap
-      // assert_points_on_scale documents for `= any(array[...])`.
+      // point_scale_values documents for `= any(array[...])`.
       const projectId = await createProject(`TASK-212 outsider ${target}`);
 
       const { error } = await asOutsider.rpc("create_draft_story", {

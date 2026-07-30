@@ -135,6 +135,31 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
   }
 
   /**
+   * Asserts a settings write cannot land right now. TASK-219 pins the config an
+   * RPC enforces itself with `for share`, so an in-flight RPC makes this write
+   * WAIT; a short statement_timeout turns that wait into 57014. Its own
+   * connection, because the RPC under test is holding a lock the caller's would
+   * deadlock against.
+   */
+  async function expectSettingsWriteBlocked(sql: string, params: unknown[]): Promise<void> {
+    const writer = new PgClient({
+      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    });
+    await writer.connect();
+    try {
+      await writer.query("begin");
+      await writer.query("set local statement_timeout = '750ms'");
+      await writer.query(sql, params);
+      throw new Error("the settings write was not blocked — the RPC's `for share` is gone");
+    } catch (e) {
+      if ((e as { code?: string }).code !== "57014") throw e;
+    } finally {
+      await writer.query("rollback").catch(() => {});
+      await writer.end();
+    }
+  }
+
+  /**
    * Parks `call()` on `prefix:<lockProjectId>`, applies `revoke()` while it
    * waits, then releases the lock and returns what the call settled with.
    */
@@ -778,12 +803,12 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     expect(error?.code).toBe("42501");
   }, TIMEOUT);
 
-  it("finish_story_from_git honours an integration disabled while it waited on the STORY ROW", async () => {
-    // The advisory lock is not the only unbounded wait in this RPC: the story's
-    // own `select ... for update` is another. Parking on the advisory lock alone
-    // leaves the config reads movable back above the row lock with the suite
-    // still green, so this case blocks on the row itself.
-    const projectId = await createProject("TASK-211 webhook row-lock race");
+  it("finish_story_from_git pins its integration against a disable while it waits on the STORY ROW", async () => {
+    // The configuration is read once above the story row lock and pinned, so a
+    // disable arriving during that wait cannot apply until this transaction ends.
+    // The pin runs to commit, which is what covers every later wait in the
+    // function without a post-write re-check.
+    const projectId = await createProject("TASK-219 webhook config pin");
     const { data: states } = await admin.from("project_states").select("id, name").eq("project_id", projectId);
     const byName = Object.fromEntries(states!.map((s) => [s.name, s.id])) as Record<string, string>;
     const { error: fixtureError } = await admin.from("integrations").insert({
@@ -793,6 +818,10 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
       is_active: true,
     });
     expect(fixtureError).toBeNull();
+    // Without an iteration the RPC declines with no_active_iteration before it
+    // ever reaches the row lock.
+    const seeded = await owner.rpc("finalize_iteration", { p_project_id: projectId, p_manual: false });
+    expect(seeded.error).toBeNull();
     const { data: story } = await admin
       .from("stories")
       .insert({ project_id: projectId, title: "row-locked", story_type: "chore", state_id: byName.Unstarted, created_by: ownerId })
@@ -803,7 +832,7 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
       connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     });
     await holder.connect();
-    let result: { data: unknown };
+    let result: { data: unknown; error: unknown };
     try {
       await holder.query("begin");
       await holder.query("select id from public.stories where id = $1 for update", [story!.id]);
@@ -818,11 +847,10 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
 
       await waitForRowWaiter(holder);
 
-      const { error: disableError } = await admin
-        .from("integrations")
-        .update({ is_active: false })
-        .eq("project_id", projectId);
-      expect(disableError).toBeNull();
+      await expectSettingsWriteBlocked(
+        "update public.integrations set is_active = false where project_id = $1",
+        [projectId],
+      );
 
       await holder.query("commit");
       result = await pending;
@@ -830,13 +858,11 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
       await holder.end();
     }
 
-    expect((result.data as { kind: string; reason?: string }[])[0]).toMatchObject({
-      kind: "ignored",
-      reason: "not_configured",
-    });
+    expect(result.error).toBeNull();
+    expect((result.data as { kind: string }[])[0].kind).toBe("finished");
 
     const { data: after } = await admin.from("stories").select("state_id").eq("id", story!.id).single();
-    expect(after!.state_id).toBe(byName.Unstarted); // untouched
+    expect(after!.state_id).toBe(byName.Finished);
   }, TIMEOUT);
 
   it("finish_story_from_git honours an integration disabled while it was blocked", async () => {
@@ -906,13 +932,13 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
     expect(count ?? 0).toBe(0); // the insert rolled back
   }, TIMEOUT);
 
-  it("copy_story_to_project rejects points the target's CURRENT scale excludes", async () => {
-    // The window is after the clamp: the scale is narrowed while the story INSERT
-    // blocks on its assignee foreign key, so the clamp used a scale that is no
-    // longer current. spec/features.md constrains the STORED value, so checking
-    // the computed variable is not enough.
-    const source = await createProject("TASK-211 scale-at-exit source");
-    const target = await createProject("TASK-211 scale-at-exit target");
+  it("copy_story_to_project pins the target's point scale against a narrowing mid-copy", async () => {
+    // The scale is pinned before the clamp, so a narrowing arriving while the
+    // story INSERT blocks on its assignee foreign key has to wait: the copy
+    // commits with the value its pinned scale allowed and the narrowing applies
+    // after it — a serial order, not a lost race.
+    const source = await createProject("TASK-219 scale pin source");
+    const target = await createProject("TASK-219 scale pin target");
     const { error: setupError } = await admin
       .from("projects")
       .update({ point_scale: "fibonacci" })
@@ -943,102 +969,33 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
       );
 
       await waitForRowWaiter(holder);
-      const { error: narrowError } = await admin
-        .from("projects")
-        .update({ point_scale: "linear" })
-        .eq("id", target);
-      expect(narrowError).toBeNull();
-      await holder.query("commit");
-      settled = await pending;
-    } finally {
-      await holder.end();
-    }
-
-    expect(settled.error?.message).toMatch(/not on the project's current scale/i);
-
-    const { count } = await admin
-      .from("stories")
-      .select("id", { count: "exact", head: true })
-      .eq("project_id", target);
-    expect(count ?? 0).toBe(0); // nothing landed
-  }, TIMEOUT);
-
-  it("finish_story_from_git rolls back when the integration changes AFTER the write", async () => {
-    // Distinct from the two races above, which block before the config read and
-    // return not_configured without reaching this branch. Here the story UPDATE
-    // has already happened and log_story_activity's activity_logs INSERT is
-    // blocked on its project_id foreign key, so only the post-write guard can
-    // see the change — and it has to RAISE, since a return would commit the
-    // UPDATE it is meant to undo.
-    const projectId = await createProject("TASK-211 webhook post-write guard");
-    const { data: states } = await admin.from("project_states").select("id, name").eq("project_id", projectId);
-    const byName = Object.fromEntries(states!.map((st) => [st.name, st.id])) as Record<string, string>;
-    const { error: fixtureError } = await admin.from("integrations").insert({
-      project_id: projectId,
-      provider: "github",
-      config: { merge_target_state_id: byName.Finished },
-      is_active: true,
-    });
-    expect(fixtureError).toBeNull();
-    // Without an iteration the RPC declines with no_active_iteration long before
-    // the write, so the window never opens.
-    const seeded = await owner.rpc("finalize_iteration", { p_project_id: projectId, p_manual: false });
-    expect(seeded.error).toBeNull();
-    const { data: story } = await admin
-      .from("stories")
-      .insert({ project_id: projectId, title: "post-write", story_type: "chore", state_id: byName.Unstarted, created_by: ownerId })
-      .select("id, number")
-      .single();
-
-    const holder = new PgClient({
-      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
-    });
-    await holder.connect();
-    let settled: { error: { code?: string; message?: string } | null };
-    try {
-      await holder.query("begin");
-      // FK checks take FOR KEY SHARE on the referenced row, which FOR UPDATE
-      // conflicts with. Holding the PROJECT row (not the story's — that one is
-      // locked before the config read) blocks the activity_logs insert.
-      await holder.query("select id from public.projects where id = $1 for update", [projectId]);
-
-      const pending = Promise.resolve(
-        admin.rpc("finish_story_from_git", {
-          p_project_id: projectId,
-          p_story_number: story!.number,
-          p_provider: "github",
-        }),
+      await expectSettingsWriteBlocked(
+        "update public.projects set point_scale = 'linear' where id = $1",
+        [target],
       );
-
-      await waitForRowWaiter(holder);
-      const { error: disableError } = await admin
-        .from("integrations")
-        .update({ is_active: false })
-        .eq("project_id", projectId);
-      expect(disableError).toBeNull();
       await holder.query("commit");
       settled = await pending;
     } finally {
       await holder.end();
     }
 
-    expect(settled.error?.message).toMatch(/configuration changed while the transition was in flight/i);
+    expect(settled.error).toBeNull();
 
-    const { data: after } = await admin.from("stories").select("state_id").eq("id", story!.id).single();
-    expect(after!.state_id).toBe(byName.Unstarted); // the UPDATE rolled back
+    const { data: landed } = await admin.from("stories").select("points").eq("project_id", target).single();
+    expect(landed!.points).toBe(8); // valid on the scale that was pinned
   }, TIMEOUT);
 
-  it("rejects an off-scale estimate even when custom_points contains a NULL", async () => {
-    // `= any(array[...,NULL])` yields NULL, not false, so `not (...)` is NULL and
-    // `if` treats it as false — the check would silently accept. custom_points has
-    // no constraint forbidding a NULL element, so this is reachable.
-    const source = await createProject("TASK-211 null-in-custom source");
-    const target = await createProject("TASK-211 null-in-custom target");
-    // Starts on a scale that ALLOWS 8, so the clamp keeps it; the NULL-bearing
-    // custom scale arrives during the wait, which is what the exit check reads.
+  it("clamps an off-scale estimate to NULL when custom_points contains a NULL", async () => {
+    // `= any(array[...,NULL])` yields NULL, not false, so every comparison
+    // against point_scale_values is positive: an off-scale value falls to NULL
+    // rather than slipping through a negated test read as false. custom_points has
+    // no constraint forbidding a NULL element, so this is reachable. No race: the
+    // scale is pinned, so what matters here is the array, not the timing.
+    const source = await createProject("TASK-219 null-in-custom source");
+    const target = await createProject("TASK-219 null-in-custom target");
     const { error: setupError } = await admin
       .from("projects")
-      .update({ point_scale: "fibonacci" })
+      .update({ point_scale: "custom", custom_points: [1, 2, null] })
       .eq("id", target);
     expect(setupError).toBeNull();
     const { data: states } = await admin.from("project_states").select("id, category").eq("project_id", source);
@@ -1050,38 +1007,14 @@ describe.skipIf(!RUN)("role re-check after the advisory lock (TASK-211 integrati
       assignee_id: ownerId,
     });
 
-    const holder = new PgClient({
-      connectionString: process.env.SUPABASE_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    const { error } = await owner.rpc("copy_story_to_project", {
+      p_story_id: storyId,
+      p_target_project_id: target,
     });
-    await holder.connect();
-    let settled: { error: { message?: string } | null };
-    try {
-      await holder.query("begin");
-      await holder.query("select id from public.profiles where id = $1 for update", [ownerId]);
+    expect(error).toBeNull();
 
-      const pending = Promise.resolve(
-        owner.rpc("copy_story_to_project", { p_story_id: storyId, p_target_project_id: target }),
-      );
-
-      await waitForRowWaiter(holder);
-      const { error: narrowError } = await admin
-        .from("projects")
-        .update({ point_scale: "custom", custom_points: [1, 2, null] })
-        .eq("id", target);
-      expect(narrowError).toBeNull();
-      await holder.query("commit");
-      settled = await pending;
-    } finally {
-      await holder.end();
-    }
-
-    expect(settled.error?.message).toMatch(/not on the project's current scale/i);
-
-    const { count } = await admin
-      .from("stories")
-      .select("id", { count: "exact", head: true })
-      .eq("project_id", target);
-    expect(count ?? 0).toBe(0);
+    const { data: landed } = await admin.from("stories").select("points").eq("project_id", target).single();
+    expect(landed!.points).toBeNull();
   }, TIMEOUT);
 
   // ── invite_member: no lock, but not waitless either (AC #4) ───────────────

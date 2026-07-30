@@ -922,10 +922,6 @@ export type Database = {
         Args: { p_project_id: string; p_user_id: string }
         Returns: undefined
       }
-      assert_points_on_scale: {
-        Args: { p_project_id: string; p_story_id: string }
-        Returns: undefined
-      }
       change_member_role: {
         Args: { p_project_id: string; p_role: string; p_user_id: string }
         Returns: undefined
@@ -1044,6 +1040,10 @@ export type Database = {
       override_iteration_length: {
         Args: { p_end_date: string; p_iteration_id: string }
         Returns: Json
+      }
+      point_scale_values: {
+        Args: { p_custom: number[]; p_scale: string }
+        Returns: number[]
       }
       project_capacity: {
         Args: { p_end: string; p_project_id: string; p_start: string }
