@@ -1,11 +1,11 @@
 ---
 id: TASK-221
 title: 'DB: pin stories.assignee_id to target-project membership with a composite FK'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-30 02:54'
-updated_date: '2026-07-30 11:27'
+updated_date: '2026-07-30 12:10'
 labels: []
 milestone: m-2
 dependencies: []
@@ -112,3 +112,13 @@ DECLINED P2 'a concurrent invite can be erased by the cleanup UPDATE's snapshot'
 
 DECLINED P2 'cascade-driven unassignments leave no activity_logs row'. log_story_activity has never recorded assignee changes; this PR does not change that, and extending the trigger exceeds these ACs (the same boundary that split this task out of TASK-219). spec/screens.md's 'the activity-log trigger records state/assignment events' does not resolve whether 'assignment' means the assignee or the iteration assignment the trigger already logs — left as an open spec question rather than guessed at.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added the composite FK stories(project_id, assignee_id) -> project_members(project_id, user_id) ON DELETE SET NULL, so 'the assignee is a member of the story's project' is enforced by Postgres on every write path including direct REST PATCH, and removing a member unassigns their stories through the cascade instead of leaving them assigned forever. Migration 20260730030000 installs the supporting index, adds the constraint NOT VALID, backfills the dangling assignees (logged via RAISE NOTICE), then validates it — that order is what stops a concurrent remove_member from aborting the deploy. move/copy dropped their now-redundant 'for share' on the membership row, leaving spec/rls.md with no out-of-tier pin; the remaining ABBA cycle with remove_member is accepted and documented there. Web surfaces the rejection through writeErrorMessage (23503 on the constraint, 40P01 as a retry prompt), with Move/Copy wording its own message since it has no assignee field.
+
+Verified: SUPABASE_INTEGRATION=1 pnpm test = 1239 passed / 141 files, lint and tsc clean, Web CI green on a fresh database (PR #13). Reviews: fable-advisor approved, rls-security-reviewer found nothing, /code-review high (3 of 4 fixed, 1 declined on a measured lock level), Codex rounds 1-4 (P1 + 6 findings addressed, 2 declined on measurement and scope), round 5 clean. Merged as 31efa0f.
+
+Left open: spec/screens.md's 'the activity-log trigger records state/assignment events' does not say whether 'assignment' means the assignee or the iteration assignment the trigger already logs — tracked separately.
+<!-- SECTION:FINAL_SUMMARY:END -->
