@@ -3,11 +3,11 @@ id: TASK-223
 title: >-
   Test gaps: exit guards and a lock-order test that passes on a failed
   transition
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-30 05:58'
-updated_date: '2026-07-30 17:52'
+updated_date: '2026-07-30 18:26'
 labels: []
 milestone: m-2
 dependencies: []
@@ -72,3 +72,13 @@ P3: dropped the TASK-223/Codex/PR-number narration from both new-test comments (
 
 Re-verified after both fixes: SUPABASE_INTEGRATION=1 pnpm test = 1242 passed / 141 files, lint and tsc clean.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed three test gaps that stayed green while the behaviour they named could break. set_story_parent and set_epic_pinned's exit guards (20260728140000) now each have a race test proving they — specifically, not any earlier check — reject a caller de-membered mid-flight; set-story-state-lock-order's quick-add-vs-transition test now requires the transition to actually complete.
+
+The first attempt at the two exit-guard tests held only the target story's own row, which Codex (PR #15, two rounds) showed only proves SOME check runs after the initial select — not the guard specifically. Fixed by finding a real wait that sits strictly after the write for each RPC: set_story_parent's detach fires a trigger that locks the OLD PARENT row even when it changes nothing; set_epic_pinned's points-bearing pin inserts into activity_logs, whose foreign key takes KEY SHARE on the projects row. Both waits were verified directly (raw psql sessions, and — for set_story_parent — timing a real block) before building the tests around them, and both tests were confirmed to fail when the guard is moved to right after the initial select, not just when it's removed entirely.
+
+Verified: SUPABASE_INTEGRATION=1 pnpm test = 1242 passed / 141 files (unchanged count from before this task — these are new assertions inside existing/new test files, no new test files beyond one). pnpm run lint and tsc --noEmit clean. Reviews: /code-review high found no correctness bugs (two Low/cleanup findings declined as pre-existing patterns, out of scope). Codex round 1 found the set_story_parent test-design flaw (fixed); round 2 found the same flaw still open in set_epic_pinned (fixed); round 3 clean. Merged as 10544ca.
+<!-- SECTION:FINAL_SUMMARY:END -->
