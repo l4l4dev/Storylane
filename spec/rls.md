@@ -250,6 +250,22 @@
   UPDATE policy admits a direct REST PATCH, so a convention only RPCs follow
   cannot cover the writes that would need it.
 
+  `iterations.state` is held by an advisory key instead (2026-07-30, TASK-222).
+  `split_story` decides from it whether children inherit the source's iteration,
+  and `create_draft_story` / `set_story_state` decide which iteration a story
+  lands in; all three take `iteration_finalize:<project>` first, ahead of
+  `positions:` and `story_number:` (`20260730040000`, `20260729050000`,
+  `20260729090000`). A row pin is not available to `split_story` in tier — the
+  iteration's id is only known from the locked story read, the caveat that made
+  `project_states` a per-project set — and pinning the set would block the
+  unrelated `goal` / `retro_notes` edits. `iterations` does carry a `members can
+  update iterations` UPDATE policy with no column restriction, so this is the
+  same "convention only RPCs follow" as the `membership:` proposal rejected
+  above; what makes it hold is that every writer of `state` is an RPC that takes
+  the key, while the web app's direct PATCHes are `goal` and `retro_notes` only
+  (`board/actions.ts`). A trigger guarding the state transition would close the
+  gap for good and has not been added.
+
   Three things this rule does NOT cover:
 
   - The role stays on the exit-guard pattern above. `project_members` has no
