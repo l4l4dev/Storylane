@@ -305,11 +305,10 @@ describe.skipIf(!RUN)("RPC config pinned with FOR SHARE (integration)", () => {
       const source = await createProject(`config pin: ${rpc} source`);
       const target = await createProject(`config pin: ${rpc} target`);
       // The assignee is kept only if they are a member of the TARGET
-      // (spec/features.md), so that is the row the RPC has to hold. TASK-219
-      // held it with an explicit `for share`; TASK-221's composite FK took that
-      // job over, so the holder below locks FOR UPDATE rather than FOR NO KEY
-      // UPDATE — the latter does not conflict with the KEY SHARE an FK check
-      // takes, and asserting against it would only re-test the removed clause.
+      // (spec/features.md), so that is the row the RPC has to hold — and it
+      // holds it through the assignee FK, whose check takes KEY SHARE. The
+      // holder below therefore locks FOR UPDATE: FOR NO KEY UPDATE does not
+      // conflict with KEY SHARE and would pass without proving anything.
       await asService.from("project_members").insert([
         { project_id: source, user_id: secondUserId, role: "member" },
         { project_id: target, user_id: secondUserId, role: "member" },

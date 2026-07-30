@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-30 02:54'
-updated_date: '2026-07-30 11:05'
+updated_date: '2026-07-30 11:27'
 labels: []
 milestone: m-2
 dependencies: []
@@ -102,4 +102,13 @@ Codex review of PR #13, round 2 — no P1; one P2 and two P3, all three accepted
 P2: the server-action error branches had no test — actions.test.ts's supabase mock had no rpc() and never called updateStory or Move/Copy, so the branch selecting between the shared and the transfer-specific 23503 message was covered nowhere. Added rpc to the mock and three cases (update_story 23503, update_story 40P01, move_story_to_project 23503).
 P3: the move/copy comment narrated that TASK-219's explicit 'for share' had been removed — history narration the code comment policy sends to the commit log. Rewritten in both functions to state only why the unlocked probe is correct.
 P3: this task's plan and notes still described cleanup-before-ALTER after a54dcd5 reordered it. Corrected here, along with AC#1's wording.
+
+Codex review of PR #13, round 3 — no P1; two of four accepted, two declined with the owner's agreement:
+
+ACCEPTED P2: removeMember and createDraftStory had no action-level test for the error mappings. Added apps/web/app/projects/[id]/settings/actions.test.ts (deadlock victim, RLS refusal, success) and two createDraftStory cases in board/actions.test.ts. Suite is now 1239 passed / 141 files.
+ACCEPTED P3: config-pin-for-share.integration.test.ts's comment narrated which mechanism used to hold the row. Rewritten to state only why the holder must lock FOR UPDATE.
+
+DECLINED P2 'a concurrent invite can be erased by the cleanup UPDATE's snapshot'. The finding's premise is that adding the FK does not block inserts into the referenced table. Measured on local PG 17: ALTER TABLE stories ADD CONSTRAINT ... REFERENCES project_members ... NOT VALID takes ShareRowExclusiveLock on project_members, and a second session requesting the ROW EXCLUSIVE an INSERT takes blocks until that transaction ends (statement_timeout fired). Deploy is 'supabase db push' (.github/workflows/deploy.yml), which applies each file in one transaction, so the lock is held across the cleanup UPDATE and no membership row can commit behind its snapshot. The suggested explicit table lock is also only expressible inside a transaction block — if the file is wrapped that is the protection already measured, and writing begin/commit into the file would break the migration's atomicity in the wrapped case.
+
+DECLINED P2 'cascade-driven unassignments leave no activity_logs row'. log_story_activity has never recorded assignee changes; this PR does not change that, and extending the trigger exceeds these ACs (the same boundary that split this task out of TASK-219). spec/screens.md's 'the activity-log trigger records state/assignment events' does not resolve whether 'assignment' means the assignee or the iteration assignment the trigger already logs — left as an open spec question rather than guessed at.
 <!-- SECTION:NOTES:END -->
