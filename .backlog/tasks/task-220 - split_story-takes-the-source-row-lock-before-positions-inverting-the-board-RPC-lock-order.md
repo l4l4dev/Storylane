@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-29 10:08'
-updated_date: '2026-07-30 01:28'
+updated_date: '2026-07-30 01:55'
 labels: []
 milestone: m-2
 dependencies: []
@@ -85,4 +85,22 @@ Verified: 4 new cases + split.integration 14 + create-draft-story 16 + set-story
 Verified: three separate breakages each fail a distinct case — old body -> ordering test (55P03); no gate -> viewer parks; gate without `is null` -> non-member parks. 45 passed across the five related integration suites, full web suite 858 passed across 94 files, tsc and lint clean.
 
 Commits: 2f35ae2 (migration), 05e99b1 (test).
+
+Codex review round 1 (PR #11, fired automatically on open) — one P2, valid, and it is a regression this branch introduced.
+
+Fixing split_story's order left a FOUR-party cycle that the two-party same-project analysis could not see, because it crosses two projects. With S in A and T in B: move S A→B holds row S and waits story_number:B; split T holds number B and waits row T; move T B→A holds row T and waits story_number:A; split S holds number A and waits row S. Verified on paper against both the old and new bodies — it does not exist with the old split ordering, where everything took the row first.
+
+Also checked and rejected a cheaper alternative: giving split the order positions -> row -> story_number breaks both this cycle and the original one, but inverts (story_number, row) against create_draft_story, whose INSERT takes story_number before move_story_board's row locks. That is the original bug again, same project, two parties.
+
+Scope expanded on the owner's call (option A): move_story_to_project and copy_story_to_project now take story_number:<target> above their locked read (20260730010000), completing "every advisory lock before any story row lock". They were the last two holdouts, so no row->advisory edge remains, and each takes a single advisory lock, leaving no advisory->advisory edge to order.
+
+A source gate had to go ahead of the target membership check. Not for lock-parking — the lock is on the target, which the existing check already guards — but for rejection precedence: the checks now run before the read that used to reject first, so without it a viewer of the source is told about its target membership instead of getting the read's generic 'Story not found'. move-copy.integration.test.ts already pinned that.
+
+PROCESS MISS worth keeping: the earlier "full web suite 858 passed" runs did NOT include the integration suites — they are skipped unless SUPABASE_INTEGRATION=1, which turns 94 files into 138. role-recheck-after-lock.integration.test.ts had been failing since the split_story commit and went unnoticed for two review rounds. Always run `SUPABASE_INTEGRATION=1 pnpm test` before claiming a green suite on DB work.
+
+That failure was a real behaviour change, not a broken test: a caller de-membered from the SOURCE while parked is now rejected by the locked read's membership subquery ('Story not found') instead of require_project_role (42501), because the authoritative read moved below the lock. The target side still raises 42501. Kept the new shape rather than adding a second pre-read require_project_role, which would restore the code at the cost of two authorization sites whose messages can drift. Test expectations updated per side with the reason.
+
+Verified: old move/copy bodies -> both ordering tests fail with 55P03; no source gate -> the viewer cases fail with 'Not a member of the target project'. Full suite WITH integration on a database rebuilt from the whole chain: 138 files, 1210 passed, 0 failed. tsc and lint clean.
+
+Commits: f24b348 (migration), b4d7f3e (test).
 <!-- SECTION:NOTES:END -->
