@@ -11,10 +11,13 @@ export async function GET(request: Request) {
   // TASK-104 (doc-11 D2): default landing is My Work, not the home page's own
   // redirect chain. An explicit `next` (deep link) wins when it validates.
   //
-  // `next` must be a same-origin relative path: a single leading `/` only —
-  // `//host/path` and `/\host/path` are both browser-normalized to a
-  // protocol-relative URL, which would hand a just-authenticated session to
-  // whatever host follows.
+  // `next` is appended straight onto `origin`, so anything without a leading
+  // `/` can smuggle a userinfo separator in front of the first `/` — a value
+  // like `@evil.example/x` turns `${origin}${next}` into
+  // `https://storylane.example@evil.example/x`, which browsers parse with
+  // evil.example as the host, storylane.example discarded as ignored
+  // userinfo. A leading `/` closes that: whatever comes after it is
+  // unambiguously the path, not a new authority.
   const rawNext = searchParams.get("next");
   const next = rawNext && /^\/(?!\/|\\)/.test(rawNext) ? rawNext : "/my-work";
 

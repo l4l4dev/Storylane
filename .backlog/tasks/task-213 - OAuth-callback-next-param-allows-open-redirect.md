@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-27 06:09'
-updated_date: '2026-07-30 20:01'
+updated_date: '2026-07-31 04:48'
 labels: []
 milestone: m-2
 dependencies: []
@@ -44,4 +44,14 @@ AC evidence:
 #2 route.test.ts's no-next case asserts the unchanged /my-work redirect; the safe-next case asserts a same-origin next still passes through untouched.
 
 Verification: SUPABASE_INTEGRATION=1 pnpm test = 1248 passed / 142 files (+6 from this task's new test file). pnpm run lint and tsc --noEmit clean.
+
+Codex review of PR #17, round 1: P3 (stale comment, fixed), reacted to and replied.
+
+Codex review of PR #17, round 2: one P3, accepted — and it corrected a factual error in my own security reasoning, not just a stale comment.
+
+The original comment claimed //host and /\host next values are dangerous because browsers normalize them to protocol-relative URLs. Verified with node's URL parser that this is wrong for THIS code's concatenation pattern: origin + next with origin already a full absolute URL (https://storylane.example, no trailing slash) never lets a later // or /\ in the string reinterpret as a new authority — new URL('https://storylane.example//evil.example').origin is still https://storylane.example. The actual vector is a next with NO leading slash at all: '@evil.example/x' concatenated onto origin produces 'https://storylane.example@evil.example/x', which parses with evil.example as the host and storylane.example discarded as ignored userinfo — confirmed the same way. A single leading '/' closes this because it unambiguously starts the path; even '/@evil.example' cannot smuggle a new authority (verified).
+
+The fix (require a leading '/') was already correct and already blocked '@evil.example' (it doesn't start with '/'), so no code change was needed — only the comment, which was rewritten to describe the userinfo vector, and the test suite, where the 'absolute URL' and 'protocol-relative' cases were replaced/relabeled: added a case for the actual exploit (@evil.example/phish) and a plain no-leading-slash case, and kept the //-prefixed and backslash-prefixed cases but noted in a comment that they are rejected because the AC requires a single leading '/', not because they are exploitable in this concatenation context.
+
+Re-verified: SUPABASE_INTEGRATION=1 pnpm test = 1249 passed / 142 files, lint and tsc clean.
 <!-- SECTION:NOTES:END -->
