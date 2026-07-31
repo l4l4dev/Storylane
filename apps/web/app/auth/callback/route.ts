@@ -9,8 +9,7 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   // TASK-104 (doc-11 D2): default landing is My Work, not the home page's own
-  // redirect chain. An explicit `next` (deep link) still wins — that branch
-  // is unchanged.
+  // redirect chain. An explicit `next` (deep link) wins when it validates.
   //
   // `next` must be a same-origin relative path: a single leading `/` only —
   // `//host/path` and `/\host/path` are both browser-normalized to a
