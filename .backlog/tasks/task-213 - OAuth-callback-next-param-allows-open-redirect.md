@@ -1,11 +1,11 @@
 ---
 id: TASK-213
 title: OAuth callback next param allows open redirect
-status: In Progress
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-07-27 06:09'
-updated_date: '2026-07-31 04:48'
+updated_date: '2026-07-31 11:32'
 labels: []
 milestone: m-2
 dependencies: []
@@ -55,3 +55,13 @@ The fix (require a leading '/') was already correct and already blocked '@evil.e
 
 Re-verified: SUPABASE_INTEGRATION=1 pnpm test = 1249 passed / 142 files, lint and tsc clean.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+auth/callback/route.ts's next param is now validated: it must start with a single leading / (a same-origin relative path) or the redirect falls back to /my-work, matching the existing no-next default. The real vulnerability the original next=<anything> concatenation onto ${origin} exposed is a userinfo-injection open redirect — a next with no leading slash, e.g. @evil.example/x, turns the redirect into https://storylane.example@evil.example/x, which browsers parse with evil.example as the host and storylane.example discarded as ignored userinfo. Requiring a leading / closes this unconditionally: once a / starts the string, nothing after it can reintroduce a new authority (verified directly with node's URL parser, both for the exploit and for the leading-/ case).
+
+An earlier version of this fix's comment and tests cited a different, incorrect mechanism (browser normalization of // or /\ to a protocol-relative URL) — Codex's second review round caught that this doesn't actually apply to this code's origin + next string concatenation (verified: neither shape changes the parsed origin here). The validation itself needed no change since it already rejected the real vector; only the explanation and regression tests were corrected to describe what's actually being blocked.
+
+Verified: SUPABASE_INTEGRATION=1 pnpm test = 1249 passed / 142 files, lint and tsc clean. Reviews: Codex round 1 (stale comment, fixed), round 2 (incorrect threat-model explanation, fixed), round 3 clean. Owner hit the Codex usage limit before a 4th round could run; merged on CI green + 3 clean/resolved Codex rounds as 050dff3.
+<!-- SECTION:FINAL_SUMMARY:END -->
