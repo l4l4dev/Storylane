@@ -34,6 +34,38 @@ export type BurndownPoint = { date: string; remaining: number; ideal: number };
  */
 export const POINTS_HISTORY_FROM = "2026-08-02";
 
+/**
+ * Which stories each iteration's chart has to consider, beyond the ones whose
+ * current row still points at it.
+ *
+ * Both sides of every move are indexed, not just the one it left. A story's
+ * current row is one instant; the logs cover the whole window, and either end
+ * of a move can be the side the row no longer agrees with — a story that left
+ * iteration A is missing from A's own chart, and one that arrived in B after
+ * the story snapshot was taken is missing from B's. Indexing only departures
+ * fixes the first and leaves the second invisible on both charts.
+ *
+ * buildBurndown still decides per day whether a candidate was actually a
+ * member, so an over-inclusive set costs nothing but a lookup.
+ */
+export function storiesByTouchedIteration(
+  logs: ReadonlyArray<Pick<BurndownLog, "story_id" | "action" | "payload">>,
+): Map<string, Set<string>> {
+  const byIteration = new Map<string, Set<string>>();
+  for (const log of logs) {
+    if (log.action !== "story.iteration_changed" && log.action !== "story.iteration_rolled_over") continue;
+    if (!log.story_id) continue;
+    const payload = (log.payload ?? {}) as { from_iteration_id?: string | null; to_iteration_id?: string | null };
+    for (const iterationId of [payload.from_iteration_id, payload.to_iteration_id]) {
+      if (!iterationId) continue;
+      const set = byIteration.get(iterationId) ?? new Set<string>();
+      set.add(log.story_id);
+      byIteration.set(iterationId, set);
+    }
+  }
+  return byIteration;
+}
+
 /** A story's three chart-relevant attributes as of some instant. */
 type Snapshot = { category: string | undefined; points: number; member: boolean };
 type Patch = Partial<Snapshot>;

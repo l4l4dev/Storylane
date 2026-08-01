@@ -1,6 +1,12 @@
 import { addDays } from "@storylane/core";
 import { describe, expect, it } from "vitest";
-import { POINTS_HISTORY_FROM, type BurndownLog, type BurndownStory, buildBurndown } from "./burndown";
+import {
+  POINTS_HISTORY_FROM,
+  type BurndownLog,
+  type BurndownStory,
+  buildBurndown,
+  storiesByTouchedIteration,
+} from "./burndown";
 
 // Charts that assert full coverage are dated off the cutoff rather than
 // hardcoded, so moving POINTS_HISTORY_FROM to its real deploy date does not
@@ -515,5 +521,37 @@ describe("buildBurndown", () => {
     });
 
     expect(result.points.map((point) => point.remaining)).toEqual([0, 0, 0]);
+  });
+});
+
+describe("storiesByTouchedIteration", () => {
+  const move = (storyId: string, from: string | null, to: string | null): BurndownLog => ({
+    story_id: storyId,
+    action: "story.iteration_changed",
+    created_at: "2026-08-01T09:00:00Z",
+    payload: { from_iteration_id: from, to_iteration_id: to },
+  });
+
+  it("indexes a story under both ends of its move", () => {
+    const touched = storiesByTouchedIteration([move("s1", "it-1", "it-2")]);
+    expect([...(touched.get("it-1") ?? [])]).toEqual(["s1"]);
+    // Without the arrival side, a story that moved in after the story snapshot
+    // was read is missing from the destination chart AND from its old one.
+    expect([...(touched.get("it-2") ?? [])]).toEqual(["s1"]);
+  });
+
+  it("ignores the null end of a Backlog or Icebox move", () => {
+    const touched = storiesByTouchedIteration([move("s1", null, "it-1"), move("s2", "it-1", null)]);
+    expect([...(touched.get("it-1") ?? [])].sort()).toEqual(["s1", "s2"]);
+    expect(touched.size).toBe(1);
+  });
+
+  it("reads the pre-rename action and skips unrelated ones", () => {
+    const touched = storiesByTouchedIteration([
+      { ...move("s1", "it-1", "it-2"), action: "story.iteration_rolled_over" },
+      { ...move("s2", "it-1", "it-2"), action: "story.points_changed" },
+      { ...move("s3", "it-1", "it-2"), story_id: null },
+    ]);
+    expect([...(touched.get("it-1") ?? [])]).toEqual(["s1"]);
   });
 });

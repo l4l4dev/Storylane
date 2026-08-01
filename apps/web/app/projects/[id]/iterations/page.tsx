@@ -5,7 +5,7 @@ import { groupStoriesByIteration } from "@/lib/utils/board";
 import { formatDate } from "@/lib/utils/format";
 import { iterationLabel } from "@/lib/utils/iterations";
 import { currentIterationOf } from "@/lib/utils/kanban";
-import { buildBurndown } from "@/lib/utils/burndown";
+import { buildBurndown, storiesByTouchedIteration } from "@/lib/utils/burndown";
 import { fetchAllRows } from "@/lib/utils/supabase-pagination";
 import { resolvePlanningCapacity, startPlanningCapacityFetch } from "@/lib/utils/planning-capacity";
 import { utcTodayKey } from "@/lib/utils/format";
@@ -158,25 +158,15 @@ export default async function IterationsPage({
   const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
   const categoryByStateName = new Map((states ?? []).map((state) => [state.name, state.category]));
   const categoryByStateId = new Map((states ?? []).map((state) => [state.id, state.category]));
-  // storyId set that moved OUT of each iteration (rollover or an ordinary
-  // reschedule — story.iteration_changed covers both) — unioned with the
-  // current-iteration_id filter below to recover a past iteration's true
-  // story membership after some of them have since moved on.
-  const rolledOutOf = new Map<string, Set<string>>();
-  const everMovedOutStoryIds = new Set<string>();
-  for (const log of burndownLogs) {
-    if (log.action !== "story.iteration_changed" && log.action !== "story.iteration_rolled_over") continue;
-    const payload = (log.payload ?? {}) as { from_iteration_id?: string };
-    if (!log.story_id || !payload.from_iteration_id) continue;
-    const set = rolledOutOf.get(payload.from_iteration_id) ?? new Set<string>();
-    set.add(log.story_id);
-    rolledOutOf.set(payload.from_iteration_id, set);
-    everMovedOutStoryIds.add(log.story_id);
-  }
+  // Every story any log says entered or left each iteration, unioned below with
+  // the current-iteration_id filter to recover an iteration's true membership
+  // when a story's row no longer agrees with the window being charted.
+  const touchedIterations = storiesByTouchedIteration(burndownLogs);
+  const everMovedStoryIds = new Set([...touchedIterations.values()].flatMap((set) => [...set]));
 
   // Filtering by CURRENT iteration_id alone misses one case: Current ->
   // Backlog/Icebox sets iteration_id to NULL, which is never in
-  // iterationIds. rolledOutOf already knows such a story belongs to a past
+  // iterationIds. touchedIterations already knows such a story belongs to a past
   // iteration's history; without also fetching its row here, that knowledge
   // has no points/state_id to attach to and the story is silently absent
   // from that iteration's chart despite being tracked. Fetched as a second,
@@ -191,7 +181,7 @@ export default async function IterationsPage({
   // touches stories that have already left every charted iteration, and a
   // reload clears it.
   const coveredIds = new Set(storiesByIteration.map((s) => s.id));
-  const extraIds = [...everMovedOutStoryIds].filter((storyId) => !coveredIds.has(storyId));
+  const extraIds = [...everMovedStoryIds].filter((storyId) => !coveredIds.has(storyId));
   const EXTRA_BATCH_SIZE = 200;
   const extraStories: typeof storiesByIteration = [];
   for (let i = 0; i < extraIds.length; i += EXTRA_BATCH_SIZE) {
@@ -258,9 +248,9 @@ export default async function IterationsPage({
 
   const renderIteration = (iteration: (typeof allIterations)[number]) => {
     const iterationStories = byIteration.get(iteration.id) ?? [];
-    const rolledOut = rolledOutOf.get(iteration.id);
+    const touched = touchedIterations.get(iteration.id);
     const chartStories = (stories ?? []).filter(
-      (story) => story.iteration_id === iteration.id || rolledOut?.has(story.id),
+      (story) => story.iteration_id === iteration.id || touched?.has(story.id),
     );
     const chart = buildBurndown({
       startDate: iteration.start_date,
@@ -272,7 +262,7 @@ export default async function IterationsPage({
       // Candidate set only — buildBurndown decides per day whether each story
       // was actually in this iteration then. Current iteration_id alone misses
       // a story that rolled onward before finishing, so it is unioned with the
-      // rollover log (see rolledOutOf above).
+      // move log, either side (see touchedIterations above).
       stories: chartStories.map((story) => ({
         id: story.id,
         points: story.points,
