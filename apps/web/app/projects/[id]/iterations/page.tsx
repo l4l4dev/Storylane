@@ -86,6 +86,30 @@ export default async function IterationsPage({
   );
   const earliestStart = allIterations.at(-1)?.start_date ?? today;
 
+  const STORY_COLUMNS =
+    "id, number, title, description, story_type, state_id, points, position, iteration_id, created_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)";
+
+  const [labelsResult, statesResult] =
+    iterationIds.length > 0
+      ? await Promise.all([
+          supabase.from("labels").select("id, name, color").eq("project_id", id),
+          supabase.from("project_states").select("id, name, category").eq("project_id", id),
+        ])
+      : [{ data: [], error: null }, { data: [], error: null }];
+
+  const storiesByIteration =
+    iterationIds.length > 0
+      ? await fetchAllRows((from, to) =>
+          supabase
+            .from("stories")
+            .select(STORY_COLUMNS)
+            .eq("is_container", false)
+            .in("iteration_id", iterationIds)
+            .order("position", { ascending: true })
+            .range(from, to),
+        )
+      : [];
+
   // Everything buildBurndown replays, in one paginated pass:
   //  - story.state_changed  — the done/not-done transitions the chart burns down
   //  - story.points_changed — so a re-estimation steps on its own date instead
@@ -96,35 +120,38 @@ export default async function IterationsPage({
   //    iteration a story used to belong to once iteration_id changes.
   //    story.iteration_rolled_over is the pre-rename action (20260727120000)
   //    and must still be read, or already-deployed rows vanish from history.
-  const [labelsResult, statesResult, burndownLogs] =
+  //
+  // Read AFTER the stories, never concurrently with them. buildBurndown rewinds
+  // from each story's current row, and every patch it applies is an assignment:
+  // a log newer than the snapshot only re-asserts the older value, which is
+  // harmless. The other order is not — a change landing between the two reads
+  // would be in the snapshot with no log to rewind it, so its new points or
+  // state would be projected across the whole chart. That is the defect this
+  // replay exists to remove, so the ordering is load-bearing.
+  const burndownLogs =
     iterationIds.length > 0
-      ? await Promise.all([
-          supabase.from("labels").select("id, name, color").eq("project_id", id),
-          supabase.from("project_states").select("id, name, category").eq("project_id", id),
-          // Tiebreaker on id (after created_at): range()-based pagination
-          // needs a fully deterministic order across separate page requests,
-          // and created_at alone doesn't guarantee uniqueness — two rows
-          // sharing a timestamp could otherwise land on either side of a
-          // page boundary inconsistently between requests, silently
-          // dropping one.
-          fetchAllRows((from, to) =>
-            supabase
-              .from("activity_logs")
-              .select("id, story_id, action, payload, created_at")
-              .eq("project_id", id)
-              .in("action", [
-                "story.state_changed",
-                "story.points_changed",
-                "story.iteration_changed",
-                "story.iteration_rolled_over",
-              ])
-              .gte("created_at", `${earliestStart}T00:00:00Z`)
-              .order("created_at", { ascending: true })
-              .order("id", { ascending: true })
-              .range(from, to),
-          ),
-        ])
-      : [{ data: [], error: null }, { data: [], error: null }, []];
+      ? // Tiebreaker on id (after created_at): range()-based pagination needs a
+        // fully deterministic order across separate page requests, and
+        // created_at alone doesn't guarantee uniqueness — two rows sharing a
+        // timestamp could otherwise land on either side of a page boundary
+        // inconsistently between requests, silently dropping one.
+        await fetchAllRows((from, to) =>
+          supabase
+            .from("activity_logs")
+            .select("id, story_id, action, payload, created_at")
+            .eq("project_id", id)
+            .in("action", [
+              "story.state_changed",
+              "story.points_changed",
+              "story.iteration_changed",
+              "story.iteration_rolled_over",
+            ])
+            .gte("created_at", `${earliestStart}T00:00:00Z`)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
+        )
+      : [];
   const labels = assertReadOk(labelsResult);
   const states = assertReadOk(statesResult);
 
@@ -147,22 +174,6 @@ export default async function IterationsPage({
     everMovedOutStoryIds.add(log.story_id);
   }
 
-  const STORY_COLUMNS =
-    "id, number, title, description, story_type, state_id, points, position, iteration_id, created_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)";
-
-  const storiesByIteration =
-    iterationIds.length > 0
-      ? await fetchAllRows((from, to) =>
-          supabase
-            .from("stories")
-            .select(STORY_COLUMNS)
-            .eq("is_container", false)
-            .in("iteration_id", iterationIds)
-            .order("position", { ascending: true })
-            .range(from, to),
-        )
-      : [];
-
   // Filtering by CURRENT iteration_id alone misses one case: Current ->
   // Backlog/Icebox sets iteration_id to NULL, which is never in
   // iterationIds. rolledOutOf already knows such a story belongs to a past
@@ -173,6 +184,12 @@ export default async function IterationsPage({
   // filters in the URL, and a long-lived project's full moved-story history
   // interpolated into one query string could exceed a proxy's request-line
   // limit.
+  //
+  // These necessarily read AFTER the logs, since the logs are what name them —
+  // so unlike storiesByIteration above they keep the narrow read-skew window: a
+  // story edited between the two reads has no log to rewind the edit. It only
+  // touches stories that have already left every charted iteration, and a
+  // reload clears it.
   const coveredIds = new Set(storiesByIteration.map((s) => s.id));
   const extraIds = [...everMovedOutStoryIds].filter((storyId) => !coveredIds.has(storyId));
   const EXTRA_BATCH_SIZE = 200;
