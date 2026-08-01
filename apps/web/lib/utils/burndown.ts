@@ -25,6 +25,10 @@ export type BurndownPoint = { date: string; remaining: number; ideal: number };
  * prove the absence — so it falls back to the story's current points and can
  * never claim full coverage. Deliberately a schema fact rather than a
  * parameter: no caller gets to declare history it does not have.
+ *
+ * This must be the date the migration REACHED PRODUCTION, not the date it was
+ * written. Leaving it earlier is the unsafe direction — iterations starting in
+ * the gap have no points history but would still be reported as full.
  */
 export const POINTS_HISTORY_FROM = "2026-07-31";
 
