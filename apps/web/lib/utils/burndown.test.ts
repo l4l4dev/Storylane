@@ -1,5 +1,11 @@
+import { addDays } from "@storylane/core";
 import { describe, expect, it } from "vitest";
 import { POINTS_HISTORY_FROM, type BurndownLog, type BurndownStory, buildBurndown } from "./burndown";
+
+// Charts that assert full coverage are dated off the cutoff rather than
+// hardcoded, so moving POINTS_HISTORY_FROM to its real deploy date does not
+// break tests that have nothing to do with it.
+const day = (offset: number) => addDays(POINTS_HISTORY_FROM, offset);
 
 const categories = new Map([
   ["Ready", "unstarted"],
@@ -29,8 +35,8 @@ describe("buildBurndown", () => {
   it("replays done-category entries and exits into daily remaining points", () => {
     expect(
       buildBurndown({
-        startDate: "2026-08-01",
-        endDate: "2026-08-03",
+        startDate: day(0),
+        endDate: day(2),
         targetPoints: 10,
         iterationId: ITERATION,
         categoryByStateName: categories,
@@ -40,18 +46,18 @@ describe("buildBurndown", () => {
           story({ id: "c", points: null, storyType: "chore", currentCategory: "done" }),
         ],
         logs: [
-          stateChange("a", "2026-08-01T10:00:00Z", "Ready", "Building"),
-          stateChange("a", "2026-08-02T09:00:00Z", "Building", "Shipped"),
-          stateChange("b", "2026-08-02T11:00:00Z", "Building", "Shipped"),
-          stateChange("b", "2026-08-03T08:00:00Z", "Shipped", "Building"),
+          stateChange("a", `${day(0)}T10:00:00Z`, "Ready", "Building"),
+          stateChange("a", `${day(1)}T09:00:00Z`, "Building", "Shipped"),
+          stateChange("b", `${day(1)}T11:00:00Z`, "Building", "Shipped"),
+          stateChange("b", `${day(2)}T08:00:00Z`, "Shipped", "Building"),
         ],
       }),
     ).toEqual({
       coverage: "full",
       points: [
-        { date: "2026-08-01", remaining: 8, ideal: 10 },
-        { date: "2026-08-02", remaining: 0, ideal: 5 },
-        { date: "2026-08-03", remaining: 3, ideal: 0 },
+        { date: day(0), remaining: 8, ideal: 10 },
+        { date: day(1), remaining: 0, ideal: 5 },
+        { date: day(2), remaining: 3, ideal: 0 },
       ],
     });
   });
@@ -71,10 +77,10 @@ describe("buildBurndown", () => {
         logs: [stateChange("a", `${startDate}T10:00:00Z`, "Ready", "Shipped")],
       });
 
-    expect(chart(POINTS_HISTORY_FROM, "2026-08-02").coverage).toBe("full");
+    expect(chart(day(0), day(2)).coverage).toBe("full");
     // One day earlier: the same fully-resolvable state history, but the points
     // behind it are unverifiable.
-    expect(chart("2026-07-30", "2026-08-02").coverage).toBe("partial");
+    expect(chart(day(-1), day(2)).coverage).toBe("partial");
   });
 
   it("returns an empty chart when no state-change history exists", () => {
@@ -131,8 +137,8 @@ describe("buildBurndown", () => {
   // the row for the unresolvable side would lose the `done` the rewind needs.
   it("keeps a done story burned down after it is containerized mid-iteration", () => {
     const result = buildBurndown({
-      startDate: "2026-08-01",
-      endDate: "2026-08-04",
+      startDate: day(0),
+      endDate: day(3),
       targetPoints: 5,
       iterationId: ITERATION,
       categoryByStateName: categories,
@@ -141,23 +147,23 @@ describe("buildBurndown", () => {
         story({ id: "b", points: 2, currentCategory: "in_progress" }),
       ],
       logs: [
-        stateChange("b", "2026-08-01T09:00:00Z", "Ready", "Building"),
+        stateChange("b", `${day(0)}T09:00:00Z`, "Ready", "Building"),
         {
           story_id: "a",
           action: "story.state_changed",
-          created_at: "2026-08-03T09:00:00Z",
+          created_at: `${day(2)}T09:00:00Z`,
           payload: { from: "Shipped", to: null, from_category: "done", to_category: null },
         },
         {
           story_id: "a",
           action: "story.points_changed",
-          created_at: "2026-08-03T09:00:00Z",
+          created_at: `${day(2)}T09:00:00Z`,
           payload: { from: 5, to: null },
         },
         {
           story_id: "a",
           action: "story.iteration_changed",
-          created_at: "2026-08-03T09:00:00Z",
+          created_at: `${day(2)}T09:00:00Z`,
           payload: { from_iteration_id: ITERATION, to_iteration_id: null, rollover: null },
         },
       ],

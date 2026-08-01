@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-18 15:10'
-updated_date: '2026-08-01 09:13'
+updated_date: '2026-08-01 09:27'
 labels: []
 milestone: m-1
 dependencies: []
@@ -27,7 +27,7 @@ Webhook steps: in project Settings configure the Git integration (repo URL + gen
 <!-- AC:BEGIN -->
 - [ ] #1 Production board flow works end to end (project -> story -> estimate -> accepted, comment, task, activity feed)
 - [ ] #2 A real merged PR referencing a story transitions that story to finished in production
-- [ ] #3 POINTS_HISTORY_FROM in apps/web/lib/utils/burndown.ts is set to the date the burndown history migration (20260731000000) actually reached production, not its authoring date — until then, iterations that started between the two are wrongly reported as full-coverage charts
+- [ ] #3 POINTS_HISTORY_FROM in apps/web/lib/utils/burndown.ts is on or after the day migration 20260731000000 actually reached production — it ships set to 2026-08-02, so raise it if the production apply landed later (too early makes charts with no points history claim full coverage; too late only over-reports partial)
 <!-- AC:END -->
 
 ## Implementation Notes

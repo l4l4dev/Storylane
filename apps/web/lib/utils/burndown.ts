@@ -26,11 +26,13 @@ export type BurndownPoint = { date: string; remaining: number; ideal: number };
  * never claim full coverage. Deliberately a schema fact rather than a
  * parameter: no caller gets to declare history it does not have.
  *
- * This must be the date the migration REACHED PRODUCTION, not the date it was
- * written. Leaving it earlier is the unsafe direction — iterations starting in
- * the gap have no points history but would still be reported as full.
+ * Must be on or AFTER the day the migration reaches production, never before.
+ * Too late only over-reports `partial` for charts that are in fact complete;
+ * too early reports `full` for charts with no points history at all, which is
+ * the defect this whole replay exists to remove. Set past the merge date for
+ * that reason — the production apply cannot precede it.
  */
-export const POINTS_HISTORY_FROM = "2026-07-31";
+export const POINTS_HISTORY_FROM = "2026-08-02";
 
 /** A story's three chart-relevant attributes as of some instant. */
 type Snapshot = { category: string | undefined; points: number; member: boolean };
