@@ -89,7 +89,7 @@ export default async function IterationsPage({
   // Everything buildBurndown replays, in one paginated pass:
   //  - story.state_changed  — the done/not-done transitions the chart burns down
   //  - story.points_changed — so a re-estimation steps on its own date instead
-  //    of rewriting every day with today's points (TASK-218)
+  //    of rewriting every day with today's points
   //  - story.iteration_changed — a past iteration's burndown must count a story
   //    that has since moved on (a rollover, or an ordinary Backlog<->Current
   //    reschedule) before it finished; this is the only record of which

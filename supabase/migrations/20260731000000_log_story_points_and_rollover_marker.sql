@@ -1,6 +1,6 @@
 -- ============================================================
--- TASK-218: give the burndown read path the three pieces of history it needs
--- to reconstruct a point-in-time chart instead of projecting today's values
+-- Gives the burndown read path the three pieces of history it needs to
+-- reconstruct a point-in-time chart instead of projecting today's values
 -- backwards over a finished sprint.
 --
 -- 1. story.points_changed — points were never logged anywhere, so
@@ -183,8 +183,8 @@ begin
     return v_events || jsonb_build_object('kind', 'noop', 'reason', 'already_finished');
   end if;
 
-  -- Marks every stories UPDATE below as a rollover for log_story_activity
-  -- (TASK-218). Wrapped around the whole loop rather than each reparent: a
+  -- Marks every stories UPDATE below as a rollover for log_story_activity.
+  -- Wrapped around the whole loop rather than each reparent: a
   -- neglected project catches up through several iterations in one call, and
   -- a per-UPDATE set/reset pair is one edit away from leaving a later pass
   -- unmarked. is_local = true, so it also dies with the transaction.

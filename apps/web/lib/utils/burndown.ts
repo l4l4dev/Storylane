@@ -63,16 +63,22 @@ export function buildBurndown(input: {
   // NAME; those fall back to the CURRENT name->category map, which is wrong
   // if that name was later reused by a differently categorized state — an
   // accepted gap for pre-migration history only.
-  const category = (atTransition: unknown, name: unknown) =>
-    typeof atTransition === "string"
-      ? atTransition
-      : typeof name === "string"
-        ? input.categoryByStateName.get(name)
-        : undefined;
+  //
+  // Three outcomes, and the difference matters: a string is a resolved
+  // category, `null` means the story genuinely had no state on that side (an
+  // epic has its state_id cleared), and `undefined` means the row named a
+  // state this project can no longer resolve.
+  const category = (atTransition: unknown, name: unknown): string | null | undefined => {
+    if (typeof atTransition === "string") return atTransition;
+    if (name === null) return null;
+    if (typeof name === "string") return input.categoryByStateName.get(name);
+    return undefined;
+  };
   const pointsOf = (value: unknown) => (typeof value === "number" ? value : 0);
 
   let stateChanges = 0;
   let usableStateChanges = 0;
+  let resolvedStateChanges = 0;
   const transitionsByStory = new Map<string, Transition[]>();
 
   for (const log of input.logs) {
@@ -88,11 +94,18 @@ export function buildBurndown(input: {
         stateChanges += 1;
         const from = category(payload.from_category, payload.from);
         const to = category(payload.to_category, payload.to);
-        // An unresolvable category contributes no reconstructed signal, so it
-        // is dropped from the replay entirely rather than seeding `undefined`.
-        if (from === undefined || to === undefined) break;
+        // Each side is kept or dropped on its own. Discarding the whole row
+        // when only one resolves throws away what IS known: a done story that
+        // gets containerized logs done -> no-state, and losing the `done` side
+        // leaves the rewind unable to restore it, so its points read as
+        // outstanding for every day before that.
+        if (from === undefined && to === undefined) break;
         usableStateChanges += 1;
-        patches = { from: { category: from }, to: { category: to } };
+        if (from !== undefined && to !== undefined) resolvedStateChanges += 1;
+        patches = {
+          from: from === undefined ? {} : { category: from ?? undefined },
+          to: to === undefined ? {} : { category: to ?? undefined },
+        };
         break;
       }
       case "story.points_changed":
@@ -231,6 +244,8 @@ export function buildBurndown(input: {
     });
   }
 
-  const complete = stateChanges === usableStateChanges && input.startDate >= POINTS_HISTORY_FROM;
+  // resolvedStateChanges, not usableStateChanges: a row with one side missing
+  // still feeds the replay, but the chart is not reconstructed in full.
+  const complete = stateChanges === resolvedStateChanges && input.startDate >= POINTS_HISTORY_FROM;
   return { coverage: complete ? "full" : "partial", points };
 }

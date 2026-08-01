@@ -126,6 +126,49 @@ describe("buildBurndown", () => {
     ]);
   });
 
+  // Containerizing a done story clears its state, points and iteration in one
+  // write, so the state transition has a known `from` and a null `to`. Dropping
+  // the row for the unresolvable side would lose the `done` the rewind needs.
+  it("keeps a done story burned down after it is containerized mid-iteration", () => {
+    const result = buildBurndown({
+      startDate: "2026-08-01",
+      endDate: "2026-08-04",
+      targetPoints: 5,
+      iterationId: ITERATION,
+      categoryByStateName: categories,
+      stories: [
+        story({ id: "a", points: null, currentCategory: null, currentIterationId: null }),
+        story({ id: "b", points: 2, currentCategory: "in_progress" }),
+      ],
+      logs: [
+        stateChange("b", "2026-08-01T09:00:00Z", "Ready", "Building"),
+        {
+          story_id: "a",
+          action: "story.state_changed",
+          created_at: "2026-08-03T09:00:00Z",
+          payload: { from: "Shipped", to: null, from_category: "done", to_category: null },
+        },
+        {
+          story_id: "a",
+          action: "story.points_changed",
+          created_at: "2026-08-03T09:00:00Z",
+          payload: { from: 5, to: null },
+        },
+        {
+          story_id: "a",
+          action: "story.iteration_changed",
+          created_at: "2026-08-03T09:00:00Z",
+          payload: { from_iteration_id: ITERATION, to_iteration_id: null, rollover: null },
+        },
+      ],
+    });
+
+    // 2 throughout: story "a" was already done, so it never counted as
+    // outstanding. Both sides of its transition are known, so still full.
+    expect(result.points.map((point) => point.remaining)).toEqual([2, 2, 2, 2]);
+    expect(result.coverage).toBe("full");
+  });
+
   it("steps at the re-estimation date instead of applying the new points to earlier days", () => {
     const result = buildBurndown({
       startDate: "2026-07-01",
