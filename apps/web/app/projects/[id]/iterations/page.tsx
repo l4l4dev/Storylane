@@ -86,7 +86,17 @@ export default async function IterationsPage({
   );
   const earliestStart = allIterations.at(-1)?.start_date ?? today;
 
-  const [labelsResult, statesResult, activityLogs, rolloverLogs] =
+  // Everything buildBurndown replays, in one paginated pass:
+  //  - story.state_changed  — the done/not-done transitions the chart burns down
+  //  - story.points_changed — so a re-estimation steps on its own date instead
+  //    of rewriting every day with today's points (TASK-218)
+  //  - story.iteration_changed — a past iteration's burndown must count a story
+  //    that has since moved on (a rollover, or an ordinary Backlog<->Current
+  //    reschedule) before it finished; this is the only record of which
+  //    iteration a story used to belong to once iteration_id changes.
+  //    story.iteration_rolled_over is the pre-rename action (20260727120000)
+  //    and must still be read, or already-deployed rows vanish from history.
+  const [labelsResult, statesResult, burndownLogs] =
     iterationIds.length > 0
       ? await Promise.all([
           supabase.from("labels").select("id, name, color").eq("project_id", id),
@@ -100,36 +110,21 @@ export default async function IterationsPage({
           fetchAllRows((from, to) =>
             supabase
               .from("activity_logs")
-              .select("id, story_id, payload, created_at")
+              .select("id, story_id, action, payload, created_at")
               .eq("project_id", id)
-              .eq("action", "story.state_changed")
+              .in("action", [
+                "story.state_changed",
+                "story.points_changed",
+                "story.iteration_changed",
+                "story.iteration_rolled_over",
+              ])
               .gte("created_at", `${earliestStart}T00:00:00Z`)
               .order("created_at", { ascending: true })
               .order("id", { ascending: true })
               .range(from, to),
           ),
-          // A past iteration's burndown must count a story that has since
-          // moved on — a rollover, or an ordinary Backlog<->Current reschedule
-          // — before it finished, otherwise its points silently drop out of
-          // that iteration's history the moment iteration_id changes. This
-          // log (any stories.iteration_id UPDATE, not just automated
-          // rollovers) is the only record of "which iteration a story used
-          // to belong to" once that happens. Reads both the current and the
-          // brief-window-old action name: rows already written as
-          // story.iteration_rolled_over (20260727120000, before this file's
-          // generalized rename) must not silently vanish from history just
-          // because the read path only looked for the new name.
-          fetchAllRows((from, to) =>
-            supabase
-              .from("activity_logs")
-              .select("id, story_id, payload")
-              .eq("project_id", id)
-              .in("action", ["story.iteration_changed", "story.iteration_rolled_over"])
-              .order("id", { ascending: true })
-              .range(from, to),
-          ),
         ])
-      : [{ data: [], error: null }, { data: [], error: null }, [], []];
+      : [{ data: [], error: null }, { data: [], error: null }, []];
   const labels = assertReadOk(labelsResult);
   const states = assertReadOk(statesResult);
 
@@ -142,7 +137,8 @@ export default async function IterationsPage({
   // story membership after some of them have since moved on.
   const rolledOutOf = new Map<string, Set<string>>();
   const everMovedOutStoryIds = new Set<string>();
-  for (const log of rolloverLogs as Array<{ story_id: string | null; payload: unknown }>) {
+  for (const log of burndownLogs) {
+    if (log.action !== "story.iteration_changed" && log.action !== "story.iteration_rolled_over") continue;
     const payload = (log.payload ?? {}) as { from_iteration_id?: string };
     if (!log.story_id || !payload.from_iteration_id) continue;
     const set = rolledOutOf.get(payload.from_iteration_id) ?? new Set<string>();
@@ -152,7 +148,7 @@ export default async function IterationsPage({
   }
 
   const STORY_COLUMNS =
-    "id, number, title, description, story_type, state_id, points, position, iteration_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)";
+    "id, number, title, description, story_type, state_id, points, position, iteration_id, created_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)";
 
   const storiesByIteration =
     iterationIds.length > 0
@@ -191,8 +187,8 @@ export default async function IterationsPage({
 
   // Grouped once so each rendered iteration's buildBurndown call only scans
   // the handful of logs for its own stories, not the whole project's history.
-  const activityLogsByStory = new Map<string, typeof activityLogs>();
-  for (const log of activityLogs) {
+  const activityLogsByStory = new Map<string, typeof burndownLogs>();
+  for (const log of burndownLogs) {
     if (!log.story_id) continue;
     const list = activityLogsByStory.get(log.story_id) ?? [];
     list.push(log);
@@ -254,15 +250,19 @@ export default async function IterationsPage({
       endDate: iteration.id === currentIteration?.id && today < iteration.end_date ? today : iteration.end_date,
       idealEndDate: iteration.end_date,
       targetPoints: targetByIteration.get(iteration.id) ?? 1,
+      iterationId: iteration.id,
       categoryByStateName,
-      // Current iteration_id alone misses a story that rolled onward before
-      // finishing — union with the rollover log so a past iteration's chart
-      // still counts it (see rolledOutOf above).
+      // Candidate set only — buildBurndown decides per day whether each story
+      // was actually in this iteration then. Current iteration_id alone misses
+      // a story that rolled onward before finishing, so it is unioned with the
+      // rollover log (see rolledOutOf above).
       stories: chartStories.map((story) => ({
         id: story.id,
         points: story.points,
         storyType: story.story_type,
         currentCategory: story.state_id ? (categoryByStateId.get(story.state_id) ?? null) : null,
+        currentIterationId: story.iteration_id,
+        createdAt: story.created_at,
       })),
       // Only this iteration's own stories' logs, not the whole project's
       // history — buildBurndown filters whatever it's handed, so keeping the

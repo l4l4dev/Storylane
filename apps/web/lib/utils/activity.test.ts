@@ -110,38 +110,95 @@ describe("describeActivity", () => {
       actorName: "Dev User",
       storyTitle: "Add welcome tour",
     });
-    expect(text).toBe('Dev User moved "Add welcome tour" from iteration #3 to #4');
+    expect(text).toBe('Dev User moved "Add welcome tour" from iteration #3 to iteration #4');
   });
 
-  it("names the Icebox when either end of an iteration change is null", () => {
+  it("tells the Backlog from the Icebox by whether the story kept a state", () => {
+    const toBacklog = describeActivity({
+      action: "story.iteration_changed",
+      payload: { from_iteration_number: 2, to_iteration_number: null, from_has_state: true, to_has_state: true },
+      actorName: "Dev User",
+      storyTitle: "Add welcome tour",
+    });
+    expect(toBacklog).toBe('Dev User moved "Add welcome tour" from iteration #2 to the Backlog');
+
     const toIcebox = describeActivity({
       action: "story.iteration_changed",
-      payload: { from_iteration_number: 2, to_iteration_number: null },
+      payload: { from_iteration_number: 2, to_iteration_number: null, from_has_state: true, to_has_state: false },
       actorName: "Dev User",
       storyTitle: "Add welcome tour",
     });
     expect(toIcebox).toBe('Dev User moved "Add welcome tour" from iteration #2 to the Icebox');
 
-    const fromIcebox = describeActivity({
+    // Not "from iteration the Backlog" — each end carries its own noun.
+    const fromBacklog = describeActivity({
+      action: "story.iteration_changed",
+      payload: { from_iteration_number: null, to_iteration_number: 5, from_has_state: true, to_has_state: true },
+      actorName: "Dev User",
+      storyTitle: "Add welcome tour",
+    });
+    expect(fromBacklog).toBe('Dev User moved "Add welcome tour" from the Backlog to iteration #5');
+  });
+
+  it("describes an estimate being set, changed and cleared", () => {
+    const base = { action: "story.points_changed", actorName: "Dev User", storyTitle: "Add welcome tour" };
+    expect(describeActivity({ ...base, payload: { from: null, to: 5 } })).toBe(
+      'Dev User estimated "Add welcome tour" at 5 points',
+    );
+    expect(describeActivity({ ...base, payload: { from: 3, to: 8 } })).toBe(
+      'Dev User re-estimated "Add welcome tour" from 3 to 8 points',
+    );
+    expect(describeActivity({ ...base, payload: { from: 8, to: null } })).toBe(
+      'Dev User removed the estimate from "Add welcome tour"',
+    );
+  });
+
+  // Rows written before 20260731000000 carry no from_has_state/to_has_state.
+  it("keeps the old Icebox wording for rows written without the state flags", () => {
+    const text = describeActivity({
       action: "story.iteration_changed",
       payload: { from_iteration_number: null, to_iteration_number: 5 },
       actorName: "Dev User",
       storyTitle: "Add welcome tour",
     });
-    expect(fromIcebox).toBe('Dev User moved "Add welcome tour" from iteration the Icebox to #5');
+    expect(text).toBe('Dev User moved "Add welcome tour" from the Icebox to iteration #5');
   });
 
-  // story.iteration_rolled_over: the pre-rename action name
-  // (20260727120000, superseded by 20260727140000) — same payload shape,
-  // must format identically so already-deployed rows stay readable.
-  it("formats the pre-rename action name identically to the current one", () => {
+  it("does not blame the triggering member for an automated rollover", () => {
+    const text = describeActivity({
+      action: "story.iteration_changed",
+      payload: { from_iteration_number: 3, to_iteration_number: 4, rollover: "auto" },
+      actorName: "Dev User",
+      storyTitle: "Add welcome tour",
+    });
+    expect(text).toBe('"Add welcome tour" rolled over from iteration #3 to iteration #4');
+  });
+
+  // Clicking "Finish iteration" rolls stories over too, but there the actor is
+  // a real person who chose to do it, not a passer-by whose page load fired a
+  // lazy finalize.
+  it("keeps the actor for a manually finished iteration", () => {
+    const text = describeActivity({
+      action: "story.iteration_changed",
+      payload: { from_iteration_number: 3, to_iteration_number: 4, rollover: "manual" },
+      actorName: "Dev User",
+      storyTitle: "Add welcome tour",
+    });
+    expect(text).toBe('Dev User finished iteration #3, rolling "Add welcome tour" over to iteration #4');
+  });
+
+  // story.iteration_rolled_over: the pre-rename action name (20260727120000,
+  // superseded by 20260727140000). finalize_iteration was its only writer, so
+  // those rows are rollovers even though they predate the marker — reading
+  // them as a member's move is the misattribution this change removes.
+  it("reads the pre-rename action name as a rollover", () => {
     const text = describeActivity({
       action: "story.iteration_rolled_over",
       payload: { from_iteration_number: 3, to_iteration_number: 4 },
       actorName: "Dev User",
       storyTitle: "Add welcome tour",
     });
-    expect(text).toBe('Dev User moved "Add welcome tour" from iteration #3 to #4');
+    expect(text).toBe('"Add welcome tour" rolled over from iteration #3 to iteration #4');
   });
 
   it("falls back to a generic description for unknown actions", () => {
