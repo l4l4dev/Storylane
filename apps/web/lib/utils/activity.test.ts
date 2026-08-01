@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeActivity } from "./activity";
+import { describeActivity, hasActor } from "./activity";
 
 describe("describeActivity", () => {
   it("describes story creation", () => {
@@ -248,5 +248,18 @@ describe("iteration.reshaped", () => {
         storyTitle: null,
       }),
     ).toBe("Rin reshaped iteration #3 to the new cadence (ends 2026/7/21)");
+  });
+});
+
+describe("hasActor", () => {
+  it("denies an actor to an automatic rollover so the badge matches the wording", () => {
+    expect(hasActor({ payload: { rollover: "auto" } })).toBe(false);
+  });
+
+  it("keeps the actor for a manual finish, a plain drag and everything else", () => {
+    expect(hasActor({ payload: { rollover: "manual" } })).toBe(true);
+    expect(hasActor({ payload: { rollover: null } })).toBe(true);
+    expect(hasActor({ payload: {} })).toBe(true);
+    expect(hasActor({ payload: null })).toBe(true);
   });
 });

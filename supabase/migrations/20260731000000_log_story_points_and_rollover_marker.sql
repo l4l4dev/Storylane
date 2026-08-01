@@ -121,7 +121,8 @@ end;
 $$;
 
 -- finalize_iteration: verbatim from 20260728120000 except for the two
--- set_config calls wrapping the loop.
+-- set_config calls wrapping the loop, and one inherited task reference
+-- dropped from a comment per the repo's comment policy.
 create or replace function public.finalize_iteration(p_project_id uuid, p_manual boolean, p_iteration_id uuid DEFAULT NULL::uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -157,7 +158,7 @@ begin
 
   perform pg_advisory_xact_lock(v_lock_key);
 
-  -- Re-check authorization under the lock (TASK-142): the caller may have been
+  -- Re-check authorization under the lock: the caller may have been
   -- de-membered while blocked waiting for it.
   perform public.require_project_role(p_project_id, variadic v_roles);
 

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { describeActivity } from "@/lib/utils/activity";
+import { describeActivity, hasActor } from "@/lib/utils/activity";
 import { formatDateTime } from "@/lib/utils/format";
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 import { Button } from "@/components/ui/button";
@@ -120,7 +120,7 @@ export default async function ProjectActivityPage({
                       storyTitle: storyRow?.title ?? null,
                     })}
                   </span>
-                  {actor?.is_agent && <AgentIndicator />}
+                  {actor?.is_agent && hasActor({ payload: log.payload }) && <AgentIndicator />}
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {formatDateTime(log.created_at)}

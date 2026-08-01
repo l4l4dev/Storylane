@@ -10,6 +10,19 @@ export type ActivityLog = {
   storyTitle: string | null;
 };
 
+/**
+ * Whether the row has a real actor, i.e. someone who chose to do this.
+ *
+ * An automatic rollover is recorded against whichever member's page load
+ * happened to trigger the lazy finalize, so describeActivity leaves them out of
+ * the sentence. Anything else rendered from actor_id — an agent badge, an
+ * avatar — has to make the same call, or the row names nobody and still points
+ * at someone.
+ */
+export function hasActor(log: Pick<ActivityLog, "payload">): boolean {
+  return ((log.payload ?? {}) as Record<string, unknown>).rollover !== "auto";
+}
+
 /** Human-readable description of an activity_logs row for the timeline. */
 export function describeActivity(log: ActivityLog): string {
   const payload = (log.payload ?? {}) as Record<string, unknown>;
