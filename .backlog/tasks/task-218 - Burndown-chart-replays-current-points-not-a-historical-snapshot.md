@@ -1,11 +1,11 @@
 ---
 id: TASK-218
 title: 'Burndown chart replays current points, not a historical snapshot'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 15:43'
-updated_date: '2026-08-01 05:19'
+updated_date: '2026-08-01 05:20'
 labels:
   - tooling
 milestone: m-2
