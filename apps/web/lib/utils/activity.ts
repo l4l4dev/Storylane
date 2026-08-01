@@ -10,6 +10,19 @@ export type ActivityLog = {
   storyTitle: string | null;
 };
 
+/**
+ * Whether the row has a real actor, i.e. someone who chose to do this.
+ *
+ * An automatic rollover is recorded against whichever member's page load
+ * happened to trigger the lazy finalize, so describeActivity leaves them out of
+ * the sentence. Anything else rendered from actor_id — an agent badge, an
+ * avatar — has to make the same call, or the row names nobody and still points
+ * at someone.
+ */
+export function hasActor(log: Pick<ActivityLog, "payload">): boolean {
+  return ((log.payload ?? {}) as Record<string, unknown>).rollover !== "auto";
+}
+
 /** Human-readable description of an activity_logs row for the timeline. */
 export function describeActivity(log: ActivityLog): string {
   const payload = (log.payload ?? {}) as Record<string, unknown>;
@@ -50,9 +63,38 @@ export function describeActivity(log: ActivityLog): string {
     // kept here so already-deployed rows stay readable in the feed.
     case "story.iteration_rolled_over":
     case "story.iteration_changed": {
-      const from = payload.from_iteration_number != null ? `#${String(payload.from_iteration_number)}` : "the Icebox";
-      const to = payload.to_iteration_number != null ? `#${String(payload.to_iteration_number)}` : "the Icebox";
-      return `${log.actorName} moved ${story} from iteration ${from} to ${to}`;
+      // No iteration means Backlog or Icebox, and iteration_id alone cannot
+      // tell them apart — has_state does (Icebox stories have no state_id).
+      // Rows written before 20260731000000 carry neither flag; those keep the
+      // old ambiguous wording rather than guessing.
+      const where = (num: unknown, hasState: unknown) =>
+        num != null ? `iteration #${String(num)}` : hasState === true ? "the Backlog" : "the Icebox";
+      const from = where(payload.from_iteration_number, payload.from_has_state);
+      const to = where(payload.to_iteration_number, payload.to_has_state);
+      // An 'auto' rollover is attributed to whichever member's page load
+      // happened to trigger the lazy finalize, so naming them as the mover
+      // would be wrong — the actor is dropped there. 'manual' is someone
+      // deliberately finishing the iteration, so they keep the credit.
+      //
+      // story.iteration_rolled_over predates the marker and was only ever
+      // written by finalize_iteration, so it is read as a rollover too. Those
+      // rows cannot say which kind it was; 'auto' is the safer read, since a
+      // lazy rollover happens on any page load while a manual finish is a
+      // deliberate, rare click.
+      if (payload.rollover === "auto" || log.action === "story.iteration_rolled_over") {
+        return `${story} rolled over from ${from} to ${to}`;
+      }
+      if (payload.rollover === "manual") {
+        return `${log.actorName} finished ${from}, rolling ${story} over to ${to}`;
+      }
+      return `${log.actorName} moved ${story} from ${from} to ${to}`;
+    }
+    case "story.points_changed": {
+      const to = payload.to;
+      const from = payload.from;
+      if (typeof to !== "number") return `${log.actorName} removed the estimate from ${story}`;
+      if (typeof from !== "number") return `${log.actorName} estimated ${story} at ${to} points`;
+      return `${log.actorName} re-estimated ${story} from ${from} to ${to} points`;
     }
     case "iteration.length_overridden":
       return `${log.actorName} moved iteration #${String(payload.number)}'s end date from ${formatDate(String(payload.from))} to ${formatDate(String(payload.to))}`;

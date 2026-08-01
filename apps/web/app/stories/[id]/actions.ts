@@ -128,14 +128,14 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .eq("story_id", storyId)
         .order("created_at", { ascending: true }),
       supabase.from("tasks").select("id, title, is_done").eq("story_id", storyId).order("position"),
-      // Status/column history only — comment.added already renders in the
-      // comment thread, and letting it in would both duplicate it here and
+      // Status, column and estimate history — comment.added already renders in
+      // the comment thread, and letting it in would both duplicate it here and
       // let comments crowd real status changes out of the 50-row window.
       supabase
         .from("activity_logs")
         .select("id, action, payload, created_at, actor:profiles(display_name, is_agent)")
         .eq("story_id", storyId)
-        .in("action", ["story.created", "story.state_changed", "story.column_changed"])
+        .in("action", ["story.created", "story.state_changed", "story.column_changed", "story.points_changed"])
         .order("created_at", { ascending: false })
         .limit(50),
       supabase

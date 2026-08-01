@@ -5,7 +5,7 @@ import { groupStoriesByIteration } from "@/lib/utils/board";
 import { formatDate } from "@/lib/utils/format";
 import { iterationLabel } from "@/lib/utils/iterations";
 import { currentIterationOf } from "@/lib/utils/kanban";
-import { buildBurndown } from "@/lib/utils/burndown";
+import { buildBurndown, storiesByTouchedIteration } from "@/lib/utils/burndown";
 import { fetchAllRows } from "@/lib/utils/supabase-pagination";
 import { resolvePlanningCapacity, startPlanningCapacityFetch } from "@/lib/utils/planning-capacity";
 import { utcTodayKey } from "@/lib/utils/format";
@@ -86,73 +86,16 @@ export default async function IterationsPage({
   );
   const earliestStart = allIterations.at(-1)?.start_date ?? today;
 
-  const [labelsResult, statesResult, activityLogs, rolloverLogs] =
+  const STORY_COLUMNS =
+    "id, number, title, description, story_type, state_id, points, position, iteration_id, created_at, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)";
+
+  const [labelsResult, statesResult] =
     iterationIds.length > 0
       ? await Promise.all([
           supabase.from("labels").select("id, name, color").eq("project_id", id),
           supabase.from("project_states").select("id, name, category").eq("project_id", id),
-          // Tiebreaker on id (after created_at): range()-based pagination
-          // needs a fully deterministic order across separate page requests,
-          // and created_at alone doesn't guarantee uniqueness — two rows
-          // sharing a timestamp could otherwise land on either side of a
-          // page boundary inconsistently between requests, silently
-          // dropping one.
-          fetchAllRows((from, to) =>
-            supabase
-              .from("activity_logs")
-              .select("id, story_id, payload, created_at")
-              .eq("project_id", id)
-              .eq("action", "story.state_changed")
-              .gte("created_at", `${earliestStart}T00:00:00Z`)
-              .order("created_at", { ascending: true })
-              .order("id", { ascending: true })
-              .range(from, to),
-          ),
-          // A past iteration's burndown must count a story that has since
-          // moved on — a rollover, or an ordinary Backlog<->Current reschedule
-          // — before it finished, otherwise its points silently drop out of
-          // that iteration's history the moment iteration_id changes. This
-          // log (any stories.iteration_id UPDATE, not just automated
-          // rollovers) is the only record of "which iteration a story used
-          // to belong to" once that happens. Reads both the current and the
-          // brief-window-old action name: rows already written as
-          // story.iteration_rolled_over (20260727120000, before this file's
-          // generalized rename) must not silently vanish from history just
-          // because the read path only looked for the new name.
-          fetchAllRows((from, to) =>
-            supabase
-              .from("activity_logs")
-              .select("id, story_id, payload")
-              .eq("project_id", id)
-              .in("action", ["story.iteration_changed", "story.iteration_rolled_over"])
-              .order("id", { ascending: true })
-              .range(from, to),
-          ),
         ])
-      : [{ data: [], error: null }, { data: [], error: null }, [], []];
-  const labels = assertReadOk(labelsResult);
-  const states = assertReadOk(statesResult);
-
-  const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
-  const categoryByStateName = new Map((states ?? []).map((state) => [state.name, state.category]));
-  const categoryByStateId = new Map((states ?? []).map((state) => [state.id, state.category]));
-  // storyId set that moved OUT of each iteration (rollover or an ordinary
-  // reschedule — story.iteration_changed covers both) — unioned with the
-  // current-iteration_id filter below to recover a past iteration's true
-  // story membership after some of them have since moved on.
-  const rolledOutOf = new Map<string, Set<string>>();
-  const everMovedOutStoryIds = new Set<string>();
-  for (const log of rolloverLogs as Array<{ story_id: string | null; payload: unknown }>) {
-    const payload = (log.payload ?? {}) as { from_iteration_id?: string };
-    if (!log.story_id || !payload.from_iteration_id) continue;
-    const set = rolledOutOf.get(payload.from_iteration_id) ?? new Set<string>();
-    set.add(log.story_id);
-    rolledOutOf.set(payload.from_iteration_id, set);
-    everMovedOutStoryIds.add(log.story_id);
-  }
-
-  const STORY_COLUMNS =
-    "id, number, title, description, story_type, state_id, points, position, iteration_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)";
+      : [{ data: [], error: null }, { data: [], error: null }];
 
   const storiesByIteration =
     iterationIds.length > 0
@@ -167,9 +110,63 @@ export default async function IterationsPage({
         )
       : [];
 
+  // Everything buildBurndown replays, in one paginated pass:
+  //  - story.state_changed  — the done/not-done transitions the chart burns down
+  //  - story.points_changed — so a re-estimation steps on its own date instead
+  //    of rewriting every day with today's points
+  //  - story.iteration_changed — a past iteration's burndown must count a story
+  //    that has since moved on (a rollover, or an ordinary Backlog<->Current
+  //    reschedule) before it finished; this is the only record of which
+  //    iteration a story used to belong to once iteration_id changes.
+  //    story.iteration_rolled_over is the pre-rename action (20260727120000)
+  //    and must still be read, or already-deployed rows vanish from history.
+  //
+  // Read AFTER the stories, never concurrently with them. buildBurndown rewinds
+  // from each story's current row, and every patch it applies is an assignment:
+  // a log newer than the snapshot only re-asserts the older value, which is
+  // harmless. The other order is not — a change landing between the two reads
+  // would be in the snapshot with no log to rewind it, so its new points or
+  // state would be projected across the whole chart. That is the defect this
+  // replay exists to remove, so the ordering is load-bearing.
+  const burndownLogs =
+    iterationIds.length > 0
+      ? // Tiebreaker on id (after created_at): range()-based pagination needs a
+        // fully deterministic order across separate page requests, and
+        // created_at alone doesn't guarantee uniqueness — two rows sharing a
+        // timestamp could otherwise land on either side of a page boundary
+        // inconsistently between requests, silently dropping one.
+        await fetchAllRows((from, to) =>
+          supabase
+            .from("activity_logs")
+            .select("id, story_id, action, payload, created_at")
+            .eq("project_id", id)
+            .in("action", [
+              "story.state_changed",
+              "story.points_changed",
+              "story.iteration_changed",
+              "story.iteration_rolled_over",
+            ])
+            .gte("created_at", `${earliestStart}T00:00:00Z`)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
+        )
+      : [];
+  const labels = assertReadOk(labelsResult);
+  const states = assertReadOk(statesResult);
+
+  const labelById = new Map((labels ?? []).map((l) => [l.id, l]));
+  const categoryByStateName = new Map((states ?? []).map((state) => [state.name, state.category]));
+  const categoryByStateId = new Map((states ?? []).map((state) => [state.id, state.category]));
+  // Every story any log says entered or left each iteration, unioned below with
+  // the current-iteration_id filter to recover an iteration's true membership
+  // when a story's row no longer agrees with the window being charted.
+  const touchedIterations = storiesByTouchedIteration(burndownLogs);
+  const everMovedStoryIds = new Set([...touchedIterations.values()].flatMap((set) => [...set]));
+
   // Filtering by CURRENT iteration_id alone misses one case: Current ->
   // Backlog/Icebox sets iteration_id to NULL, which is never in
-  // iterationIds. rolledOutOf already knows such a story belongs to a past
+  // iterationIds. touchedIterations already knows such a story belongs to a past
   // iteration's history; without also fetching its row here, that knowledge
   // has no points/state_id to attach to and the story is silently absent
   // from that iteration's chart despite being tracked. Fetched as a second,
@@ -177,8 +174,14 @@ export default async function IterationsPage({
   // filters in the URL, and a long-lived project's full moved-story history
   // interpolated into one query string could exceed a proxy's request-line
   // limit.
+  //
+  // These necessarily read AFTER the logs, since the logs are what name them —
+  // so unlike storiesByIteration above they keep the narrow read-skew window: a
+  // story edited between the two reads has no log to rewind the edit. It only
+  // touches stories that have already left every charted iteration, and a
+  // reload clears it.
   const coveredIds = new Set(storiesByIteration.map((s) => s.id));
-  const extraIds = [...everMovedOutStoryIds].filter((storyId) => !coveredIds.has(storyId));
+  const extraIds = [...everMovedStoryIds].filter((storyId) => !coveredIds.has(storyId));
   const EXTRA_BATCH_SIZE = 200;
   const extraStories: typeof storiesByIteration = [];
   for (let i = 0; i < extraIds.length; i += EXTRA_BATCH_SIZE) {
@@ -191,8 +194,8 @@ export default async function IterationsPage({
 
   // Grouped once so each rendered iteration's buildBurndown call only scans
   // the handful of logs for its own stories, not the whole project's history.
-  const activityLogsByStory = new Map<string, typeof activityLogs>();
-  for (const log of activityLogs) {
+  const activityLogsByStory = new Map<string, typeof burndownLogs>();
+  for (const log of burndownLogs) {
     if (!log.story_id) continue;
     const list = activityLogsByStory.get(log.story_id) ?? [];
     list.push(log);
@@ -245,24 +248,28 @@ export default async function IterationsPage({
 
   const renderIteration = (iteration: (typeof allIterations)[number]) => {
     const iterationStories = byIteration.get(iteration.id) ?? [];
-    const rolledOut = rolledOutOf.get(iteration.id);
+    const touched = touchedIterations.get(iteration.id);
     const chartStories = (stories ?? []).filter(
-      (story) => story.iteration_id === iteration.id || rolledOut?.has(story.id),
+      (story) => story.iteration_id === iteration.id || touched?.has(story.id),
     );
     const chart = buildBurndown({
       startDate: iteration.start_date,
       endDate: iteration.id === currentIteration?.id && today < iteration.end_date ? today : iteration.end_date,
       idealEndDate: iteration.end_date,
       targetPoints: targetByIteration.get(iteration.id) ?? 1,
+      iterationId: iteration.id,
       categoryByStateName,
-      // Current iteration_id alone misses a story that rolled onward before
-      // finishing — union with the rollover log so a past iteration's chart
-      // still counts it (see rolledOutOf above).
+      // Candidate set only — buildBurndown decides per day whether each story
+      // was actually in this iteration then. Current iteration_id alone misses
+      // a story that rolled onward before finishing, so it is unioned with the
+      // move log, either side (see touchedIterations above).
       stories: chartStories.map((story) => ({
         id: story.id,
         points: story.points,
         storyType: story.story_type,
         currentCategory: story.state_id ? (categoryByStateId.get(story.state_id) ?? null) : null,
+        currentIterationId: story.iteration_id,
+        createdAt: story.created_at,
       })),
       // Only this iteration's own stories' logs, not the whole project's
       // history — buildBurndown filters whatever it's handed, so keeping the
