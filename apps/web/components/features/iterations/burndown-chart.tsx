@@ -80,7 +80,9 @@ export function BurndownChart({
         </table>
       </details>
       {coverage === "partial" && (
-        <p className="mt-1 text-xs text-muted-foreground">Partial history — some state changes could not be resolved.</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Partial history — some changes in this range could not be reconstructed.
+        </p>
       )}
     </figure>
   );

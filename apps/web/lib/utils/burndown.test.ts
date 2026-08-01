@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type BurndownLog, type BurndownStory, buildBurndown } from "./burndown";
+import { POINTS_HISTORY_FROM, type BurndownLog, type BurndownStory, buildBurndown } from "./burndown";
 
 const categories = new Map([
   ["Ready", "unstarted"],
@@ -29,8 +29,8 @@ describe("buildBurndown", () => {
   it("replays done-category entries and exits into daily remaining points", () => {
     expect(
       buildBurndown({
-        startDate: "2026-07-01",
-        endDate: "2026-07-03",
+        startDate: "2026-08-01",
+        endDate: "2026-08-03",
         targetPoints: 10,
         iterationId: ITERATION,
         categoryByStateName: categories,
@@ -40,20 +40,41 @@ describe("buildBurndown", () => {
           story({ id: "c", points: null, storyType: "chore", currentCategory: "done" }),
         ],
         logs: [
-          stateChange("a", "2026-07-01T10:00:00Z", "Ready", "Building"),
-          stateChange("a", "2026-07-02T09:00:00Z", "Building", "Shipped"),
-          stateChange("b", "2026-07-02T11:00:00Z", "Building", "Shipped"),
-          stateChange("b", "2026-07-03T08:00:00Z", "Shipped", "Building"),
+          stateChange("a", "2026-08-01T10:00:00Z", "Ready", "Building"),
+          stateChange("a", "2026-08-02T09:00:00Z", "Building", "Shipped"),
+          stateChange("b", "2026-08-02T11:00:00Z", "Building", "Shipped"),
+          stateChange("b", "2026-08-03T08:00:00Z", "Shipped", "Building"),
         ],
       }),
     ).toEqual({
       coverage: "full",
       points: [
-        { date: "2026-07-01", remaining: 8, ideal: 10 },
-        { date: "2026-07-02", remaining: 0, ideal: 5 },
-        { date: "2026-07-03", remaining: 3, ideal: 0 },
+        { date: "2026-08-01", remaining: 8, ideal: 10 },
+        { date: "2026-08-02", remaining: 0, ideal: 5 },
+        { date: "2026-08-03", remaining: 3, ideal: 0 },
       ],
     });
+  });
+
+  // Nothing recorded points before POINTS_HISTORY_FROM, and no row can prove a
+  // story was NOT re-estimated back then — so such a chart falls back to today's
+  // points and must say so rather than claim full coverage.
+  it("never claims full coverage for a window that predates points history", () => {
+    const chart = (startDate: string, endDate: string) =>
+      buildBurndown({
+        startDate,
+        endDate,
+        targetPoints: 5,
+        iterationId: ITERATION,
+        categoryByStateName: categories,
+        stories: [story({ id: "a", points: 5, currentCategory: "done" })],
+        logs: [stateChange("a", `${startDate}T10:00:00Z`, "Ready", "Shipped")],
+      });
+
+    expect(chart(POINTS_HISTORY_FROM, "2026-08-02").coverage).toBe("full");
+    // One day earlier: the same fully-resolvable state history, but the points
+    // behind it are unverifiable.
+    expect(chart("2026-07-30", "2026-08-02").coverage).toBe("partial");
   });
 
   it("returns an empty chart when no state-change history exists", () => {

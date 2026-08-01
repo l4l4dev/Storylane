@@ -18,6 +18,16 @@ export type BurndownLog = {
 
 export type BurndownPoint = { date: string; remaining: number; ideal: number };
 
+/**
+ * The date story.points_changed started being recorded (migration
+ * 20260731000000). A chart whose window opens before this cannot know whether
+ * a story was re-estimated inside it — there is no row to say so and no way to
+ * prove the absence — so it falls back to the story's current points and can
+ * never claim full coverage. Deliberately a schema fact rather than a
+ * parameter: no caller gets to declare history it does not have.
+ */
+export const POINTS_HISTORY_FROM = "2026-07-31";
+
 /** A story's three chart-relevant attributes as of some instant. */
 type Snapshot = { category: string | undefined; points: number; member: boolean };
 type Patch = Partial<Snapshot>;
@@ -221,5 +231,6 @@ export function buildBurndown(input: {
     });
   }
 
-  return { coverage: stateChanges === usableStateChanges ? "full" : "partial", points };
+  const complete = stateChanges === usableStateChanges && input.startDate >= POINTS_HISTORY_FROM;
+  return { coverage: complete ? "full" : "partial", points };
 }
