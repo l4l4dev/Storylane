@@ -153,6 +153,32 @@ describe("describeActivity", () => {
     );
   });
 
+  it("describes a story being assigned, reassigned and unassigned", () => {
+    const base = { action: "story.assignee_changed", actorName: "Dev User", storyTitle: "Add welcome tour" };
+    expect(describeActivity({ ...base, payload: { from_name: null, to_name: "Rin" } })).toBe(
+      'Dev User assigned "Add welcome tour" to Rin',
+    );
+    expect(describeActivity({ ...base, payload: { from_name: "Rin", to_name: "Kai" } })).toBe(
+      'Dev User reassigned "Add welcome tour" from Rin to Kai',
+    );
+    expect(describeActivity({ ...base, payload: { from_name: "Rin", to_name: null } })).toBe(
+      'Dev User unassigned "Add welcome tour" from Rin',
+    );
+  });
+
+  // The composite FK's ON DELETE SET NULL fires on a member removal, and the
+  // profile it points at can be gone by the time the row is read.
+  it("still reads when the previous assignee's name is missing", () => {
+    expect(
+      describeActivity({
+        action: "story.assignee_changed",
+        actorName: "Dev User",
+        storyTitle: "Add welcome tour",
+        payload: { from_name: null, to_name: null },
+      }),
+    ).toBe('Dev User unassigned "Add welcome tour"');
+  });
+
   // Rows written before 20260731000000 carry no from_has_state/to_has_state.
   it("keeps the old Icebox wording for rows written without the state flags", () => {
     const text = describeActivity({

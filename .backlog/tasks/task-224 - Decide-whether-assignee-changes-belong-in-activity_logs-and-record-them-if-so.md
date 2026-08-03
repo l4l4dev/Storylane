@@ -1,11 +1,11 @@
 ---
 id: TASK-224
 title: 'Decide whether assignee changes belong in activity_logs, and record them if so'
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-30 12:11'
-updated_date: '2026-08-03 13:13'
+updated_date: '2026-08-03 14:15'
 labels: []
 milestone: m-2
 dependencies: []
@@ -129,4 +129,35 @@ fix/containerize-bookkeeping-marker branch (TASK-225, PR #22) also redefines.
 Implementation waits for PR #22 to merge so the copied body is the current one
 — the mistake doc-26 records (copying a stale body and silently dropping a
 later guard) happens exactly here.
+
+## rls-security-reviewer pass (2026-08-03) — no findings
+
+Read-only review of 20260803010000_log_assignee_changes.sql. Verified points
+worth not re-deriving:
+
+- `public.profiles` SELECT is `using (true)` since 20260627000001 ("needed to
+  render collaborators"), so resolving display_name inside the SECURITY DEFINER
+  trigger discloses nothing that was not already readable. Not a new hole.
+- `stories` UPDATE is gated by `project_role(project_id) in ('owner','member')`,
+  and the trigger fires only on rows that passed RLS — the branch cannot be used
+  to forge activity rows in a project the actor cannot write to.
+- `stories.created_by` is `not null default auth.uid()` (20260627000005), so
+  `coalesce(auth.uid(), new.created_by)` cannot violate activity_logs.actor_id.
+- The remove_member cascade is safe: `select ... into` assigns NULL on zero rows
+  rather than raising, so a missing profile cannot abort the removal's
+  transaction. Trigger confirmed via pg_get_triggerdef to be AFTER INSERT OR
+  UPDATE with no column list.
+- The Slack outbox trigger is scoped to `new.action = 'story.state_changed'`, so
+  story.assignee_changed enqueues nothing — matching "Slack notifications stay
+  state-change-only".
+
+## Findings from implementation
+
+- move_story_to_project / copy_story_to_project INSERT a new row in the target
+  project rather than updating project_id, so their non-member-assignee drop
+  produces story.created and never touches this branch. No bookkeeping marker
+  needed for them.
+- The payload carries ids AND display names. story.state_changed stores names
+  alone because a state name is unique per project; display names are not
+  unique, so an id is what makes the row unambiguous.
 <!-- SECTION:NOTES:END -->

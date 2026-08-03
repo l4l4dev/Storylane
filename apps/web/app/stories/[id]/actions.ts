@@ -140,6 +140,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
           "story.state_changed",
           "story.column_changed",
           "story.points_changed",
+          "story.assignee_changed",
           // Admitted alongside the filter below, not independently of it: the
           // filter hides the three rows containerizing produces, so without
           // this the epic-ing of a story leaves no trace in this panel at all.

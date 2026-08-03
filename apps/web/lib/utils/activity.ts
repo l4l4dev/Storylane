@@ -89,6 +89,16 @@ export function describeActivity(log: ActivityLog): string {
       }
       return `${log.actorName} moved ${story} from ${from} to ${to}`;
     }
+    case "story.assignee_changed": {
+      // A removed member's stories are unassigned by the composite FK's
+      // ON DELETE SET NULL (20260730030000), so the actor here is whoever
+      // removed them, not someone who edited the story.
+      const from = payload.from_name ? String(payload.from_name) : null;
+      const to = payload.to_name ? String(payload.to_name) : null;
+      if (!to) return `${log.actorName} unassigned ${story}${from ? ` from ${from}` : ""}`;
+      if (!from) return `${log.actorName} assigned ${story} to ${to}`;
+      return `${log.actorName} reassigned ${story} from ${from} to ${to}`;
+    }
     case "story.points_changed": {
       const to = payload.to;
       const from = payload.from;

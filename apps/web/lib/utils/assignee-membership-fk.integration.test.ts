@@ -211,4 +211,63 @@ describe.skipIf(!RUN)("assignee membership FK (integration)", () => {
     const copied = data as { story_id: string };
     expect(await assigneeOf(copied.story_id)).toBe(memberId);
   });
+
+  async function assigneeLogs(storyId: string) {
+    const { data } = await asService
+      .from("activity_logs")
+      .select("actor_id, payload")
+      .eq("story_id", storyId)
+      .eq("action", "story.assignee_changed");
+    return (data ?? []) as { actor_id: string; payload: Record<string, unknown> }[];
+  }
+
+  async function displayNameOf(userId: string) {
+    const { data } = await asService.from("profiles").select("display_name").eq("id", userId).single();
+    return data?.display_name ?? null;
+  }
+
+  it("logs an assignee change with both ids and both display names", async () => {
+    const projectId = await createProject(`assignee-log-set-${Date.now()}`);
+    await addMember(projectId, memberId);
+    const storyId = await createStory(projectId, "Log me", null);
+
+    const { error } = await asOwner.rpc("update_story", {
+      p_story_id: storyId,
+      p_title: "Log me",
+      p_description: null,
+      p_story_type: "feature",
+      p_points: null,
+      p_parent_id: null,
+      p_assignee_id: memberId,
+      p_label_ids: [],
+    });
+    expect(error).toBeNull();
+
+    const logs = await assigneeLogs(storyId);
+    expect(logs).toHaveLength(1);
+    expect(logs[0].actor_id).toBe(ownerId);
+    expect(logs[0].payload).toMatchObject({
+      from_id: null,
+      to_id: memberId,
+      from_name: null,
+      to_name: await displayNameOf(memberId),
+    });
+  });
+
+  // The cascade is the case with no code path of its own: the composite FK
+  // performs the UPDATE, so nothing in remove_member knows a row was written.
+  it("logs the unassignment the member removal cascades, attributed to the remover", async () => {
+    const projectId = await createProject(`assignee-log-cascade-${Date.now()}`);
+    await addMember(projectId, memberId);
+    const storyId = await createStory(projectId, "Loses its assignee", memberId);
+    expect(await assigneeLogs(storyId)).toHaveLength(0);
+
+    const { error } = await asOwner.rpc("remove_member", { p_project_id: projectId, p_user_id: memberId });
+    expect(error).toBeNull();
+
+    const logs = await assigneeLogs(storyId);
+    expect(logs).toHaveLength(1);
+    expect(logs[0].actor_id).toBe(ownerId);
+    expect(logs[0].payload).toMatchObject({ from_id: memberId, to_id: null, to_name: null });
+  });
 });

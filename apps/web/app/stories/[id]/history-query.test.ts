@@ -59,6 +59,7 @@ describe("getStoryDetail history query", () => {
     // the last trace of an epic-ing from this panel.
     const whitelist = logCalls.find((c) => c.method === "in")?.args[1] as string[];
     expect(whitelist).toContain("story.containerized");
+    expect(whitelist).toContain("story.assignee_changed");
 
     expect(logCalls).toContainEqual(
       expect.objectContaining({ method: "filter", args: ["payload->>bookkeeping", "is", null] }),

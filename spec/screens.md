@@ -438,10 +438,12 @@ Conflict & failure rules (2026-07-08):
   peek to a "story was deleted" state that keeps the unsaved text visible
   and copyable instead of silently closing.
 - Autosave must not spam collaboration surfaces: the activity-log
-  trigger records state/assignment events — title/description edits must
-  not produce a row per save — and Slack notifications stay
-  state-change-only. Verify this against the existing trigger before
-  shipping.
+  trigger records changes to **state, iteration, points and assignee** —
+  title/description edits must not produce a row per save — and Slack
+  notifications stay state-change-only. Verify this against the existing
+  trigger before shipping. (Fields are named rather than grouped as
+  "state/assignment" so the list cannot be re-read later as covering more
+  or less than it does; adding one means changing this line.)
 - The overflow (⋯) menu in the peek header hosts **Split** (opens the Split
   Studio, doc-18 §7 — labelled "分割する"/"Split", never "convert to epic"),
   **Turn into epic…** (a childless, top-level story only — `set_epic_pinned`,
