@@ -284,8 +284,6 @@ describe.skipIf(!RUN)("parent_id hierarchy triggers (integration)", () => {
     expect((visible ?? []).map((l) => l.action).sort()).toEqual(["story.containerized", "story.created"]);
   });
 
-  // The unestimated case through the RPC path too: the HIGH that reached
-  // review was precisely a path covered on one side and not the other.
   it("records a never-estimated story pinned via the Turn-into-epic RPC", async () => {
     const parentId = await createBoardStory({ title: "Unestimated pin" });
     const { error } = await owner.rpc("set_epic_pinned", { p_story_id: parentId, p_pinned: true });
