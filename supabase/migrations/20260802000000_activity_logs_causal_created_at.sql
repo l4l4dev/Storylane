@@ -1,0 +1,55 @@
+-- ============================================================
+-- activity_logs.created_at becomes execution time, not transaction-start time.
+--
+-- now() is fixed for a whole transaction, so two writes to the SAME story
+-- could be read back in an order that never happened: both transactions
+-- start, then they serialize on the story row lock, and the one that STARTED
+-- later can commit first while still carrying the earlier timestamp. id is a
+-- random uuid, so the tiebreak does not recover the real order either.
+--
+-- That is not cosmetic for points. buildBurndown replays story.points_changed
+-- as a chain of {from, to} transitions, so reading two concurrent re-estimates
+-- backwards can leave a chart day showing an estimate that was never current.
+-- The equivalent problem for iteration moves is dodged in the reader — the
+-- membership replay only looks at logs naming the iteration being charted, so
+-- the order between hops never matters — but point transitions are inherently
+-- sequential and have no such escape. The ordering has to come from the data.
+--
+-- clock_timestamp() is evaluated per statement, so a transaction blocked on
+-- the row lock stamps its row only after the blocker commits.
+--
+-- REJECTED: a monotonic sequence column. It would survive a clock step, which
+-- this does not, but that is the only thing it buys — nextval is also drawn at
+-- INSERT execution time, so its ordering property is identical. Against that:
+-- every reader wanting causal order has to switch to it, and existing rows
+-- need a backfill ordered by created_at (a plain bigserial add numbers them in
+-- arbitrary physical order). A clock step would have to coincide with two
+-- concurrent re-estimates of one story to matter at all, and the damage
+-- self-corrects on the next write. Not worth changing three read paths for.
+--
+-- PREMISE: READ COMMITTED. No migration or RPC sets SERIALIZABLE or
+-- REPEATABLE READ today, and nothing retries a serialization failure.
+-- Introducing either would let a retried transaction re-stamp its rows out of
+-- order, and this guarantee would break silently — so a future RPC that wants
+-- a stricter isolation level has to revisit this.
+--
+-- Ordering is only guaranteed between transactions that actually contend.
+-- Concurrent writes to unrelated stories stay unordered, which costs nothing:
+-- buildBurndown groups by story_id before it sorts, so cross-story order has
+-- never carried meaning.
+--
+-- Existing rows keep their now() values and are NOT backfilled — there is
+-- nothing to recover them from. Both regimes are real timestamptz values, so
+-- comparisons across the boundary behave normally; what remains is the old
+-- rows' own non-causality, which predates this change and is not worsened by
+-- it.
+-- ============================================================
+
+alter table public.activity_logs alter column created_at set default clock_timestamp();
+
+-- ============================================================
+-- DOWN (rollback — not auto-applied; run manually if reverting):
+--   alter table public.activity_logs alter column created_at set default now();
+-- Rows written while this was in force keep their execution timestamps; they
+-- stay valid readings, just more precise than their neighbours.
+-- ============================================================

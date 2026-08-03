@@ -490,7 +490,10 @@ activity_logs (
   actor_id    uuid REFERENCES profiles(id),
   action      text NOT NULL,  -- e.g. 'story.created' | 'story.state_changed' | 'comment.added'
   payload     jsonb,          -- before/after values etc.
-  created_at  timestamptz DEFAULT now(),
+  -- clock_timestamp(), not now(): execution time, so two writes contending on
+  -- the same story row are ordered by when they applied rather than by when
+  -- their transactions began (20260802000000).
+  created_at  timestamptz DEFAULT clock_timestamp(),
   -- TASK-55: cross-project reference guard. Requires stories UNIQUE(id, project_id).
   -- ON DELETE NO ACTION — the single-column story_id FK's SET NULL fires first on
   -- a story delete, so the log survives with story_id nulled + project_id intact.

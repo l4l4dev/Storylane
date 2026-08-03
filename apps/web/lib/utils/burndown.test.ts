@@ -334,9 +334,9 @@ describe("buildBurndown", () => {
   });
 
   // A neglected project catches up through several iterations in one
-  // finalize_iteration call. Every row that call writes carries the same
-  // transaction now() and a random uuid, so the hops have NO reliable order —
-  // the chart must not depend on which way they arrive.
+  // finalize_iteration call. Rows written before 20260802000000 share that
+  // transaction's now() and have no recoverable order, so the chart must not
+  // depend on which way the hops arrive.
   it("lands a story in the right iteration when one call rolls it over twice", () => {
     const hops: BurndownLog[] = [
       {

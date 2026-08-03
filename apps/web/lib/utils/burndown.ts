@@ -157,12 +157,12 @@ export function buildBurndown(input: {
         const left = payload.from_iteration_id === input.iterationId;
         const arrived = payload.to_iteration_id === input.iterationId;
         // A hop between two OTHER iterations says nothing about membership
-        // here. Dropping those is what makes this replay order-independent:
-        // one finalize_iteration call can reparent a story through several
-        // iterations, and every row it writes carries that transaction's
-        // now(), with a random uuid for a tiebreak — so the hops cannot be
-        // put in causal order. At most one of them names this iteration on
-        // each side, and those are all this chart needs.
+        // here, and dropping those leaves the replay independent of hop order
+        // altogether: at most one hop names this iteration on each side, and
+        // those are all the chart needs. Rows written before 20260802000000
+        // share their transaction's now() and cannot be ordered at all, so for
+        // that history this is the only thing that works; for newer rows it
+        // stays the simpler rule rather than a necessity.
         if (!left && !arrived) break;
         // story.iteration_rolled_over predates the marker but needs no guess:
         // finalize_iteration's explicit INSERT was the only writer of that
