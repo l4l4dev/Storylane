@@ -10,6 +10,16 @@ on:
     paths:
       - ".claude/agents/**"
       - ".codex/agents/**"
+      - ".claude/skills/**"
+      - ".agents/**"
+      # The symlinked instruction files themselves: a tool that replaces one
+      # with a regular file touches THIS path, not the target it used to point
+      # at, so watching the targets alone would miss the drift entirely.
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "apps/*/AGENTS.md"
+      - "apps/*/CLAUDE.md"
+      - "apps/*/.claude/**"
       - "scripts/check-agent-config-parity.sh"
       - ".github/workflows/agent-config-parity.yml"
   pull_request:
@@ -17,6 +27,16 @@ on:
     paths:
       - ".claude/agents/**"
       - ".codex/agents/**"
+      - ".claude/skills/**"
+      - ".agents/**"
+      # The symlinked instruction files themselves: a tool that replaces one
+      # with a regular file touches THIS path, not the target it used to point
+      # at, so watching the targets alone would miss the drift entirely.
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "apps/*/AGENTS.md"
+      - "apps/*/CLAUDE.md"
+      - "apps/*/.claude/**"
       - "scripts/check-agent-config-parity.sh"
       - ".github/workflows/agent-config-parity.yml"
 
