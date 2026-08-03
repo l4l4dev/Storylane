@@ -45,12 +45,14 @@ function activityQuery(rows: ReturnType<typeof log>[]) {
     select: vi.fn(),
     eq: vi.fn(),
     or: vi.fn(),
+    filter: vi.fn(),
     order: vi.fn(),
     range: vi.fn(),
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
   builder.or.mockReturnValue(builder);
+  builder.filter.mockReturnValue(builder);
   builder.order.mockReturnValue(builder);
   builder.range.mockResolvedValue({ data: rows });
   return builder;
@@ -82,6 +84,18 @@ describe("ProjectActivityPage", () => {
     expect(query.order).toHaveBeenNthCalledWith(1, "created_at", { ascending: false });
     expect(query.order).toHaveBeenNthCalledWith(2, "id", { ascending: false });
     expect(query.range).toHaveBeenCalledWith(0, 20);
+  });
+
+  // Containerizing a story writes three bookkeeping rows alongside
+  // story.containerized; excluded in the query, not after, so a page still
+  // holds PAGE_SIZE rows and the lookahead still means what the links assume.
+  it("excludes bookkeeping rows in the query rather than after fetching", async () => {
+    const query = activityQuery([log(0)]);
+    fromMock.mockImplementation((table: string) => (table === "projects" ? projectQuery() : query));
+
+    render(await ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }));
+
+    expect(query.filter).toHaveBeenCalledWith("payload->>bookkeeping", "is", null);
   });
 
   it("uses the cursor to fetch older rows and offers a stable Newer cursor", async () => {

@@ -135,7 +135,20 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .from("activity_logs")
         .select("id, action, payload, created_at, actor:profiles(display_name, is_agent)")
         .eq("story_id", storyId)
-        .in("action", ["story.created", "story.state_changed", "story.column_changed", "story.points_changed"])
+        .in("action", [
+          "story.created",
+          "story.state_changed",
+          "story.column_changed",
+          "story.points_changed",
+          // Admitted alongside the filter below, not independently of it: the
+          // filter hides the three rows containerizing produces, so without
+          // this the epic-ing of a story leaves no trace in this panel at all.
+          "story.containerized",
+        ])
+        // Bookkeeping rows describe a single action already recorded under its
+        // own name — story.containerized clears state, iteration and points in
+        // one write, which would otherwise read here as three separate edits.
+        .filter("payload->>bookkeeping", "is", null)
         .order("created_at", { ascending: false })
         // Tiebreak so the limit(50) boundary is deterministic: without it two
         // rows sharing a timestamp can land on either side of the cutoff
