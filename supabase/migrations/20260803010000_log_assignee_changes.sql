@@ -5,9 +5,9 @@
 -- the story's assignee — and assignee sits in the same section's list of
 -- autosaved Discrete fields alongside points, which does produce a row.
 --
--- Resolved as the assignee (TASK-224 AC#1). spec/screens.md is reworded in the
--- same change so the sentence names its fields and the question stops
--- recurring.
+-- Resolved as the assignee. That sentence is reworded in the same change to
+-- name its fields, so spec/screens.md — not this comment — is where the
+-- watched list now lives.
 --
 -- The composite FK from 20260730030000 is the reason this matters beyond
 -- symmetry: `on delete set null (assignee_id)` unassigns every story a removed
@@ -120,8 +120,8 @@ begin
         'from_id', old.assignee_id, 'to_id', new.assignee_id,
         -- Carried for uniformity with the three branches above, not because
         -- anything sets it today: no bookkeeping path touches assignee_id. A
-        -- fourth branch that silently could not be marked is the asymmetry
-        -- TASK-225 spent its whole review chasing.
+        -- branch that could not be marked is the one place a later bookkeeping
+        -- UPDATE would escape every reader's filter unnoticed.
         'bookkeeping', v_bookkeeping
       )
     );
