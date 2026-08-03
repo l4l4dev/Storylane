@@ -74,7 +74,11 @@ export default async function ProjectActivityPage({
   let activityQuery = supabase
     .from("activity_logs")
     .select("id, action, payload, created_at, actor:profiles(display_name, is_agent), story:stories(title)")
-    .eq("project_id", project.id);
+    .eq("project_id", project.id)
+    // Filtered here rather than after fetching: the page is keyset-paginated,
+    // so dropping rows client-side would leave short pages and a lookahead
+    // that no longer means what the next/prev links assume.
+    .filter("payload->>bookkeeping", "is", null);
 
   if (before) {
     activityQuery = activityQuery.or(
