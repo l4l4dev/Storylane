@@ -83,7 +83,21 @@ md_field() {
       esac
       ;;
   esac
-  printf '%s' "$raw"
+  reject_escapes "$raw"
+}
+
+# The two formats disagree about backslashes: TOML decodes \n to a newline
+# while YAML single quotes keep it literal, so the same six characters mean
+# different things and comparing them as text would call them equal. Rather
+# than implement each format's escape table — the point where "this is not a
+# parser" stops being a simplification — anything still carrying a backslash
+# after decoding is refused. \" survives because it decodes to a plain quote in
+# both formats, which is the only escape these files actually use.
+reject_escapes() {
+  case "$1" in
+    *\\*) printf '%s' "$MALFORMED_SCALAR" ;;
+    *) printf '%s' "$1" ;;
+  esac
 }
 
 # The mirror of md_field: only `key = "..."`, optionally followed by a comment.
@@ -95,15 +109,20 @@ toml_field() {
   # that can legitimately contain a line like `description = "..."` as an
   # example, and reading that would let body text stand in for a top-level
   # field that has actually been deleted.
-  raw="$(awk '/^developer_instructions[[:space:]]*=/ {exit} {print}' "$1" \
-    | grep -m1 -E "^[[:space:]]*$2[[:space:]]*=" || true)"
+  local header hits
+  header="$(awk '/^developer_instructions[[:space:]]*=/ {exit} {print}' "$1")"
+  hits="$(printf '%s\n' "$header" | grep -c -E "^[[:space:]]*$2[[:space:]]*=" || true)"
+  # TOML rejects a duplicated key outright, so taking the first match would let
+  # a file Codex cannot load pass on the strength of its earlier copy.
+  if [ "$hits" -gt 1 ]; then printf '%s' "$MALFORMED_SCALAR"; return; fi
+  raw="$(printf '%s\n' "$header" | grep -m1 -E "^[[:space:]]*$2[[:space:]]*=" || true)"
   [ -n "$raw" ] || return 0
   raw="${raw%"${raw##*[![:space:]]}"}"
   # Built in double quotes for the key, so every backslash needs doubling: the
   # regex has to end up with \\. (an escape pair) and [^"\\], not \. and [^"\].
   pat="^[[:space:]]*$2[[:space:]]*=[[:space:]]*\"((\\\\.|[^\"\\\\])*)\"[[:space:]]*(#.*)?\$"
   [[ $raw =~ $pat ]] || { printf '%s' "$MALFORMED_SCALAR"; return; }
-  printf '%s' "${BASH_REMATCH[1]//\\\"/\"}"
+  reject_escapes "${BASH_REMATCH[1]//\\\"/\"}"
 }
 
 # Leading/trailing blank lines are an artifact of each format's delimiters.
@@ -233,6 +252,24 @@ main() {
     IFS=: read -r link want kind <<< "$entry"
     check_link "$link" "$want" "$kind" || status=1
   done
+
+  # The table cannot catch a link nobody added to it. Everything git tracks as
+  # a symlink in the mirrored namespaces has to appear above, or a new mirror
+  # ships unguarded and can be retargeted with the gate still green. This scan
+  # only reports OMISSIONS — it is not a substitute for the table, which is
+  # what still catches a link already committed as a regular file.
+  while IFS= read -r tracked; do
+    [ -n "$tracked" ] || continue
+    case " ${EXPECTED_LINKS[*]} " in
+      *" ${tracked}:"*) ;;
+      *)
+        echo "UNTRACKED LINK: ${tracked} is a symlink but is not in EXPECTED_LINKS" >&2
+        echo "  add it as ${tracked}:$(readlink "$tracked"):file|dir so it is checked" >&2
+        status=1
+        ;;
+    esac
+  done < <(git ls-files -s -- 'AGENTS.md' 'CLAUDE.md' '.agents' '.claude' 'apps/*/AGENTS.md' 'apps/*/CLAUDE.md' 'apps/*/.claude' 2>/dev/null \
+    | awk '$1 == "120000" {print $4}')
 
   return $status
 }

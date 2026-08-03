@@ -64,6 +64,11 @@ expect_md "junk after closing quote"     "$MALFORMED_SCALAR" 'description: "hell
 expect_md "plain with colon-space"       "$MALFORMED_SCALAR" 'description: Use when: reviewing'   description
 expect_md "plain ending in colon"        "$MALFORMED_SCALAR" 'description: Use when:'             description
 expect_md "quoted colon-space is fine"   "Use when: reviewing" 'description: "Use when: reviewing"' description
+# TOML decodes \n to a newline while YAML single quotes keep it literal, so the
+# same characters mean different things and cannot be compared as text.
+expect_md "single-quoted escape"         "$MALFORMED_SCALAR" "description: 'line\\nbreak'"       description
+expect_md "double-quoted escape"         "$MALFORMED_SCALAR" 'description: "line\nbreak"'         description
+expect_md "escaped quote still decodes"  'say "hi"'          'description: "say \"hi\""'         description
 expect_md "folded block scalar"          "$BLOCK_SCALAR"     'description: >-'                    description
 expect_md "literal block scalar"         "$BLOCK_SCALAR"     'description: |'                     description
 expect_md "name reads independently"     "an-agent"     'name: an-agent'                          name
@@ -76,6 +81,18 @@ expect_toml "surrounding space"          "hello"        'description   =   "hell
 expect_toml "unterminated quote"         "$MALFORMED_SCALAR" 'description = "hello'               description
 expect_toml "junk after closing quote"   "$MALFORMED_SCALAR" 'description = "hello" junk'         description
 expect_toml "bare unquoted value"        "$MALFORMED_SCALAR" 'description = hello'                description
+
+expect_toml "escape sequence"            "$MALFORMED_SCALAR" 'description = "line\\nbreak"'     description
+expect_toml "invalid escape"             "$MALFORMED_SCALAR" 'description = "bad\\qescape"'      description
+
+# TOML rejects a duplicated key, so the first copy must not stand in for the file.
+printf -- 'description = "one"\ndescription = "two"\ndeveloper_instructions = """\nbody\n"""\n' > "$TMP/dup.toml"
+got="$(toml_field "$TMP/dup.toml" description)"
+if [ "$got" = "$MALFORMED_SCALAR" ]; then
+  pass=$((pass + 1)); echo "  ok   toml duplicate key rejected"
+else
+  fail=$((fail + 1)); echo "  FAIL toml duplicate key rejected: got [$got]" >&2
+fi
 
 # The body is prose and can legitimately show `description = "..."` as an
 # example; that must not stand in for a top-level field that was deleted.
