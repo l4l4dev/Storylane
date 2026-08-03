@@ -50,16 +50,24 @@ md_field() {
   # is the value "fix" to every real parser. Comparing the raw line would match
   # a TOML string spelled "fix #123" and call two genuinely different values
   # equal — the one failure direction this gate exists to prevent.
+  # An opening quote with no closing one is not a value at all — YAML refuses
+  # to load the file. Stripping just the opener would hand back something that
+  # compares equal to the TOML and pass a config no harness can read.
+  local body
   case "$raw" in
     '"'*)
-      raw="${raw#\"}"
-      raw="${raw%\"*}"
-      raw="${raw//\\\"/\"}"
+      body="${raw#\"}"
+      case "$body" in
+        *'"'*) raw="${body%\"*}"; raw="${raw//\\\"/\"}" ;;
+        *) printf 'UNTERMINATED_QUOTE'; return ;;
+      esac
       ;;
     "'"*)
-      raw="${raw#\'}"
-      raw="${raw%\'*}"
-      raw="${raw//\'\'/\'}"
+      body="${raw#\'}"
+      case "$body" in
+        *"'"*) raw="${body%\'*}"; raw="${raw//\'\'/\'}" ;;
+        *) printf 'UNTERMINATED_QUOTE'; return ;;
+      esac
       ;;
     *)
       raw="${raw%% #*}"
@@ -123,6 +131,10 @@ for toml in "${tomls[@]}"; do
       echo "UNREADABLE: ${md} writes ${field} as a YAML block scalar (> or |)" >&2
       echo "  this check only reads single-line values — put it on one line" >&2
       status=1
+    elif [ "$md_value" = "UNTERMINATED_QUOTE" ]; then
+      echo "MALFORMED: ${md} opens a quote on ${field} and never closes it" >&2
+      echo "  YAML cannot load this file at all — close the quote" >&2
+      status=1
     elif [ -z "$md_value" ] || [ -z "$toml_value" ]; then
       echo "MISSING: ${agent} has no ${field} in $([ -z "$md_value" ] && echo "$md" || echo "$toml")" >&2
       status=1
@@ -146,23 +158,31 @@ done
 # The list is explicit rather than derived from `git ls-files -s`: a mode that
 # has already been committed as a regular file would drop out of a derived list
 # and take the failure with it, which is exactly the drift this guards.
+# link:target:kind — kind is what the target must still BE. A path that exists
+# but changed shape (agent-memory becoming a file, CLAUDE.md becoming a
+# directory) is unusable to every consumer while passing a bare existence test.
 declare -a EXPECTED_LINKS=(
-  "AGENTS.md:CLAUDE.md"
-  "apps/ios/AGENTS.md:CLAUDE.md"
-  "apps/web/AGENTS.md:CLAUDE.md"
-  ".agents/skills/advisor/SKILL.md:../../../.claude/skills/advisor/SKILL.md"
-  "apps/web/.claude/agent-memory:../../../.claude/agent-memory"
+  "AGENTS.md:CLAUDE.md:file"
+  "apps/ios/AGENTS.md:CLAUDE.md:file"
+  "apps/web/AGENTS.md:CLAUDE.md:file"
+  ".agents/skills/advisor/SKILL.md:../../../.claude/skills/advisor/SKILL.md:file"
+  "apps/web/.claude/agent-memory:../../../.claude/agent-memory:dir"
 )
 
 for entry in "${EXPECTED_LINKS[@]}"; do
-  link="${entry%%:*}"
-  want="${entry#*:}"
+  IFS=: read -r link want kind <<< "$entry"
   if [ ! -e "$link" ] && [ ! -L "$link" ]; then
     echo "MISSING: ${link} does not exist — it must be a symlink to ${want}" >&2
     status=1
   elif [ ! -L "$link" ]; then
     echo "NOT A SYMLINK: ${link} is a regular file; it must be a symlink to ${want}" >&2
-    echo "  restore with: rm '${link}' && ln -s '${want}' '${link}'" >&2
+    # Not a copy-paste one-liner on purpose: the file may hold edits that never
+    # reached the canonical copy, and a chained rm would take them with it.
+    echo "  check first whether it carries anything the canonical file lacks:" >&2
+    echo "    diff $(dirname "$link")/${want} ${link}" >&2
+    echo "  then, once nothing is left to save, replace it:" >&2
+    echo "    rm ${link}" >&2
+    echo "    ln -s ${want} ${link}" >&2
     status=1
   else
     got="$(readlink "$link")"
@@ -174,6 +194,9 @@ for entry in "${EXPECTED_LINKS[@]}"; do
       # right but the sibling it names has been renamed or deleted out from
       # under it, and every harness reading through the link now gets nothing.
       echo "DANGLING: ${link} -> ${want}, but that target does not exist" >&2
+      status=1
+    elif { [ "$kind" = "dir" ] && [ ! -d "$link" ]; } || { [ "$kind" = "file" ] && [ ! -f "$link" ]; }; then
+      echo "WRONG KIND: ${link} -> ${want} resolves, but the target is not a ${kind}" >&2
       status=1
     else
       echo "ok: ${link} -> ${want}"
