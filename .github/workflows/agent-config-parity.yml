@@ -24,6 +24,7 @@ on:
       # link dangling while touching no path on the link's own side.
       - ".claude/agent-memory/**"
       - "scripts/check-agent-config-parity.sh"
+      - "scripts/check-agent-config-parity.test.sh"
       - ".github/workflows/agent-config-parity.yml"
   pull_request:
     branches: [main]
@@ -44,6 +45,7 @@ on:
       # link dangling while touching no path on the link's own side.
       - ".claude/agent-memory/**"
       - "scripts/check-agent-config-parity.sh"
+      - "scripts/check-agent-config-parity.test.sh"
       - ".github/workflows/agent-config-parity.yml"
 
 jobs:
@@ -53,5 +55,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
+      # The extractors first: every case in here is a review finding where a
+      # malformed field read back as a value that matched its counterpart, so
+      # the gate below would have printed ok on an unloadable config.
+      - run: ./scripts/check-agent-config-parity.test.sh
 
       - run: ./scripts/check-agent-config-parity.sh
