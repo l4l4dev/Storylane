@@ -1,36 +1,25 @@
 -- ============================================================
--- Assignee changes have never produced an activity_logs row. spec/screens.md
--- "Conflict & failure rules" says the trigger "records state/assignment
--- events", which read either as the iteration assignment it already logs or as
--- the story's assignee — and assignee sits in the same section's list of
--- autosaved Discrete fields alongside points, which does produce a row.
---
--- Resolved as the assignee. That sentence is reworded in the same change to
--- name its fields, so spec/screens.md — not this comment — is where the
--- watched list now lives.
---
--- The composite FK from 20260730030000 is the reason this matters beyond
--- symmetry: `on delete set null (assignee_id)` unassigns every story a removed
--- member held, and until now that happened with no trace anywhere. The FK
--- performs a real UPDATE on stories, so the branch below covers the cascade
--- without special-casing it, and auth.uid() there is the member who did the
--- removing.
---
--- move_story_to_project / copy_story_to_project drop a non-member assignee
--- (20260730030000) but do it while INSERTing the story into the target
--- project, not by updating the source row — so they produce story.created,
--- never this action, and need nothing here.
+-- The fields this trigger watches are listed in spec/screens.md
+-- "Conflict & failure rules"; adding one means changing that line too.
 --
 -- Ids only, never display names. `profiles` SELECT is
--- `id = auth.uid() or shares_project_with(id)` since 20260709000001, and this
--- function is SECURITY DEFINER — snapshotting a name into the payload would
--- hand a former member's display name to anyone who later joins the project
--- and could not otherwise read that profile. Readers resolve the ids under
--- their own RLS, which is what the actor column has always done
--- (`actor:profiles(display_name)`, falling back to "Someone").
+-- `id = auth.uid() or shares_project_with(id)` (20260709000001) and this
+-- function is SECURITY DEFINER, so a name stored in the payload would outlive
+-- the membership that authorised reading it — anyone joining the project later
+-- could read a former member's name from a row RLS would deny them directly.
+-- Readers resolve the ids under their own RLS, as the actor column already does
+-- (`actor:profiles(display_name)`, falling back to "Someone"). Storing names
+-- would be safe for `story.state_changed`, whose states are not RLS-scoped, and
+-- is not safe here.
 --
--- story.state_changed stores state names directly because states are not
--- RLS-scoped; profiles are. The two are not the same case.
+-- The assignee branch also covers a write no caller performs: the composite FK
+-- `on delete set null (assignee_id)` (20260730030000) unassigns a removed
+-- member's stories with a real UPDATE on `stories`, so it needs no special
+-- case, and auth.uid() there is the member who did the removing.
+--
+-- move_story_to_project / copy_story_to_project drop a non-member assignee
+-- while INSERTing into the target project rather than updating the source row,
+-- so they produce story.created and never reach this branch.
 -- ============================================================
 
 -- Verbatim from 20260803000000_mark_containerize_bookkeeping.sql — the CURRENT

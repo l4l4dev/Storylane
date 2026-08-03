@@ -58,6 +58,24 @@ function activityQuery(rows: ReturnType<typeof log>[]) {
   return builder;
 }
 
+function profilesQuery(rows: { id: string; display_name: string }[]) {
+  const builder = { select: vi.fn(), in: vi.fn() };
+  builder.select.mockReturnValue(builder);
+  builder.in.mockResolvedValue({ data: rows });
+  return builder;
+}
+
+function assigneeLog(payload: Record<string, unknown>) {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    action: "story.assignee_changed",
+    payload,
+    created_at: "2026-08-03T12:00:00Z",
+    actor: { display_name: "Dev User", is_agent: false },
+    story: { title: "Add welcome tour" },
+  };
+}
+
 describe("ProjectActivityPage", () => {
   beforeEach(() => {
     fromMock.mockReset();
@@ -96,6 +114,48 @@ describe("ProjectActivityPage", () => {
     render(await ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }));
 
     expect(query.filter).toHaveBeenCalledWith("payload->>bookkeeping", "is", null);
+  });
+
+  // The payload carries assignee ids and no names (20260803010000), so the
+  // feed is only readable if this page resolves them itself.
+  it("resolves an assignee name through a profiles query", async () => {
+    const query = activityQuery([assigneeLog({ from_id: null, to_id: "u1" })]);
+    const profiles = profilesQuery([{ id: "u1", display_name: "Rin" }]);
+    fromMock.mockImplementation((table: string) =>
+      table === "projects" ? projectQuery() : table === "profiles" ? profiles : query,
+    );
+
+    render(await ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }));
+
+    expect(profiles.in).toHaveBeenCalledWith("id", ["u1"]);
+    expect(screen.getByText('Dev User assigned "Add welcome tour" to Rin')).toBeInTheDocument();
+  });
+
+  // A profile the reader's RLS withholds comes back missing, not empty — the
+  // row must still say an assignment happened.
+  it("falls back to someone when RLS withholds the profile", async () => {
+    const query = activityQuery([assigneeLog({ from_id: null, to_id: "u1" })]);
+    fromMock.mockImplementation((table: string) =>
+      table === "projects" ? projectQuery() : table === "profiles" ? profilesQuery([]) : query,
+    );
+
+    render(await ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText('Dev User assigned "Add welcome tour" to someone')).toBeInTheDocument();
+  });
+
+  // No assignee rows on the page means no ids to resolve, so the extra
+  // round trip must not happen at all.
+  it("skips the profiles query when the page has no assignee rows", async () => {
+    const query = activityQuery([log(0)]);
+    const profiles = profilesQuery([]);
+    fromMock.mockImplementation((table: string) =>
+      table === "projects" ? projectQuery() : table === "profiles" ? profiles : query,
+    );
+
+    render(await ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }));
+
+    expect(profiles.select).not.toHaveBeenCalled();
   });
 
   it("uses the cursor to fetch older rows and offers a stable Newer cursor", async () => {
