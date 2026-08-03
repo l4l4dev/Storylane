@@ -100,11 +100,6 @@ describe.skipIf(!RUN)("parent_id hierarchy triggers (integration)", () => {
     expect(reverted.data?.is_container).toBe(false);
   });
 
-  // fable-advisor (TASK-183 review): a normal story has no epic_color, so
-  // containerizing it via split_story or the Parent picker left epics
-  // colorless — a regression vs. the old promote flow's default. Fixed on
-  // the false->true flip itself (the single authority for containerization,
-  // regardless of which path triggered it).
   /** A story on the board with a state and an iteration — the shape whose
    *  containerization actually produces all three bookkeeping rows. */
   async function createBoardStory(fields: { title: string; points?: number | null }) {
@@ -306,6 +301,24 @@ describe.skipIf(!RUN)("parent_id hierarchy triggers (integration)", () => {
     expect((containerized!.payload as { old_points: number | null }).old_points).toBeNull();
   });
 
+  // A story containerized by child membership has epic_pinned false and every
+  // board field already NULL, so it clears every guard in the RPC while having
+  // nothing left to containerize.
+  it("writes no second story.containerized when the story is already a container", async () => {
+    const parentId = await createBoardStory({ title: "Already an epic", points: 5 });
+    await createStory(projectId, { title: "Child of an epic", parent_id: parentId });
+
+    const { error } = await owner.rpc("set_epic_pinned", { p_story_id: parentId, p_pinned: true });
+    expect(error).toBeNull();
+
+    const { data: rows } = await admin
+      .from("activity_logs")
+      .select("action")
+      .eq("story_id", parentId)
+      .eq("action", "story.containerized");
+    expect(rows).toHaveLength(1);
+  });
+
   it("queues no Slack notification for the Turn-into-epic RPC either", async () => {
     const { error: integrationError } = await admin.from("integrations").insert({
       project_id: projectId,
@@ -395,6 +408,11 @@ describe.skipIf(!RUN)("parent_id hierarchy triggers (integration)", () => {
     }
   });
 
+  // fable-advisor (TASK-183 review): a normal story has no epic_color, so
+  // containerizing it via split_story or the Parent picker left epics
+  // colorless — a regression vs. the old promote flow's default. Fixed on
+  // the false->true flip itself (the single authority for containerization,
+  // regardless of which path triggered it).
   it("defaults epic_color to #6366f1 on containerization when the story had none", async () => {
     const parent = await createStory(projectId, { title: "Colorless" });
     await createStory(projectId, { title: "Child2", parent_id: parent.id });

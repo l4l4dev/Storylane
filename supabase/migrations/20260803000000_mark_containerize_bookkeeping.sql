@@ -233,14 +233,20 @@ begin
     if v_row.parent_id is not null then
       raise exception 'A child story cannot become an epic (single-level nesting)' using errcode = 'P0001';
     end if;
-    -- Unconditional + coalesced actor_id, matching recompute_is_container
-    -- above; the three rows the UPDATE below produces are hidden from the
-    -- feeds on the understanding that this one speaks for them.
-    insert into public.activity_logs (project_id, story_id, actor_id, action, payload)
-    values (
-      v_row.project_id, v_row.id, coalesce(auth.uid(), v_row.created_by), 'story.containerized',
-      jsonb_build_object('old_points', v_row.points)
-    );
+    -- Coalesced actor_id and guarded on is_container, matching
+    -- recompute_is_container above; the three rows the UPDATE below produces
+    -- are hidden from the feeds on the understanding that this one speaks for
+    -- them. A story that is a container through child membership is already an
+    -- epic here (epic_pinned false, is_container true, board fields NULL), and
+    -- the UPDATE only flips epic_pinned — so an unguarded insert would render
+    -- a second "turned X into an epic" with nothing to speak for.
+    if not v_row.is_container then
+      insert into public.activity_logs (project_id, story_id, actor_id, action, payload)
+      values (
+        v_row.project_id, v_row.id, coalesce(auth.uid(), v_row.created_by), 'story.containerized',
+        jsonb_build_object('old_points', v_row.points)
+      );
+    end if;
     perform set_config('storylane.bookkeeping', 'containerize', true);
     update public.stories
       set epic_pinned = true, points = null, state_id = null, iteration_id = null,
