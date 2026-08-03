@@ -32,7 +32,7 @@ export type BurndownPoint = { date: string; remaining: number; ideal: number };
  * the defect this whole replay exists to remove. Set past the merge date for
  * that reason — the production apply cannot precede it.
  */
-export const POINTS_HISTORY_FROM = "2026-08-02";
+export const POINTS_HISTORY_FROM = "2026-08-03";
 
 /**
  * Which stories each iteration's chart has to consider, beyond the ones whose
