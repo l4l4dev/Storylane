@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "apps/web/**"
+      - "apps/mcp/**"
       - "packages/**"
       - "supabase/**"
       - "pnpm-lock.yaml"
@@ -14,6 +15,7 @@ on:
     branches: [main]
     paths:
       - "apps/web/**"
+      - "apps/mcp/**"
       - "packages/**"
       - "supabase/**"
       - "pnpm-lock.yaml"
@@ -50,6 +52,9 @@ jobs:
       - name: Type check (web)
         run: pnpm --filter web exec tsc --noEmit
 
+      - name: Type check (mcp)
+        run: pnpm --filter mcp exec tsc --noEmit
+
       - name: Lint (web)
         run: pnpm --filter web run lint
 
@@ -59,6 +64,19 @@ jobs:
       - uses: supabase/setup-cli@v3
         with:
           version: 2.109.1
+
+      # Edge Functions run on Deno, not Node, so their tests need their own
+      # runtime — pnpm never sees them. Pinned for the same reason the CLI is.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.4
+
+      # Runs before `supabase start` so a broken function fails the job in
+      # seconds rather than after the stack is up. The glob only reaches
+      # index.test.ts — a function whose tests live in another file needs this
+      # pattern widened.
+      - name: Test (edge functions)
+        run: deno test --allow-env supabase/functions/*/index.test.ts
 
       # `supabase start` applies every migration to an empty database, which is
       # what proves the chain still applies in order. On a pull_request it does
@@ -92,6 +110,24 @@ jobs:
           export NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY"
           export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
           pnpm --filter web run test
+        env:
+          SUPABASE_INTEGRATION: "1"
+
+      # Same live stack, different env var names: the MCP server reads
+      # SUPABASE_URL/SUPABASE_ANON_KEY (it is not a Next app, so it has no
+      # NEXT_PUBLIC_ prefix). Its integration tests exercise the agent bot
+      # against real RLS, which is the layer its unit tests cannot reach.
+      - name: Run tests (mcp)
+        run: |
+          supabase_env="$(supabase status -o env)"
+          eval "$supabase_env"
+          : "${API_URL:?supabase status reported no API_URL}"
+          : "${ANON_KEY:?supabase status reported no ANON_KEY}"
+          : "${SERVICE_ROLE_KEY:?supabase status reported no SERVICE_ROLE_KEY}"
+          export SUPABASE_URL="$API_URL"
+          export SUPABASE_ANON_KEY="$ANON_KEY"
+          export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          pnpm --filter mcp run test
         env:
           SUPABASE_INTEGRATION: "1"
 

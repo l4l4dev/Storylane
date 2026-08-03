@@ -8,7 +8,7 @@ test("create project, add a story, accept it, and roll over the iteration", asyn
   // 1. Sign in as the seeded local dev user.
   await page.goto("/auth/login");
   await page.getByRole("button", { name: "Continue as dev user" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/my-work$/);
 
   // 2. Create a project (Tracker is the default mode — leave it unchanged).
   await page.getByRole("button", { name: "New project" }).click();
