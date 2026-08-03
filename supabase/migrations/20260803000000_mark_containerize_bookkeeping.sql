@@ -84,10 +84,12 @@ begin
       v_row.project_id, v_row.id, coalesce(auth.uid(), v_row.created_by), 'story.containerized',
       jsonb_build_object('old_points', v_row.points)
     );
-    -- Set here rather than in the callers: this function is reached from the
-    -- maintain_is_container trigger on several paths (split_story's child
-    -- inserts, a parent_id edit, an epic_pinned toggle), and a marker each
-    -- caller has to remember is one that eventually gets forgotten.
+    -- Set here rather than in the callers: the maintain_is_container trigger
+    -- reaches this function from several paths (split_story's child inserts, a
+    -- child leaving, a parent_id edit), and a marker each caller has to
+    -- remember is one that eventually gets forgotten. An epic_pinned toggle is
+    -- NOT one of them — that trigger is scoped to `update of parent_id` — which
+    -- is why set_epic_pinned below has to carry its own copy of all of this.
     perform set_config('storylane.bookkeeping', 'containerize', true);
     update public.stories
       set is_container = true, points = null, state_id = null, iteration_id = null,
