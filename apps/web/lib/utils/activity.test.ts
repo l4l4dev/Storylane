@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeActivity, hasActor } from "./activity";
+import { assigneeIdsIn, describeActivity, hasActor, withAssigneeNames } from "./activity";
 
 describe("describeActivity", () => {
   it("describes story creation", () => {
@@ -287,5 +287,43 @@ describe("hasActor", () => {
     expect(hasActor({ payload: { rollover: null } })).toBe(true);
     expect(hasActor({ payload: {} })).toBe(true);
     expect(hasActor({ payload: null })).toBe(true);
+  });
+});
+
+describe("assignee name resolution", () => {
+  const row = (payload: Record<string, unknown>) => ({ action: "story.assignee_changed", payload });
+
+  it("collects the ids a page refers to, deduped and without other actions", () => {
+    expect(
+      assigneeIdsIn([
+        row({ from_id: null, to_id: "u1" }),
+        row({ from_id: "u1", to_id: "u2" }),
+        { action: "story.points_changed", payload: { from: 1, to: 2 } },
+      ]),
+    ).toEqual(["u1", "u2"]);
+  });
+
+  it("leaves a name null when the reader's RLS did not return that profile", () => {
+    const names = new Map([["u1", "Rin"]]);
+    expect(withAssigneeNames({ from_id: "u1", to_id: "u2" }, names)).toEqual({
+      from_id: "u1",
+      to_id: "u2",
+      from_name: "Rin",
+      to_name: null,
+    });
+  });
+
+  // The whole point of resolving late: an unreadable profile must degrade to
+  // "someone", not leak a name and not lose the fact that someone was there.
+  it("still renders as an unassignment when the name is unavailable", () => {
+    const enriched = withAssigneeNames({ from_id: "u1", to_id: null }, new Map());
+    expect(
+      describeActivity({
+        action: "story.assignee_changed",
+        payload: enriched,
+        actorName: "Dev User",
+        storyTitle: "Add welcome tour",
+      }),
+    ).toBe('Dev User unassigned "Add welcome tour" from someone');
   });
 });

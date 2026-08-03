@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-30 12:11'
-updated_date: '2026-08-03 14:28'
+updated_date: '2026-08-03 14:42'
 labels: []
 milestone: m-2
 dependencies: []
@@ -177,4 +177,32 @@ worth not re-deriving:
 - LOW, ARCHITECTURE.md still said the trigger watches state_id and iteration_id:
   fixed, and it now points at spec/screens.md as the duplicate list to keep in
   step.
+
+## Codex review (2026-08-03) — P2, profile visibility. Adopted.
+
+The payload originally snapshotted from_name/to_name. `profiles` SELECT has been
+`id = auth.uid() or shares_project_with(id)` since 20260709000001 — the
+rls-security-reviewer pass read the ORIGINAL `using (true)` policy in
+20260627000001 and missed that it had been replaced, so its all-clear on this
+exact point was wrong. Verified against the live DB (pg_policies).
+
+Snapshotting meant a member who joined after someone left could read the former
+member's display name from the audit row, though RLS would deny them the
+profile itself.
+
+Fixed by storing ids only and resolving names in each reader under its own RLS —
+which is what the actor column has always done (`actor:profiles(display_name)`
+falling back to "Someone"). `story.state_changed` stores state names directly
+because states are not RLS-scoped; profiles are, and treating the two alike was
+the mistake.
+
+describeActivity needed no change: it already reads presence from the ids and
+treats names as labels, so the readers fold resolved names into the payload
+before rendering. Two pure helpers (assigneeIdsIn / withAssigneeNames) keep the
+extraction testable without a Supabase client.
+
+Lesson worth carrying: an rls-security-reviewer pass is not proof a policy is
+current. Check `pg_policies` on the live DB, or grep for LATER migrations that
+replace the policy — the same "find the current definition" discipline the
+function bodies already require.
 <!-- SECTION:NOTES:END -->

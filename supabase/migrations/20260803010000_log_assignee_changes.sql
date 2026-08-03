@@ -21,10 +21,16 @@
 -- project, not by updating the source row — so they produce story.created,
 -- never this action, and need nothing here.
 --
--- Both ids and display names are stored. story.state_changed keeps names alone
--- because a state name is unique within its project; two members can share a
--- display name, and an audit row that cannot say which one is not much of an
--- audit row.
+-- Ids only, never display names. `profiles` SELECT is
+-- `id = auth.uid() or shares_project_with(id)` since 20260709000001, and this
+-- function is SECURITY DEFINER — snapshotting a name into the payload would
+-- hand a former member's display name to anyone who later joins the project
+-- and could not otherwise read that profile. Readers resolve the ids under
+-- their own RLS, which is what the actor column has always done
+-- (`actor:profiles(display_name)`, falling back to "Someone").
+--
+-- story.state_changed stores state names directly because states are not
+-- RLS-scoped; profiles are. The two are not the same case.
 -- ============================================================
 
 -- Verbatim from 20260803000000_mark_containerize_bookkeeping.sql — the CURRENT
@@ -45,8 +51,6 @@ declare
   v_new_category text;
   v_old_iteration_number int;
   v_new_iteration_number int;
-  v_old_assignee text;
-  v_new_assignee text;
   v_bookkeeping text := nullif(current_setting('storylane.bookkeeping', true), '');
 begin
   if tg_op = 'INSERT' then
@@ -108,19 +112,12 @@ begin
   end if;
 
   if tg_op = 'UPDATE' and new.assignee_id is distinct from old.assignee_id then
-    if old.assignee_id is not null then
-      select display_name into v_old_assignee from public.profiles where id = old.assignee_id;
-    end if;
-    if new.assignee_id is not null then
-      select display_name into v_new_assignee from public.profiles where id = new.assignee_id;
-    end if;
     insert into public.activity_logs (project_id, story_id, actor_id, action, payload)
     values (
       new.project_id, new.id, coalesce(auth.uid(), new.created_by),
       'story.assignee_changed',
       jsonb_build_object(
         'from_id', old.assignee_id, 'to_id', new.assignee_id,
-        'from_name', v_old_assignee, 'to_name', v_new_assignee,
         -- Carried for uniformity with the three branches above, not because
         -- anything sets it today: no bookkeeping path touches assignee_id. A
         -- fourth branch that silently could not be marked is the asymmetry

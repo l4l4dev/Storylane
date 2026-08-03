@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { assertRowAffected } from "@/lib/supabase/assert";
 import type { ActionResult, ProjectState } from "@/lib/types";
 import { pointScaleValues } from "@/lib/utils/stories";
+import { assigneeIdsIn, withAssigneeNames } from "@/lib/utils/activity";
 import { buildContainerListItems, buildEpicBandChildren, type EpicBandChild } from "@/lib/utils/epics-list";
 import { currentIterationOf } from "@/lib/utils/kanban";
 import { isNonMemberAssigneeError, writeErrorMessage } from "@/lib/utils/write-error";
@@ -247,6 +248,18 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
       currentIterationId,
     )[storyId] ?? [];
 
+  // Resolved under the caller's RLS rather than read from the payload, which
+  // stores assignee ids only — see the header of 20260803010000.
+  const assigneeNames = new Map<string, string>();
+  const assigneeIds = assigneeIdsIn(history ?? []);
+  if (assigneeIds.length > 0) {
+    const { data: assignees } = await supabase
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", assigneeIds);
+    for (const profile of assignees ?? []) assigneeNames.set(profile.id, profile.display_name);
+  }
+
   return {
     id: story.id,
     projectId: story.project_id,
@@ -304,7 +317,7 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
       return {
         id: entry.id,
         action: entry.action,
-        payload: entry.payload,
+        payload: withAssigneeNames(entry.payload, assigneeNames),
         actorName: actor?.display_name ?? "Someone",
         actorIsAgent: actor?.is_agent ?? false,
         createdAt: entry.created_at,

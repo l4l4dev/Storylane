@@ -221,12 +221,7 @@ describe.skipIf(!RUN)("assignee membership FK (integration)", () => {
     return (data ?? []) as { actor_id: string; payload: Record<string, unknown> }[];
   }
 
-  async function displayNameOf(userId: string) {
-    const { data } = await asService.from("profiles").select("display_name").eq("id", userId).single();
-    return data?.display_name ?? null;
-  }
-
-  it("logs an assignee change with both ids and both display names", async () => {
+  it("logs an assignee change as ids, with no display name in the payload", async () => {
     const projectId = await createProject(`assignee-log-set-${Date.now()}`);
     await addMember(projectId, memberId);
     const storyId = await createStory(projectId, "Log me", null);
@@ -246,12 +241,12 @@ describe.skipIf(!RUN)("assignee membership FK (integration)", () => {
     const logs = await assigneeLogs(storyId);
     expect(logs).toHaveLength(1);
     expect(logs[0].actor_id).toBe(ownerId);
-    expect(logs[0].payload).toMatchObject({
-      from_id: null,
-      to_id: memberId,
-      from_name: null,
-      to_name: await displayNameOf(memberId),
-    });
+    expect(logs[0].payload).toMatchObject({ from_id: null, to_id: memberId });
+    // profiles SELECT is `id = auth.uid() or shares_project_with(id)`, and the
+    // trigger is SECURITY DEFINER — a name stored here would outlive the
+    // membership that authorised reading it.
+    expect(logs[0].payload).not.toHaveProperty("to_name");
+    expect(logs[0].payload).not.toHaveProperty("from_name");
   });
 
   // The cascade is the case with no code path of its own: the composite FK
@@ -268,6 +263,6 @@ describe.skipIf(!RUN)("assignee membership FK (integration)", () => {
     const logs = await assigneeLogs(storyId);
     expect(logs).toHaveLength(1);
     expect(logs[0].actor_id).toBe(ownerId);
-    expect(logs[0].payload).toMatchObject({ from_id: memberId, to_id: null, to_name: null });
+    expect(logs[0].payload).toMatchObject({ from_id: memberId, to_id: null });
   });
 });
