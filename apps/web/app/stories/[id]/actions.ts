@@ -137,6 +137,10 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         .eq("story_id", storyId)
         .in("action", ["story.created", "story.state_changed", "story.column_changed", "story.points_changed"])
         .order("created_at", { ascending: false })
+        // Tiebreak so the limit(50) boundary is deterministic: without it two
+        // rows sharing a timestamp can land on either side of the cutoff
+        // between requests.
+        .order("id", { ascending: false })
         .limit(50),
       supabase
         .from("project_states")
