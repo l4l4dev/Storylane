@@ -75,8 +75,16 @@ jobs:
       # seconds rather than after the stack is up. The glob only reaches
       # index.test.ts — a function whose tests live in another file needs this
       # pattern widened.
+      #
+      # --node-modules-dir=none makes Deno resolve `npm:` specifiers from its
+      # own cache instead of the node_modules pnpm just laid out. That is how
+      # these functions actually run in production (Deno runtime, no
+      # node_modules), and without it the step depends on whether pnpm happened
+      # to hoist @supabase/supabase-js to the root — it does locally and does
+      # not on CI. It also keeps Deno from reading pnpm-workspace.yaml, which it
+      # otherwise offers to migrate into package.json mid-run.
       - name: Test (edge functions)
-        run: deno test --allow-env supabase/functions/*/index.test.ts
+        run: deno test --allow-env --node-modules-dir=none supabase/functions/*/index.test.ts
 
       # `supabase start` applies every migration to an empty database, which is
       # what proves the chain still applies in order. On a pull_request it does
