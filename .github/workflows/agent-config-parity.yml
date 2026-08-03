@@ -20,6 +20,9 @@ on:
       - "apps/*/AGENTS.md"
       - "apps/*/CLAUDE.md"
       - "apps/*/.claude/**"
+      # ...and the canonical targets, since deleting or renaming one leaves the
+      # link dangling while touching no path on the link's own side.
+      - ".claude/agent-memory/**"
       - "scripts/check-agent-config-parity.sh"
       - ".github/workflows/agent-config-parity.yml"
   pull_request:
@@ -37,6 +40,9 @@ on:
       - "apps/*/AGENTS.md"
       - "apps/*/CLAUDE.md"
       - "apps/*/.claude/**"
+      # ...and the canonical targets, since deleting or renaming one leaves the
+      # link dangling while touching no path on the link's own side.
+      - ".claude/agent-memory/**"
       - "scripts/check-agent-config-parity.sh"
       - ".github/workflows/agent-config-parity.yml"
 

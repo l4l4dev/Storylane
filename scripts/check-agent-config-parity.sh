@@ -44,12 +44,28 @@ md_field() {
   # and Claude agent descriptions routinely read "Use when: ...". TOML always
   # quotes. Unquoting both sides is what stops that difference reporting as
   # drift between two identical strings, which is unfixable-looking in CI.
-  if [ ${#raw} -ge 2 ]; then
-    case "$raw" in
-      '"'*'"') raw="${raw:1:${#raw}-2}"; raw="${raw//\\\"/\"}" ;;
-      "'"*"'") raw="${raw:1:${#raw}-2}"; raw="${raw//\'\'/\'}" ;;
-    esac
-  fi
+  #
+  # The value has to be read the way YAML reads it, not as raw line text. In a
+  # PLAIN scalar an unquoted " #" starts a comment, so `description: fix #123`
+  # is the value "fix" to every real parser. Comparing the raw line would match
+  # a TOML string spelled "fix #123" and call two genuinely different values
+  # equal — the one failure direction this gate exists to prevent.
+  case "$raw" in
+    '"'*)
+      raw="${raw#\"}"
+      raw="${raw%\"*}"
+      raw="${raw//\\\"/\"}"
+      ;;
+    "'"*)
+      raw="${raw#\'}"
+      raw="${raw%\'*}"
+      raw="${raw//\'\'/\'}"
+      ;;
+    *)
+      raw="${raw%% #*}"
+      raw="${raw%"${raw##*[![:space:]]}"}"
+      ;;
+  esac
   printf '%s' "$raw"
 }
 
