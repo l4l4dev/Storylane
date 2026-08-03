@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
-import { toggleStoryTask } from "./handlers.js";
+import { getStory, toggleStoryTask } from "./handlers.js";
 
 // Mocked-client regression test for TASK-114 (doc-13 finding #6): the
 // archived-project guard must fail closed, not silently skip, when the
@@ -68,5 +68,55 @@ describe("toggleStoryTask", () => {
       title: "x",
       is_done: true,
     });
+  });
+});
+
+// The three rows containerizing writes are marked, not suppressed (see
+// supabase/migrations/20260803000000_mark_containerize_bookkeeping.sql), so
+// every reader has to opt out of them for itself.
+describe("getStory activity", () => {
+  it("drops bookkeeping rows before the ten-row limit", async () => {
+    const chainCalls: { method: string; args: unknown[] }[] = [];
+    const logChain: Record<string, unknown> = {};
+    for (const method of ["select", "eq", "filter", "order"]) {
+      logChain[method] = (...args: unknown[]) => {
+        chainCalls.push({ method, args });
+        return logChain;
+      };
+    }
+    logChain.limit = async () => ({ data: [], error: null });
+
+    const supabase = {
+      from: (table: string) => {
+        if (table === "activity_logs") return logChain;
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: {
+                  id: "story-1",
+                  number: 1,
+                  title: "x",
+                  story_type: "feature",
+                  state_id: null,
+                  state: null,
+                  is_container: false,
+                },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      },
+    } as unknown as SupabaseClient;
+
+    await getStory(supabase, { story_id: "story-1" });
+
+    expect(chainCalls).toContainEqual({
+      method: "filter",
+      args: ["payload->>bookkeeping", "is", null],
+    });
+    // Before the limit, or three bookkeeping rows evict real history.
+    expect(chainCalls.map((c) => c.method)).toEqual(["select", "eq", "filter", "order"]);
   });
 });

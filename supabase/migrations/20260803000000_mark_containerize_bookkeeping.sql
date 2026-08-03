@@ -22,6 +22,8 @@
 --   buildBurndown        — ignores the marker, replays as before
 --   project activity feed — hides marked rows; story.containerized says it
 --   story detail history  — same
+--   MCP get_story         — same, and before its limit(10) so the marked rows
+--                           cannot evict real history from an agent's window
 --   Slack outbox          — skips marked rows in its trigger WHEN clause
 --
 -- A separate GUC from storylane.rollover (20260731000000) rather than more

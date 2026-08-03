@@ -407,6 +407,10 @@ export async function getStory(supabase: Db, args: { story_id: string }) {
     .from("activity_logs")
     .select("action, payload, actor_id, created_at")
     .eq("story_id", story_id)
+    // Containerizing writes three bookkeeping rows for the action
+    // story.containerized already names. Dropped before the limit, not after,
+    // or they evict three rows of real history from the window an agent sees.
+    .filter("payload->>bookkeeping", "is", null)
     .order("created_at", { ascending: false })
     .limit(10);
 
