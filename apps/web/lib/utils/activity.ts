@@ -93,11 +93,15 @@ export function describeActivity(log: ActivityLog): string {
       // A removed member's stories are unassigned by the composite FK's
       // ON DELETE SET NULL (20260730030000), so the actor here is whoever
       // removed them, not someone who edited the story.
-      const from = payload.from_name ? String(payload.from_name) : null;
-      const to = payload.to_name ? String(payload.to_name) : null;
-      if (!to) return `${log.actorName} unassigned ${story}${from ? ` from ${from}` : ""}`;
-      if (!from) return `${log.actorName} assigned ${story} to ${to}`;
-      return `${log.actorName} reassigned ${story} from ${from} to ${to}`;
+      // Presence is read from the ids, never the names: display_name has no
+      // non-empty constraint and the profile may be gone by the time this row
+      // is read, and a missing name must not render as "nobody was assigned".
+      const name = (value: unknown) => (value ? String(value) : "someone");
+      const had = payload.from_id != null;
+      const has = payload.to_id != null;
+      if (!has) return `${log.actorName} unassigned ${story}${had ? ` from ${name(payload.from_name)}` : ""}`;
+      if (!had) return `${log.actorName} assigned ${story} to ${name(payload.to_name)}`;
+      return `${log.actorName} reassigned ${story} from ${name(payload.from_name)} to ${name(payload.to_name)}`;
     }
     case "story.points_changed": {
       const to = payload.to;

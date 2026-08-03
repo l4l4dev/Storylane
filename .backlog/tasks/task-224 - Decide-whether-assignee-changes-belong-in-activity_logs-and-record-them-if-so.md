@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-30 12:11'
-updated_date: '2026-08-03 14:15'
+updated_date: '2026-08-03 14:28'
 labels: []
 milestone: m-2
 dependencies: []
@@ -160,4 +160,21 @@ worth not re-deriving:
 - The payload carries ids AND display names. story.state_changed stores names
   alone because a state name is unique per project; display names are not
   unique, so an id is what makes the row unambiguous.
+
+## /code-review high (2026-08-03) — 3 findings
+
+- MEDIUM, member removal floods the feed with one row per story: NOT fixed here.
+  Owner ruled the rows stay — they are true, and the noise is strictly better
+  than the silence TASK-224 replaced. The TASK-225 marker cannot express it
+  because it hides a row from the story-detail panel too, which is where the
+  question "why did this story lose its assignee?" gets answered. Filed as
+  TASK-229 (feed-side collapse, not suppression).
+- LOW, describeActivity branched on the display name: fixed. display_name has no
+  non-empty CHECK and `authenticated` can PATCH its own, so assigning a story to
+  a user with a blank name rendered as an UNASSIGNMENT. Presence now reads from
+  from_id/to_id and names are labels only, with "someone" when a name is blank
+  or its profile is gone.
+- LOW, ARCHITECTURE.md still said the trigger watches state_id and iteration_id:
+  fixed, and it now points at spec/screens.md as the duplicate list to keep in
+  step.
 <!-- SECTION:NOTES:END -->

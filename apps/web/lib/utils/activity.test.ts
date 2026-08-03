@@ -155,28 +155,28 @@ describe("describeActivity", () => {
 
   it("describes a story being assigned, reassigned and unassigned", () => {
     const base = { action: "story.assignee_changed", actorName: "Dev User", storyTitle: "Add welcome tour" };
-    expect(describeActivity({ ...base, payload: { from_name: null, to_name: "Rin" } })).toBe(
-      'Dev User assigned "Add welcome tour" to Rin',
-    );
-    expect(describeActivity({ ...base, payload: { from_name: "Rin", to_name: "Kai" } })).toBe(
-      'Dev User reassigned "Add welcome tour" from Rin to Kai',
-    );
-    expect(describeActivity({ ...base, payload: { from_name: "Rin", to_name: null } })).toBe(
-      'Dev User unassigned "Add welcome tour" from Rin',
-    );
+    expect(
+      describeActivity({ ...base, payload: { from_id: null, to_id: "u1", from_name: null, to_name: "Rin" } }),
+    ).toBe('Dev User assigned "Add welcome tour" to Rin');
+    expect(
+      describeActivity({ ...base, payload: { from_id: "u1", to_id: "u2", from_name: "Rin", to_name: "Kai" } }),
+    ).toBe('Dev User reassigned "Add welcome tour" from Rin to Kai');
+    expect(
+      describeActivity({ ...base, payload: { from_id: "u1", to_id: null, from_name: "Rin", to_name: null } }),
+    ).toBe('Dev User unassigned "Add welcome tour" from Rin');
   });
 
-  // The composite FK's ON DELETE SET NULL fires on a member removal, and the
-  // profile it points at can be gone by the time the row is read.
-  it("still reads when the previous assignee's name is missing", () => {
-    expect(
-      describeActivity({
-        action: "story.assignee_changed",
-        actorName: "Dev User",
-        storyTitle: "Add welcome tour",
-        payload: { from_name: null, to_name: null },
-      }),
-    ).toBe('Dev User unassigned "Add welcome tour"');
+  // display_name has no non-empty constraint and the profile can be deleted, so
+  // reading presence off the name would invert the sentence: an assignment to
+  // someone with a blank name would render as an unassignment.
+  it("reads presence from the ids, not the names", () => {
+    const base = { action: "story.assignee_changed", actorName: "Dev User", storyTitle: "Add welcome tour" };
+    expect(describeActivity({ ...base, payload: { from_id: null, to_id: "u1", to_name: "" } })).toBe(
+      'Dev User assigned "Add welcome tour" to someone',
+    );
+    expect(describeActivity({ ...base, payload: { from_id: "u1", to_id: null, from_name: null } })).toBe(
+      'Dev User unassigned "Add welcome tour" from someone',
+    );
   });
 
   // Rows written before 20260731000000 carry no from_has_state/to_has_state.
