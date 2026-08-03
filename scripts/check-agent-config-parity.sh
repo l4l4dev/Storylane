@@ -73,6 +73,14 @@ md_field() {
       # "fix #123" and call two genuinely different values equal.
       raw="${raw%% #*}"
       raw="${raw%"${raw##*[![:space:]]}"}"
+      # A plain scalar may not contain ": " or end in ":" — YAML reads that as
+      # a nested mapping and refuses the file. `description: Use when: ...` is
+      # the spelling these agents reach for, and it needs quoting to be legal;
+      # returning the raw text would match a quoted TOML twin and pass a file
+      # nothing can load.
+      case "$raw" in
+        *": "*|*:) printf '%s' "$MALFORMED_SCALAR"; return ;;
+      esac
       ;;
   esac
   printf '%s' "$raw"
@@ -83,7 +91,12 @@ md_field() {
 # `sub(/"$/, ...)` left it unchanged, so it still equalled the valid YAML side.
 toml_field() {
   local raw pat
-  raw="$(grep -m1 -E "^[[:space:]]*$2[[:space:]]*=" "$1" || true)"
+  # Header only — everything before developer_instructions. The body is prose
+  # that can legitimately contain a line like `description = "..."` as an
+  # example, and reading that would let body text stand in for a top-level
+  # field that has actually been deleted.
+  raw="$(awk '/^developer_instructions[[:space:]]*=/ {exit} {print}' "$1" \
+    | grep -m1 -E "^[[:space:]]*$2[[:space:]]*=" || true)"
   [ -n "$raw" ] || return 0
   raw="${raw%"${raw##*[![:space:]]}"}"
   # Built in double quotes for the key, so every backslash needs doubling: the
@@ -96,6 +109,46 @@ toml_field() {
 # Leading/trailing blank lines are an artifact of each format's delimiters.
 trim() {
   awk 'NF {p=1} p' | awk '{lines[NR]=$0} END {last=NR; while (last>0 && lines[last]=="") last--; for (i=1;i<=last;i++) print lines[i]}'
+}
+
+# One link, given explicitly rather than read from the table, so the failure
+# branches can be exercised against fixtures instead of only ever running on an
+# intact checkout. Prints the diagnosis; returns 1 if the link is not healthy.
+check_link() {
+  local link="$1" want="$2" kind="$3"
+  if [ ! -e "$link" ] && [ ! -L "$link" ]; then
+    echo "MISSING: ${link} does not exist — it must be a symlink to ${want}" >&2
+    return 1
+  fi
+  if [ ! -L "$link" ]; then
+    echo "NOT A SYMLINK: ${link} is a regular file; it must be a symlink to ${want}" >&2
+    # Not a copy-paste one-liner on purpose: the file may hold edits that never
+    # reached the canonical copy, and a chained rm would take them with it.
+    echo "  check first whether it carries anything the canonical file lacks:" >&2
+    echo "    diff $(dirname "$link")/${want} ${link}" >&2
+    echo "  then, once nothing is left to save, replace it:" >&2
+    echo "    rm ${link}" >&2
+    echo "    ln -s ${want} ${link}" >&2
+    return 1
+  fi
+  local got
+  got="$(readlink "$link")"
+  if [ "$got" != "$want" ]; then
+    echo "WRONG TARGET: ${link} points at ${got}, expected ${want}" >&2
+    return 1
+  fi
+  # -e follows the link, so this is the dangling case: the text is still right
+  # but the sibling it names has been renamed or deleted out from under it, and
+  # every harness reading through the link now gets nothing.
+  if [ ! -e "$link" ]; then
+    echo "DANGLING: ${link} -> ${want}, but that target does not exist" >&2
+    return 1
+  fi
+  if { [ "$kind" = "dir" ] && [ ! -d "$link" ]; } || { [ "$kind" = "file" ] && [ ! -f "$link" ]; }; then
+    echo "WRONG KIND: ${link} -> ${want} resolves, but the target is not a ${kind}" >&2
+    return 1
+  fi
+  echo "ok: ${link} -> ${want}"
 }
 
 main() {
@@ -178,37 +231,7 @@ main() {
 
   for entry in "${EXPECTED_LINKS[@]}"; do
     IFS=: read -r link want kind <<< "$entry"
-    if [ ! -e "$link" ] && [ ! -L "$link" ]; then
-      echo "MISSING: ${link} does not exist — it must be a symlink to ${want}" >&2
-      status=1
-    elif [ ! -L "$link" ]; then
-      echo "NOT A SYMLINK: ${link} is a regular file; it must be a symlink to ${want}" >&2
-      # Not a copy-paste one-liner on purpose: the file may hold edits that never
-      # reached the canonical copy, and a chained rm would take them with it.
-      echo "  check first whether it carries anything the canonical file lacks:" >&2
-      echo "    diff $(dirname "$link")/${want} ${link}" >&2
-      echo "  then, once nothing is left to save, replace it:" >&2
-      echo "    rm ${link}" >&2
-      echo "    ln -s ${want} ${link}" >&2
-      status=1
-    else
-      got="$(readlink "$link")"
-      if [ "$got" != "$want" ]; then
-        echo "WRONG TARGET: ${link} points at ${got}, expected ${want}" >&2
-        status=1
-      elif [ ! -e "$link" ]; then
-        # -e follows the link, so this is the dangling case: the text is still
-        # right but the sibling it names has been renamed or deleted out from
-        # under it, and every harness reading through the link now gets nothing.
-        echo "DANGLING: ${link} -> ${want}, but that target does not exist" >&2
-        status=1
-      elif { [ "$kind" = "dir" ] && [ ! -d "$link" ]; } || { [ "$kind" = "file" ] && [ ! -f "$link" ]; }; then
-        echo "WRONG KIND: ${link} -> ${want} resolves, but the target is not a ${kind}" >&2
-        status=1
-      else
-        echo "ok: ${link} -> ${want}"
-      fi
-    fi
+    check_link "$link" "$want" "$kind" || status=1
   done
 
   return $status
