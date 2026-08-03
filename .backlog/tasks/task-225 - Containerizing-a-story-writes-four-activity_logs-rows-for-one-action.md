@@ -1,11 +1,11 @@
 ---
 id: TASK-225
 title: Containerizing a story writes four activity_logs rows for one action
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-31 23:49'
-updated_date: '2026-08-03 04:41'
+updated_date: '2026-08-03 14:06'
 labels: []
 milestone: m-2
 dependencies: []
@@ -36,12 +36,12 @@ The open question is WHERE to fix it: suppress the redundant rows at the trigger
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A decision is recorded on whether the redundant rows are suppressed at the trigger or collapsed in the reader, with the reason
-- [ ] #2 Turning a story into an epic produces one readable entry in the project activity feed, not four
-- [ ] #3 The burndown replay (apps/web/lib/utils/burndown.ts) still date-scopes a containerized story correctly — it leaves the iteration on the containerization date
-- [ ] #4 Story-detail history (apps/web/app/stories/[id]/actions.ts) is checked against the same change
-- [ ] #5 A test covers the containerization case end to end
-- [ ] #6 Containerizing a story in a Slack-connected project enqueues no story_state_changed notification — the state clearing is bookkeeping, and slack-notify would otherwise render its null "to" as "moved to the Icebox"
+- [x] #1 A decision is recorded on whether the redundant rows are suppressed at the trigger or collapsed in the reader, with the reason
+- [x] #2 Turning a story into an epic produces one readable entry in the project activity feed, not four
+- [x] #3 The burndown replay (apps/web/lib/utils/burndown.ts) still date-scopes a containerized story correctly — it leaves the iteration on the containerization date
+- [x] #4 Story-detail history (apps/web/app/stories/[id]/actions.ts) is checked against the same change
+- [x] #5 A test covers the containerization case end to end
+- [x] #6 Containerizing a story in a Slack-connected project enqueues no story_state_changed notification — the state clearing is bookkeeping, and slack-notify would otherwise render its null "to" as "moved to the Icebox"
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -62,3 +62,21 @@ Rejected: grouping adjacent rows by timestamp in the reader. Since 2026080200000
 
 Needs: fable-advisor review (trigger + migration + event path), then rls-security-reviewer on the migration.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Turning a story into an epic wrote four activity_logs rows for one action, and the Slack outbox announced "moved to the Icebox" on every epic because it fires on any story.state_changed and slack-notify maps a null `to` to the Icebox.
+
+AC#1 decision: the three rows the bookkeeping UPDATE produces are MARKED, not suppressed. buildBurndown rewinds from a story's current row — for an epic that row has points/state_id/iteration_id all NULL, so those transitions are how the replay learns the story held N points and sat in the iteration until that moment. Suppressing them would make a containerized story read as never having been a member (AC#3 of this same task). A payload marker rather than a new action name, because buildBurndown and describeActivity both switch on `action`.
+
+Implemented in 20260803000000_mark_containerize_bookkeeping.sql: recompute_is_container and set_epic_pinned wrap their UPDATE in a transaction-local storylane.bookkeeping GUC (the storylane.rollover pattern from 20260731000000), log_story_activity stamps it into the payload, and each reader decides — burndown ignores it, the project feed / story detail / MCP get_story filter it out, and the Slack outbox trigger's WHEN clause skips it.
+
+Three defects surfaced during review and were fixed in the same PR: story.containerized was only written for an estimated story (so an unestimated one lost its last trace); the story-detail whitelist never contained story.containerized; and set_epic_pinned — the actual "Turn into epic" button, which never routes through recompute_is_container — was entirely unfixed. A later /code-review pass caught that making that insert unconditional gave an already-container story a second story.containerized row; guarded on is_container.
+
+Verified on merged main (cf2c7d3): 903 web unit tests, 63 tests across the nesting/burndown/activity/story-detail suites with SUPABASE_INTEGRATION=1, 4 MCP tests, lint and tsc clean. Every new integration case was confirmed to fail with its fix reverted, including the is_container guard (2 rows instead of 1) and both reader filters.
+
+Reviews: fable-advisor, rls-security-reviewer x2, /code-review high x2 (MEDIUM 1 + LOW 2), Codex x3 (P2 x2, P3 x2). All findings addressed except one LOW accepted as-is: coalesce(auth.uid(), created_by) attributes a service-role containerization to the story's creator, matching what log_story_activity already does for the other three rows of the same UPDATE.
+
+NOT deployed — the migration still needs supabase db push in production (tracked under TASK-94, alongside PR #18 and #19).
+<!-- SECTION:FINAL_SUMMARY:END -->

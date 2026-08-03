@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-30 12:11'
+updated_date: '2026-08-03 13:13'
 labels: []
 milestone: m-2
 dependencies: []
@@ -30,3 +31,102 @@ First step is the owner's ruling on which reading of the spec is intended. Only 
 - [ ] #2 If assignee changes are in scope: log_story_activity records them, including the ON DELETE SET NULL cascade from remove_member, with a test covering both the direct write and the cascade
 - [ ] #3 If they are out of scope: no trigger change, and spec/rls.md or the migration notes why the cascade unassignment is deliberately unlogged
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Reader survey (done 2026-08-03, before implementation):
+
+| Reader | Effect of a new story.assignee_changed action |
+|---|---|
+| lib/utils/activity.ts describeActivity | falls through to `default:` ("performed story.assignee_changed on X") — NEEDS a case |
+| app/stories/[id]/actions.ts | `.in("action", [...])` whitelist — NEEDS the new name added |
+| app/projects/[id]/activity/page.tsx | no action filter, renders whatever describeActivity returns — no change |
+| app/projects/[id]/iterations/page.tsx | whitelists the 4 burndown actions; assignee is not one — correctly excluded, no change |
+| lib/utils/burndown.ts | only ever fed those 4 — no change |
+| apps/mcp/src/handlers.ts getStory | no whitelist, picks it up automatically — no change |
+| Slack outbox trigger | `when (new.action = 'story.state_changed' ...)` — no notification, no change |
+
+`stories_log_activity` is `after insert or update on public.stories for each row`
+with no column list (20260702000001), so only the function body changes; the
+trigger itself is not recreated.
+
+The composite FK `on delete set null (assignee_id)` on (project_id, assignee_id)
+(20260730030000) performs a real UPDATE on stories, which fires that row
+trigger — so the remove_member cascade is logged by the same branch, with
+auth.uid() correctly resolving to the remover.
+
+Steps:
+
+1. Migration: `create or replace function public.log_story_activity()` — copy
+   the CURRENT body (grep -ln "function public.log_story_activity"
+   supabase/migrations/*.sql | tail -1 FIRST; PR #22 rewrites it) and add an
+   `assignee_id is distinct from` branch writing `story.assignee_changed` with
+   from/to ids AND from_name/to_name resolved from profiles, matching how
+   story.state_changed stores state names rather than ids.
+2. Verify whether move_story_to_project / copy_story_to_project clear
+   assignee_id. If they do, decide there whether that row is real or
+   bookkeeping — the storylane.bookkeeping marker (20260803000000) is the
+   mechanism if it is. Not carrying the marker otherwise: no current
+   bookkeeping path touches assignee_id.
+3. describeActivity: assigned / unassigned / reassigned wordings, plus the
+   null-actor cascade case.
+4. Story-detail whitelist: add the action.
+5. spec/screens.md:441 — rewrite "state/assignment events" to name the fields
+   it means, so AC#1 cannot be re-litigated.
+6. Tests: describeActivity unit cases; integration for the direct write and for
+   the remove_member cascade.
+
+Gates: rls-security-reviewer on the migration (project rule), then
+/code-review high (owner-run), then PR. Not starting until PR #22 merges.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## AC#1 — owner's ruling (2026-08-03): assignee changes ARE in scope
+
+The owner read spec/screens.md:441's "state/assignment events" as covering the
+story's assignee, not only its iteration assignment. So log_story_activity gains
+assignee_id, and the spec sentence is rewritten to say so without ambiguity.
+
+Reasons recorded with the ruling:
+
+- points already produces a row and assignee does not, though spec/screens.md:405
+  lists both as autosaved Discrete fields. The asymmetry has no stated basis.
+- My Work makes the assignee a load-bearing field in this product; "who took
+  this" is exactly what a team reads a feed for.
+- TASK-221's composite FK unassigns stories on ON DELETE SET NULL with no trace
+  anywhere. Choosing the other reading would still have cost a written
+  justification (this task's AC#3), so the cost gap between the readings is small.
+
+## Tracker-parity check (spec/ux-principles.md "Tracker-parity verification")
+
+Fetched from the 2024 Wayback capture of the Pivotal Tracker help site:
+
+- `seeing_project_history` — "The Project History panel shows additions,
+  updates, and deletions of project information ... the action that was
+  performed". Not a whitelist of fields, and it explicitly calls out label
+  changes ("If a project collaborator adds a new label, the label name will be
+  shown in the project history item").
+- `seeing_story_history` — "all of the activity that's taken place within the
+  story". Again no field whitelist.
+- `story_owners` — owners are first-class, and "If you click Start on a story,
+  you will automatically become its owner", so ownership changes were routine
+  history traffic rather than an edge case.
+
+Conclusion: Tracker's history was broad by default; a state+iteration-only log
+is the narrower behaviour, and recording assignee moves toward parity rather
+than away from it. No deliberate divergence needed.
+
+Noted, NOT in this task's scope: Tracker also logged label changes. Storylane
+does not. Raise with the owner separately rather than widening this task.
+
+## Sequencing constraint
+
+This task must redefine log_story_activity, which the unmerged
+fix/containerize-bookkeeping-marker branch (TASK-225, PR #22) also redefines.
+Implementation waits for PR #22 to merge so the copied body is the current one
+— the mistake doc-26 records (copying a stale body and silently dropping a
+later guard) happens exactly here.
+<!-- SECTION:NOTES:END -->
