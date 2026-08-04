@@ -11,28 +11,6 @@ export function createTestAdminClient() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-// Sets a story's points directly via the DB, bypassing the side-peek UI.
-// The side peek isn't what this E2E spec is exercising (that's the board's
-// quick-add, one-click transitions, and iteration rollover) — estimating a
-// story is just a prerequisite so the "Start" transition button isn't
-// blocked (see transition-buttons.tsx's isUnestimatedFeature check).
-export async function estimateStory(projectId: string, title: string, points: number) {
-  const supabase = createTestAdminClient();
-  const { data: story, error: findError } = await supabase
-    .from("stories")
-    .select("id")
-    .eq("project_id", projectId)
-    .eq("title", title)
-    .single();
-  if (findError || !story) {
-    throw new Error(`Failed to find story "${title}" in project ${projectId}: ${findError?.message}`);
-  }
-  const { error: updateError } = await supabase.from("stories").update({ points }).eq("id", story.id);
-  if (updateError) {
-    throw new Error(`Failed to set points on story ${story.id}: ${updateError.message}`);
-  }
-}
-
 export async function backdateCurrentIteration(projectId: string) {
   const supabase = createTestAdminClient();
   // ensureCurrentIteration (app/projects/[id]/board/actions.ts) never sets
