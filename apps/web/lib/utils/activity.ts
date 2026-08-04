@@ -23,6 +23,38 @@ export function hasActor(log: Pick<ActivityLog, "payload">): boolean {
   return ((log.payload ?? {}) as Record<string, unknown>).rollover !== "auto";
 }
 
+/**
+ * The assignee ids a page of rows refers to, for the reader to resolve against
+ * `profiles` under its own RLS.
+ *
+ * story.assignee_changed stores ids and no names on purpose: the trigger that
+ * writes it is SECURITY DEFINER, so a name snapshotted there would reach
+ * readers whose `shares_project_with` check would deny them the profile
+ * (20260709000001). Resolving here means a former member's name is shown only
+ * to those who could look it up anyway.
+ */
+export function assigneeIdsIn(logs: Pick<ActivityLog, "action" | "payload">[]): string[] {
+  const ids = new Set<string>();
+  for (const log of logs) {
+    if (log.action !== "story.assignee_changed") continue;
+    const payload = (log.payload ?? {}) as Record<string, unknown>;
+    for (const key of ["from_id", "to_id"]) {
+      if (typeof payload[key] === "string") ids.add(payload[key] as string);
+    }
+  }
+  return [...ids];
+}
+
+/** Folds resolved names into a row's payload so describeActivity can label it. */
+export function withAssigneeNames(payload: unknown, names: Map<string, string>): unknown {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  return {
+    ...p,
+    from_name: typeof p.from_id === "string" ? (names.get(p.from_id) ?? null) : null,
+    to_name: typeof p.to_id === "string" ? (names.get(p.to_id) ?? null) : null,
+  };
+}
+
 /** Human-readable description of an activity_logs row for the timeline. */
 export function describeActivity(log: ActivityLog): string {
   const payload = (log.payload ?? {}) as Record<string, unknown>;
@@ -88,6 +120,20 @@ export function describeActivity(log: ActivityLog): string {
         return `${log.actorName} finished ${from}, rolling ${story} over to ${to}`;
       }
       return `${log.actorName} moved ${story} from ${from} to ${to}`;
+    }
+    case "story.assignee_changed": {
+      // A removed member's stories are unassigned by the composite FK's
+      // ON DELETE SET NULL (20260730030000), so the actor here is whoever
+      // removed them, not someone who edited the story.
+      // Presence is read from the ids, never the names: display_name has no
+      // non-empty constraint and the profile may be gone by the time this row
+      // is read, and a missing name must not render as "nobody was assigned".
+      const name = (value: unknown) => (value ? String(value) : "someone");
+      const had = payload.from_id != null;
+      const has = payload.to_id != null;
+      if (!has) return `${log.actorName} unassigned ${story}${had ? ` from ${name(payload.from_name)}` : ""}`;
+      if (!had) return `${log.actorName} assigned ${story} to ${name(payload.to_name)}`;
+      return `${log.actorName} reassigned ${story} from ${name(payload.from_name)} to ${name(payload.to_name)}`;
     }
     case "story.points_changed": {
       const to = payload.to;

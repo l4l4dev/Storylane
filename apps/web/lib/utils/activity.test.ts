@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeActivity, hasActor } from "./activity";
+import { assigneeIdsIn, describeActivity, hasActor, withAssigneeNames } from "./activity";
 
 describe("describeActivity", () => {
   it("describes story creation", () => {
@@ -153,6 +153,32 @@ describe("describeActivity", () => {
     );
   });
 
+  it("describes a story being assigned, reassigned and unassigned", () => {
+    const base = { action: "story.assignee_changed", actorName: "Dev User", storyTitle: "Add welcome tour" };
+    expect(
+      describeActivity({ ...base, payload: { from_id: null, to_id: "u1", from_name: null, to_name: "Rin" } }),
+    ).toBe('Dev User assigned "Add welcome tour" to Rin');
+    expect(
+      describeActivity({ ...base, payload: { from_id: "u1", to_id: "u2", from_name: "Rin", to_name: "Kai" } }),
+    ).toBe('Dev User reassigned "Add welcome tour" from Rin to Kai');
+    expect(
+      describeActivity({ ...base, payload: { from_id: "u1", to_id: null, from_name: "Rin", to_name: null } }),
+    ).toBe('Dev User unassigned "Add welcome tour" from Rin');
+  });
+
+  // display_name has no non-empty constraint and the profile can be deleted, so
+  // reading presence off the name would invert the sentence: an assignment to
+  // someone with a blank name would render as an unassignment.
+  it("reads presence from the ids, not the names", () => {
+    const base = { action: "story.assignee_changed", actorName: "Dev User", storyTitle: "Add welcome tour" };
+    expect(describeActivity({ ...base, payload: { from_id: null, to_id: "u1", to_name: "" } })).toBe(
+      'Dev User assigned "Add welcome tour" to someone',
+    );
+    expect(describeActivity({ ...base, payload: { from_id: "u1", to_id: null, from_name: null } })).toBe(
+      'Dev User unassigned "Add welcome tour" from someone',
+    );
+  });
+
   // Rows written before 20260731000000 carry no from_has_state/to_has_state.
   it("keeps the old Icebox wording for rows written without the state flags", () => {
     const text = describeActivity({
@@ -261,5 +287,43 @@ describe("hasActor", () => {
     expect(hasActor({ payload: { rollover: null } })).toBe(true);
     expect(hasActor({ payload: {} })).toBe(true);
     expect(hasActor({ payload: null })).toBe(true);
+  });
+});
+
+describe("assignee name resolution", () => {
+  const row = (payload: Record<string, unknown>) => ({ action: "story.assignee_changed", payload });
+
+  it("collects the ids a page refers to, deduped and without other actions", () => {
+    expect(
+      assigneeIdsIn([
+        row({ from_id: null, to_id: "u1" }),
+        row({ from_id: "u1", to_id: "u2" }),
+        { action: "story.points_changed", payload: { from: 1, to: 2 } },
+      ]),
+    ).toEqual(["u1", "u2"]);
+  });
+
+  it("leaves a name null when the reader's RLS did not return that profile", () => {
+    const names = new Map([["u1", "Rin"]]);
+    expect(withAssigneeNames({ from_id: "u1", to_id: "u2" }, names)).toEqual({
+      from_id: "u1",
+      to_id: "u2",
+      from_name: "Rin",
+      to_name: null,
+    });
+  });
+
+  // The whole point of resolving late: an unreadable profile must degrade to
+  // "someone", not leak a name and not lose the fact that someone was there.
+  it("still renders as an unassignment when the name is unavailable", () => {
+    const enriched = withAssigneeNames({ from_id: "u1", to_id: null }, new Map());
+    expect(
+      describeActivity({
+        action: "story.assignee_changed",
+        payload: enriched,
+        actorName: "Dev User",
+        storyTitle: "Add welcome tour",
+      }),
+    ).toBe('Dev User unassigned "Add welcome tour" from someone');
   });
 });

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { describeActivity, hasActor } from "@/lib/utils/activity";
+import { assigneeIdsIn, describeActivity, hasActor, withAssigneeNames } from "@/lib/utils/activity";
 import { formatDateTime } from "@/lib/utils/format";
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
 import { Button } from "@/components/ui/button";
@@ -104,6 +104,18 @@ export default async function ProjectActivityPage({
   const firstActivity = activityPage[0];
   const lastActivity = activityPage.at(-1);
 
+  // Resolved here rather than snapshotted into the payload, so the reader's own
+  // RLS decides whose name they see — same as the actor embed above.
+  const assigneeNames = new Map<string, string>();
+  const assigneeIds = assigneeIdsIn(activityPage);
+  if (assigneeIds.length > 0) {
+    const { data: assignees } = await supabase
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", assigneeIds);
+    for (const profile of assignees ?? []) assigneeNames.set(profile.id, profile.display_name);
+  }
+
   return (
     <main className="mx-auto max-w-3xl p-6">
       <h1 className="mb-6 text-2xl font-bold">Activity</h1>
@@ -119,7 +131,7 @@ export default async function ProjectActivityPage({
                   <span>
                     {describeActivity({
                       action: log.action,
-                      payload: log.payload,
+                      payload: withAssigneeNames(log.payload, assigneeNames),
                       actorName: actor?.display_name ?? "Someone",
                       storyTitle: storyRow?.title ?? null,
                     })}
