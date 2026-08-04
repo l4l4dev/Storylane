@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-25 03:14'
-updated_date: '2026-08-04 08:24'
+updated_date: '2026-08-04 10:46'
 labels:
   - db
 milestone: m-6
@@ -36,7 +36,7 @@ Since the migration is already applied, these need a NEW forward-fixing migratio
 - [x] #2 Trigger execution order between stories_aa_protect_epic_pinned and stories_derive_is_container is guarded by something stronger than a comment (e.g. an automated test reading pg_trigger, or a naming/ordering convention enforced elsewhere) so a future same-table trigger addition can't silently break it
 - [x] #3 Migration comments no longer cite specific review-pass provenance (rls-security-reviewer / TASK-189 / /code-review) per CLAUDE.md's Code Comment Policy
 - [x] #4 The audit-then-clear block and the #6366f1 default-color literal are defined once and reused by recompute_is_container/create_epic/set_epic_pinned instead of hand-duplicated
-- [ ] #5 rls-security-reviewer pass plus /code-review before merge (this migration touches TASK-182/TASK-189's remediation surface)
+- [x] #5 rls-security-reviewer pass plus /code-review before merge (this migration touches TASK-182/TASK-189's remediation surface)
 - [x] #6 The boolean expression 'epic_pinned OR has_children' is defined once and reused by derive_is_container's trigger body and recompute_is_container's v_should_be computation, not duplicated verbatim (found by TASK-191's /code-review)
 - [x] #7 protect_stories_epic_pinned's blanket role-based exemption (any SECURITY DEFINER function bypasses the guard) is narrowed to an explicit allowlist of the two writer functions, or the gap is explicitly reviewed and accepted as low-risk with a comment explaining why (found by TASK-191's /code-review)
 <!-- AC:END -->
@@ -68,5 +68,11 @@ TASK-196's WHEN-clause finding: WON'T-DO, and the reason is safety rather than p
 
 Verification: SUPABASE_INTEGRATION=1 pnpm test full suite 144 files / 1302 tests green (+2 new), lint + tsc clean. Advisor-specified five (epic-pinned, nesting, grant-lockdown integration + activity page + burndown) green individually. Applied with 'supabase migration up' rather than 'db reset' — the local DB holds other sessions' data. rls-security-reviewer pass: no issues found (confirmed the composite-type revoke signature resolves, the invoker choice is safe under nested-SECURITY-DEFINER current_user semantics, both exit guards intact, no path exits between set_config and its reset).
 
-AC#5 REMAINS OPEN: the rls-security-reviewer half is done and clean; /code-review high still needs the owner to run it (a model cannot start it).
+AC#5 IS NOW COMPLETE: the rls-security-reviewer half was already done and clean, and /code-review high ran 2026-08-04. Its findings against this migration are below.
+
+/code-review high (2026-08-04) FINDINGS FIXED — two of the ten landed on this migration, both comment-only (the SQL was found faithful: every recreated body matches its true latest source, no later migration silently reverted, every guard, exit guard and advisory lock preserved):
+
+1. containerize_story's header comment was wrong in a way that invited deleting a load-bearing guard. It claimed 'both callers guard on the same condition ... so the audit row is written iff the story was not already a container', but only recompute_is_container pre-checks. set_epic_pinned reaches containerize_story(v_row, true) for a story that is ALREADY a container through child membership: is_container true with epic_pinned false passes its idempotence comparison (verified by reading the body). So the internal `if not p_row.is_container` is the only thing preventing a phantom story.containerized row with old_points already null — the exact duplicate-log class TASK-225 was filed to remove. The comment now says the guard exists because one caller does not pre-check.
+
+2. Comment-policy violation in the DOWN block: '(NOT 20260724181957, which predates the exit guard TASK-223 added)'. The which-body-to-restore pointer is load-bearing and stayed; the task id went.
 <!-- SECTION:NOTES:END -->

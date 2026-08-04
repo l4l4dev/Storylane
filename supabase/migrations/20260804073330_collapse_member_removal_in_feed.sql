@@ -16,9 +16,9 @@
 --      page and "10 stories" on the next. Folding to one row before the reader
 --      sees it is the only shape that keeps the count true.
 --   2. Identifying which rows belong to one cascade cannot use a time window:
---      since 20260802000000 rows carry distinct clock_timestamp values, and
---      TASK-225 rejected window heuristics anyway. So the rows carry an explicit
---      token, set for the duration of the delete.
+--      since 20260802000000 rows carry distinct clock_timestamp values, so no
+--      window separates one cascade from unrelated writes beside it. The rows
+--      carry an explicit token instead, set for the duration of the delete.
 -- Rejected alternative: have the trigger infer a cascade by noticing
 -- old.assignee_id is no longer a member. It needs no session variable, but it is
 -- an inference rather than a fact, and it yields neither a group key nor a count.

@@ -32,11 +32,11 @@ function projectQuery() {
   const builder = {
     select: vi.fn(),
     eq: vi.fn(),
-    single: vi.fn(),
+    maybeSingle: vi.fn(),
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
-  builder.single.mockResolvedValue({ data: { id: "p1" } });
+  builder.maybeSingle.mockResolvedValue({ data: { id: "p1" }, error: null });
   return builder;
 }
 
@@ -105,6 +105,46 @@ describe("ProjectActivityPage", () => {
     expect(query.order).toHaveBeenNthCalledWith(1, "created_at", { ascending: false });
     expect(query.order).toHaveBeenNthCalledWith(2, "id", { ascending: false });
     expect(query.range).toHaveBeenCalledWith(0, 20);
+  });
+
+  // maybeSingle, not single: RLS filtering a project down to zero rows is a
+  // legitimate 404, and single reports that as an error — which the assertion on
+  // the read would then turn into a 500.
+  it("404s on a project RLS withholds rather than reporting a read failure", async () => {
+    const project = projectQuery();
+    project.maybeSingle.mockResolvedValue({ data: null, error: null });
+    fromMock.mockImplementation((table: string) =>
+      table === "projects" ? project : activityQuery([]),
+    );
+
+    await expect(
+      ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("not found");
+  });
+
+  // activity_logs has two FKs to stories (20260715000006), so an unhinted
+  // `stories(...)` embed is ambiguous: PostgREST answers 300/PGRST201 and no row
+  // comes back at all.
+  it("names the FK on the story embed so the join is unambiguous", async () => {
+    const query = activityQuery([log(0)]);
+    fromMock.mockImplementation((table: string) => (table === "projects" ? projectQuery() : query));
+
+    render(await ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }));
+
+    expect(query.select).toHaveBeenCalledWith(expect.stringContaining("stories!activity_logs_story_id_fkey"));
+  });
+
+  // A discarded read error renders as "No activity yet.", which a reader cannot
+  // tell apart from a project that has no activity — so a failing read has to
+  // reach error.tsx instead of being absorbed into the empty state.
+  it("throws instead of showing an empty feed when the activity read fails", async () => {
+    const query = activityQuery([]);
+    query.range.mockResolvedValue({ data: null, error: { message: "PGRST201" } });
+    fromMock.mockImplementation((table: string) => (table === "projects" ? projectQuery() : query));
+
+    await expect(
+      ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("PGRST201");
   });
 
   // Containerizing a story writes three bookkeeping rows alongside

@@ -1,32 +1,15 @@
 import { expect, test } from "@playwright/test";
 import { backdateCurrentIteration } from "./helpers/admin-client";
+import { createProjectViaUI, loginAsDevUser } from "./helpers/flows";
 
 test("create project, add a story, accept it, and roll over the iteration", async ({ page }) => {
-  const projectName = `E2E Core Flow ${Date.now()}`;
   const storyTitle = `Ship the thing ${Date.now()}`;
 
-  // 1. Sign in as the seeded local dev user.
-  await page.goto("/auth/login");
-  await page.getByRole("button", { name: "Continue as dev user" }).click();
-  await expect(page).toHaveURL(/\/my-work$/);
+  // 1. Sign in and create a project.
+  await loginAsDevUser(page);
+  const projectId = await createProjectViaUI(page, `E2E Core Flow ${Date.now()}`);
 
-  // 2. Create a project, entered the way a signed-in user reaches it: My Work
-  //    has no create form of its own, so the sidebar's project switcher links
-  //    to /dashboard?new=1, which lands on the panel pre-expanded (TASK-104).
-  await page.getByRole("button", { name: "Projects" }).click();
-  await page.getByRole("menuitem", { name: "New project" }).click();
-  await page.getByRole("textbox", { name: "Name", exact: true }).fill(projectName);
-  await page.getByRole("button", { name: "Create" }).click();
-
-  // createProject redirects straight to the new project's board (TASK-32).
-  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/board$/);
-
-  const projectId = page.url().match(/\/projects\/([0-9a-f-]+)\/board/)?.[1];
-  if (!projectId) {
-    throw new Error(`Could not extract project id from board URL: ${page.url()}`);
-  }
-
-  // 3. Add a story via the current iteration's quick-add (List view is the
+  // 2. Add a story via the current iteration's quick-add (List view is the
   //    default). Points are set on the draft card rather than through the DB:
   //    an unestimated feature can't be Started (transition-buttons.tsx), and
   //    the card carries the project's point scale, so the estimate is part of
@@ -38,7 +21,7 @@ test("create project, add a story, accept it, and roll over the iteration", asyn
 
   await expect(page.getByText(storyTitle, { exact: true })).toBeVisible();
 
-  // 4. Walk the story through to Accepted using the row's one-click
+  // 3. Walk the story through to Accepted using the row's one-click
   //    transition buttons (spec/screens.md "Story row UX (List view)"). The
   //    sortable <li> wrapper's accessible name also contains each of these
   //    labels as a substring, so `exact: true` is required to target only
@@ -49,13 +32,13 @@ test("create project, add a story, accept it, and roll over the iteration", asyn
   await page.getByRole("button", { name: "Accept", exact: true }).click();
   await expect(page.getByText("Accepted")).toBeVisible();
 
-  // 5. Force the current iteration to finalize on next load (real time
+  // 4. Force the current iteration to finalize on next load (real time
   //    can't be waited out here — see the helper's doc comment) and
   //    trigger the lazy rollover by reloading the board.
   await backdateCurrentIteration(projectId);
   await page.reload();
 
-  // 6. The finalized iteration (with velocity = the accepted story's
+  // 5. The finalized iteration (with velocity = the accepted story's
   //    points) and its story should now show on the Iterations page.
   await page.goto(`/projects/${projectId}/iterations`);
   await expect(page.getByText(storyTitle)).toBeVisible();

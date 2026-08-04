@@ -48,9 +48,13 @@ revoke execute on function public.story_should_be_container(uuid, boolean) from 
 -- ------------------------------------------------------------
 -- 3. The audit-then-clear a story undergoes when it becomes a container.
 --
--- Both callers guard on the same condition (recompute_is_container reaches its
--- copy only inside `v_should_be and not v_row.is_container`), so the audit row
--- is written iff the story was not already a container.
+-- The `not p_row.is_container` guard below is load-bearing, not a copy of a
+-- caller's own check. recompute_is_container does reach this only from inside
+-- `v_should_be and not v_row.is_container`, but set_epic_pinned does not
+-- pre-check: a story that is already a container through child membership has
+-- is_container true with epic_pinned false, which passes its idempotence
+-- comparison. Removing the guard makes pinning that story write a second
+-- story.containerized row whose old_points is already null.
 --
 -- NOT security definer, unlike its two callers: this clears any story's points,
 -- state and iteration with no authorization check of its own, so making it
@@ -257,8 +261,8 @@ grant execute on function public.create_epic(uuid, text, text, text) to authenti
 --        derive_is_container    -> 20260724181957_epic_pinned.sql
 --        recompute_is_container -> 20260803000000_mark_containerize_bookkeeping.sql
 --        set_epic_pinned        -> 20260803000000_mark_containerize_bookkeeping.sql
---                                  (NOT 20260724181957, which predates the exit
---                                   guard TASK-223 added)
+--                                  (NOT 20260724181957 — that body predates the
+--                                   exit guard)
 --        create_epic            -> 20260728140000_story_rpc_exit_guards.sql
 --   2. then:
 --        drop function public.containerize_story(public.stories, boolean);

@@ -138,26 +138,84 @@ describe("SplitStudio", () => {
     expect(screen.getByText(/give.*title/i)).toBeInTheDocument();
   });
 
-  // Driven by selectionchange, not by a mouse event: the same code path a
-  // keyboard (shift+arrow) or assistive-tech selection takes, which a mouse-up
-  // handler never saw.
-  it("extracts a text selection from the description as a new child card", () => {
-    render(<SplitStudio {...baseProps} />);
-    const descriptionNode = screen.getByTestId("split-source-description");
+  const PHRASE = "handle the edge case where the user is offline";
 
-    // jsdom has no real text-selection layout, so Selection/Range are stubbed
-    // directly rather than simulated via input events.
+  // Selects a range and fires the event the component actually listens for.
+  // jsdom has no selection layout, so the range is built from text offsets
+  // instead of simulated pointer or key input.
+  function select(build: (range: Range) => void) {
     const range = document.createRange();
-    range.selectNodeContents(descriptionNode);
+    build(range);
     const selection = window.getSelection()!;
     selection.removeAllRanges();
     selection.addRange(range);
-    vi.spyOn(selection, "toString").mockReturnValue("handle the edge case where the user is offline");
-
     fireEvent(document, new Event("selectionchange"));
+  }
+
+  function descriptionText() {
+    return screen.getByTestId("split-source-description").firstChild!;
+  }
+
+  // Driven by selectionchange, not by a mouse event: caret browsing, assistive
+  // tech and touch selection all reach it, and a mouse-up handler saw none of
+  // them.
+  it("extracts a text selection from the description as a new child card", () => {
+    render(<SplitStudio {...baseProps} />);
+
+    const start = baseProps.description.indexOf(PHRASE);
+    select((range) => {
+      range.setStart(descriptionText(), start);
+      range.setEnd(descriptionText(), start + PHRASE.length);
+    });
     fireEvent.click(screen.getByRole("button", { name: /extract selection/i }));
 
-    expect(screen.getByDisplayValue("handle the edge case where the user is offline")).toBeInTheDocument();
+    expect(screen.getByDisplayValue(PHRASE)).toBeInTheDocument();
+  });
+
+  // Select-all puts both boundaries outside the paragraph. Rejecting the
+  // selection for that would leave the button either disabled or holding an
+  // earlier, shorter phrase while the whole paragraph reads as highlighted.
+  it("clips a select-all down to the description's own text", () => {
+    render(<SplitStudio {...baseProps} />);
+
+    select((range) => range.selectNodeContents(document.body));
+    fireEvent.click(screen.getByRole("button", { name: /extract selection/i }));
+
+    expect(screen.getByDisplayValue(baseProps.description)).toBeInTheDocument();
+  });
+
+  // A triple-click starts inside the paragraph and ends past it (browsers
+  // promote the range end to the following block).
+  it("clips a selection that ends past the description", () => {
+    render(<SplitStudio {...baseProps} />);
+    const paragraph = screen.getByTestId("split-source-description");
+    const parent = paragraph.parentElement!;
+    const start = baseProps.description.indexOf("Then");
+
+    select((range) => {
+      range.setStart(descriptionText(), start);
+      range.setEnd(parent, Array.from(parent.childNodes).indexOf(paragraph) + 1);
+    });
+    fireEvent.click(screen.getByRole("button", { name: /extract selection/i }));
+
+    expect(screen.getByDisplayValue(baseProps.description.slice(start))).toBeInTheDocument();
+  });
+
+  // The other side of the guard below: a caret collapsing INSIDE the paragraph
+  // does clear the value, so the button goes back to disabled. Deselecting is not
+  // the same event as the selection leaving the paragraph, and only this pair
+  // pins which one the intersectsNode guard is for.
+  it("clears the extracted text when the caret collapses inside the description", () => {
+    render(<SplitStudio {...baseProps} />);
+
+    const start = baseProps.description.indexOf(PHRASE);
+    select((range) => {
+      range.setStart(descriptionText(), start);
+      range.setEnd(descriptionText(), start + PHRASE.length);
+    });
+    select((range) => range.setStart(descriptionText(), 0));
+
+    expect(screen.getByRole("button", { name: /extract selection/i })).toBeDisabled();
   });
 
   // The Extract button is outside the description, so clicking it moves the
@@ -165,23 +223,13 @@ describe("SplitStudio", () => {
   // click landed.
   it("keeps the extracted text available when the selection leaves the description", () => {
     render(<SplitStudio {...baseProps} />);
-    const descriptionNode = screen.getByTestId("split-source-description");
 
-    const range = document.createRange();
-    range.selectNodeContents(descriptionNode);
-    const selection = window.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
-    const toString = vi.spyOn(selection, "toString").mockReturnValue("offline edge case");
-    fireEvent(document, new Event("selectionchange"));
-
-    // Selection collapses somewhere outside the paragraph.
-    const outside = document.createRange();
-    outside.selectNodeContents(screen.getByRole("heading", { level: 1 }));
-    selection.removeAllRanges();
-    selection.addRange(outside);
-    toString.mockReturnValue("");
-    fireEvent(document, new Event("selectionchange"));
+    const start = baseProps.description.indexOf(PHRASE);
+    select((range) => {
+      range.setStart(descriptionText(), start);
+      range.setEnd(descriptionText(), start + PHRASE.length);
+    });
+    select((range) => range.selectNodeContents(screen.getByRole("heading", { level: 1 })));
 
     expect(screen.getByRole("button", { name: /extract selection/i })).toBeEnabled();
   });

@@ -77,10 +77,15 @@ export function SplitStudio({
   // browsing on. What keeps that from being a dead end is the disabled button
   // stating its reason in place, plus "+ new story" as the other way in.
   //
-  // Only a selection inside the description counts, and one landing anywhere
-  // else leaves the last value alone — clicking the Extract button itself moves
-  // the selection out, and clearing on that would disable the button before its
-  // own click could land.
+  // Only the part of the selection inside the description counts. It is clipped
+  // rather than rejected for straddling the paragraph: a triple-click promotes
+  // the range end past the <p>, and Cmd+A puts both ends outside it, so
+  // demanding both boundaries be inside would drop the two selections a user is
+  // most likely to make on a whole paragraph.
+  //
+  // A selection that misses the paragraph entirely leaves the last value alone —
+  // clicking the Extract button itself moves the selection out, and clearing on
+  // that would disable the button before its own click could land.
   useEffect(() => {
     function readSelection() {
       const node = descriptionRef.current;
@@ -88,10 +93,20 @@ export function SplitStudio({
       if (!node || !selection || selection.rangeCount === 0) {
         return;
       }
-      if (!node.contains(selection.anchorNode) || !node.contains(selection.focusNode)) {
+      const range = selection.getRangeAt(0);
+      if (!range.intersectsNode(node)) {
         return;
       }
-      setSelectedText(selection.toString());
+      const withinDescription = document.createRange();
+      withinDescription.selectNodeContents(node);
+      const clipped = range.cloneRange();
+      if (clipped.compareBoundaryPoints(Range.START_TO_START, withinDescription) < 0) {
+        clipped.setStart(withinDescription.startContainer, withinDescription.startOffset);
+      }
+      if (clipped.compareBoundaryPoints(Range.END_TO_END, withinDescription) > 0) {
+        clipped.setEnd(withinDescription.endContainer, withinDescription.endOffset);
+      }
+      setSelectedText(clipped.toString());
     }
     document.addEventListener("selectionchange", readSelection);
     return () => document.removeEventListener("selectionchange", readSelection);

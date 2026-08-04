@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-08-03 14:27'
-updated_date: '2026-08-04 08:24'
+updated_date: '2026-08-04 10:45'
 labels: []
 milestone: m-2
 dependencies: []
@@ -67,7 +67,15 @@ KNOWN COST, flagged for the owner: on a self-leave the actor loses shares_projec
 
 Verification: SUPABASE_INTEGRATION=1 pnpm test full suite 144 files / 1312 tests green (+10 new), lint + tsc clean. Applied with 'supabase migration up' rather than 'db reset' — the local DB holds other sessions' data. rls-security-reviewer pass: no issues found (no PII in the payload, the summary insert correctly precedes the exit guard so a raise rolls it back, the token is transaction-local and reset before the count, MATCH SIMPLE means story_id NULL skips the composite FK, and the SELECT policy is project_id-scoped so the row stays member-only).
 
-/code-review high still needs the owner to run it (a model cannot start it).
+/code-review high (2026-08-04) FINDINGS FIXED — three of the ten landed on this task's surface, all in the same follow-up commit:
+
+1. THE FEED PAGE WAS DEAD, and had been since the composite FK landed (20260715000006). activity_logs has two FKs to stories, so the unhinted `story:stories(title)` embed was ambiguous: PostgREST answered 300/PGRST201, and because this one page discarded its read errors the failure rendered as 'No activity yet.' Reproduced by hand against the local stack (HTTP 300 unhinted, 200 with the hint), which means the member.removed entry this task shipped was never actually visible in a browser. Fixed by naming the FK (stories!activity_logs_story_id_fkey) and by putting assertReadOk on all three reads, so a failing read reaches error.tsx instead of the empty state; the project existence check moved to maybeSingle, since single reports a legitimate RLS-filtered zero rows as an error. page.test.tsx mocks the query builder and so could not have caught it — the new guards are an assertion on the select string plus a rejects.toThrow on a failing read.
+
+2/3. Both of the feed's reads were unindexed, in supabase/migrations/20260804103224_index_activity_feed_reads.sql. remove_member counted its cascade's rows with an unindexed jsonb predicate over the project's ENTIRE activity_logs history, while holding pg_advisory_xact_lock('membership:<project>') — so member removal got slower for the life of the project and serialized every concurrent membership operation behind it. The feed's own hot query had no index for (project_id, created_at desc, id desc) plus the two payload filters either, so every page view scanned the whole project history to return 21 rows. Two partial indexes, verified with EXPLAIN to be chosen for both queries — including `explain (generic_plan)` for the count, since plpgsql runs it parameterized and the partial predicate has to be proven implied by `= $1`.
+
+Rejected for the count: bumping a txn-local counter GUC in log_story_activity (what the review suggested first). It is O(1) rather than an index scan, but it means recreating a 90-line trigger function and remove_member again purely to add a counter — the transcription-error risk the review itself flags on recreated bodies, against a query the index already makes small.
+
+rls-security-reviewer pass on the index migration: no RLS or disclosure findings (an index is a plan choice, not a read path; the SELECT policy still gates every row; `->>' flattens a missing key and a JSON null identically, so the partial predicate can never diverge from the reader's filter). One real caveat it raised: plain CREATE INDEX takes a ShareLock on activity_logs for the build, and log_story_activity inserts there on every story write, so the build blocks story writes in every project (reads are fine — ShareLock, measured from pg_locks, not the ACCESS EXCLUSIVE the reviewer first stated). CONCURRENTLY is the upgrade and cannot run in a transaction block; `supabase migration up` accepts it locally (probed), but production (`supabase db push`) and CI (`supabase start`) are unverified paths, so switching needs one apply against a throwaway database first. Left as plain CREATE INDEX with a ponytail: marker naming the ceiling — the table is small and TASK-98 resets production anyway.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
