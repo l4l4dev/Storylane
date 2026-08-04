@@ -78,7 +78,11 @@ export default async function ProjectActivityPage({
     // Filtered here rather than after fetching: the page is keyset-paginated,
     // so dropping rows client-side would leave short pages and a lookahead
     // that no longer means what the next/prev links assume.
-    .filter("payload->>bookkeeping", "is", null);
+    .filter("payload->>bookkeeping", "is", null)
+    // A member.removed row speaks for these — see
+    // 20260804073330_collapse_member_removal_in_feed.sql. Unlike bookkeeping,
+    // this key is feed-only: the story-detail panel still shows each row.
+    .filter("payload->>feed_collapsed", "is", null);
 
   if (before) {
     activityQuery = activityQuery.or(

@@ -310,6 +310,7 @@ describe("assignee name resolution", () => {
       to_id: "u2",
       from_name: "Rin",
       to_name: null,
+      removed_name: null,
     });
   });
 
@@ -325,5 +326,53 @@ describe("assignee name resolution", () => {
         storyTitle: "Add welcome tour",
       }),
     ).toBe('Dev User unassigned "Add welcome tour" from someone');
+  });
+
+  it("collects the removed member's id from a member.removed row", () => {
+    expect(assigneeIdsIn([{ action: "member.removed", payload: { removed_user_id: "u3" } }])).toEqual(["u3"]);
+  });
+});
+
+describe("member.removed", () => {
+  const describe_ = (payload: Record<string, unknown>, names = new Map<string, string>()) =>
+    describeActivity({
+      action: "member.removed",
+      payload: withAssigneeNames(payload, names),
+      actorName: "Dev User",
+      storyTitle: null,
+    });
+
+  it("stands in for the stories the removal unassigned", () => {
+    expect(describe_({ removed_user_id: "u2", story_count: 30, self_leave: false }, new Map([["u2", "Rin"]]))).toBe(
+      "Dev User removed Rin from the project, unassigning 30 stories",
+    );
+  });
+
+  it("singularises one story", () => {
+    expect(describe_({ removed_user_id: "u2", story_count: 1, self_leave: false }, new Map([["u2", "Rin"]]))).toBe(
+      "Dev User removed Rin from the project, unassigning 1 story",
+    );
+  });
+
+  // Nothing else records a removal, so the row is written even when the member
+  // held no stories — the clause is what goes, not the entry.
+  it("drops the clause when the member held no stories", () => {
+    expect(describe_({ removed_user_id: "u2", story_count: 0, self_leave: false }, new Map([["u2", "Rin"]]))).toBe(
+      "Dev User removed Rin from the project",
+    );
+  });
+
+  // The normal case, not the edge one: a removed member no longer shares a
+  // project with the reader, so profiles SELECT denies their name to everyone.
+  it("falls back to someone when the removed member's name is unreadable", () => {
+    expect(describe_({ removed_user_id: "u2", story_count: 4, self_leave: false })).toBe(
+      "Dev User removed someone from the project, unassigning 4 stories",
+    );
+  });
+
+  it("reads a self-leave as leaving, not as removing oneself", () => {
+    expect(describe_({ removed_user_id: "u1", story_count: 2, self_leave: true })).toBe(
+      "Dev User left the project, unassigning 2 stories",
+    );
   });
 });

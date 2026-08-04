@@ -20,7 +20,9 @@
 /projects/[id]/epics      Epics: two panes — every epic with roll-up progress on the
                           left, the selected epic's children on the right (doc-20 §6)
 /projects/[id]/iterations Current and past iterations with burndown, velocity, retro notes, and stories
-/projects/[id]/activity   Project activity log (read-only feed of recent story/comment changes)
+/projects/[id]/activity   Project activity log (read-only feed of recent story/comment changes,
+                          plus membership events; a member removal collapses the stories it
+                          unassigned into its own entry)
 /projects/[id]/settings   Project settings (members, integrations, point scale, etc.)
 /stories/[id]             Story detail (standalone deep-link page; primary editing happens
                           in the board's side peek — see "Board layout" below)
