@@ -25,12 +25,19 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    // Every autoFocus in this tree is on an input that does not exist until the
-    // user clicks the affordance revealing it (quick-add, inline rename). Focus
-    // following that click is the point — without it every inline edit costs two
-    // clicks. The rule is aimed at autoFocus on load, which steals focus from a
-    // user who asked for nothing, so it stays on everywhere else: app/** holds
-    // the forms that render on navigation (login, invite accept).
+    // Almost every autoFocus in this tree is on an input that does not exist
+    // until the user clicks the affordance revealing it (quick-add, inline
+    // rename). Focus following that click is the point — without it every inline
+    // edit costs two clicks.
+    //
+    // The one exception is deliberate, not an oversight: inline-create-panel's
+    // Name input DOES render on load, because /dashboard?new=1 opens the panel
+    // pre-expanded — and that URL is only ever reached by clicking "New project",
+    // so focus in the first field is still the thing the user just asked for.
+    //
+    // The rule is aimed at autoFocus that steals focus from a user who asked for
+    // nothing, so it stays on everywhere else: app/** holds the forms that render
+    // on plain navigation (login, invite accept).
     files: ["components/features/**/*.tsx"],
     rules: {
       "jsx-a11y/no-autofocus": "off",

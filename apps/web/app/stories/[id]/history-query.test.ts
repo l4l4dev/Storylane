@@ -23,9 +23,17 @@ const STORY = {
   story_labels: [],
 };
 
+// Set to make the stories read fail, so the read-error path can be exercised
+// without a second mock; reset by each test that needs a healthy read.
+let storyReadError: { message: string } | null = null;
+
 function chain(table: string) {
   const node: Record<string, unknown> = {
     single: async () => ({ data: table === "stories" ? STORY : {}, error: null }),
+    maybeSingle: async () =>
+      table === "stories" && storyReadError
+        ? { data: null, error: storyReadError }
+        : { data: table === "stories" ? STORY : {}, error: null },
     then: (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
       resolve({ data: [], error: null }),
   };
@@ -64,5 +72,17 @@ describe("getStoryDetail history query", () => {
     expect(logCalls).toContainEqual(
       expect.objectContaining({ method: "filter", args: ["payload->>bookkeeping", "is", null] }),
     );
+  });
+
+  // Returning null on a failed read would render as "not found", which a user
+  // cannot tell apart from a deleted story. A genuine zero-row read still
+  // returns null; only a failure throws.
+  it("throws rather than reporting a failed story read as not found", async () => {
+    const { getStoryDetail } = await import("./actions");
+    storyReadError = { message: "PGRST201" };
+
+    await expect(getStoryDetail("s1")).rejects.toThrow("PGRST201");
+
+    storyReadError = null;
   });
 });

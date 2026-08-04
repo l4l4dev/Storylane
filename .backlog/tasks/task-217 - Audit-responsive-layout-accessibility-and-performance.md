@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:18'
-updated_date: '2026-08-04 10:46'
+updated_date: '2026-08-04 11:05'
 labels: []
 milestone: m-2
 dependencies: []
@@ -80,6 +80,18 @@ Audited responsive/a11y/performance and fixed what the audit found: two page-lev
 NOT FIXED, reported to the owner instead: the same discarded-read-error pattern that hid finding 1 also exists in app/dashboard/page.tsx and app/my-work/archive/page.tsx (3 spots). No dead query is hiding behind those — they would only turn a transient failure into an empty list — and there is no single seam to guard, so it is a sweep rather than a root-cause fix. Left for the owner to decide whether it earns a task.
 
 Also flagged by the advisor as pre-existing and out of scope: split-studio's 'Select text above...' hint appears and disappears with the selection, pushing the Tasks section down (principle 3 wants the space reserved).
+
+Final Summary:
+--------------------------------------------------
+Audited responsive/a11y/performance and fixed what the audit found: two page-level horizontal overflows at 375px (the fixed-width shell sidebar, now an icon rail below md; the epics page's fixed left pane, now stacked), one real a11y defect (Split Studio's extract-selection was pointer-only, now driven by selectionchange), and the settings page's four serial queries (7 round trips to 4). Enabled jsx-a11y's recommended ruleset in CI so this stays enforced; the 15 remaining findings were triaged as false positives with the reasons recorded in config and code. fable-advisor design review passed with corrections, all applied (one of its findings verified as not holding). 1313 unit/integration tests, lint, tsc and the full Playwright suite green.
+
+/code-review high, SECOND ROUND (2026-08-04, on the fix commit itself) — no correctness defects in the fixes; the review independently re-confirmed the embed fix (300 -> 200 against the live stack), both index choices (including the parameterized count, which is what remove_member actually issues), the compareBoundaryPoints argument order, and that the eslint rescoping is not a silent no-op (--print-config shows no-autofocus off under components/features/** and error under app/**, 159 .tsx files actually linted). Two low-severity findings, both fixed:
+
+1. The no-autofocus exemption's justification was factually wrong for one file. components/features/projects/inline-create-panel.tsx:62 puts autoFocus on the Name input, and that input DOES render on load whenever defaultOpen is true — which is the /dashboard?new=1 path the sidebar's "New project" item uses (and which createProjectViaUI now exercises in e2e). Verified: dashboard/page.tsx:142 passes defaultOpen={openCreate === "1"} straight from searchParams. The exemption is still correct — that URL is only ever reached by clicking "New project", so focus in the first field is what the user just asked for — but the comment claimed no such case existed. Restated to name the exception instead of denying it.
+
+2. The discarded-read-error class produces a WRONG 404, not an empty list, in getStoryDetail (app/stories/[id]/actions.ts). It read the story with .single() and discarded the error, then `if (!story) return null` — so a transient failure, or any future ambiguous embed, renders as "not found" and the board's inline expansion shows nothing, indistinguishable from a deleted story. This is a strictly worse case than the leftovers triaged in the previous round (dashboard, my-work/archive) and was not in that list. Fixed with maybeSingle + assertReadOk, so a genuine zero-row read still returns null and only a failure throws, plus assertReadOk on all eleven reads of the following Promise.all (three of which are Promise.resolve stubs that needed an explicit error: null). Guarded by a new test in history-query.test.ts.
+
+The leftover list is therefore now just app/dashboard/page.tsx and app/my-work/archive/page.tsx (3 spots), both of which degrade to an empty list rather than a wrong 404. Still the owner's call whether that earns a task.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

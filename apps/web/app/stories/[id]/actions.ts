@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { assertRowAffected } from "@/lib/supabase/assert";
+import { assertReadOk, assertRowAffected } from "@/lib/supabase/assert";
 import type { ActionResult, ProjectState } from "@/lib/types";
 import { pointScaleValues } from "@/lib/utils/stories";
 import { assigneeIdsIn, withAssigneeNames } from "@/lib/utils/activity";
@@ -86,11 +86,14 @@ export type StoryDetail = {
 export async function getStoryDetail(storyId: string): Promise<StoryDetail | null> {
   const supabase = await createClient();
 
-  const { data: story } = await supabase
-    .from("stories")
-    .select("*, story_labels(label_id)")
-    .eq("id", storyId)
-    .single();
+  // maybeSingle, and the error asserted rather than discarded: a story RLS
+  // filters out or that was deleted is a real null the caller renders as "not
+  // found", but a failed read is not — reporting one as the other makes a
+  // transient failure (or a future ambiguous embed) indistinguishable from a
+  // deleted story.
+  const story = assertReadOk(
+    await supabase.from("stories").select("*, story_labels(label_id)").eq("id", storyId).maybeSingle(),
+  );
 
   if (!story) {
     return null;
@@ -101,17 +104,17 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
   } = await supabase.auth.getUser();
 
   const [
-    { data: project },
-    { data: labels },
-    { data: members },
-    { data: comments },
-    { data: tasks },
-    { data: history },
-    { data: statesData },
-    { data: parentCandidateRows },
-    { data: childRows },
-    { data: iterationsData },
-    { data: addChildCandidateRows },
+    projectResult,
+    labelsResult,
+    membersResult,
+    commentsResult,
+    tasksResult,
+    historyResult,
+    statesResult,
+    parentCandidateResult,
+    childRowsResult,
+    iterationsResult,
+    addChildCandidateResult,
   ] = await Promise.all([
       supabase
         .from("projects")
@@ -196,13 +199,14 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
               iteration_id: string | null;
               position: number;
             }[],
+            error: null,
           }),
       // Just enough to derive the current iteration id for EpicChildRow's
       // location dot (doc-20 §3's "done wins over zone" rule) — same
       // derivation as board/page.tsx's own currentIteration.
       story.is_container
         ? supabase.from("iterations").select("id, number, state").eq("project_id", story.project_id)
-        : Promise.resolve({ data: [] as { id: string; number: number; state: string }[] }),
+        : Promise.resolve({ data: [] as { id: string; number: number; state: string }[], error: null }),
       // Add-a-child candidates (doc-20 §6): a container can only ever adopt a
       // plain, still-parentless story (single-level nesting, doc-18 §3).
       story.is_container
@@ -214,8 +218,20 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
             .eq("is_container", false)
             .neq("id", storyId)
             .order("number")
-        : Promise.resolve({ data: [] as { id: string; number: number; title: string }[] }),
+        : Promise.resolve({ data: [] as { id: string; number: number; title: string }[], error: null }),
     ]);
+
+  const project = assertReadOk(projectResult);
+  const labels = assertReadOk(labelsResult);
+  const members = assertReadOk(membersResult);
+  const comments = assertReadOk(commentsResult);
+  const tasks = assertReadOk(tasksResult);
+  const history = assertReadOk(historyResult);
+  const statesData = assertReadOk(statesResult);
+  const parentCandidateRows = assertReadOk(parentCandidateResult);
+  const childRows = assertReadOk(childRowsResult);
+  const iterationsData = assertReadOk(iterationsResult);
+  const addChildCandidateRows = assertReadOk(addChildCandidateResult);
 
   const viewerIsMember = (members ?? []).some(
     (m) => m.user_id === user?.id && (m.role === "owner" || m.role === "member"),
