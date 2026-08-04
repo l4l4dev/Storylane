@@ -96,10 +96,13 @@ describe.skipIf(!RUN)("search_users_for_invite / invite_member RPCs (integration
 
   it("matches on username and display_name, escaping literal _ in the query", async () => {
     const target = await createSearchableUser("under_score", "Underscore Match");
-    // The literal id-suffixed username always contains "_" (search_under_score_xxxxxxxx) —
-    // querying for a substring containing the literal "_" character must not
-    // ILIKE-wildcard-match a differently-spelled username.
-    const queryWithUnderscore = target.username.slice(0, 14); // e.g. "search_under_s"
+    // Slice from the id-fragment-containing tail (not a fixed literal prefix like
+    // "search_under_s") so this query can't collide with same-named leftover
+    // profiles from prior runs on a database that isn't wiped between them —
+    // the trailing id fragment is unique per run. Still contains "_" (from
+    // "under_score_"), so it still exercises the ILIKE-wildcard-escaping this
+    // test is for.
+    const queryWithUnderscore = target.username.slice(7); // e.g. "under_score_1a2b3c4d"
     expect(queryWithUnderscore).toContain("_");
 
     const { data, error } = await supabase.rpc("search_users_for_invite", {
