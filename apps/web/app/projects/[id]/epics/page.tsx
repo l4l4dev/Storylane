@@ -103,8 +103,11 @@ export default async function EpicsPage({
 
   return (
     <main className="p-6">
-      <div className="flex gap-6">
-        <div className="flex w-80 shrink-0 flex-col gap-3">
+      {/* Stacked below md: the epic list's fixed 20rem is wider than the whole
+          content column on a phone, and shrink-0 turned that into page-level
+          horizontal overflow. Side by side from md up, as doc-20 §6 describes. */}
+      <div className="flex flex-col gap-6 md:flex-row">
+        <div className="flex w-full shrink-0 flex-col gap-3 md:w-80">
           <header className="flex items-center gap-2">
             <h1 className="flex-1 text-xl font-bold">Epics</h1>
             <span className="text-xs text-muted-foreground">{items.length}</span>

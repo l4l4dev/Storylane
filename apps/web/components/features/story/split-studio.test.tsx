@@ -138,12 +138,15 @@ describe("SplitStudio", () => {
     expect(screen.getByText(/give.*title/i)).toBeInTheDocument();
   });
 
+  // Driven by selectionchange, not by a mouse event: the same code path a
+  // keyboard (shift+arrow) or assistive-tech selection takes, which a mouse-up
+  // handler never saw.
   it("extracts a text selection from the description as a new child card", () => {
     render(<SplitStudio {...baseProps} />);
     const descriptionNode = screen.getByTestId("split-source-description");
 
     // jsdom has no real text-selection layout, so Selection/Range are stubbed
-    // directly rather than simulated via mouse events.
+    // directly rather than simulated via input events.
     const range = document.createRange();
     range.selectNodeContents(descriptionNode);
     const selection = window.getSelection()!;
@@ -151,10 +154,36 @@ describe("SplitStudio", () => {
     selection.addRange(range);
     vi.spyOn(selection, "toString").mockReturnValue("handle the edge case where the user is offline");
 
-    fireEvent.mouseUp(descriptionNode);
+    fireEvent(document, new Event("selectionchange"));
     fireEvent.click(screen.getByRole("button", { name: /extract selection/i }));
 
     expect(screen.getByDisplayValue("handle the edge case where the user is offline")).toBeInTheDocument();
+  });
+
+  // The Extract button is outside the description, so clicking it moves the
+  // selection out. Clearing on that would disable the button before its own
+  // click landed.
+  it("keeps the extracted text available when the selection leaves the description", () => {
+    render(<SplitStudio {...baseProps} />);
+    const descriptionNode = screen.getByTestId("split-source-description");
+
+    const range = document.createRange();
+    range.selectNodeContents(descriptionNode);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const toString = vi.spyOn(selection, "toString").mockReturnValue("offline edge case");
+    fireEvent(document, new Event("selectionchange"));
+
+    // Selection collapses somewhere outside the paragraph.
+    const outside = document.createRange();
+    outside.selectNodeContents(screen.getByRole("heading", { level: 1 }));
+    selection.removeAllRanges();
+    selection.addRange(outside);
+    toString.mockReturnValue("");
+    fireEvent(document, new Event("selectionchange"));
+
+    expect(screen.getByRole("button", { name: /extract selection/i })).toBeEnabled();
   });
 
   // fable-advisor: with several tasks, the left list must distinguish
