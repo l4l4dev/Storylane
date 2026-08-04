@@ -1,13 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Local-only E2E config. Requires `supabase start` to
-// already be running (the test talks to the local Supabase instance
-// directly for setup — see e2e/helpers/admin-client.ts) and reads
-// SUPABASE_SERVICE_ROLE_KEY / NEXT_PUBLIC_SUPABASE_URL from .env.local.
+// Runs locally and on CI (web-ci.yml "Run E2E (web)"). Either way a Supabase
+// stack must already be up — the specs talk to it directly for setup (see
+// e2e/helpers/admin-client.ts) and the login shortcut needs the account
+// supabase/seed.sql seeds. Locally that is `supabase start` plus .env.local;
+// on CI the workflow exports the same three vars from `supabase status`.
 try {
   process.loadEnvFile(".env.local");
 } catch {
-  // .env.local is optional if the env vars are already set some other way.
+  // Absent on CI, and optional locally when the env vars are set another way.
 }
 
 export default defineConfig({
@@ -26,10 +27,15 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // `next dev`, not `next start`: /auth/login's "Continue as dev user" button
+  // renders only under NODE_ENV !== "production", and it is the only way in
+  // without a real OAuth provider.
   webServer: {
     command: "pnpm dev",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
+    // A cold CI runner has to boot the server and compile the first route
+    // before it answers; 60s was enough only for a warm local start.
+    timeout: 120_000,
   },
 });

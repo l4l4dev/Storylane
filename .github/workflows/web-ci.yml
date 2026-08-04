@@ -145,3 +145,39 @@ jobs:
       # but not tsc/eslint/vitest) — build is the only gate that catches it.
       - name: Build (web)
         run: pnpm --filter web run build
+
+      # Chromium only: this suite is one core-flow smoke test, not a
+      # cross-browser matrix. --with-deps because the runner image carries no
+      # guarantee about the shared libraries the browser needs.
+      - name: Install Playwright browser
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      # Runs last because it is the slowest gate — a type error or a failing
+      # unit test should go red minutes before this starts.
+      #
+      # Playwright starts `next dev` itself (playwright.config.ts webServer),
+      # NOT the production build above: /auth/login's "Continue as dev user"
+      # button renders only under NODE_ENV !== "production", and it is the only
+      # way in without a real OAuth provider. The seeded dev account comes from
+      # supabase/seed.sql, which `supabase start` applies to the fresh stack.
+      - name: Run E2E (web)
+        run: |
+          supabase_env="$(supabase status -o env)"
+          eval "$supabase_env"
+          : "${API_URL:?supabase status reported no API_URL}"
+          : "${ANON_KEY:?supabase status reported no ANON_KEY}"
+          : "${SERVICE_ROLE_KEY:?supabase status reported no SERVICE_ROLE_KEY}"
+          export NEXT_PUBLIC_SUPABASE_URL="$API_URL"
+          export NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY"
+          export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          pnpm --filter web run test:e2e
+
+      # trace: "retain-on-failure" is set in playwright.config.ts, and without
+      # this the trace only ever exists inside the finished runner.
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: apps/web/test-results/
+          retention-days: 7
