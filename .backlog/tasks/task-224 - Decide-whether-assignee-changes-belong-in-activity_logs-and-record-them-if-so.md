@@ -1,11 +1,11 @@
 ---
 id: TASK-224
 title: 'Decide whether assignee changes belong in activity_logs, and record them if so'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-30 12:11'
-updated_date: '2026-08-03 14:42'
+updated_date: '2026-08-04 03:53'
 labels: []
 milestone: m-2
 dependencies: []
@@ -27,8 +27,8 @@ First step is the owner's ruling on which reading of the spec is intended. Only 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The owner's reading of spec/screens.md's 'state/assignment events' is recorded, and the spec wording is made unambiguous either way
-- [ ] #2 If assignee changes are in scope: log_story_activity records them, including the ON DELETE SET NULL cascade from remove_member, with a test covering both the direct write and the cascade
+- [x] #1 The owner's reading of spec/screens.md's 'state/assignment events' is recorded, and the spec wording is made unambiguous either way
+- [x] #2 If assignee changes are in scope: log_story_activity records them, including the ON DELETE SET NULL cascade from remove_member, with a test covering both the direct write and the cascade
 - [ ] #3 If they are out of scope: no trigger change, and spec/rls.md or the migration notes why the cascade unassignment is deliberately unlogged
 <!-- AC:END -->
 
@@ -206,3 +206,13 @@ current. Check `pg_policies` on the live DB, or grep for LATER migrations that
 replace the policy — the same "find the current definition" discipline the
 function bodies already require.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Assignee changes are in scope (AC#1 ruling): log_story_activity now writes story.assignee_changed on every assignee_id change, including the composite FK's ON DELETE SET NULL cascade from remove_member. spec/screens.md:441 names the four watched fields explicitly so the reading cannot be re-litigated, and ARCHITECTURE.md's list was brought in step.
+
+The payload stores ids only. Codex found that snapshotting display names would leak a former member's name past the profiles RLS policy (id = auth.uid() or shares_project_with(id), 20260709000001); both readers now resolve the ids under their own RLS, as the actor embed already did.
+
+Verified: 911 web unit tests pass (including 3 new feed tests that fail without the profiles resolution) plus 8 integration tests against the local DB covering the direct write and the remove_member cascade; lint and tsc clean. AC#3 does not apply — it was the out-of-scope branch of the ruling. The member-removal feed flood surfaced by /code-review is deliberately left as-is and tracked in TASK-229.
+<!-- SECTION:FINAL_SUMMARY:END -->
