@@ -1,11 +1,11 @@
 ---
 id: TASK-217
 title: 'Audit responsive layout, accessibility, and performance'
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:18'
-updated_date: '2026-08-04 11:36'
+updated_date: '2026-08-04 11:54'
 labels: []
 milestone: m-2
 dependencies: []

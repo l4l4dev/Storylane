@@ -1,11 +1,11 @@
 ---
 id: TASK-229
 title: Member removal floods the project activity feed with per-story unassign rows
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-08-03 14:27'
-updated_date: '2026-08-04 10:45'
+updated_date: '2026-08-04 11:54'
 labels: []
 milestone: m-2
 dependencies: []
