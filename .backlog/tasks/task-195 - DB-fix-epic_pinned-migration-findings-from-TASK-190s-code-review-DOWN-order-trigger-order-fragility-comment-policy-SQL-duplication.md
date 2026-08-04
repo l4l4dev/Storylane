@@ -3,11 +3,11 @@ id: TASK-195
 title: >-
   DB: fix epic_pinned migration findings from TASK-190's /code-review (DOWN
   order, trigger-order fragility, comment policy, SQL duplication)
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-25 03:14'
-updated_date: '2026-08-04 07:42'
+updated_date: '2026-08-04 08:24'
 labels:
   - db
 milestone: m-6

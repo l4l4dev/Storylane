@@ -1,11 +1,11 @@
 ---
 id: TASK-217
 title: 'Audit responsive layout, accessibility, and performance'
-status: To Do
+status: In Progress
 assignee:
-  - '@claude-sonnet-5'
+  - '@claude-opus-5'
 created_date: '2026-07-27 06:18'
-updated_date: '2026-08-04 08:09'
+updated_date: '2026-08-04 08:25'
 labels: []
 milestone: m-2
 dependencies: []
@@ -56,6 +56,8 @@ DESIGN REVIEW CORRECTIONS APPLIED:
 Verification: SUPABASE_INTEGRATION=1 pnpm test 144 files / 1313 tests green, lint (with the a11y rules on) clean, tsc clean. e2e/narrow-viewport.spec.ts walks 7 screens plus one open inline editor at 375px asserting documentElement never overflows; full Playwright suite 2/2 green on a clean run.
 
 INCIDENTAL FINDING (not part of this task): the local E2E suite had been unrunnable for 7 days. A next-server started 2026-07-28 was still holding port 3000 with a broken module graph (it mixed node_modules/.deno/next with node_modules/.pnpm/next, so hydration died and no onClick ever attached), and playwright.config.ts's reuseExistingServer: !CI kept reusing it — which is why core-flow.spec.ts failed at the dev-login step too, identically and unrelated to any change here. Killed the stale process; both specs pass. CI was never affected (reuseExistingServer is false there).
+
+Assignee changed from @claude-sonnet-5 to @claude-opus-5: implemented in an Opus session (the owner had switched models for TASK-195/229, which precede this in the queue), not because a review found the Sonnet output wanting.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
