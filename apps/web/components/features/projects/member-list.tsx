@@ -72,7 +72,7 @@ function MemberRow({
 
   return (
     <li className="flex flex-col gap-1 py-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="flex items-center gap-1.5 text-sm">
           <span>{member.displayName}</span>
           {member.isAgent && <AgentIndicator />}

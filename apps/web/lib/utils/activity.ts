@@ -36,9 +36,14 @@ export function hasActor(log: Pick<ActivityLog, "payload">): boolean {
 export function assigneeIdsIn(logs: Pick<ActivityLog, "action" | "payload">[]): string[] {
   const ids = new Set<string>();
   for (const log of logs) {
-    if (log.action !== "story.assignee_changed") continue;
     const payload = (log.payload ?? {}) as Record<string, unknown>;
-    for (const key of ["from_id", "to_id"]) {
+    const keys =
+      log.action === "story.assignee_changed"
+        ? ["from_id", "to_id"]
+        : log.action === "member.removed"
+          ? ["removed_user_id"]
+          : [];
+    for (const key of keys) {
       if (typeof payload[key] === "string") ids.add(payload[key] as string);
     }
   }
@@ -52,6 +57,7 @@ export function withAssigneeNames(payload: unknown, names: Map<string, string>):
     ...p,
     from_name: typeof p.from_id === "string" ? (names.get(p.from_id) ?? null) : null,
     to_name: typeof p.to_id === "string" ? (names.get(p.to_id) ?? null) : null,
+    removed_name: typeof p.removed_user_id === "string" ? (names.get(p.removed_user_id) ?? null) : null,
   };
 }
 
@@ -134,6 +140,19 @@ export function describeActivity(log: ActivityLog): string {
       if (!has) return `${log.actorName} unassigned ${story}${had ? ` from ${name(payload.from_name)}` : ""}`;
       if (!had) return `${log.actorName} assigned ${story} to ${name(payload.to_name)}`;
       return `${log.actorName} reassigned ${story} from ${name(payload.from_name)} to ${name(payload.to_name)}`;
+    }
+    case "member.removed": {
+      // Stands in for the story.assignee_changed rows the FK cascade wrote, which
+      // the feed filters out (20260804073330). The count comes from the payload
+      // rather than from counting rows here: the collapsed rows are never fetched.
+      const count = Number(payload.story_count ?? 0);
+      const unassigned = count > 0 ? `, unassigning ${count} ${count === 1 ? "story" : "stories"}` : "";
+      // A removed member no longer shares a project with the reader, so their
+      // name resolves for nobody — "someone" is the normal case here, not the
+      // edge one.
+      const who = payload.removed_name ? String(payload.removed_name) : "someone";
+      if (payload.self_leave === true) return `${log.actorName} left the project${unassigned}`;
+      return `${log.actorName} removed ${who} from the project${unassigned}`;
     }
     case "story.points_changed": {
       const to = payload.to;

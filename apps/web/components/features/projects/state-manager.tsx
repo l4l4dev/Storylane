@@ -194,7 +194,7 @@ export function StateManager({
           const categoryStates = byCategory.get(state.category) ?? [];
           const rank = categoryStates.findIndex((s) => s.id === state.id);
           return (
-            <li key={state.id} className="flex items-center gap-2 rounded-lg border border-border p-2">
+            <li key={state.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2">
               {canManage && (
                 <div className="flex shrink-0 flex-col">
                   <Button
@@ -241,25 +241,34 @@ export function StateManager({
                 )}
               </div>
 
-              <div className="w-36 shrink-0">
-                {canManage ? (
-                  <InlineTextField
-                    projectId={projectId}
-                    stateId={state.id}
-                    fieldName="action_label"
-                    initialValue={state.action_label ?? ""}
-                    placeholder="No button"
-                    ariaLabel={`Edit action label for ${state.name}: ${state.action_label ?? "none"}`}
-                    action={updateProjectStateActionLabel}
-                  />
-                ) : (
-                  <span className="block truncate px-1.5 py-1 text-sm text-muted-foreground">
-                    {state.action_label ?? "—"}
-                  </span>
-                )}
-              </div>
+              {/* The action label and Delete ride one wrapper so the row breaks
+                  between the name and them, rather than stranding the name at
+                  zero width: `flex-1` on the name gives up its space first, so
+                  without a forced break it is the part that vanishes.
+                  `justify-between` keeps Delete on the row's edge once wrapped
+                  (spec/ux-principles.md #6) instead of beside the label's edit
+                  target; from sm up the wrapper is w-auto, so it has no effect. */}
+              <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto">
+                <div className="w-36 shrink-0">
+                  {canManage ? (
+                    <InlineTextField
+                      projectId={projectId}
+                      stateId={state.id}
+                      fieldName="action_label"
+                      initialValue={state.action_label ?? ""}
+                      placeholder="No button"
+                      ariaLabel={`Edit action label for ${state.name}: ${state.action_label ?? "none"}`}
+                      action={updateProjectStateActionLabel}
+                    />
+                  ) : (
+                    <span className="block truncate px-1.5 py-1 text-sm text-muted-foreground">
+                      {state.action_label ?? "—"}
+                    </span>
+                  )}
+                </div>
 
-              {canDelete && <DeleteStateButton projectId={projectId} stateId={state.id} stateName={state.name} />}
+                {canDelete && <DeleteStateButton projectId={projectId} stateId={state.id} stateName={state.name} />}
+              </div>
             </li>
           );
         })}

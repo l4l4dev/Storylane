@@ -122,7 +122,7 @@ export default async function DashboardPage({
 
   return (
     <main className="mx-auto max-w-5xl p-6">
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Projects</h1>
         <div className="flex items-center gap-3">
           <Button asChild variant="outline" size="sm">

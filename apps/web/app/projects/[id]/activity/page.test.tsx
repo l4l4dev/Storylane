@@ -32,15 +32,18 @@ function projectQuery() {
   const builder = {
     select: vi.fn(),
     eq: vi.fn(),
-    single: vi.fn(),
+    maybeSingle: vi.fn(),
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
-  builder.single.mockResolvedValue({ data: { id: "p1" } });
+  builder.maybeSingle.mockResolvedValue({ data: { id: "p1" }, error: null });
   return builder;
 }
 
-function activityQuery(rows: ReturnType<typeof log>[]) {
+// story is nullable: member.removed is a project-level row with no story.
+type ActivityRow = Omit<ReturnType<typeof log>, "story"> & { story: { title: string } | null };
+
+function activityQuery(rows: ActivityRow[]) {
   const builder = {
     select: vi.fn(),
     eq: vi.fn(),
@@ -104,6 +107,46 @@ describe("ProjectActivityPage", () => {
     expect(query.range).toHaveBeenCalledWith(0, 20);
   });
 
+  // maybeSingle, not single: RLS filtering a project down to zero rows is a
+  // legitimate 404, and single reports that as an error — which the assertion on
+  // the read would then turn into a 500.
+  it("404s on a project RLS withholds rather than reporting a read failure", async () => {
+    const project = projectQuery();
+    project.maybeSingle.mockResolvedValue({ data: null, error: null });
+    fromMock.mockImplementation((table: string) =>
+      table === "projects" ? project : activityQuery([]),
+    );
+
+    await expect(
+      ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("not found");
+  });
+
+  // activity_logs has two FKs to stories (20260715000006), so an unhinted
+  // `stories(...)` embed is ambiguous: PostgREST answers 300/PGRST201 and no row
+  // comes back at all.
+  it("names the FK on the story embed so the join is unambiguous", async () => {
+    const query = activityQuery([log(0)]);
+    fromMock.mockImplementation((table: string) => (table === "projects" ? projectQuery() : query));
+
+    render(await ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }));
+
+    expect(query.select).toHaveBeenCalledWith(expect.stringContaining("stories!activity_logs_story_id_fkey"));
+  });
+
+  // A discarded read error renders as "No activity yet.", which a reader cannot
+  // tell apart from a project that has no activity — so a failing read has to
+  // reach error.tsx instead of being absorbed into the empty state.
+  it("throws instead of showing an empty feed when the activity read fails", async () => {
+    const query = activityQuery([]);
+    query.range.mockResolvedValue({ data: null, error: { message: "PGRST201" } });
+    fromMock.mockImplementation((table: string) => (table === "projects" ? projectQuery() : query));
+
+    await expect(
+      ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("PGRST201");
+  });
+
   // Containerizing a story writes three bookkeeping rows alongside
   // story.containerized; excluded in the query, not after, so a page still
   // holds PAGE_SIZE rows and the lookahead still means what the links assume.
@@ -114,6 +157,41 @@ describe("ProjectActivityPage", () => {
     render(await ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }));
 
     expect(query.filter).toHaveBeenCalledWith("payload->>bookkeeping", "is", null);
+  });
+
+  // A member removal's cascade rows are collapsed into one member.removed entry
+  // (20260804073330). Same reason as bookkeeping for filtering in the query, and
+  // a separate key because the story-detail panel must keep showing them.
+  it("excludes feed-collapsed rows in the query rather than after fetching", async () => {
+    const query = activityQuery([log(0)]);
+    fromMock.mockImplementation((table: string) => (table === "projects" ? projectQuery() : query));
+
+    render(await ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }));
+
+    expect(query.filter).toHaveBeenCalledWith("payload->>feed_collapsed", "is", null);
+  });
+
+  it("resolves the removed member's name for a member.removed entry", async () => {
+    const removal = {
+      id: "00000000-0000-4000-8000-000000000009",
+      action: "member.removed",
+      payload: { removed_user_id: "u2", story_count: 30, self_leave: false },
+      created_at: "2026-08-03T12:00:00Z",
+      actor: { display_name: "Dev User", is_agent: false },
+      story: null,
+    };
+    const query = activityQuery([removal]);
+    const profiles = profilesQuery([{ id: "u2", display_name: "Rin" }]);
+    fromMock.mockImplementation((table: string) =>
+      table === "projects" ? projectQuery() : table === "profiles" ? profiles : query,
+    );
+
+    render(await ProjectActivityPage({ params: Promise.resolve({ id: "p1" }), searchParams: Promise.resolve({}) }));
+
+    expect(profiles.in).toHaveBeenCalledWith("id", ["u2"]);
+    expect(
+      screen.getByText("Dev User removed Rin from the project, unassigning 30 stories"),
+    ).toBeInTheDocument();
   });
 
   // The payload carries assignee ids and no names (20260803010000), so the

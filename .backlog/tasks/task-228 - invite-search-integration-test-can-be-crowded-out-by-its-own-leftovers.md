@@ -1,10 +1,11 @@
 ---
 id: TASK-228
 title: invite-search integration test can be crowded out by its own leftovers
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-08-03 02:44'
+updated_date: '2026-08-04 07:13'
 labels: []
 milestone: m-2
 dependencies: []
@@ -29,7 +30,19 @@ Not caused by TASK-214, which only surfaced it by running the full integration s
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The assertion no longer depends on how many unrelated users match the query — a database carrying hundreds of leftover profiles gives the same result as an empty one
-- [ ] #2 A full SUPABASE_INTEGRATION=1 run passes against a local database that has accumulated prior test data
-- [ ] #3 search_users_for_invite keeps its 10-row cap unchanged
+- [x] #1 The assertion no longer depends on how many unrelated users match the query — a database carrying hundreds of leftover profiles gives the same result as an empty one
+- [x] #2 A full SUPABASE_INTEGRATION=1 run passes against a local database that has accumulated prior test data
+- [x] #3 search_users_for_invite keeps its 10-row cap unchanged
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Root cause: the escaping test queried a fixed literal prefix (target.username.slice(0,14) = 'search_under_s') shared by every run's test user, so leftover profiles from prior un-wiped runs could crowd the new user out of the RPC's 10-row cap once matches exceeded 10. Other tests in the file were unaffected (count-only or absence-only assertions). Fix: slice from the id-fragment tail (target.username.slice(7)) instead, unique per run, still contains '_' for the escaping check. RPC/migration untouched (10-row cap unchanged, AC#3).
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Changed apps/web/lib/utils/invite-search.integration.test.ts: query for the underscore-escaping assertion now slices from the id-fragment tail instead of a fixed literal prefix, so it can't collide with leftover profiles from prior runs. Verified against the local dev DB with 930 accumulated profiles: full SUPABASE_INTEGRATION=1 pnpm test run (144 files, 1300 tests) passes, plus lint clean. RPC/migration unchanged.
+<!-- SECTION:FINAL_SUMMARY:END -->

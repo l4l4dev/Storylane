@@ -447,4 +447,74 @@ describe.skipIf(!RUN)("epic_pinned + create_epic / set_epic_pinned (integration)
       points: 2,
     });
   });
+
+  // Postgres fires BEFORE ROW triggers in trigger-name order, which is the only
+  // thing making stories_aa_protect_epic_pinned reset a forged epic_pinned
+  // before derive_is_container and enforce_single_level_nesting read it. A new
+  // trigger sorting ahead of it would silently move the guard behind its two
+  // readers, and nothing in the schema forbids that name.
+  it("the epic_pinned guard sorts first among the BEFORE ROW triggers on stories", async () => {
+    const pg = new PgClient({ connectionString: DB_URL() });
+    await pg.connect();
+    try {
+      // tgtype bit 0 = ROW, bit 1 = BEFORE.
+      const { rows } = await pg.query(`
+        select tgname from pg_trigger
+         where tgrelid = 'public.stories'::regclass
+           and not tgisinternal
+           and (tgtype & 3) = 3
+         order by tgname`);
+      expect(rows.map((r: { tgname: string }) => r.tgname)[0]).toBe(
+        // If this fails on a newly added trigger, rename it to sort after
+        // stories_derive_is_container rather than relaxing the assertion.
+        "stories_aa_protect_epic_pinned",
+      );
+    } finally {
+      await pg.end();
+    }
+  });
+
+  // protect_stories_epic_pinned steps aside for every role that is not
+  // authenticated/anon, so it covers no SECURITY DEFINER function — a later one
+  // writing stories.epic_pinned would skip the ownership, nesting and audit
+  // checks set_epic_pinned performs (20260724181957_epic_pinned.sql:56-61
+  // documents the gap; narrowing the guard to an allowlist of callers is not
+  // possible, since inside a definer function current_user is indistinguishable
+  // from a migration's). This asserts the set of writers instead, so adding one
+  // fails here rather than in production.
+  //
+  // Blind spot: a body that carries the column without naming it — an
+  // `insert into public.stories ... select *` — does not match and is not
+  // caught. Widening to every stories writer would mean a 20-plus list every
+  // story migration has to update, which is not worth it for a gap that is not
+  // exploitable today.
+  it("only the known functions mention epic_pinned", async () => {
+    const pg = new PgClient({ connectionString: DB_URL() });
+    await pg.connect();
+    try {
+      const { rows } = await pg.query(`
+        select p.proname from pg_proc p
+          join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public'
+           and p.prosrc ilike '%epic_pinned%'
+         order by p.proname`);
+      expect(rows.map((r: { proname: string }) => r.proname)).toEqual([
+        "containerize_story",
+        "create_epic",
+        "derive_is_container",
+        "enforce_single_level_nesting",
+        "protect_stories_epic_pinned",
+        "recompute_is_container",
+        "set_epic_pinned",
+        // Matches on a comment that names set_epic_pinned, not on any write —
+        // prosrc includes comment text. Listed rather than filtered out,
+        // because a query that could tell the two apart would also be a query
+        // that stops seeing a real write hidden in an unusual spelling.
+        "set_story_parent",
+        "story_should_be_container",
+      ]);
+    } finally {
+      await pg.end();
+    }
+  });
 });

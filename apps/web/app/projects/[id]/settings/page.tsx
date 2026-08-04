@@ -38,33 +38,31 @@ export default async function ProjectSettingsPage({
     notFound();
   }
 
-  const members = assertReadOk(
-    await supabase
+  // One round trip instead of four: none of these depends on another, and only
+  // `integrations` below needs a result from this batch (the owner check).
+  const [membersResult, labelsResult, statesResult, calendarResult] = await Promise.all([
+    supabase
       .from("project_members")
       .select("user_id, role, profiles(display_name, avatar_url, is_agent)")
       .eq("project_id", id),
-  );
+    supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
+    supabase
+      .from("project_states")
+      .select("id, project_id, name, action_label, category, position, created_at")
+      .eq("project_id", id)
+      .order("position"),
+    supabase.from("project_calendar_exceptions").select("id, date, kind").eq("project_id", id).order("date"),
+  ]);
+
+  const members = assertReadOk(membersResult);
 
   const myRole = members?.find((m) => m.user_id === user?.id)?.role;
   const isOwner = myRole === "owner";
   const isMember = myRole === "owner" || myRole === "member";
 
-  const labels = assertReadOk(
-    await supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
-  );
-
-  const statesData = assertReadOk(
-    await supabase
-      .from("project_states")
-      .select("id, project_id, name, action_label, category, position, created_at")
-      .eq("project_id", id)
-      .order("position"),
-  );
-  const states = (statesData ?? []) as ProjectState[];
-
-  const calendarExceptions = assertReadOk(
-    await supabase.from("project_calendar_exceptions").select("id, date, kind").eq("project_id", id).order("date"),
-  );
+  const labels = assertReadOk(labelsResult);
+  const states = (assertReadOk(statesResult) ?? []) as ProjectState[];
+  const calendarExceptions = assertReadOk(calendarResult);
 
   // RLS returns integrations only to owners — empty for everyone else.
   const integrations = isOwner

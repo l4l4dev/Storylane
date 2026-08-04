@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DndContext, useDroppable, type DragEndEvent, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { splitStory, type SplitChildInput } from "@/app/stories/[id]/actions";
@@ -43,6 +43,7 @@ export function SplitStudio({
   const router = useRouter();
   const [children, setChildren] = useState<SplitChildDraft[]>([]);
   const [selectedText, setSelectedText] = useState("");
+  const descriptionRef = useRef<HTMLParagraphElement>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const committingRef = useRef(false);
@@ -66,9 +67,50 @@ export function SplitStudio({
     children.flatMap((child) => child.taskIds.map((taskId) => [taskId, child.title] as const)),
   );
 
-  function handleDescriptionMouseUp() {
-    setSelectedText(window.getSelection()?.toString() ?? "");
-  }
+  // selectionchange rather than onMouseUp on the paragraph: a mouse-up handler
+  // sees only a pointer drag, so caret browsing, assistive tech and touch
+  // selection could not reach "Extract selection" at all. This event fires
+  // whatever made the selection.
+  //
+  // It does not make the paragraph keyboard-selectable on its own — it is a
+  // plain <p> with no tabIndex, so plain shift+arrow does nothing without caret
+  // browsing on. What keeps that from being a dead end is the disabled button
+  // stating its reason in place, plus "+ new story" as the other way in.
+  //
+  // Only the part of the selection inside the description counts. It is clipped
+  // rather than rejected for straddling the paragraph: a triple-click promotes
+  // the range end past the <p>, and Cmd+A puts both ends outside it, so
+  // demanding both boundaries be inside would drop the two selections a user is
+  // most likely to make on a whole paragraph.
+  //
+  // A selection that misses the paragraph entirely leaves the last value alone —
+  // clicking the Extract button itself moves the selection out, and clearing on
+  // that would disable the button before its own click could land.
+  useEffect(() => {
+    function readSelection() {
+      const node = descriptionRef.current;
+      const selection = window.getSelection();
+      if (!node || !selection || selection.rangeCount === 0) {
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      if (!range.intersectsNode(node)) {
+        return;
+      }
+      const withinDescription = document.createRange();
+      withinDescription.selectNodeContents(node);
+      const clipped = range.cloneRange();
+      if (clipped.compareBoundaryPoints(Range.START_TO_START, withinDescription) < 0) {
+        clipped.setStart(withinDescription.startContainer, withinDescription.startOffset);
+      }
+      if (clipped.compareBoundaryPoints(Range.END_TO_END, withinDescription) > 0) {
+        clipped.setEnd(withinDescription.endContainer, withinDescription.endOffset);
+      }
+      setSelectedText(clipped.toString());
+    }
+    document.addEventListener("selectionchange", readSelection);
+    return () => document.removeEventListener("selectionchange", readSelection);
+  }, []);
 
   function handleExtractSelection() {
     setChildren((prev) => addChildFromSelection(prev, selectedText));
@@ -119,8 +161,8 @@ export function SplitStudio({
           <h1 className="text-xl font-bold">{title}</h1>
           {description && (
             <p
+              ref={descriptionRef}
               data-testid="split-source-description"
-              onMouseUp={handleDescriptionMouseUp as (e: MouseEvent<HTMLParagraphElement>) => void}
               className="whitespace-pre-wrap text-sm text-muted-foreground select-text"
             >
               {description}

@@ -333,16 +333,20 @@ revoke execute on function public.set_epic_pinned(uuid, boolean) from public, an
 grant execute on function public.set_epic_pinned(uuid, boolean) to authenticated;
 
 -- ============================================================
--- DOWN (rollback — not auto-applied; run manually if reverting):
--- drop function public.set_epic_pinned(uuid, boolean);
--- drop function public.create_epic(uuid, text, text, text);
--- drop trigger stories_aa_protect_epic_pinned on public.stories;
--- drop function public.protect_stories_epic_pinned();
--- alter table public.stories drop column epic_pinned;
--- -- then re-apply the LATEST prior bodies, dropping the epic_pinned term:
--- --   recompute_is_container        -> 20260724121514 (keeps TASK-183's
--- --                                    epic_color default; 20260724054954's
--- --                                    older body would silently revert it)
--- --   derive_is_container           -> 20260724075153
--- --   enforce_single_level_nesting  -> 20260724054954
+-- DOWN (rollback — not auto-applied; run manually if reverting).
+-- The column goes LAST. plpgsql bodies are not parsed until they run, so
+-- dropping epic_pinned while the three functions below still reference it
+-- succeeds — and then every INSERT/UPDATE on stories fails until their reverts
+-- land.
+-- 1. drop function public.set_epic_pinned(uuid, boolean);
+--    drop function public.create_epic(uuid, text, text, text);
+-- 2. re-apply the LATEST prior bodies, dropping the epic_pinned term:
+--      recompute_is_container        -> 20260724121514 (keeps TASK-183's
+--                                      epic_color default; 20260724054954's
+--                                      older body would silently revert it)
+--      derive_is_container           -> 20260724075153
+--      enforce_single_level_nesting  -> 20260724054954
+-- 3. drop trigger stories_aa_protect_epic_pinned on public.stories;
+--    drop function public.protect_stories_epic_pinned();
+-- 4. alter table public.stories drop column epic_pinned;
 -- ============================================================

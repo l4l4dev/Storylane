@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { assertReadOk } from "@/lib/supabase/assert";
 import { assigneeIdsIn, describeActivity, hasActor, withAssigneeNames } from "@/lib/utils/activity";
 import { formatDateTime } from "@/lib/utils/format";
 import { AgentIndicator } from "@/components/features/projects/agent-indicator";
@@ -65,7 +66,9 @@ export default async function ProjectActivityPage({
   const after = before ? null : decodeCursor(rawAfter);
   const supabase = await createClient();
 
-  const { data: project } = await supabase.from("projects").select("id").eq("id", id).single();
+  const project = assertReadOk(
+    await supabase.from("projects").select("id").eq("id", id).maybeSingle(),
+  );
 
   if (!project) {
     notFound();
@@ -73,12 +76,22 @@ export default async function ProjectActivityPage({
 
   let activityQuery = supabase
     .from("activity_logs")
-    .select("id, action, payload, created_at, actor:profiles(display_name, is_agent), story:stories(title)")
+    // The story embed needs the FK named: activity_logs has two FKs to stories
+    // (story_id, and the composite cross-project guard from 20260715000006), so
+    // an unhinted `stories(...)` is ambiguous and PostgREST answers 300/PGRST201
+    // rather than embedding either one.
+    .select(
+      "id, action, payload, created_at, actor:profiles(display_name, is_agent), story:stories!activity_logs_story_id_fkey(title)",
+    )
     .eq("project_id", project.id)
     // Filtered here rather than after fetching: the page is keyset-paginated,
     // so dropping rows client-side would leave short pages and a lookahead
     // that no longer means what the next/prev links assume.
-    .filter("payload->>bookkeeping", "is", null);
+    .filter("payload->>bookkeeping", "is", null)
+    // A member.removed row speaks for these — see
+    // 20260804073330_collapse_member_removal_in_feed.sql. Unlike bookkeeping,
+    // this key is feed-only: the story-detail panel still shows each row.
+    .filter("payload->>feed_collapsed", "is", null);
 
   if (before) {
     activityQuery = activityQuery.or(
@@ -91,10 +104,9 @@ export default async function ProjectActivityPage({
   }
 
   const ascending = after !== null;
-  const { data: activity } = await activityQuery
-    .order("created_at", { ascending })
-    .order("id", { ascending })
-    .range(0, PAGE_SIZE);
+  const activity = assertReadOk(
+    await activityQuery.order("created_at", { ascending }).order("id", { ascending }).range(0, PAGE_SIZE),
+  );
 
   const fetchedPage = (activity ?? []).slice(0, PAGE_SIZE);
   const activityPage = ascending ? fetchedPage.reverse() : fetchedPage;
@@ -109,10 +121,9 @@ export default async function ProjectActivityPage({
   const assigneeNames = new Map<string, string>();
   const assigneeIds = assigneeIdsIn(activityPage);
   if (assigneeIds.length > 0) {
-    const { data: assignees } = await supabase
-      .from("profiles")
-      .select("id, display_name")
-      .in("id", assigneeIds);
+    const assignees = assertReadOk(
+      await supabase.from("profiles").select("id, display_name").in("id", assigneeIds),
+    );
     for (const profile of assignees ?? []) assigneeNames.set(profile.id, profile.display_name);
   }
 

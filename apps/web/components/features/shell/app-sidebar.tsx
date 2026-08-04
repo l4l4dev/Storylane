@@ -6,6 +6,7 @@ import {
   Activity,
   Check,
   ChevronsUpDown,
+  CircleUser,
   History,
   Layers,
   LogOut,
@@ -66,15 +67,22 @@ function SidebarNavLink({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
+      // The label is the only thing naming this link once the rail collapses,
+      // and title gives the pointer user the same name on hover.
+      aria-label={label}
+      title={label}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
+        // min-h-11 below md, not the mouse-density py-1.5 the wide sidebar uses:
+        // the collapsed rail exists for narrow/touch viewports, so its targets
+        // have to be touch-sized there (ux-principles §7).
+        "flex min-h-11 items-center justify-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors md:min-h-0 md:justify-start",
         active
           ? "bg-sidebar-accent text-sidebar-accent-foreground"
           : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
       )}
     >
       <Icon className="size-4 shrink-0" />
-      {label}
+      <span className="hidden md:inline">{label}</span>
     </Link>
   );
 }
@@ -116,9 +124,12 @@ export function AppSidebar({
     });
 
   return (
-    <aside className="sticky top-0 flex h-dvh w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="flex flex-col gap-2 p-3">
-        <Link href="/dashboard" className="px-2 py-1 font-semibold tracking-tight">
+    // w-14 below md: at 375px a fixed w-56 left 151px for the content, which is
+    // narrower than any board column. The rail keeps every destination reachable
+    // as an icon rather than introducing a drawer and the state it needs.
+    <aside className="sticky top-0 flex h-dvh w-14 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:w-56">
+      <div className="flex flex-col gap-2 p-2 md:p-3">
+        <Link href="/dashboard" className="hidden px-2 py-1 font-semibold tracking-tight md:block">
           Storylane
         </Link>
 
@@ -126,8 +137,16 @@ export function AppSidebar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="default" className="w-full justify-between gap-1.5">
-              <span className="truncate">{project ? project.name : "Projects"}</span>
+            <Button
+              variant="outline"
+              size="default"
+              // Named for the collapsed state, where the chevron is all that is
+              // left of this trigger.
+              aria-label={project ? project.name : "Projects"}
+              title={project ? project.name : "Projects"}
+              className="min-h-11 w-full justify-center gap-1.5 md:min-h-0 md:justify-between"
+            >
+              <span className="hidden truncate md:inline">{project ? project.name : "Projects"}</span>
               <ChevronsUpDown className="shrink-0 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
@@ -159,7 +178,7 @@ export function AppSidebar({
         </DropdownMenu>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5 px-3">
+      <nav className="flex flex-1 flex-col gap-0.5 px-2 md:px-3">
         {base && navItems.map((item) => {
           const href = `${base}/${item.segment}`;
           // pathname === base covers the instant before the /board redirect
@@ -170,11 +189,21 @@ export function AppSidebar({
         })}
       </nav>
 
-      <div className="flex items-center justify-between gap-1 border-t border-sidebar-border p-3">
+      <div className="flex flex-col items-center gap-1 border-t border-sidebar-border p-2 md:flex-row md:justify-between md:p-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start text-muted-foreground">
-              <span className="truncate">@{username ?? "account"}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`@${username ?? "account"}`}
+              title={`@${username ?? "account"}`}
+              className="min-h-11 w-full min-w-0 justify-center text-muted-foreground md:min-h-0 md:flex-1 md:justify-start"
+            >
+              {/* Not the gear: NAV_ITEMS already spends one on project Settings,
+                  and two identical glyphs in a 56px rail would be told apart only
+                  by a tooltip — with Sign out behind one of them. */}
+              <CircleUser className="md:hidden" />
+              <span className="hidden truncate md:inline">@{username ?? "account"}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">

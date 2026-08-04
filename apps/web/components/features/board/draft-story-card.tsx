@@ -147,6 +147,10 @@ export function DraftStoryCard({
   }
 
   return (
+    // A shortcut scope, not a control: the handler exists to catch Esc/Cmd+S
+    // bubbling up from the real inputs inside, so the element needs no role and
+    // no tabIndex of its own. Every focusable thing here is a native input.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       ref={containerRef}
       onKeyDown={handleKeyDown}

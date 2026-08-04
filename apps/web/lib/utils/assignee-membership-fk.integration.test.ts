@@ -265,4 +265,73 @@ describe.skipIf(!RUN)("assignee membership FK (integration)", () => {
     expect(logs[0].actor_id).toBe(ownerId);
     expect(logs[0].payload).toMatchObject({ from_id: memberId, to_id: null });
   });
+
+  // The bet 20260804073330 rests on: set_config(..., is_local) is visible to the
+  // RI trigger the FK runs, so the cascade's UPDATEs carry the token. If it were
+  // not, the rows would be unmarked and the feed would show all N again.
+  it("marks every story the removal cascade unassigns with one shared token", async () => {
+    const projectId = await createProject(`feed-collapse-${Date.now()}`);
+    await addMember(projectId, memberId);
+    const storyIds = await Promise.all(
+      [0, 1, 2].map((n) => createStory(projectId, `Held by the leaver ${n}`, memberId)),
+    );
+
+    const { error } = await asOwner.rpc("remove_member", { p_project_id: projectId, p_user_id: memberId });
+    expect(error).toBeNull();
+
+    const { data: rows } = await asService
+      .from("activity_logs")
+      .select("action, story_id, payload")
+      .eq("project_id", projectId);
+    const cascade = (rows ?? []).filter((r) => r.action === "story.assignee_changed");
+    const summary = (rows ?? []).filter((r) => r.action === "member.removed");
+
+    // AC#2: one entry for the removal...
+    expect(summary).toHaveLength(1);
+    expect(summary[0].story_id).toBeNull();
+    expect(summary[0].payload).toMatchObject({
+      removed_user_id: memberId,
+      story_count: storyIds.length,
+      self_leave: false,
+    });
+    // ...whose own row must NOT carry the key, or the feed filter eats it too.
+    expect(summary[0].payload).not.toHaveProperty("feed_collapsed");
+
+    // AC#3: the per-story rows survive, all under one token.
+    expect(cascade).toHaveLength(storyIds.length);
+    const tokens = new Set(cascade.map((r) => (r.payload as Record<string, string>).feed_collapsed));
+    expect(tokens.size).toBe(1);
+    expect([...tokens][0]).toBe((summary[0].payload as Record<string, string>).removal_id);
+
+    // AC#2, the reader's half: the feed's own filters leave exactly the summary.
+    const { data: feed } = await asService
+      .from("activity_logs")
+      .select("action")
+      .eq("project_id", projectId)
+      .filter("payload->>bookkeeping", "is", null)
+      .filter("payload->>feed_collapsed", "is", null);
+    expect((feed ?? []).filter((r) => r.action === "story.assignee_changed")).toHaveLength(0);
+    expect((feed ?? []).filter((r) => r.action === "member.removed")).toHaveLength(1);
+
+    // AC#3, the reader's half: story detail keys on story_id and does not filter
+    // this key, so each story still explains its own unassignment.
+    for (const storyId of storyIds) {
+      expect(await assigneeLogs(storyId)).toHaveLength(1);
+    }
+  });
+
+  // An ordinary reassignment must not be collapsed: the token is set only for
+  // the duration of the delete, so nothing else can pick it up.
+  it("leaves a plain assignee change unmarked", async () => {
+    const projectId = await createProject(`feed-collapse-plain-${Date.now()}`);
+    await addMember(projectId, memberId);
+    const storyId = await createStory(projectId, "Reassigned normally", null);
+
+    const { error } = await asOwner.from("stories").update({ assignee_id: memberId }).eq("id", storyId);
+    expect(error).toBeNull();
+
+    const logs = await assigneeLogs(storyId);
+    expect(logs).toHaveLength(1);
+    expect(logs[0].payload.feed_collapsed).toBeNull();
+  });
 });
