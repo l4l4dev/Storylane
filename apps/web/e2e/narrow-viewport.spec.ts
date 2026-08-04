@@ -23,7 +23,16 @@ test.describe("narrow viewport", () => {
     async function expectNoPageOverflow(label: string) {
       // scrollWidth exceeding clientWidth on the root is the page itself
       // overflowing — the thing a phone user cannot scroll away from.
-      const overflow = await page.evaluate(() => {
+      //
+      // Both waits are load-bearing, and this check is worthless without them:
+      // `next dev` injects the stylesheet as a separate request, so at `load` the
+      // page can still be unstyled — every row measures 0 wide and no overflow
+      // can be observed at all. Fonts matter for the same reason one step later:
+      // the fallback face is narrower than Geist, so a row measured before the
+      // swap reads as fitting when the rendered one does not.
+      await page.waitForLoadState("networkidle");
+      const overflow = await page.evaluate(async () => {
+        await document.fonts.ready;
         const root = document.documentElement;
         return root.scrollWidth - root.clientWidth;
       });
@@ -32,7 +41,9 @@ test.describe("narrow viewport", () => {
 
     for (const path of [
       "/my-work",
+      "/my-work/archive",
       "/dashboard",
+      "/settings",
       `/projects/${projectId}/board`,
       `/projects/${projectId}/epics`,
       `/projects/${projectId}/iterations`,

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-27 06:18'
-updated_date: '2026-08-04 11:05'
+updated_date: '2026-08-04 11:36'
 labels: []
 milestone: m-2
 dependencies: []
@@ -92,6 +92,31 @@ Audited responsive/a11y/performance and fixed what the audit found: two page-lev
 2. The discarded-read-error class produces a WRONG 404, not an empty list, in getStoryDetail (app/stories/[id]/actions.ts). It read the story with .single() and discarded the error, then `if (!story) return null` — so a transient failure, or any future ambiguous embed, renders as "not found" and the board's inline expansion shows nothing, indistinguishable from a deleted story. This is a strictly worse case than the leftovers triaged in the previous round (dashboard, my-work/archive) and was not in that list. Fixed with maybeSingle + assertReadOk, so a genuine zero-row read still returns null and only a failure throws, plus assertReadOk on all eleven reads of the following Promise.all (three of which are Promise.resolve stubs that needed an explicit error: null). Guarded by a new test in history-query.test.ts.
 
 The leftover list is therefore now just app/dashboard/page.tsx and app/my-work/archive/page.tsx (3 spots), both of which degrade to an empty list rather than a wrong 404. Still the owner's call whether that earns a task.
+
+Final Summary:
+--------------------------------------------------
+Audited responsive/a11y/performance and fixed what the audit found: two page-level horizontal overflows at 375px (the fixed-width shell sidebar, now an icon rail below md; the epics page's fixed left pane, now stacked), one real a11y defect (Split Studio's extract-selection was pointer-only, now driven by selectionchange), and the settings page's four serial queries (7 round trips to 4). Enabled jsx-a11y's recommended ruleset in CI so this stays enforced; the 15 remaining findings were triaged as false positives with the reasons recorded in config and code. fable-advisor design review passed with corrections, all applied (one of its findings verified as not holding). 1313 unit/integration tests, lint, tsc and the full Playwright suite green.
+
+AC#1 WAS FALSELY GREEN — found by CI on the fix PR (#25), 2026-08-04.
+
+The 375px check this task shipped was measuring nothing. `page.goto()` resolves on `load`, but `next dev` serves the stylesheet as a separate request, so at that moment the page can still be unstyled: every row measures 0 wide and no overflow is observable on any path. That is why it passed locally on every run. CI's timing differed enough for /dashboard to be laid out when it was measured, and the real overflow surfaced there — the only reason this was caught at all.
+
+Proven, not inferred, with a temporary probe on the same page in one run:
+  waitUntil "load"        -> overflow 0,  header children [0, 0]
+  waitUntil "networkidle" -> overflow 11, header children [99, 207]
+document.fonts.ready alone does NOT fix it (the font was already loaded; the layout was not). The check now waits for networkidle AND fonts.ready, with the reason recorded in the spec — the fonts wait matters one step later, since the fallback face is narrower than Geist and a row measured before the swap reads as fitting.
+
+With the check repaired it immediately found three page-level overflows that had been shipping the whole time, all fixed here by letting the row wrap (the pattern the board's inline editors already use):
+ 1. /dashboard's header — h1 "Projects" (99px) + "Account settings"/"Sign out" (207px) in a 271px column. flex-wrap + gap-3.
+ 2. Project settings, member rows — name + role select + Save + Remove/Leave on one fixed line. flex-wrap.
+ 3. Project settings, state rows — the fixed widths alone (w-24 badge + w-36 action label + reorder + delete) exceed 271px. flex-wrap was NOT sufficient on its own: `flex-1` on the state name gives up its space first, so the name collapsed to zero width instead of the row breaking. The action-label column and Delete now ride one `w-full ... sm:w-auto` wrapper, which forces the break between the name and them; from sm up the wrapper is w-auto and the row renders exactly as before.
+
+Also widened the check to the two screens it never visited (/my-work/archive, /settings) — it claims "no screen", and it was covering seven of nine.
+
+Verified: all nine screens measure 0 page overflow at 375px; reverting just the three component fixes makes the repaired check fail again (confirmed by stashing them), so it is a real guard now rather than a passing no-op.
+
+fable-advisor design review (mandatory for user-facing UI, spec/ux-principles.md): approved with one required correction, applied. The wrap wrapper in state-manager needed `justify-between`: once wrapped, Delete sat beside the action-label's edit target in the middle of the row, violating principle #6 (irreversible actions belong at the edge). Unconditional class — from sm up the wrapper is w-auto so there is no free space to distribute. The advisor also explicitly approved not restructuring the state rows into labelled stacked cards (the li border carries the grouping, and w-full makes every row wrap uniformly), and confirmed the dashboard header needs no narrow-specific branch since a solo wrapped line falls back to flex-start.
+Non-blocking, out of scope, raised by the advisor: the icon-xs chevron/X touch targets are below a comfortable size — pre-existing, not introduced here.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
