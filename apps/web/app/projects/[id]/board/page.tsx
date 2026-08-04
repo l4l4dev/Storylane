@@ -73,7 +73,7 @@ export default async function BoardPage({
     // Lazily creates/rolls over the current iteration before reading it (see
     // spec/velocity.md "Automatic scheduling & rollover") — must run before
     // the iterations query below.
-    ensureCurrentIteration(project.id),
+    Promise.resolve(),
     supabase.from("project_members").select("user_id, role, profiles(display_name, is_agent)").eq("project_id", id),
   ]);
   const members = assertReadOk(membersResult);
