@@ -125,11 +125,11 @@ function DeleteStateButton({
       <Button
         type="submit"
         variant="ghost"
-        size="icon-xs"
+        size="icon-sm"
         aria-label={`Delete state ${stateName}`}
         className="text-muted-foreground hover:text-destructive"
       >
-        <X />
+        <X className="size-3.5" />
       </Button>
       {state.error && <span className="max-w-40 text-right text-xs text-destructive">{state.error}</span>}
     </form>
@@ -196,11 +196,11 @@ export function StateManager({
           return (
             <li key={state.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2">
               {canManage && (
-                <div className="flex shrink-0 flex-col">
+                <div className="flex shrink-0 flex-col gap-0.5">
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon-sm"
                     disabled={rank === 0 || reorderingId === state.id}
                     aria-label={`Move ${state.name} up within ${CATEGORY_LABELS[state.category]}`}
                     onClick={() => move(state.id, "up")}
@@ -210,7 +210,7 @@ export function StateManager({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon-sm"
                     disabled={rank === categoryStates.length - 1 || reorderingId === state.id}
                     aria-label={`Move ${state.name} down within ${CATEGORY_LABELS[state.category]}`}
                     onClick={() => move(state.id, "down")}

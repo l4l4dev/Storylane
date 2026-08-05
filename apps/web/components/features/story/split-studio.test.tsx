@@ -234,6 +234,47 @@ describe("SplitStudio", () => {
     expect(screen.getByRole("button", { name: /extract selection/i })).toBeEnabled();
   });
 
+  // The hint must stay mounted so the Tasks section below it doesn't shift as
+  // selection changes (spec/ux-principles.md #3) — only its visibility toggles.
+  it("keeps the selection hint mounted, hidden instead of removed, once text is selected", () => {
+    render(<SplitStudio {...baseProps} />);
+    const hint = screen.getByText(/select text above to extract it as a new story/i);
+    expect(hint).not.toHaveClass("invisible");
+
+    const start = baseProps.description.indexOf(PHRASE);
+    select((range) => {
+      range.setStart(descriptionText(), start);
+      range.setEnd(descriptionText(), start + PHRASE.length);
+    });
+
+    expect(hint).toBeInTheDocument();
+    expect(hint).toHaveClass("invisible");
+  });
+
+  // Same shift the selection hint above was fixed for: the blank-title
+  // warning must stay mounted so the Split button below it doesn't move
+  // as an extracted child (born with a blank title) gets one typed in
+  // (spec/ux-principles.md #3).
+  it("keeps the blank-title warning mounted, hidden instead of removed, once every child has a title", () => {
+    render(<SplitStudio {...baseProps} />);
+
+    const start = baseProps.description.indexOf(PHRASE);
+    select((range) => {
+      range.setStart(descriptionText(), start);
+      range.setEnd(descriptionText(), start + PHRASE.length);
+    });
+    fireEvent.click(screen.getByRole("button", { name: /extract selection/i }));
+
+    const warning = screen.getByText(/give every new story a title before splitting/i);
+    expect(warning).toBeInTheDocument();
+    expect(warning).not.toHaveClass("invisible");
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Handle offline mode" } });
+
+    expect(warning).toBeInTheDocument();
+    expect(warning).toHaveClass("invisible");
+  });
+
   // fable-advisor: with several tasks, the left list must distinguish
   // already-assigned tasks from ones still needing a home, or the user loses
   // track of what's left to sort — no assignment yet, so nothing is marked.

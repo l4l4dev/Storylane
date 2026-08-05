@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { assertReadOk } from "@/lib/supabase/assert";
 import { createClient } from "@/lib/supabase/server";
 import { projectsNeedingRollover, rolloverIterationSafely } from "@/lib/supabase/rollover";
 import { velocityRate } from "@storylane/core";
@@ -29,11 +30,13 @@ export default async function DashboardPage({
   // personal project the viewer was invited to (someone else's) still shows
   // for them — see doc-11 D1.
   const personalFilter = user ? `is_personal.eq.false,created_by.neq.${user.id}` : "is_personal.eq.false";
-  const { data: projects } = await supabase
-    .from("projects")
-    .select("id, name, description, created_at, updated_at, archived_at, velocity_window")
-    .or(personalFilter)
-    .order("updated_at", { ascending: false });
+  const projects = assertReadOk(
+    await supabase
+      .from("projects")
+      .select("id, name, description, created_at, updated_at, archived_at, velocity_window")
+      .or(personalFilter)
+      .order("updated_at", { ascending: false }),
+  );
 
   // Lazily rolls over each tracker project's current iteration before
   // reading it (spec/velocity.md "Automatic scheduling & rollover") — same
@@ -73,8 +76,8 @@ export default async function DashboardPage({
         .select("project_id, user_id, role, is_favorite, profiles(display_name, avatar_url)")
         .in("project_id", projectIds),
     ]);
-    iterationRows = iterationsResult.data ?? [];
-    memberRows = membersResult.data ?? [];
+    iterationRows = assertReadOk(iterationsResult) ?? [];
+    memberRows = assertReadOk(membersResult) ?? [];
   }
 
   const iterationsById = new Map<string, IterationRow[]>();

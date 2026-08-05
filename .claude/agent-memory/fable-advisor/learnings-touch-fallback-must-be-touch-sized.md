@@ -20,5 +20,9 @@ are honest").
 FOR touch/a11y, the hit target must earn that (bump to icon-sm/size-7+ or get
 owner sign-off to keep house density). The repo embraces dense `icon-xs` for
 mouse chrome, so density itself is fine (design-language) — the flag fires only
-when the control's own stated purpose is a fat-finger modality. Relates to
-[[review-checklists]] board/interaction pass.
+when the control's own stated purpose is a fat-finger modality, OR when a 375px
+responsive pass shows the control is a primary tap target there (TASK-231
+state-manager chevrons/X → icon-sm). The settled remedy is a per-site icon-sm
+bump, never a global variant change — my-work-sections.tsx and state-manager.tsx
+both mix icon-sm (touch path) with icon-xs (mouse chrome) in one file. Relates
+to [[review-checklists]] board/interaction pass.

@@ -172,9 +172,10 @@ export function SplitStudio({
             <Button type="button" size="xs" variant="outline" disabled={!selectedText.trim()} onClick={handleExtractSelection}>
               Extract selection as new story
             </Button>
-            {!selectedText.trim() && (
-              <p className="text-xs text-muted-foreground">Select text above to extract it as a new story.</p>
-            )}
+            {/* Always rendered so the Tasks section below doesn't shift as selection changes (spec/ux-principles.md #3). */}
+            <p className={`text-xs text-muted-foreground ${selectedText.trim() ? "invisible" : ""}`}>
+              Select text above to extract it as a new story.
+            </p>
           </div>
 
           <div>
@@ -233,10 +234,12 @@ export function SplitStudio({
           {/* A blank title must never reach split_story — the RPC's raw
               not-null violation isn't a meaningful error message
               (ux-principles principle 2). Shown inline rather than only
-              disabling Split, so it's clear why the button won't go. */}
-          {hasBlankTitle && (
-            <p className="text-sm text-muted-foreground">Give every new story a title before splitting.</p>
-          )}
+              disabling Split, so it's clear why the button won't go. Always
+              rendered, visibility toggled, so the Split button below it
+              doesn't shift as a title clears/fills (ux-principles principle 3). */}
+          <p className={`text-sm text-muted-foreground ${hasBlankTitle ? "" : "invisible"}`}>
+            Give every new story a title before splitting.
+          </p>
 
           {error && (
             <p className="text-sm text-destructive" role="alert">

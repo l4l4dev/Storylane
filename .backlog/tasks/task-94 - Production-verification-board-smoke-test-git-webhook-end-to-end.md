@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-18 15:10'
-updated_date: '2026-08-01 09:27'
+updated_date: '2026-08-05 07:40'
 labels: []
 milestone: m-1
 dependencies: []
@@ -28,6 +28,7 @@ Webhook steps: in project Settings configure the Git integration (repo URL + gen
 - [ ] #1 Production board flow works end to end (project -> story -> estimate -> accepted, comment, task, activity feed)
 - [ ] #2 A real merged PR referencing a story transitions that story to finished in production
 - [ ] #3 POINTS_HISTORY_FROM in apps/web/lib/utils/burndown.ts is on or after the day migration 20260731000000 actually reached production — it ships set to 2026-08-02, so raise it if the production apply landed later (too early makes charts with no points history claim full coverage; too late only over-reports partial)
+- [ ] #4 375px の視覚レビューで my-work-column-manager.tsx の削除Xボタン(icon-xs)のタップしやすさを確認する — TASK-231 の fable-advisor レビュー(2026-08-05)で state-manager.tsx と同じ settings パネル族の類似候補として指摘済み、問題があれば icon-sm へ個別対応
 <!-- AC:END -->
 
 ## Implementation Notes

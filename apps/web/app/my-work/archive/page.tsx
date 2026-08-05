@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { addDays } from "@storylane/core";
+import { assertReadOk } from "@/lib/supabase/assert";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, utcTodayKey } from "@/lib/utils/format";
 import { DEFAULT_DONE_WINDOW_DAYS, groupDoneByDate } from "@/lib/utils/my-work";
@@ -23,21 +24,23 @@ export default async function MyWorkArchivePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: profileRow } = user
-    ? await supabase.from("profiles").select("my_work_done_window_days").eq("id", user.id).single()
-    : { data: null };
+  const profileRow = user
+    ? assertReadOk(await supabase.from("profiles").select("my_work_done_window_days").eq("id", user.id).maybeSingle())
+    : null;
   const doneWindowDays = profileRow?.my_work_done_window_days ?? DEFAULT_DONE_WINDOW_DAYS;
   const archivedBefore = `${addDays(utcTodayKey(), -doneWindowDays)}T00:00:00.000Z`;
 
-  const { data: projectRows } = await supabase.from("projects").select("id, name, is_personal, created_by");
+  const projectRows = assertReadOk(await supabase.from("projects").select("id, name, is_personal, created_by"));
   const projectById = new Map(
     (projectRows ?? []).map((p) => [p.id, { name: p.name, isPersonal: p.is_personal && p.created_by === user?.id }]),
   );
 
-  const { data: statesRows } = await supabase
-    .from("project_states")
-    .select("id, project_id, name, action_label, category, position, created_at")
-    .in("project_id", [...projectById.keys()]);
+  const statesRows = assertReadOk(
+    await supabase
+      .from("project_states")
+      .select("id, project_id, name, action_label, category, position, created_at")
+      .in("project_id", [...projectById.keys()]),
+  );
   const statesByProject = new Map<string, ProjectState[]>();
   const doneStateIds = new Set<string>();
   for (const state of (statesRows ?? []) as ProjectState[]) {
