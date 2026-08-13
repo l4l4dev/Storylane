@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getProject, getProjectMembers } from "@/lib/supabase/project-data";
@@ -26,19 +27,22 @@ import { BoardFilters } from "@/components/features/board/board-filters";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { StoryPeekHost } from "@/components/features/board/story-peek-host";
 import { InviteFailedBanner, parseInviteFailedCount } from "@/components/features/projects/invite-failed-banner";
+import { BoardContentSkeleton, BoardLoadingStatus } from "./loading";
+
+type SearchParams = {
+  type?: string;
+  assignee?: string;
+  label?: string;
+  story?: string;
+  invite_failed?: string;
+};
 
 export default async function BoardPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{
-    type?: string;
-    assignee?: string;
-    label?: string;
-    story?: string;
-    invite_failed?: string;
-  }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const { id } = await params;
   const { type, assignee, label, story: peekStoryId, invite_failed } = await searchParams;
@@ -46,34 +50,143 @@ export default async function BoardPage({
   // board instead of /dashboard, so this is where a partial invite failure
   // from that flow must surface instead — never silently.
   const inviteFailedCount = parseInviteFailedCount(invite_failed);
-  const supabase = await createClient();
 
-  // getStoryDetail is a pure read with no dependency on the board's own data
-  // at all, so it's fired immediately and only awaited at render time, once
-  // everything else below is already in flight. If an earlier read below
-  // throws first, this would otherwise become an unhandled rejection —
-  // attach a no-op handler now so that can't happen; the real outcome is
-  // still observed at the `await` at the bottom of this function.
-  const peekDetailPromise = peekStoryId ? getStoryDetail(peekStoryId) : null;
-  peekDetailPromise?.catch(() => {});
-
-  const {
-    data: { user },
-  } = await getUser();
-
-  const [project, members] = await Promise.all([getProject(id), getProjectMembers(id)]);
+  // Only the project row (fast, and already shared with layout.tsx's own
+  // call via getProject's per-request cache — see project-data.ts) gates
+  // this shell. Everything else the board needs — stories, iterations,
+  // capacity, the side peek — lives in BoardContent below, wrapped in
+  // Suspense, so a slow board doesn't hold up the title or the sidebar
+  // (TASK-233).
+  const project = await getProject(id);
 
   if (!project) {
     notFound();
   }
 
-  // Lazily creates/rolls over the current iteration before reading it (see
-  // spec/velocity.md "Automatic scheduling & rollover"). Unlike the peek
-  // fetch above, this can trigger the finalize_iteration RPC (a real write)
-  // — it must run only once the project is confirmed to exist, matching
-  // iterations/page.tsx and epics/page.tsx's own call sites, so a bad/foreign
-  // project id 404s without an extra wasted rollover attempt against it.
-  await ensureCurrentIteration(id);
+  return (
+    <main className="p-6">
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold">
+          {project.name} <span className="text-sm font-normal text-muted-foreground">Board</span>
+        </h1>
+      </div>
+
+      {inviteFailedCount !== null && (
+        <InviteFailedBanner count={inviteFailedCount} settingsHref={`/projects/${project.id}/settings`} />
+      )}
+
+      <Suspense
+        fallback={
+          <div aria-busy="true">
+            <BoardLoadingStatus />
+            <BoardContentSkeleton />
+          </div>
+        }
+      >
+        <BoardContent
+          project={project}
+          filter={{ type, assigneeId: assignee, labelId: label }}
+          peekStoryId={peekStoryId}
+        />
+      </Suspense>
+    </main>
+  );
+}
+
+async function BoardContent({
+  project,
+  filter,
+  peekStoryId,
+}: {
+  project: NonNullable<Awaited<ReturnType<typeof getProject>>>;
+  filter: { type?: string; assigneeId?: string; labelId?: string };
+  peekStoryId?: string;
+}) {
+  const id = project.id;
+  const supabase = await createClient();
+
+  // getStoryDetail is a pure read with no dependency on the board's own data
+  // at all, so it's fired immediately and only awaited at render time, once
+  // everything else below is already in flight — "immediately" meaning at
+  // the top of BoardContent, which starts only once BoardPage's own (fast,
+  // cached) project fetch has resolved, not at the true top of the request.
+  // If an earlier read below throws first, this would otherwise become an
+  // unhandled rejection — attach a no-op handler now so that can't happen;
+  // the real outcome is still observed at the `await` at the bottom of this
+  // function.
+  const peekDetailPromise = peekStoryId ? getStoryDetail(peekStoryId) : null;
+  peekDetailPromise?.catch(() => {});
+
+  // Lazily creates/rolls over the current iteration before it's read below
+  // (see spec/velocity.md "Automatic scheduling & rollover"). Unlike the
+  // peek fetch above, this can trigger the finalize_iteration RPC (a real
+  // write) — it must run only once the project is confirmed to exist
+  // (already true here — BoardPage above only renders this component once
+  // getProject succeeded), matching iterations/page.tsx and epics/page.tsx's
+  // own call sites. Fired here (not awaited yet) so it runs concurrently
+  // with everything else below instead of gating all of it.
+  const ensureIterationPromise = ensureCurrentIteration(id);
+  ensureIterationPromise.catch(() => {});
+
+  // None of these three depend on each other's result, so they all fire
+  // together instead of stacking into three serial round trips.
+  const userPromise = getUser();
+  const membersPromise = getProjectMembers(id);
+
+  // Nothing below depends on ensureCurrentIteration's rollover except the
+  // `iterations` select itself — fire the rest now too, concurrently with
+  // it, instead of waiting for it to land first.
+  const storiesPromise = fetchAllRows((from, to) =>
+    supabase
+      .from("stories")
+      .select(
+        "id, number, title, description, story_type, state_id, points, position, iteration_id, assignee_id, completed_at, parent_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
+      )
+      .eq("project_id", id)
+      // Containers are off the board (doc-18 §1/§5): with NULL state they
+      // would otherwise bucket into the Icebox via columnForStory. The List
+      // accordion / /epics list fetch them separately (doc-18 §9).
+      .eq("is_container", false)
+      .order("position", { ascending: true })
+      .range(from, to),
+  );
+  const labelsPromise = supabase.from("labels").select("id, name, color").eq("project_id", id).order("name");
+  // List view only (see components/features/board/board-list-view.tsx) —
+  // freeform planning dividers for the Backlog section.
+  const dividersPromise = supabase.from("backlog_dividers").select("id, label, kind, position").eq("project_id", id);
+  // Draft goals for virtual (not-yet-real) future iterations, edited inline
+  // on the Backlog's group headers. Small table (at most one row per
+  // virtual iteration with a goal set) — cheaper to fetch everything and
+  // filter to `number > currentIteration.number` below than to await
+  // `currentIteration` first for a second query.
+  const pendingGoalsPromise = supabase.from("iteration_goals").select("number, goal").eq("project_id", id);
+  // The project's states (TASK-91) — the physical Kanban column set,
+  // threaded down through KanbanBoard to every view.
+  const statesPromise = supabase
+    .from("project_states")
+    .select("id, project_id, name, action_label, category, position, created_at")
+    .eq("project_id", id)
+    .order("position", { ascending: true });
+  // Containers, fetched separately from the board's story list (doc-18 §9):
+  // the Epics band + every child's "part of Epic" link (ux-principles
+  // principle 8) both need them. Ordered by position (not number) — doc-18
+  // §2: a container shares the single stories.position space like any
+  // top-level story, so its relative order among other containers must
+  // follow that, not creation order. Paged the same way as the stories
+  // query above — an unbounded select silently truncates past PostgREST's
+  // max_rows, which used to drop epics (and every affected child's epic
+  // badge) with no error in a project with more than 1000 (TASK-198).
+  const containerRowsPromise = fetchAllRows((from, to) =>
+    supabase
+      .from("stories")
+      .select("id, number, title, epic_color")
+      .eq("project_id", id)
+      .eq("is_container", true)
+      .order("position", { ascending: true })
+      .range(from, to),
+  );
+
+  const [{ data: { user } }, members] = await Promise.all([userPromise, membersPromise]);
 
   const capacityMembers = (members ?? []).map((m) => ({ userId: m.user_id, role: m.role }));
   // Fired now, on an estimated range (project.iteration_length + today are
@@ -87,6 +200,9 @@ export default async function BoardPage({
     project.iteration_length,
   );
 
+  // Only the `iterations` select itself needs to wait for the rollover.
+  await ensureIterationPromise;
+
   const [iterationsResult, stories, labelsResult, dividersResult, pendingGoalsResult, statesResult, containerRows] =
     await Promise.all([
       supabase
@@ -94,58 +210,12 @@ export default async function BoardPage({
         .select("id, number, goal, retro_notes, start_date, end_date, velocity, capacity, state, skipped")
         .eq("project_id", id)
         .order("number", { ascending: true }),
-      // A project's full story list isn't bounded by anything else here —
-      // page through past PostgREST's max_rows cap rather than one select.
-      fetchAllRows((from, to) =>
-        supabase
-          .from("stories")
-          .select(
-            "id, number, title, description, story_type, state_id, points, position, iteration_id, assignee_id, completed_at, parent_id, story_labels(label_id), assignee:profiles!stories_assignee_id_fkey(display_name, is_agent)",
-          )
-          .eq("project_id", id)
-          // Containers are off the board (doc-18 §1/§5): with NULL state they
-          // would otherwise bucket into the Icebox via columnForStory. The List
-          // accordion / /epics list fetch them separately (doc-18 §9).
-          .eq("is_container", false)
-          .order("position", { ascending: true })
-          .range(from, to),
-      ),
-      supabase.from("labels").select("id, name, color").eq("project_id", id).order("name"),
-      // List view only (see components/features/board/board-list-view.tsx) —
-      // freeform planning dividers for the Backlog section.
-      supabase.from("backlog_dividers").select("id, label, kind, position").eq("project_id", id),
-      // Draft goals for virtual (not-yet-real) future iterations, edited
-      // inline on the Backlog's group headers. Small table (at
-      // most one row per virtual iteration with a goal set) — cheaper to
-      // fetch everything and filter to `number > currentIteration.number`
-      // below than to await `currentIteration` first for a second query.
-      supabase.from("iteration_goals").select("number, goal").eq("project_id", id),
-      // The project's states (TASK-91) — the physical Kanban column set,
-      // threaded down through KanbanBoard to every view.
-      supabase
-        .from("project_states")
-        .select("id, project_id, name, action_label, category, position, created_at")
-        .eq("project_id", id)
-        .order("position", { ascending: true }),
-      // Containers, fetched separately from the board's story list (doc-18
-      // §9): the Epics band + every child's "part of Epic" link
-      // (ux-principles principle 8) both need them. Ordered by position (not
-      // number) — doc-18 §2: a container shares the single stories.position
-      // space like any top-level story, so its relative order among other
-      // containers must follow that, not creation order. Paged the same way
-      // as the stories query above — an unbounded select silently truncates
-      // past PostgREST's max_rows, which used to drop epics (and every
-      // affected child's epic badge) with no error in a project with more
-      // than 1000 (TASK-198).
-      fetchAllRows((from, to) =>
-        supabase
-          .from("stories")
-          .select("id, number, title, epic_color")
-          .eq("project_id", id)
-          .eq("is_container", true)
-          .order("position", { ascending: true })
-          .range(from, to),
-      ),
+      storiesPromise,
+      labelsPromise,
+      dividersPromise,
+      pendingGoalsPromise,
+      statesPromise,
+      containerRowsPromise,
     ]);
   const iterations = assertReadOk(iterationsResult);
   const labels = assertReadOk(labelsResult);
@@ -242,7 +312,6 @@ export default async function BoardPage({
   // hidden stories' positions, and would make the virtual-iteration
   // groups/point sums/committed-points shift with whatever filter happened
   // to be active.
-  const filter = { type, assigneeId: assignee, labelId: label };
   const initialContainers: Record<string, BoardStory[]> = {
     [BACKLOG_COLUMN_ID]: [],
     [ICEBOX_COLUMN_ID]: [],
@@ -344,17 +413,7 @@ export default async function BoardPage({
   const peekDetail = await peekDetailPromise;
 
   return (
-    <main className="p-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">
-          {project.name} <span className="text-sm font-normal text-muted-foreground">Board</span>
-        </h1>
-      </div>
-
-      {inviteFailedCount !== null && (
-        <InviteFailedBanner count={inviteFailedCount} settingsHref={`/projects/${project.id}/settings`} />
-      )}
-
+    <>
       <KanbanBoard
         projectId={project.id}
         currentIteration={currentIteration}
@@ -388,6 +447,6 @@ export default async function BoardPage({
       />
 
       <StoryPeekHost peekStoryId={peekStoryId} detail={peekDetail} />
-    </main>
+    </>
   );
 }

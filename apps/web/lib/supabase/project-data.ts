@@ -6,6 +6,14 @@ import { assertReadOk } from "@/lib/supabase/assert";
 // getUser for why this is safe under Vitest too). The project layout, the
 // board page, and the story detail panel all need the same project row or
 // member list in one request; without this each re-runs its own query.
+//
+// Unlike sidebar-data.ts's fetchSidebarData(supabase, userId) — a plain,
+// uncached helper — these deliberately construct their own client instead of
+// taking one as a parameter: cache() dedupes by argument identity, so a
+// `supabase` object (a different instance per call site) in the signature
+// would make every caller miss the cache instead of sharing it. `id`/
+// `projectId` alone is what lets layout.tsx, board/page.tsx, and
+// getStoryDetail all land on the same cached call.
 
 export const getProject = cache(async (id: string) => {
   const supabase = await createClient();

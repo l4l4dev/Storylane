@@ -1,14 +1,20 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function BoardLoading() {
+// Shared with board/page.tsx's own <Suspense> fallback around BoardContent
+// (TASK-233) — this is the route-level fallback Next.js shows for the whole
+// page on a fresh navigation; that inner one covers only a later client-side
+// re-navigation between boards, once the shell itself already rendered.
+export function BoardLoadingStatus() {
   return (
-    <main className="p-6" aria-busy="true">
-      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        Loading board
-      </span>
-      <div className="mb-4">
-        <Skeleton className="h-8 w-24" />
-      </div>
+    <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      Loading board
+    </span>
+  );
+}
+
+export function BoardContentSkeleton() {
+  return (
+    <>
       <div className="mb-4 flex items-center gap-2">
         <Skeleton className="h-7 w-40" />
         <Skeleton className="h-7 w-20" />
@@ -27,6 +33,18 @@ export default function BoardLoading() {
           </section>
         ))}
       </div>
+    </>
+  );
+}
+
+export default function BoardLoading() {
+  return (
+    <main className="p-6" aria-busy="true">
+      <BoardLoadingStatus />
+      <div className="mb-4">
+        <Skeleton className="h-8 w-24" />
+      </div>
+      <BoardContentSkeleton />
     </main>
   );
 }

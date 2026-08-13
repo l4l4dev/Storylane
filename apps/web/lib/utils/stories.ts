@@ -116,13 +116,23 @@ const BOARD_DESCRIPTION_PREVIEW_LENGTH = 200;
 
 /** Trims a story description to the board card's preview length. The side peek shows the full text separately. */
 export function truncateDescription(description: string | null): string | null {
-  if (description === null) {
-    return null;
+  if (description === null || description.length <= BOARD_DESCRIPTION_PREVIEW_LENGTH) {
+    return description;
   }
-  // Array.from iterates by Unicode code point, not UTF-16 code unit —
-  // slicing the raw string could cut a surrogate pair (emoji, some CJK
-  // Extension characters) in half and serialize a malformed character.
-  return Array.from(description).slice(0, BOARD_DESCRIPTION_PREVIEW_LENGTH).join("");
+  // for...of iterates by Unicode code point, not UTF-16 code unit — slicing
+  // the raw string could cut a surrogate pair (emoji, some CJK Extension
+  // characters) in half and serialize a malformed character. Breaking early
+  // (rather than Array.from(...).slice(...)) avoids materializing the whole
+  // description just to keep its first 200 characters — `description` is an
+  // uncapped `text` column.
+  let result = "";
+  let count = 0;
+  for (const char of description) {
+    if (count >= BOARD_DESCRIPTION_PREVIEW_LENGTH) break;
+    result += char;
+    count++;
+  }
+  return result;
 }
 
 /**
