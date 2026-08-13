@@ -12,9 +12,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // The anon role has no grants in this schema (every table is authenticated-
+  // only, see supabase/migrations/20260630000002_grants.sql) — this route is
+  // server-only and secret-gated above, so the service role key is the
+  // correct credential rather than widening anon's grants just for a ping.
   const supabase = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
   const { error } = await supabase.from("profiles").select("id").limit(1);
   if (error) {
