@@ -69,6 +69,31 @@ Most work here is done by AI agents — keep context small:
 
 iOS conventions live in `apps/ios/`, Web conventions in `apps/web/` — each directory's instruction file is loaded automatically when working under it.
 
+## Spec Kit (experimental)
+
+GitHub Spec Kit (`.specify/`, the `/speckit-*` skills, per-feature drafts under
+`specs/`) is installed as a **trial**: the owner wants to (1) give outside
+contributors a recognizable entry point and (2) learn how Spec Kit lands in an
+existing project before adopting it elsewhere. Rules of coexistence:
+
+- `spec/` + `SPEC.md` stay the canonical product spec. `specs/<NNN-name>/` are
+  per-feature design drafts — fold durable content into `spec/` when a feature
+  ships. Don't confuse the two directories in greps or references.
+- Backlog.md stays the only execution tracker. `/speckit-tasks` output may seed
+  Backlog tasks (owner approval still required); its checkbox state is never
+  the record of work.
+- Every CLAUDE.md gate (advisor review for tables/RLS/algorithms,
+  `/code-review` before commits, git conventions, public-repo naming rule)
+  applies unchanged inside every Spec Kit phase, including `/speckit-implement`.
+- The constitution (`.specify/memory/constitution.md`) is a pointer document —
+  when it conflicts with CLAUDE.md, CLAUDE.md wins. It is hand-maintained: the
+  `/speckit-constitution` skill is deliberately removed (it would regenerate
+  the file from the generic template); amend the file directly instead.
+- **Trial phase**: one small feature (no new tables/RLS) runs the full native
+  pipeline (`/speckit-specify → plan → tasks → implement`) to observe friction;
+  permanent rules (including whether to keep `/speckit-implement` /
+  `/speckit-taskstoissues`) get decided here afterwards.
+
 ## Supabase Conventions
 
 - Always enable RLS on every table
