@@ -109,6 +109,22 @@ export function filterStories<T extends FilterableStory>(stories: ReadonlyArray<
   return stories.filter((story) => matchesStoryFilter(story, filter));
 }
 
+// The board card (story-card.tsx) shows this as a single CSS-truncated line
+// — long enough that truncation is invisible on any realistic card width,
+// short enough to keep a long description out of the board's RSC payload.
+const BOARD_DESCRIPTION_PREVIEW_LENGTH = 200;
+
+/** Trims a story description to the board card's preview length. The side peek shows the full text separately. */
+export function truncateDescription(description: string | null): string | null {
+  if (description === null) {
+    return null;
+  }
+  // Array.from iterates by Unicode code point, not UTF-16 code unit —
+  // slicing the raw string could cut a surrogate pair (emoji, some CJK
+  // Extension characters) in half and serialize a malformed character.
+  return Array.from(description).slice(0, BOARD_DESCRIPTION_PREVIEW_LENGTH).join("");
+}
+
 /**
  * Formats a points value for card display (see spec/screens.md "Story card
  * UX"): 1-3 points render as dots (Pivotal Tracker convention), 0 or 4+

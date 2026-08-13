@@ -16,6 +16,7 @@ vi.mock("@/lib/supabase/server", () => ({
       }),
     }),
   }),
+  getUser: () => Promise.resolve({ data: { user: { id: "u1" } } }),
 }));
 
 describe("BoardPage", () => {

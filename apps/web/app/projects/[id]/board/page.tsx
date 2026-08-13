@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
+import { getProject, getProjectMembers } from "@/lib/supabase/project-data";
 import {
   BACKLOG_COLUMN_ID,
   ICEBOX_COLUMN_ID,
@@ -13,18 +14,18 @@ import {
   resolvePlanningCapacity,
   startPlanningCapacityFetch,
 } from "@/lib/utils/planning-capacity";
-import { pointScaleValues } from "@/lib/utils/stories";
+import { pointScaleValues, truncateDescription } from "@/lib/utils/stories";
 import { buildContainerListItems, buildEpicBandChildren } from "@/lib/utils/epics-list";
 import { fetchAllRows } from "@/lib/utils/supabase-pagination";
 import { assertReadOk } from "@/lib/supabase/assert";
 import type { ProjectState } from "@/lib/types";
 import { velocityRate } from "@storylane/core";
 import { getStoryDetail } from "@/app/stories/[id]/actions";
+import { ensureCurrentIteration } from "./actions";
 import { BoardFilters } from "@/components/features/board/board-filters";
 import { KanbanBoard, type BoardStory, type IterationMeta } from "@/components/features/board/kanban-board";
 import { StoryPeekHost } from "@/components/features/board/story-peek-host";
 import { InviteFailedBanner, parseInviteFailedCount } from "@/components/features/projects/invite-failed-banner";
-import { ensureCurrentIteration } from "./actions";
 
 export default async function BoardPage({
   params,
@@ -47,36 +48,32 @@ export default async function BoardPage({
   const inviteFailedCount = parseInviteFailedCount(invite_failed);
   const supabase = await createClient();
 
+  // getStoryDetail is a pure read with no dependency on the board's own data
+  // at all, so it's fired immediately and only awaited at render time, once
+  // everything else below is already in flight. If an earlier read below
+  // throws first, this would otherwise become an unhandled rejection —
+  // attach a no-op handler now so that can't happen; the real outcome is
+  // still observed at the `await` at the bottom of this function.
+  const peekDetailPromise = peekStoryId ? getStoryDetail(peekStoryId) : null;
+  peekDetailPromise?.catch(() => {});
+
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getUser();
 
-  const project = assertReadOk(
-    await supabase
-      .from("projects")
-      .select(
-        "id, name, velocity_window, iteration_length, iteration_term, point_scale, custom_points, working_weekdays, definition_of_done",
-      )
-      .eq("id", id)
-      .maybeSingle(),
-  );
+  const [project, members] = await Promise.all([getProject(id), getProjectMembers(id)]);
 
   if (!project) {
     notFound();
   }
 
-
-  // `members` doesn't depend on ensureCurrentIteration and is needed early to
-  // scope the planning-capacity fetch below (TASK-99) — run it alongside
-  // instead of inside the later batch, so it doesn't add its own round trip.
-  const [, membersResult] = await Promise.all([
-    // Lazily creates/rolls over the current iteration before reading it (see
-    // spec/velocity.md "Automatic scheduling & rollover") — must run before
-    // the iterations query below.
-    ensureCurrentIteration(project.id),
-    supabase.from("project_members").select("user_id, role, profiles(display_name, is_agent)").eq("project_id", id),
-  ]);
-  const members = assertReadOk(membersResult);
+  // Lazily creates/rolls over the current iteration before reading it (see
+  // spec/velocity.md "Automatic scheduling & rollover"). Unlike the peek
+  // fetch above, this can trigger the finalize_iteration RPC (a real write)
+  // — it must run only once the project is confirmed to exist, matching
+  // iterations/page.tsx and epics/page.tsx's own call sites, so a bad/foreign
+  // project id 404s without an extra wasted rollover attempt against it.
+  await ensureCurrentIteration(id);
 
   const capacityMembers = (members ?? []).map((m) => ({ userId: m.user_id, role: m.role }));
   // Fired now, on an estimated range (project.iteration_length + today are
@@ -180,7 +177,11 @@ export default async function BoardPage({
         id: story.id,
         number: story.number,
         title: story.title,
-        description: story.description,
+        // The board card shows a one-line truncated preview (story-card.tsx)
+        // — trimmed here so the full body text isn't serialized into every
+        // card's RSC payload just to be CSS-truncated client-side. The side
+        // peek (getStoryDetail) fetches the story's full description itself.
+        description: truncateDescription(story.description),
         story_type: story.story_type,
         state_id: story.state_id,
         isDone: story.state_id !== null && stateById.get(story.state_id)?.category === "done",
@@ -337,9 +338,10 @@ export default async function BoardPage({
   const canFinishIteration = myRole === "owner" || myRole === "member";
 
   // Side peek (spec/screens.md "Board layout"): ?story=<id> opens the story
-  // detail over the board's right edge. Fetched server-side so the peek
-  // renders in the same pass as the board.
-  const peekDetail = peekStoryId ? await getStoryDetail(peekStoryId) : null;
+  // detail over the board's right edge. Fired at the top of this function,
+  // alongside the board's own queries, so it doesn't add a serial round trip.
+  // `await null` resolves to `null`, so this doesn't need its own branch.
+  const peekDetail = await peekDetailPromise;
 
   return (
     <main className="p-6">

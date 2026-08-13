@@ -1,7 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { filterStories, formatPoints, isUnestimatedFeature, parsePoints, storyStateBadge } from "./stories";
+import {
+  filterStories,
+  formatPoints,
+  isUnestimatedFeature,
+  parsePoints,
+  storyStateBadge,
+  truncateDescription,
+} from "./stories";
 import type { ProjectState } from "@/lib/types";
 import stateTemplates from "../../../../spec/fixtures/state-templates.json";
+
+describe("truncateDescription", () => {
+  it("returns null as-is", () => {
+    expect(truncateDescription(null)).toBeNull();
+  });
+
+  it("leaves a short description untouched", () => {
+    expect(truncateDescription("short")).toBe("short");
+  });
+
+  it("leaves a description exactly at the limit untouched", () => {
+    const exact = "a".repeat(200);
+    expect(truncateDescription(exact)).toBe(exact);
+  });
+
+  it("truncates a description past the limit", () => {
+    const long = "a".repeat(250);
+    const result = truncateDescription(long);
+    expect(result).toHaveLength(200);
+    expect(result).toBe("a".repeat(200));
+  });
+});
 
 describe("filterStories", () => {
   const stories = [

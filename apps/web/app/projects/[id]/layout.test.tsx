@@ -17,11 +17,12 @@ vi.mock("@/lib/supabase/server", () => ({
     from: () => ({
       select: () => ({
         eq: () => ({
-          single: () => Promise.resolve({ data: projectRow, error: null }),
+          maybeSingle: () => Promise.resolve({ data: projectRow, error: null }),
         }),
       }),
     }),
   }),
+  getUser: () => getUserMock(),
 }));
 
 vi.mock("@/lib/supabase/sidebar-data", () => ({

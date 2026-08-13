@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
+import { getProject, getProjectMembers } from "@/lib/supabase/project-data";
 import { assertReadOk, assertRowAffected } from "@/lib/supabase/assert";
 import type { ActionResult, ProjectState } from "@/lib/types";
 import { pointScaleValues } from "@/lib/utils/stories";
@@ -101,12 +102,12 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
 
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getUser();
 
   const [
-    projectResult,
+    project,
+    members,
     labelsResult,
-    membersResult,
     commentsResult,
     tasksResult,
     historyResult,
@@ -116,16 +117,12 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
     iterationsResult,
     addChildCandidateResult,
   ] = await Promise.all([
-      supabase
-        .from("projects")
-        .select("point_scale, custom_points, is_personal, definition_of_done")
-        .eq("id", story.project_id)
-        .single(),
+      // Same cached fetchers board/page.tsx uses — when the board's side
+      // peek is open, both call sites share one request-scoped query instead
+      // of each running their own.
+      getProject(story.project_id),
+      getProjectMembers(story.project_id),
       supabase.from("labels").select("id, name").eq("project_id", story.project_id).order("name"),
-      supabase
-        .from("project_members")
-        .select("user_id, role, profiles(display_name, is_agent)")
-        .eq("project_id", story.project_id),
       supabase
         .from("comments")
         .select("id, body, created_at, author:profiles(display_name)")
@@ -221,9 +218,16 @@ export async function getStoryDetail(storyId: string): Promise<StoryDetail | nul
         : Promise.resolve({ data: [] as { id: string; number: number; title: string }[], error: null }),
     ]);
 
-  const project = assertReadOk(projectResult);
+  // The story's project_id is FK-enforced to reference a real project, so a
+  // null here (getProject uses maybeSingle, unlike this file's other reads)
+  // means the read itself failed, not "no such project" — fail loud instead
+  // of silently falling back to defaults (is_personal, point scale, done
+  // definition) that board/page.tsx and layout.tsx both notFound() on instead.
+  if (!project) {
+    throw new Error("Failed to load project data for this story");
+  }
+
   const labels = assertReadOk(labelsResult);
-  const members = assertReadOk(membersResult);
   const comments = assertReadOk(commentsResult);
   const tasks = assertReadOk(tasksResult);
   const history = assertReadOk(historyResult);

@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
+import { getProject } from "@/lib/supabase/project-data";
 import { fetchSidebarData } from "@/lib/supabase/sidebar-data";
 import { AppSidebar } from "@/components/features/shell/app-sidebar";
 
@@ -28,10 +29,10 @@ export default async function ProjectLayout({
 
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getUser();
 
-  const [{ data: project }, { projects, username }] = await Promise.all([
-    supabase.from("projects").select("id, name, is_personal, created_by").eq("id", id).single(),
+  const [project, { projects, username }] = await Promise.all([
+    getProject(id),
     fetchSidebarData(supabase, user?.id),
   ]);
 

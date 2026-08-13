@@ -51,6 +51,7 @@ vi.mock("@/lib/supabase/server", () => ({
     auth: { getUser: async () => ({ data: { user: { id: "user-1" } } }) },
     from: (table: string) => chain(table),
   }),
+  getUser: async () => ({ data: { user: { id: "user-1" } } }),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
