@@ -187,6 +187,11 @@ one (the list changes over time — don't assume the ids below stay accurate):
   (renumber neighbors only if no gap is left). Never leave a new task at the default ordinal.
 - Superseded/consumed docs move to `archive/` (`backlog doc update doc-N --path archive`);
   review reports live under `reviews/`. Only living design docs stay at the docs root.
+- **Session handoffs go in the task's own notes, not a new doc** (owner-requested
+  2026-08-13: handoff docs were piling up). `backlog task edit TASK-N --append-notes` with
+  state/next-steps/observations; the next session starts from `backlog task view TASK-N`.
+  Create a handoff doc ONLY when the handoff spans multiple tasks or no task exists, and
+  archive it as soon as it is consumed.
 
 ## Code Comment Policy
 
