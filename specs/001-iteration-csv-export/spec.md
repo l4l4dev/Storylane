@@ -8,6 +8,17 @@
 
 **Input**: User description: "Export a project's completed-iteration history as a CSV file. On the iterations page (/projects/[id]/iterations), a member or owner can download a CSV of the project's finalized iterations — number, goal, start/end dates, state (done/skipped), capacity, velocity, and completed points — so they can analyze velocity trends in a spreadsheet or share progress with stakeholders outside the tool. Read-only: no new tables, no RLS changes, no mutations."
 
+## Clarifications
+
+### Session 2026-08-13
+
+- Q: Should the read-only `viewer` role, who can already see this data on the
+  page, also get the export control? → A: Yes — every role that can view the
+  iterations page gets the export; no role gating. (Asked during specify.)
+- Q: When a project has no finalized iterations, how should the export control
+  behave? → A: Disabled control that communicates why (e.g. "no finalized
+  iterations yet" on hover/label) — no useless empty download.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Download the iteration history as CSV (Priority: P1)
@@ -64,8 +75,8 @@ CSV alone and compare against the rate the app itself reports.
 
 ### Edge Cases
 
-- Project with **no finalized iterations**: the export control communicates there
-  is nothing to export (or downloads a header-only CSV — see FR-007).
+- Project with **no finalized iterations**: the export control is disabled with
+  an accessible explanation (see FR-007) — no empty-file download.
 - Iteration **goal is empty**: the cell is empty, the row still appears.
 - Goal text containing **commas, double quotes, or newlines**: the CSV remains
   well-formed (standard CSV quoting).
@@ -101,8 +112,9 @@ CSV alone and compare against the rate the app itself reports.
   It MUST NOT be reachable for projects the user cannot access (existing
   row-level access rules cover the data itself).
 - **FR-007**: When the project has no finalized iterations, the export control
-  MUST communicate that state (disabled control or empty-file download — pick one
-  during planning and keep it consistent).
+  MUST be disabled and MUST communicate why (accessible text such as "no
+  finalized iterations yet") — it never downloads an empty file (owner decision
+  2026-08-13).
 - **FR-008**: The downloaded filename MUST identify the project and content (e.g.
   contain the project name or id and the word "iterations") so multiple exports
   remain distinguishable.
