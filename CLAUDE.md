@@ -86,7 +86,9 @@ existing project before adopting it elsewhere. Rules of coexistence:
   `/code-review` before commits, git conventions, public-repo naming rule)
   applies unchanged inside every Spec Kit phase, including `/speckit-implement`.
 - The constitution (`.specify/memory/constitution.md`) is a pointer document —
-  when it conflicts with CLAUDE.md, CLAUDE.md wins.
+  when it conflicts with CLAUDE.md, CLAUDE.md wins. It is hand-maintained: the
+  `/speckit-constitution` skill is deliberately removed (it would regenerate
+  the file from the generic template); amend the file directly instead.
 - **Trial phase**: one small feature (no new tables/RLS) runs the full native
   pipeline (`/speckit-specify → plan → tasks → implement`) to observe friction;
   permanent rules (including whether to keep `/speckit-implement` /
