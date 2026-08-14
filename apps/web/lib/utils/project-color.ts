@@ -6,8 +6,8 @@
 //
 // The eight hues are the dataviz skill's validated categorical palette
 // (references/palette.md; light+dark steps live in globals.css as
-// .project-accent-N / .dark .project-accent-N, exposing a --project-accent
-// custom property). This is an ACCENT, not a data encoding: with more than
+// .project-accent-N / :is(.dark, .slate, .moss) .project-accent-N, exposing a
+// --project-accent custom property). This is an ACCENT, not a data encoding: with more than
 // eight projects the hash collides (two projects share a color), and hashing
 // can place any two slots adjacent (the palette's CVD ordering only guarantees
 // *neighbouring* slots), so the project-name badge on every row is the primary

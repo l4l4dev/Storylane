@@ -13,13 +13,54 @@ UI-affecting tasks end with a fable-advisor design review against this file (see
 ## Design language
 
 The visual baseline is a square, dense, utilitarian tool in the spirit of original
-Pivotal Tracker and Material Design 1–2 — not today's soft, rounded consumer look.
+Pivotal Tracker and Material Design 1–2 — not today's soft, rounded consumer look. Full
+rationale and status-color/sidebar-hierarchy tokens not yet applied: Backlog doc-27.
+The Shadows rule below is enforced only where doc-27/TASK-235's pass reached
+(`components/ui/*`) — several page-specific components still carry `shadow-*`
+(e.g. `story-card.tsx`, `story-list-row.tsx`, `board-list-view.tsx`,
+`story-peek.tsx`); treat new code as shadow-free and clean up existing callers
+opportunistically rather than in one sweep.
 
 - **Corners:** 4px base radius (`--radius: 0.25rem` in `apps/web/app/globals.css`).
   All rounding derives from the `radius-*` tokens; never hardcode a larger radius.
-  `rounded-full` is reserved for genuinely circular elements (avatars, dots).
+  `rounded-full` is reserved for genuinely circular elements (avatars, dots) —
+  chips/badges are rectangular, not pills.
+- **Shadows:** none. Elevation reads as a hairline `border`/`ring-1` (0.5–1px), never
+  `shadow-*` — and where that border is the *only* cue an element has once a shadow is
+  removed (an interactive field's outline, a scrim-less popover's edge), it needs ≥3:1
+  contrast against the surface behind it (WCAG 1.4.11), not just a hairline tint.
 - **Density:** compact rows and cards; information a project member needs daily
   (state, points, epic, assignee) is visible without hovering or expanding.
+- **Color (dark mode):** three selectable dark palettes (TASK-235) — **Ember**
+  (`.dark`, the default dark palette — first-visit default is actually OS-driven
+  "system", resolving to Light or Ember), **Slate** (`.slate`, cool graphite), **Moss** (`.moss`,
+  desaturated green) — plus Light. All three share one recipe: near-black neutrals,
+  not neutral gray, in three fill tiers (page → surface → state layer: hover/focus/
+  selected), and only rotate hue; a new palette is a hue rotation of Ember's
+  lightness/saturation steps, re-verified against the same contrast rules below, not
+  a fresh design. Never collapse the state layer onto the surface tier — doing so
+  once (fable-advisor 2026-08-13, doc-27) made every hover/focus/selected cue a
+  1.00:1 no-op. `--muted-foreground` needs ≥4.5:1 against both the state layer and
+  the surface tier (doc-27's first Ember value only cleared 4.30:1 against the state
+  layer — short of AA for small text). `--input` needs ≥3:1 against the surface tier
+  wherever a border is the sole affordance signal (see the Shadows rule above) — a
+  naive same-lightness hue rotation isn't enough to guarantee this: WCAG luminance
+  weights blue far below green, so Slate's naive rotation only cleared 2.81:1 and
+  needed rebrightening while Moss's cleared 3.06:1 unchanged (TASK-235). Exact
+  per-palette values live in `apps/web/app/globals.css` (`.dark`/`.slate`/`.moss`);
+  don't hardcode a dark-palette hex outside its own class block — `--primary`,
+  `--destructive`, `--success`, `--ring`, `--chart-*`, `--sidebar-primary`, and
+  `--sidebar-ring` are shared across all three (`.dark, .slate, .moss {}`) since
+  they're brand/status colors, not part of the neutral rotation. Light mode's
+  palette itself is untouched — none of the three guides (doc-27 or its TASK-235
+  follow-up) give a light palette, so this rule stays dark-only until one exists —
+  but its `--input` did need fixing (`/code-review` 2026-08-13): every advisor round
+  above only checked dark palettes, so nobody caught that `:root`'s `--input` was
+  still equal to `--border` (~1.26:1 against `--card`) even after it became the sole
+  boundary cue on shadow-free components. Fixed to `oklch(0.62 0 0)` (~3.64:1).
+- **Typography:** headings, IDs, and point values render in the mono family
+  (`--font-heading`, JetBrains Mono via `next/font/google`); body text stays
+  Geist/sans (`--font-sans`, `apps/web/app/layout.tsx`).
 - **Dates:** always `YYYY/M/D` (datetimes `YYYY/M/D HH:mm`), via the shared formatter —
   never bare `toLocaleDateString()`/`toLocaleString()`.
 - **Copy:** never use third-party product names in UI text — e.g. the

@@ -28,7 +28,7 @@ export function Toaster() {
           // `@custom-variant data-open { &:where([data-open]...) }`) matches
           // a literal `data-open` attribute, which Radix never sets (it sets
           // `data-state="open"|"closed"`), so it never actually fires there.
-          className="data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom-full data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[swipe=end]:animate-out data-[swipe=end]:fade-out-0 flex items-center gap-3 rounded-lg border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-lg"
+          className="data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom-full data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[swipe=end]:animate-out data-[swipe=end]:fade-out-0 flex items-center gap-3 rounded-lg border border-input bg-popover px-4 py-3 text-sm text-popover-foreground"
         >
           <ToastPrimitive.Description data-slot="toast-description" className="flex-1">
             {t.message}

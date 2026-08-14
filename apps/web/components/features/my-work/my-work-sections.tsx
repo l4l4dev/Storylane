@@ -39,6 +39,7 @@ import {
   saveMyWorkColumnOrder,
   setMyWorkColumn,
 } from "@/app/my-work/actions";
+import { NOOP_SUBSCRIBE } from "@/lib/utils";
 import { findContainer, moveBetweenContainers, storyById } from "@/lib/utils/board";
 import { reorderContainer, reorderIds } from "@/lib/utils/board-dnd";
 import { formatDate, localTodayKey } from "@/lib/utils/format";
@@ -67,13 +68,6 @@ import { useOpenPeek } from "@/components/features/board/use-open-peek";
 import { useOptimisticBoardOrder } from "@/components/features/board/use-optimistic-board-order";
 import { AddColumnTile, ColumnNameField, DeleteColumnButton } from "./my-work-column-manager";
 import { MyWorkRow, type MyWorkRowData } from "./my-work-row";
-
-// The viewer's local wall date, read the SSR-safe way: the server snapshot is
-// the caller's UTC today (hydration-stable), then React swaps to the client's
-// local date after hydration — no setState-in-effect, no hydration mismatch.
-// A noop subscribe is fine: the date is read once per mount (a midnight
-// rollover is picked up on the next refresh).
-const NOOP_SUBSCRIBE = () => () => {};
 
 // Done's shell renders reorderable={false} (TASK-155 AC#2), which hides the
 // move buttons entirely — these are only passed because ColumnMoveProps is
@@ -472,6 +466,11 @@ export function MyWorkSections({
   doneWindowDays?: number;
   serverTodayKey: string;
 }) {
+  // The viewer's local wall date, read the SSR-safe way: the server snapshot is
+  // the caller's UTC today (hydration-stable), then React swaps to the client's
+  // local date after hydration — no setState-in-effect, no hydration mismatch.
+  // NOOP_SUBSCRIBE is fine here: the date is read once per mount (a midnight
+  // rollover is picked up on the next refresh).
   const todayKey = useSyncExternalStore(NOOP_SUBSCRIBE, localTodayKey, () => serverTodayKey);
 
   // Opens a row's story in the side peek (TASK-172): sets ?story=<id> on the

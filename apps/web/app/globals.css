@@ -2,14 +2,26 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Slate and Moss are dark palettes too (TASK-235) — anything gated on `dark:`
+   (a translucent input tint, invalid-state ring tweaks, …) should apply under
+   any of the three, not just Ember's literal `.dark` class.
+   ponytail: this class list, the shared token selector below, and the
+   project-accent overrides near the end of this file all repeat
+   .dark/.slate/.moss by hand (Tailwind v4 has no include/variable mechanism
+   for a selector list) — lib/theme-config.ts's PALETTES covers the two TS
+   call sites (layout.tsx, mode-toggle.tsx) but can't reach here. Adding a 4th
+   palette means updating all three CSS spots too, or it silently falls back
+   to :root's light values with no error (code-review 2026-08-13, TASK-235). */
+@custom-variant dark (&:is(.dark *, .slate *, .moss *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
-  --font-heading: var(--font-sans);
+  /* Headings, IDs, and point values render in the mono family — spec/ux-principles.md
+     "Design language" (doc-27). */
+  --font-heading: var(--font-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -71,7 +83,13 @@
      dark), just named. */
   --success: var(--color-green-600);
   --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  /* Stronger than --border (3.64:1 vs --card, was equal to --border at
+     ~1.26:1) — --input is now the sole boundary cue for interactive fields and
+     scrim-less popovers/dropdowns/toasts, all shadow-free (spec/ux-principles.md
+     "Shadows"). Light-mode counterpart to the dark-palette --input values
+     (code-review 2026-08-13, TASK-235: the light-mode gap this rule left when
+     it was only checked against the dark palettes). */
+  --input: oklch(0.62 0 0);
   --ring: oklch(0.6 0.118 184.704);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -89,40 +107,122 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
+/* Semantic tokens shared by every dark palette (TASK-235: Ember/Slate/Moss) —
+   brand/status colors don't rotate with the neutral hue, only the page/card/
+   border/text tokens below do. Each palette class overrides those separately;
+   anything not overridden here would otherwise fall through to :root's LIGHT
+   values, since .dark/.slate/.moss are sibling classes, not nested. */
+.dark, .slate, .moss {
+  /* next-themes@0.4.6 only sets the browser's inline `color-scheme` for theme
+     names literally "light"/"dark" — Slate/Moss would otherwise lose it, and
+     native chrome (date picker, <select> popup, scrollbar) renders light
+     inside a dark app (fable-advisor 2026-08-13, TASK-235). */
+  color-scheme: dark;
   /* Brand primary: Tailwind teal-500 — dark text on it clears WCAG AA (4.5:1) */
   --primary: oklch(0.704 0.14 182.503);
   --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --success: var(--color-green-400);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.6 0.118 184.704);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+.dark {
+  /* spec/ux-principles.md "Design language" — warm near-black neutral
+     palette (doc-27), dark mode only per owner decision 2026-08-13. Hue ~36-40°;
+     Slate/Moss below are the same lightness/saturation per tier, hue-rotated
+     (TASK-235) and independently contrast-checked, not just eyeballed. */
+  --background: #14120f;
+  --foreground: #ede9e0;
+  --card: #1c1a16;
+  --card-foreground: #ede9e0;
+  --popover: #1c1a16;
+  --popover-foreground: #ede9e0;
+  /* State layer (hover/focus/selected/secondary) sits a step above --card/--popover —
+     fable-advisor 2026-08-13 (doc-27): collapsing it onto the same fill made every
+     hover/focus/selected surface a 1.00:1 no-op against its container. */
+  --secondary: #2f2a22;
+  --secondary-foreground: #ede9e0;
+  --muted: #2f2a22;
+  /* #9c9789, not doc-27's #928d80: on the state-layer fill above, #928d80 only
+     clears 4.30:1 (fails AA 4.5:1 for the 10-12px chip text that sits on --muted) —
+     fable-advisor 2026-08-13 re-review. */
+  --muted-foreground: #9c9789;
+  --accent: #2f2a22;
+  --accent-foreground: #ede9e0;
+  --border: #2a251d;
+  /* Interactive-field boundary: needs 3:1 against --card since it's the only cue an
+     input has now that shadow-xs is gone (fable-advisor 2026-08-13, doc-27). */
+  --input: #6b665a;
+  --sidebar: #14120f;
+  --sidebar-foreground: #ede9e0;
+  --sidebar-accent: #2f2a22;
+  --sidebar-accent-foreground: #ede9e0;
+  --sidebar-border: #2a251d;
+}
+
+.slate {
+  /* Cool graphite-black, hue ~220° — same lightness/saturation steps as .dark
+     per tier as a starting point, but WCAG's luminance weights blue far below
+     green, so a naive same-HSL hue rotation does NOT give equal contrast: the
+     state layer, --input, and --muted-foreground all needed rebrightening past
+     their naive rotated values to clear this doc's contrast rules (fable-advisor
+     2026-08-13 second pass, TASK-235) — state layer was 1.17:1 vs --card (below
+     Ember 1.22/Moss 1.24, and dropdown-menu.tsx's focus:bg-accent is a menu
+     item's *only* keyboard-focus cue, the exact defect doc-27's first advisor
+     round caught), and --input only cleared 2.81:1 (need ≥3:1). */
+  --background: #0f1114;
+  --foreground: #e0e4ed;
+  --card: #16181c;
+  --card-foreground: #e0e4ed;
+  --popover: #16181c;
+  --popover-foreground: #e0e4ed;
+  --secondary: #252a35;
+  --secondary-foreground: #e0e4ed;
+  --muted: #252a35;
+  --muted-foreground: #8f96a3;
+  --accent: #252a35;
+  --accent-foreground: #e0e4ed;
+  --border: #1d212a;
+  --input: #626873;
+  --sidebar: #0f1114;
+  --sidebar-foreground: #e0e4ed;
+  --sidebar-accent: #252a35;
+  --sidebar-accent-foreground: #e0e4ed;
+  --sidebar-border: #1d212a;
+}
+
+.moss {
+  /* Desaturated green-black, hue ~145° — same recipe as .dark; the naive
+     hue-rotated values already clear every contrast target (green's WCAG
+     luminance weight is high, unlike Slate's blue) so nothing needed
+     rebrightening (TASK-235). */
+  --background: #0f1411;
+  --foreground: #e0ede5;
+  --card: #161c18;
+  --card-foreground: #e0ede5;
+  --popover: #161c18;
+  --popover-foreground: #e0ede5;
+  --secondary: #222f27;
+  --secondary-foreground: #e0ede5;
+  --muted: #222f27;
+  --muted-foreground: #899c91;
+  --accent: #222f27;
+  --accent-foreground: #e0ede5;
+  --border: #1d2a22;
+  --input: #5a6b61;
+  --sidebar: #0f1411;
+  --sidebar-foreground: #e0ede5;
+  --sidebar-accent: #222f27;
+  --sidebar-accent-foreground: #e0ede5;
+  --sidebar-border: #1d2a22;
 }
 
 @layer base {
@@ -153,11 +253,11 @@
 .project-accent-6 { --project-accent: #eb6834; }
 .project-accent-7 { --project-accent: #4a3aa7; }
 .project-accent-8 { --project-accent: #e34948; }
-.dark .project-accent-1 { --project-accent: #3987e5; }
-.dark .project-accent-2 { --project-accent: #008300; }
-.dark .project-accent-3 { --project-accent: #d55181; }
-.dark .project-accent-4 { --project-accent: #c98500; }
-.dark .project-accent-5 { --project-accent: #199e70; }
-.dark .project-accent-6 { --project-accent: #d95926; }
-.dark .project-accent-7 { --project-accent: #9085e9; }
-.dark .project-accent-8 { --project-accent: #e66767; }
+:is(.dark, .slate, .moss) .project-accent-1 { --project-accent: #3987e5; }
+:is(.dark, .slate, .moss) .project-accent-2 { --project-accent: #008300; }
+:is(.dark, .slate, .moss) .project-accent-3 { --project-accent: #d55181; }
+:is(.dark, .slate, .moss) .project-accent-4 { --project-accent: #c98500; }
+:is(.dark, .slate, .moss) .project-accent-5 { --project-accent: #199e70; }
+:is(.dark, .slate, .moss) .project-accent-6 { --project-accent: #d95926; }
+:is(.dark, .slate, .moss) .project-accent-7 { --project-accent: #9085e9; }
+:is(.dark, .slate, .moss) .project-accent-8 { --project-accent: #e66767; }
