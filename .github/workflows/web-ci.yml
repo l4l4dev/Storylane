@@ -88,10 +88,9 @@ jobs:
 
       # `supabase start` applies every migration to an empty database, which is
       # what proves the chain still applies in order. On a pull_request it does
-      # gate the merge; on main it does NOT gate production — deploy.yml fires
-      # on the same push with no dependency on this job and finishes first, so
-      # a bad migration reaches production before this run goes red (TASK-204
-      # closes that race by moving deploys behind a published release).
+      # gate the merge; on main it is a second, independent confirmation —
+      # deploy.yml only fires on a published release, never on this push, so
+      # there is nothing here for a slow run to lose a race against.
       # Excluded services are the ones no test touches — the integration suite
       # makes no storage or edge-function calls. Drop the `-x` if one ever does.
       - name: Start Supabase (applies all migrations to a fresh DB)

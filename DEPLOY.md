@@ -5,7 +5,9 @@ project ref `iwmacbzlfeufzedjguce`).
 
 ## How a deploy works
 
-Every push to `main` runs `.github/workflows/deploy.yml`:
+Pushing to `main` does **not** deploy anything on its own — merges batch up
+un-deployed until a GitHub Release is published. Publishing one runs
+`.github/workflows/deploy.yml` against the released commit:
 
 1. `supabase db push` — applies pending migrations to the hosted DB
 2. `supabase functions deploy` — deploys all Edge Functions in `supabase/functions/`
@@ -15,9 +17,29 @@ The order is the point: the schema is always migrated before new app code goes
 live. Vercel's own Git auto-deploy for `main` is disabled in
 `apps/web/vercel.json` (`git.deploymentEnabled`), so the Deploy Hook is the
 only production trigger. If `db push` fails, the workflow stops and no app
-deploy happens — fix the migration and push again.
+deploy happens — fix the migration and cut a new release.
 
 Preview deploys for non-main branches are unaffected.
+
+## Cutting a release
+
+The UI (Account settings page) shows `v<version> (<commit>)`, e.g.
+`v0.1.0 (2209663)` — version from `apps/web/package.json`, commit from
+Vercel's `VERCEL_GIT_COMMIT_SHA` (`(dev)` locally).
+
+Once `main` has everything the release should ship and CI is green:
+
+1. Bump `"version"` in `apps/web/package.json`, commit, and push to `main`
+   directly (this does not deploy).
+2. `gh release create v<version> --generate-notes` — creates the tag at the
+   current tip of `main`, writes release notes from the commits/PRs since the
+   last release, and publishes the release. Publishing is what triggers the
+   deploy above.
+
+To ship a specific commit rather than the tip of `main`, add
+`--target <sha>`. `gh release create --draft` prepares a release without
+publishing (and without deploying) — publish it later from the GitHub UI or
+with `gh release edit v<version> --draft=false` when ready.
 
 ## One-time setup (owner)
 
@@ -38,17 +60,6 @@ supabase db push
 supabase functions deploy
 # then trigger the Deploy Hook URL, or redeploy from the Vercel dashboard
 ```
-
-## Versioning
-
-The UI (Account settings page) shows `v<version> (<commit>)`, e.g.
-`v0.1.0 (2209663)` — version from `apps/web/package.json`, commit from
-Vercel's `VERCEL_GIT_COMMIT_SHA` (`(dev)` locally). To cut a release:
-
-1. Bump `"version"` in `apps/web/package.json`
-2. Commit, then tag the commit: `git tag v0.2.0`
-3. `git push` and `git push --tags` — the push deploys as usual; the tag
-   just records which commit the version name refers to
 
 ## Production checklist (done once, 2026-07-19)
 
