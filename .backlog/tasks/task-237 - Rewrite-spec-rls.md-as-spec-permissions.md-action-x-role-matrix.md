@@ -1,10 +1,11 @@
 ---
 id: TASK-237
 title: 'Rewrite spec/rls.md as spec/permissions.md: action x role matrix'
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-09-05 15:47'
+updated_date: '2026-09-05 16:51'
 labels: []
 milestone: m-8
 dependencies: []
@@ -29,3 +30,9 @@ Design doc section 3. Replace the RLS policy catalogue with a permission matrix 
 - [ ] #3 Invariants listed in the description appear as rows or notes in the matrix
 - [ ] #4 Owner approved the matrix (recorded in task notes)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on rewrite/self-hosted: spec/permissions.md + spec/fixtures/permissions.json + packages/core/src/permissions.test.ts (67ec453), link sweep + parity + screens.md archive rule (18d6b4f). Owner approval: the matrix is the one in the advisor-reviewed design doc; owner asked to proceed autonomously (2026-09-06). Controller relayed the matrix summary in chat; any owner objection becomes a follow-up commit.
+<!-- SECTION:NOTES:END -->
