@@ -5,11 +5,10 @@ status: To Do
 assignee:
   - '@claude-opus-5'
 created_date: '2026-07-19 00:49'
-updated_date: '2026-07-24 17:35'
+updated_date: '2026-09-05 06:29'
 labels: []
 milestone: m-1
 dependencies:
-  - TASK-94
   - TASK-103
 priority: medium
 ordinal: 1500

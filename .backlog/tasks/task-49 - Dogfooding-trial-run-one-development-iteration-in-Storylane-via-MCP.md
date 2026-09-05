@@ -5,11 +5,11 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-07-11 07:10'
-updated_date: '2026-07-16 15:45'
+updated_date: '2026-09-05 15:46'
 labels:
   - mcp
   - process
-milestone: m-3
+milestone: m-11
 dependencies:
   - TASK-48
   - TASK-3
@@ -29,3 +29,9 @@ Parallel-run trial after the MCP server lands: mirror the then-current developme
 - [ ] #2 Friction log exists with each item triaged (task created / dismissed)
 - [ ] #3 Go/no-go decision on switching from Backlog.md is recorded
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+REWRITE HOLD 2026-09-05: MCP server is rebuilt against the new JSON API in phase 3 (design doc §9). Dogfooding starts when that lands.
+<!-- SECTION:NOTES:END -->

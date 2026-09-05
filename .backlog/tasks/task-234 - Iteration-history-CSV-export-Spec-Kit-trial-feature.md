@@ -1,13 +1,13 @@
 ---
 id: TASK-234
 title: Iteration history CSV export (Spec Kit trial feature)
-status: In Progress
+status: To Do
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-08-13 08:46'
-updated_date: '2026-08-13 09:03'
+updated_date: '2026-09-05 15:46'
 labels: []
-milestone: m-2
+milestone: m-10
 dependencies: []
 references:
   - specs/001-iteration-csv-export/spec.md
@@ -40,4 +40,6 @@ Export a project's finalized-iteration history as CSV from the iterations page. 
 
 <!-- SECTION:NOTES:BEGIN -->
 SESSION HANDOFF 2026-08-13 (design phases done on Fable; resume implementation on Sonnet 5 per assignee). Completed: /speckit-specify (spec.md + requirements checklist 16/16, commit 7e32725), /speckit-clarify (2 owner decisions in spec.md Clarifications: viewers get the export, empty history = disabled control with reason), /speckit-plan (plan/research/data-model/contracts/quickstart, commit 4dd867b). Both commits are on LOCAL main only -- origin/main ends at the PR #26 merge; push is owner-initiated. Machine-local .specify/feature.json already points at specs/001-iteration-csv-export (gitignored, fine). Design is settled -- do NOT re-litigate, rationale in specs/001-iteration-csv-export/research.md: client-side Blob from the iterations page's existing RLS-scoped query (no new route/query), UTF-8 BOM, RFC 4180 quoting + formula neutralization on goal, rows = done incl. skipped ordered by number, capacity NULL -> empty cell, completed_points = velocity snapshot, filename <project-slug>-iterations.csv, disabled button with reason when empty. Next steps: (1) /speckit-tasks -- tasks.md is a decomposition draft only, this task stays the record; known upstream quirk: it omits test tasks unless told, repo test rule still binds, add them. (2) /speckit-implement -- all CLAUDE.md gates apply inside the phase. (3) /code-review (owner types it) + fable-advisor UX design review + kakunin-tejun + commit proposal. (4) Keep appending trial friction observations here -- they feed the post-trial keep-or-delete decision for speckit-implement/converge/taskstoissues. Observations so far: [a] skill told us to guess industry defaults, CLAUDE.md never-guess rule successfully overrode it (viewer-role question went to the owner); [b] specify phase needed manual spec/velocity.md reading -- constitution Principle I did its job; [c] tasks-in-two-places tension (tasks.md vs Backlog) not yet observed in practice, watch during implement.
+
+REWRITE HOLD 2026-09-05: the Supabase/Next implementation target no longer exists (docs/design/2026-09-05-self-host-rewrite-design.md, decision-2). Spec Kit artifacts in specs/001-iteration-csv-export/ remain the design; drop the RLS-scoped-query wording, otherwise decisions hold. Re-target to the new server API when phase 2 (iterations) lands; the Spec Kit trial pipeline resumes from /speckit-tasks then.
 <!-- SECTION:NOTES:END -->
