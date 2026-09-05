@@ -8,6 +8,7 @@
     "exactOptionalPropertyTypes": true,
     "types": ["@types/bun"],
     "resolveJsonModule": true,
+    "allowJs": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "skipLibCheck": true

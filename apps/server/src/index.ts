@@ -36,6 +36,8 @@ if (command === "serve") {
   const app = createApp({
     config,
     log,
+    db,
+    testActorHeader: false,
     health: () => {
       try {
         db.$client.query("select 1").get();

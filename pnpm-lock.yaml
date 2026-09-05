@@ -20,6 +20,9 @@ importers:
       '@types/bun':
         specifier: ^1.4.1
         version: 1.4.1
+      '@typescript-eslint/parser':
+        specifier: ^8.69.0
+        version: 8.69.0(eslint@10.10.0)(typescript@5.9.3)
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10

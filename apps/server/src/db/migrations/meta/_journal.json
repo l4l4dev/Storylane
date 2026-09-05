@@ -8,6 +8,13 @@
       "when": 1788627757651,
       "tag": "0000_fair_captain_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788628905032,
+      "tag": "0001_panoramic_wind_dancer",
+      "breakpoints": true
     }
   ]
 }

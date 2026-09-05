@@ -1,8 +1,47 @@
+import type { Hono } from "hono";
+import { createApp } from "../src/app";
+import { loadConfig } from "../src/config";
+import { createLogger } from "../src/log";
 import { openDatabase, type Db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
+import { projectMembers, projects, users } from "../src/db/schema";
+import type { Actor } from "../src/db/tx";
 
 export function makeTestDb(): Db {
   const db = openDatabase(":memory:");
   runMigrations(db);
   return db;
+}
+
+export function seedUser(db: Db, email: string, isAdmin = false): Actor {
+  const id = crypto.randomUUID();
+  db.insert(users)
+    .values({ id, email, passwordHash: "x", displayName: email.split("@")[0]!, isAdmin, createdAt: Date.now() })
+    .run();
+  return { kind: "user", userId: id, isAdmin };
+}
+
+export function seedProject(db: Db, owner: Actor, others: Array<[Actor, "member" | "viewer"]> = []): string {
+  if (owner.kind !== "user") throw new Error("owner must be a user");
+  const id = crypto.randomUUID();
+  db.insert(projects).values({ id, name: "P", createdBy: owner.userId, createdAt: Date.now() }).run();
+  db.insert(projectMembers).values({ projectId: id, userId: owner.userId, role: "owner", joinedAt: Date.now() }).run();
+  for (const [a, role] of others) {
+    if (a.kind !== "user") continue;
+    db.insert(projectMembers).values({ projectId: id, userId: a.userId, role, joinedAt: Date.now() }).run();
+  }
+  return id;
+}
+
+export function makeTestApp(db: Db, extra?: (app: Hono) => void): { app: Hono; lines: string[] } {
+  const lines: string[] = [];
+  const app = createApp({
+    config: loadConfig({}),
+    log: createLogger((l) => lines.push(l)),
+    health: () => true,
+    db,
+    testActorHeader: true,
+  });
+  extra?.(app);
+  return { app, lines };
 }

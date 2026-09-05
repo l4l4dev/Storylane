@@ -2,11 +2,12 @@ import { describe, expect, it } from "bun:test";
 import { createApp } from "../src/app";
 import { createLogger } from "../src/log";
 import { loadConfig } from "../src/config";
+import { makeTestDb } from "./harness";
 
 function build(health: () => boolean) {
   const lines: string[] = [];
   const log = createLogger((l) => lines.push(l));
-  const app = createApp({ config: loadConfig({}), log, health });
+  const app = createApp({ config: loadConfig({}), log, health, db: makeTestDb() });
   return { app, lines };
 }
 
