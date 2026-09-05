@@ -12,6 +12,7 @@
 
 An agile project management tool inspired by Pivotal Tracker.
 Always refer to `SPEC.md` for the full specification before implementing anything.
+Since 2026-09-05 the project is being rewritten as a self-hostable single-container app; see `docs/design/2026-09-05-self-host-rewrite-design.md`.
 
 ## Critical Rules
 
@@ -27,8 +28,8 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
 - Any user-facing UI work follows `spec/ux-principles.md`: check original Pivotal Tracker's
   behavior first for tracker-mode interactions (Wayback procedure in that file), and end the
   task with a fable-advisor design review against the principles before manual verification
-- Destructive DB operations (DELETE/TRUNCATE/UPDATE without a primary-key filter) on rows you did
-  not create in the current session require explicit user approval first
+- Destructive operations on a SQLite data file you did not create in this session (deleting
+  `/data`, running `DELETE` without an id filter) require explicit owner approval first
 - This repository is public: never write the owner's personal name or private email in anything
   git-tracked (source, tests, spec, task files, commit messages) — refer to them as `@l4l4dev` or
   "the owner" (オーナー), and use fictional names/emails in test fixtures
@@ -42,9 +43,10 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
   after the owner's turn; hold the commit proposal until they do. `/code-review ultra`
   (cloud, multi-agent, billed) is the owner's call too; `/ultrareview` is a deprecated
   alias for it.
-- Migrations additionally require an `rls-security-reviewer` agent pass (deeper than the
-  generic review), and user-facing UI still ends with the fable-advisor design review
-  (see Critical Rules). `/security-review` runs once before each deploy.
+- Changes under `apps/server/src/auth`, `apps/server/src/db/tx.ts`, `apps/server/src/authz/` or
+  `spec/permissions.md` additionally require an `authz-reviewer` agent pass, and user-facing UI
+  still ends with the fable-advisor design review (see Critical Rules). `/security-review` runs
+  once before each deploy.
 - `/simplify` is available for cleanup-only passes on request.
 - When any review pass reports findings, hold the merge and surface them to the owner
   before merging.
@@ -55,19 +57,19 @@ Always refer to `SPEC.md` for the full specification before implementing anythin
 
 Most work here is done by AI agents — keep context small:
 
-- Never read generated files in full (`apps/web/lib/database.types.ts`, lockfiles) — Grep for the type/entry you need
+- Never read generated files in full (`apps/server/src/db/migrations/*.sql`, lockfiles) — Grep for the type/entry you need
 - Read only the spec section relevant to the task (via the SPEC.md index). Work items live in
   Backlog.md — read only the current task (`backlog task view <id> --plain`); completed history
   lives in Backlog doc-4, and deferred iOS scope in doc-22 (read either on demand only)
 - Prefer Grep/Glob or partial reads (offset/limit) over full reads for files longer than ~300 lines
-- Run long-lived commands (`pnpm dev`, `supabase start`) in the background and read only the log tail
-- While iterating, run targeted tests (`pnpm exec vitest run <path>`); before commit run the full
-  suite **from `apps/web/`** (`pnpm test` + `pnpm run lint`) — the root package.json is
-  workspace-config only (no scripts), so `pnpm test` at the repo root fails with exit code 1
+- Run long-lived commands (`bun run dev`, `pnpm --filter web dev`) in the background and read only the log tail
+- While iterating, run targeted tests (`bun test <path>` in `apps/server`, `pnpm exec vitest run <path>`
+  in `apps/web`); before commit run `bun test` in `apps/server`, `pnpm test` + `pnpm run lint` in
+  `apps/web`
 
 ---
 
-iOS conventions live in `apps/ios/`, Web conventions in `apps/web/` — each directory's instruction file is loaded automatically when working under it.
+Server conventions live in `apps/server/`, Web conventions in `apps/web/` — each directory's instruction file is loaded automatically when working under it.
 
 ## Spec Kit (experimental)
 
@@ -94,12 +96,12 @@ existing project before adopting it elsewhere. Rules of coexistence:
   permanent rules (including whether to keep `/speckit-implement` /
   `/speckit-taskstoissues`) get decided here afterwards.
 
-## Supabase Conventions
+## Server Conventions
 
-- Always enable RLS on every table
-- Migration files go in `supabase/migrations/` with sequential numbering
-- Edge Functions go in `supabase/functions/`
-- Secrets and API keys go in `.env.local` — never commit them
+- All project data access goes through `withProject()` / `ProjectTx` (`ARCHITECTURE.md` invariants). Never import the raw `db` into `services/` or `routes/`.
+- Permissions are declared in `spec/permissions.md` and mirrored in `spec/fixtures/permissions.json`; a new route needs a `ROUTE_ACTIONS` entry or the matrix test fails.
+- Migrations: `bun run db:generate` in `apps/server` after editing `src/db/schema/*.ts`; commit the generated SQL; never edit a shipped migration.
+- Secrets never live in source; the server reads only the four `STORYLANE_*` variables.
 
 ---
 
@@ -110,7 +112,7 @@ existing project before adopting it elsewhere. Rules of coexistence:
 ```
 feat: add drag-and-drop story reordering in backlog
 fix: correct point calculation in iteration auto-assignment
-chore: update Supabase client dependency
+chore: update Hono server dependency
 docs: add velocity calculation logic to SPEC.md
 ```
 
@@ -119,7 +121,7 @@ docs: add velocity calculation logic to SPEC.md
 ```
 feat/backlog-drag-and-drop
 fix/velocity-calculation
-chore/update-supabase-client
+chore/update-hono-dependency
 ```
 
 ### PR vs. Direct Push to `main`
@@ -152,12 +154,12 @@ Every Backlog task MUST have an assignee — set it at creation time, never leav
     When Fable is unavailable (plan window closed), these duties fall to `@claude-opus-5`
     and the fable-advisor agent runs with `model: opus` (the /advisor skill already says so)
   - `@gpt-5.6-sol` — (Codex CLI, ChatGPT quota) full implementation tasks when Claude
-    quota is exhausted, EXCEPT new-table RLS design and the state-model core; any
-    migration it writes is held from deploy until a deferred `rls-security-reviewer`
-    pass once Claude quota returns
+    quota is exhausted, EXCEPT the authorization core (`apps/server/src/auth`,
+    `apps/server/src/authz/`) and the state-model core; any auth/authz change it writes
+    is held from deploy until a deferred `authz-reviewer` pass once Claude quota returns
   - `@codex-gpt-5` — precisely-scoped, behavior-preserving refactors/cleanups and
     second-opinion review passes, run via the Codex CLI (executes on the ChatGPT quota,
-    not Claude tokens). Not for architecture-sensitive or RLS/concurrency work
+    not Claude tokens). Not for architecture-sensitive or authorization/concurrency work
 
 Workflow rules:
 
@@ -213,7 +215,7 @@ or `spec/`, with a one-line pointer from the code.
 ## Do Not
 
 - Add features not defined in `SPEC.md` without confirmation
-- Leave RLS disabled while implementing
+- Bypass `withProject()` for project data
 - Hardcode secrets or API keys in source files
 - Mark a feature complete without writing tests
 - Include `console.log` in commits (debug use only)

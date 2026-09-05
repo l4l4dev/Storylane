@@ -1,9 +1,6 @@
 packages:
-  - apps/web
-  - apps/mcp
+  - apps/*
   - packages/*
 
 allowBuilds:
   esbuild: true
-  sharp: true
-  unrs-resolver: true
