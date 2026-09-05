@@ -55,7 +55,12 @@ if (command === "serve") {
   }
   const config = loadConfigOrExit();
   const db = openDatabase(join(config.dataDir, "storylane.db"));
-  vacuumInto(db, target);
+  try {
+    vacuumInto(db, target);
+  } catch (e) {
+    log.error("backup failed", { message: (e as Error).message });
+    process.exit(1);
+  }
   log.info("backup written", { path: target });
 } else {
   log.error("unknown command", { command });
