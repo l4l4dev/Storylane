@@ -1,0 +1,25 @@
+{
+  "name": "@storylane/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts serve",
+    "start": "bun src/index.ts serve",
+    "test": "bun test",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "hono": "^4.13.5",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.1",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^10.10.0",
+    "typescript": "^5",
+    "typescript-eslint": "^8.69.0"
+  }
+}

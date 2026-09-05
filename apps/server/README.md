@@ -1,0 +1,37 @@
+# @storylane/server
+
+Self-hostable single-process Storylane server: Hono on Bun, SQLite (later), and
+a Vite SPA served statically (later). This package currently provides the app
+skeleton — config parsing, JSON request logging, and `GET /healthz`.
+
+## Development
+
+```bash
+bun run dev   # bun --watch src/index.ts serve
+```
+
+## Tests
+
+```bash
+bun test
+```
+
+## Configuration
+
+All configuration is read from environment variables at startup; an invalid
+value exits with code 2 and a JSON error line on stderr/stdout.
+
+| Variable                 | Default | Description                              |
+| ------------------------ | ------- | ---------------------------------------- |
+| `STORYLANE_PORT`         | `3000`  | TCP port to listen on (1-65535)          |
+| `STORYLANE_DATA_DIR`     | `/data` | Directory for persistent data            |
+| `STORYLANE_BASE_URL`     | (none)  | Absolute http(s) URL the app is served at |
+| `STORYLANE_TRUST_PROXY`  | `false` | `"true"` or `"false"`                    |
+
+## Docker
+
+Build context is the repo root:
+
+```bash
+docker build -f apps/server/Dockerfile -t storylane:dev .
+```
