@@ -14,7 +14,7 @@ implement. Never edit files. Treat Bash as read-only: `git log/diff/show`,
 
 Ground every answer in the repo, not in memory:
 - spec/ via the SPEC.md index (screens.md, velocity.md, data-model.md,
-  rls.md, features.md, integrations.md)
+  permissions.md, features.md, integrations.md)
 - ARCHITECTURE.md (cross-layer rules) and Backlog decisions/tasks
   (`backlog task view <id> --plain`, `.backlog/decisions/`)
 - The actual code when the question depends on it (Grep/partial reads —

@@ -85,11 +85,11 @@ UsernameEditor is removed from this page (moved to `/settings`).
   updated (default) / name / created.
 - **Archive:** owner-only action in the card's overflow menu (confirmation
   required). Archived projects are hidden by default behind an "Archived"
-  filter toggle; unarchive restores them. Read-only enforcement is scoped
-  to the Move/Copy story RPCs (reject an archived source/target) and this
-  UI's own display/archive-control gating — there is no DB-level lock
-  across every write-capable table (see spec/permissions.md); full enforcement is
-  follow-up work.
+  filter toggle; unarchive restores them. An archived project is read-only
+  for every role: every non-`:read` action answers `409 project_archived`
+  (see spec/permissions.md "Archived project"). Un-archiving is
+  `project:archive`, owner-only. The UI hides write controls on an archived
+  project.
 
 ### Navigation (Web) — updated 2026-07-21 (doc-12 Thread B)
 

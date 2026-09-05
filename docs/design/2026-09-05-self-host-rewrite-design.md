@@ -106,7 +106,7 @@ so spec and code cannot drift (same discipline as `spec/fixtures/`).
 
 Invariants that RLS or RPCs used to guard and that the matrix must keep:
 the last owner of a project cannot be demoted or removed
-(`spec/rls.md` "last owner"); a viewer's GET never triggers iteration
+(`spec/permissions.md` "Last owner"); a viewer's GET never triggers iteration
 rollover (`spec/velocity.md` "Rollover", owner decision 2026-07-22).
 
 Authorization failures return 403 for members lacking a permission, 404 for
