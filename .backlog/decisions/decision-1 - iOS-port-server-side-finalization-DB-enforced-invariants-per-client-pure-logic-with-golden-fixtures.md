@@ -4,7 +4,7 @@ title: >-
   iOS port: server-side finalization, DB-enforced invariants, per-client pure
   logic with golden fixtures
 date: '2026-07-08 07:43'
-status: accepted
+status: superseded by decision-2 (2026-09-05)
 ---
 ## Context
 
