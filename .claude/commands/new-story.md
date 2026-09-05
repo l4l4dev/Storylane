@@ -46,4 +46,4 @@ apps/web/components/features/story/
 ```
 
 4. Write tests using Swift Testing (iOS) or Vitest (Web) after implementing
-5. Verify that Supabase RLS policies align with the guidelines in `spec/rls.md`
+5. Verify that the route's authorization matches the matrix in `spec/permissions.md`

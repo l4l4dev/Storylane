@@ -41,7 +41,7 @@ a plan contradicting them is a finding unless the owner explicitly reopens.
 - **`user_time_off` stores dates + kind ONLY, no reason/notes** (§6). Why: co-members
   (incl. viewers) must READ it for capacity math (`shares_project_with` policy), so any
   free-text column would leak private reasons. Date-visibility trade-off accepted,
-  documented in spec/rls.md.
+  documented in spec/permissions.md.
 - **Pins recreated inside `move_story_to_project`** (§9). Why: move is insert+delete so
   the story id changes and pins would dangle; recreation is a cross-user write, hence it
   must live in the existing SECURITY DEFINER RPC (with per-pinner destination-membership

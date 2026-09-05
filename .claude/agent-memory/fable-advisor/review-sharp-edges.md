@@ -17,7 +17,7 @@ have actually bitten this repo, verified against spec anchors on that date.
   sprint length, or enforces per-project invariants (e.g. ≥1 unstarted/done state trigger)
   must take the same lock. Ask "can two callers race on this project?" before approving.
 - **RLS pitfalls seen repeatedly here** (also [[learnings-supabase-rls]] in the user's
-  auto-memory, `spec/rls.md`):
+  auto-memory, `spec/permissions.md`):
   - Missing `GRANT` — a policy without a table/function grant silently 401s.
   - `RETURNING` visibility — INSERT/UPDATE ... RETURNING fails if SELECT policy doesn't
     cover the new row; check every RPC that returns the row it wrote.

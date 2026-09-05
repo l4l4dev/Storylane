@@ -88,7 +88,7 @@ UsernameEditor is removed from this page (moved to `/settings`).
   filter toggle; unarchive restores them. Read-only enforcement is scoped
   to the Move/Copy story RPCs (reject an archived source/target) and this
   UI's own display/archive-control gating — there is no DB-level lock
-  across every write-capable table (see spec/rls.md); full enforcement is
+  across every write-capable table (see spec/permissions.md); full enforcement is
   follow-up work.
 
 ### Navigation (Web) — updated 2026-07-21 (doc-12 Thread B)
@@ -583,7 +583,7 @@ views reduce to List / Kanban.
 
 ### Project Settings (`/projects/[id]/settings`)
 
-Sections, in order, each gated by its own RLS-matching role (see spec/rls.md):
+Sections, in order, each gated by its own role (see spec/permissions.md):
 
 - **Details** — name, description, definition of done, iteration term/length,
   point scale, velocity window. Owner-editable; members see it read-only.

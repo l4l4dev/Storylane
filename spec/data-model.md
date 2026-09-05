@@ -147,7 +147,7 @@ board state; doc-18 §4), and
 The DB permits **any → any** within the project; ordering discipline is
 UI-only (the advance button / Accept-Reject pair, a `packages/core` pure
 function). Runs on the TASK-70 board write model (a) — any member may operate
-any story (see spec/rls.md).
+any story (see spec/permissions.md).
 
 **Default templates** at project creation (doc-8 §2):
 - **classic** — Unstarted(`unstarted`) / Started, Finished, Delivered(all
@@ -233,7 +233,7 @@ PG15+ (local runs PG17). `today_date`/carry-over use the **client's** local wall
 date, never DB `current_date` (UTC would shift the day boundary to 09:00 JST) —
 only the one-time migration backfill uses `current_date`. RLS: own-rows
 SELECT/UPDATE/DELETE (`user_id = auth.uid()`); INSERT WITH CHECK
-`user_id = auth.uid() AND` caller is a member of the story's project. See spec/rls.md.
+`user_id = auth.uid() AND` caller is a member of the story's project. See spec/permissions.md.
 
 *(`project_my_work_mapping` was removed in doc-15 — free columns never touch a
 project board, so a mapping had nothing left to do.)*
@@ -279,7 +279,7 @@ user_time_off (
 `user_time_off` READ policy is `user_id = auth.uid() OR
 shares_project_with(user_id)`, WRITE self-only. The trade-off (a shared
 project exposes all your time-off dates to its members, viewers included) is
-accepted and documented in spec/rls.md. v1 has no per-user weekday patterns —
+accepted and documented in spec/permissions.md. v1 has no per-user weekday patterns —
 "agent works weekends" is expressed via `extra_workday` / time-off dates or
 not at all (deferred, doc-8 §8).
 
@@ -409,7 +409,7 @@ stories (
   -- also FOREIGN KEY (project_id, assignee_id)
   --   REFERENCES project_members(project_id, user_id) ON DELETE SET NULL (assignee_id):
   -- the assignee must be a member of the story's own project, and removing a
-  -- member unassigns their stories. Lock-order consequences in spec/rls.md.
+  -- member unassigns their stories. Lock-order consequences in spec/permissions.md.
   created_by   uuid REFERENCES profiles(id),
   created_at   timestamptz DEFAULT now(),
   updated_at   timestamptz DEFAULT now()
@@ -500,7 +500,7 @@ activity_logs (
   FOREIGN KEY (story_id, project_id) REFERENCES stories(id, project_id) ON DELETE NO ACTION
 )
 -- Inserted only by SECURITY DEFINER trigger/RPC paths (no client INSERT policy,
--- TASK-55) — see spec/rls.md.
+-- TASK-55) — see spec/permissions.md.
 ```
 
 ### integrations
