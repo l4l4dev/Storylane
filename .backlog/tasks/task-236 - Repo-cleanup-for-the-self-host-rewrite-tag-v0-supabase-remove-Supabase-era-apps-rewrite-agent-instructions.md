@@ -3,10 +3,11 @@ id: TASK-236
 title: >-
   Repo cleanup for the self-host rewrite: tag v0-supabase, remove Supabase-era
   apps, rewrite agent instructions
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-09-05 15:47'
+updated_date: '2026-09-05 16:41'
 labels: []
 milestone: m-8
 dependencies: []
@@ -31,3 +32,9 @@ First commit of the rewrite (design doc section 8). Tag the last Supabase-era co
 - [ ] #4 grep for Supabase, RLS, Next.js, Vercel, supabase-js in CLAUDE.md, AGENTS.md, REVIEW.md, .claude/ returns only historical references marked as such
 - [ ] #5 pnpm install succeeds at the repo root with the reduced workspace
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on branch rewrite/self-hosted: tag v0-supabase @9419360; old apps/supabase removed and agent instructions rewritten (7be2238); parity script fixed for the new agent set (7ebd8a7). Reviewed via SDD task review + scoped re-review. Deferred: two remaining 'new tables/RLS' phrases in CLAUDE.md (Spec Kit / PR bullets), Supabase mentions in .claude/commands/new-story.md and .specify/memory/constitution.md → final whole-branch review.
+<!-- SECTION:NOTES:END -->
