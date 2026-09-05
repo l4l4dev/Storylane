@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, primaryKey, unique, check } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, primaryKey, index, check } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
 
 export const projects = sqliteTable("projects", {
@@ -26,23 +26,8 @@ export const projectMembers = sqliteTable(
   },
   (t) => [
     primaryKey({ columns: [t.projectId, t.userId] }),
+    // The primary key covers project→members; this covers "which projects is this user in".
+    index("project_members_user").on(t.userId),
     check("project_members_role", sql`${t.role} in ('owner','member','viewer')`),
-  ],
-);
-
-/** Every project-scoped table exposes these two columns so loadInProject can address it. */
-export const scopedColumns = { id: text("id").primaryKey(), projectId: text("project_id").notNull() };
-
-/** Scaffold table used by the tx tests; real domain tables replace it in phase 1. */
-export const scopedItems = sqliteTable(
-  "scoped_items",
-  {
-    ...scopedColumns,
-    position: integer("position").notNull(),
-    label: text("label").notNull(),
-  },
-  (t) => [
-    unique("scoped_items_id_project").on(t.id, t.projectId),
-    unique("scoped_items_position").on(t.projectId, t.position),
   ],
 );

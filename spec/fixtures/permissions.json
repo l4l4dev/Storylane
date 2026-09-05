@@ -33,7 +33,7 @@
   "adminActions": ["user:list", "user:create", "user:deactivate", "user:reset-link", "instance:settings"],
   "notes": {
     "last-owner": "The sole owner of a project can never be demoted, removed, or leave. member:change-role / member:remove / member:leave return 409 last_owner in that case.",
-    "archived": "When projects.archived_at is set every write action (any action not ending in :read) returns 409 project_archived for every role; project:archive itself (un-archive) stays owner-only.",
+    "archived": "When projects.archived_at is set, :read actions are unaffected and every other action returns 409 project_archived for every role, except project:archive (un-archive) and project:delete, which stay owner-only. Precedence is 404 then 409 then 403: a non-member still gets 404, and a viewer gets 409 rather than 403.",
     "rollover": "iteration:rollover is never triggered by a viewer's or non-member's request, and never by the background worker.",
     "comment-own": "comment:update-own additionally requires the actor to be the comment's author; another member gets 403.",
     "member-leave": "member:leave is the actor removing their own membership; owners must transfer ownership first.",

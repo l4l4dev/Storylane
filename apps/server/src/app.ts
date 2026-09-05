@@ -41,7 +41,10 @@ export function createApp(deps: AppDeps): Hono {
   const actorOf = deps.actorOf ?? defaultActorOf(deps.testActorHeader === true);
   const app = new Hono();
   app.use(requestLogger(deps.log));
-  app.use("/api/projects/*", failClosed());
+  // Narrow on purpose: the trailing wildcard also matches zero segments, so this covers
+  // /api/projects/:id and everything below it, but not a future non-project-scoped
+  // GET /api/projects (the caller's own project list).
+  app.use("/api/projects/:id/*", failClosed());
   app.route("/", healthzRoute(deps.health));
   app.route("/", projectRoutes(deps.db, actorOf));
   app.notFound((c) => c.json({ error: "not_found" }, 404));

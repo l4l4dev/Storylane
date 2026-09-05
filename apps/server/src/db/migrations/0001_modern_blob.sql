@@ -20,6 +20,7 @@ CREATE TABLE `project_members` (
 	CONSTRAINT "project_members_role" CHECK("project_members"."role" in ('owner','member','viewer'))
 );
 --> statement-breakpoint
+CREATE INDEX `project_members_user` ON `project_members` (`user_id`);--> statement-breakpoint
 CREATE TABLE `projects` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
@@ -28,13 +29,3 @@ CREATE TABLE `projects` (
 	`archived_at` integer,
 	FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
---> statement-breakpoint
-CREATE TABLE `scoped_items` (
-	`id` text PRIMARY KEY NOT NULL,
-	`project_id` text NOT NULL,
-	`position` integer NOT NULL,
-	`label` text NOT NULL
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `scoped_items_id_project` ON `scoped_items` (`id`,`project_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `scoped_items_position` ON `scoped_items` (`project_id`,`position`);

@@ -52,10 +52,13 @@ row for **both** projects (`withTwoProjects`).
 
 - **Last owner.** The sole owner can never be demoted, removed, or leave:
   `member:change-role`, `member:remove`, `member:leave` answer `409 last_owner`.
-- **Archived project.** With `projects.archived_at` set, every non-`:read`
-  action answers `409 project_archived` for every role; un-archiving is
-  `project:archive` (owner). This replaces the DB-level lock that was never
-  built for v0 (former TASK-30).
+- **Archived project.** With `projects.archived_at` set, `:read` actions are
+  unaffected and every other action answers `409 project_archived` for every
+  role, except `project:archive` (un-archive) and `project:delete`, which stay
+  owner-only. Precedence is `404` → `409` → `403`: a non-member still gets
+  `404`, so archiving never reveals that a project exists, and a viewer gets
+  `409` rather than `403` because the project is closed to everyone. This
+  replaces the DB-level lock that was never built for v0 (former TASK-30).
 - **Rollover.** `iteration:rollover` runs lazily on an owner's or member's
   request; a viewer's request and the background worker never trigger it
   (`spec/velocity.md` "Rollover", owner decision 2026-07-22).

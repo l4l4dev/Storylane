@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { eq, sql } from "drizzle-orm";
-import { makeTestDb, seedProject, seedUser } from "./harness";
+import { disableUser, makeTestDb, seedProject, seedUser } from "./harness";
 import { loadInProject, reorder, withProject, withTwoProjects, type Actor } from "../src/db/tx";
-import { scopedItems } from "../src/db/schema";
+import { scopedItems } from "./scoped-items";
 import { HttpError } from "../src/http-error";
 import { ALL_ACTIONS, expected } from "../src/authz/permissions";
 import type { Db } from "../src/db/client";
@@ -52,11 +52,27 @@ describe("withProject", () => {
     const admin: Actor = { kind: "user", userId: "u-admin", isAdmin: true };
     expect(status(() => withProject(db, admin, "nope", "project:read", () => 1))).toBe(404);
   });
-  it("rejects writes to an archived project with 409", () => {
+  it("returns 401 for a disabled user, whatever their membership", () => {
+    disableUser(db, owner);
+    expect(status(() => withProject(db, owner, pA, "project:read", () => 1))).toBe(401);
+    expect(status(() => withProject(db, owner, pA, "story:write", () => 1))).toBe(401);
+  });
+  it("rejects writes to an archived project with 409, before the role check", () => {
     db.run(sql`update projects set archived_at = 1 where id = ${pA}`);
     expect(status(() => withProject(db, owner, pA, "story:write", () => 1))).toBe(409);
+    // 409 wins over the viewer's 403: the project is closed for everyone.
+    expect(status(() => withProject(db, viewer, pA, "story:write", () => 1))).toBe(409);
+    // ... but 404 still wins over 409, so archiving does not leak the project's existence.
+    expect(status(() => withProject(db, outsider, pA, "story:write", () => 1))).toBe(404);
+    expect(status(() => withProject(db, anon, pA, "story:write", () => 1))).toBe(401);
+    // Reads are unaffected.
     expect(status(() => withProject(db, owner, pA, "story:read", () => 1))).toBe(200);
+    expect(status(() => withProject(db, viewer, pA, "project:read", () => 1))).toBe(200);
+    // Un-archiving and deleting stay possible, and stay owner-only.
     expect(status(() => withProject(db, owner, pA, "project:archive", () => 1))).toBe(200);
+    expect(status(() => withProject(db, owner, pA, "project:delete", () => 1))).toBe(200);
+    expect(status(() => withProject(db, member, pA, "project:archive", () => 1))).toBe(403);
+    expect(status(() => withProject(db, member, pA, "project:delete", () => 1))).toBe(403);
   });
   it("rolls back when fn throws", () => {
     expect(() =>

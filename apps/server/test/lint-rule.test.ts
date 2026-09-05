@@ -26,6 +26,21 @@ describe("local/no-await-in-transaction", () => {
   it("allows await outside", () => {
     expect(lint(`await db.transaction((tx) => { tx.run(); });`)).toHaveLength(0);
   });
+  it("flags await inside a withProject callback", () => {
+    const out = lint(`withProject(db, actor, id, "story:write", async (tx) => { await fetch("x"); });`);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.messageId).toBe("noAwait");
+  });
+  it("flags await inside a withTwoProjects callback", () => {
+    expect(
+      lint(`withTwoProjects(db, actor, a, b, "story:move-cross-project", async (x, y) => { await x; });`),
+    ).toHaveLength(1);
+  });
+  it("allows await in an async function defined inside a withProject callback", () => {
+    expect(
+      lint(`withProject(db, actor, id, "story:write", (tx) => { const later = async () => { await x; }; });`),
+    ).toHaveLength(0);
+  });
   it("allows await in a function defined inside but not the callback itself", () => {
     expect(lint(`db.transaction((tx) => { const later = async () => { await x; }; tx.run(); });`)).toHaveLength(0);
   });

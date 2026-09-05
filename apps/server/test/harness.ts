@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import type { Hono } from "hono";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
@@ -5,11 +6,14 @@ import { createLogger } from "../src/log";
 import { openDatabase, type Db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { projectMembers, projects, users } from "../src/db/schema";
+import { CREATE_SCOPED_ITEMS } from "./scoped-items";
 import type { Actor } from "../src/db/tx";
 
 export function makeTestDb(): Db {
   const db = openDatabase(":memory:");
   runMigrations(db);
+  // Not a migration: scoped_items is test scaffolding for the ProjectTx helpers.
+  for (const stmt of CREATE_SCOPED_ITEMS) db.$client.run(stmt);
   return db;
 }
 
@@ -19,6 +23,12 @@ export function seedUser(db: Db, email: string, isAdmin = false): Actor {
     .values({ id, email, passwordHash: "x", displayName: email.split("@")[0]!, isAdmin, createdAt: Date.now() })
     .run();
   return { kind: "user", userId: id, isAdmin };
+}
+
+/** Deactivates a seeded user (users.disabled_at). */
+export function disableUser(db: Db, actor: Actor): void {
+  if (actor.kind !== "user") throw new Error("expected a user actor");
+  db.update(users).set({ disabledAt: Date.now() }).where(eq(users.id, actor.userId)).run();
 }
 
 export function seedProject(db: Db, owner: Actor, others: Array<[Actor, "member" | "viewer"]> = []): string {

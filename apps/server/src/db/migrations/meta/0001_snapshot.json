@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "bd9cd0ac-de7c-4183-ac62-41900f5a1d8c",
+  "id": "a9857535-5491-462d-bdef-e6364e7025d4",
   "prevId": "6d8dd902-b14f-4478-b202-35c0b2426c46",
   "tables": {
     "instance_meta": {
@@ -135,7 +135,15 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "project_members_user": {
+          "name": "project_members_user",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "project_members_project_id_projects_id_fk": {
           "name": "project_members_project_id_projects_id_fk",
@@ -236,61 +244,6 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "scoped_items": {
-      "name": "scoped_items",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "scoped_items_id_project": {
-          "name": "scoped_items_id_project",
-          "columns": [
-            "id",
-            "project_id"
-          ],
-          "isUnique": true
-        },
-        "scoped_items_position": {
-          "name": "scoped_items_position",
-          "columns": [
-            "project_id",
-            "position"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
