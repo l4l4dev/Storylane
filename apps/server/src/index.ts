@@ -1,14 +1,19 @@
-import { loadConfig, ConfigError } from "./config";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import pkg from "../package.json";
+import { loadConfig, ConfigError, type Config } from "./config";
 import { createLogger } from "./log";
 import { createApp } from "./app";
+import { openDatabase } from "./db/client";
+import { backupThenMigrate } from "./db/migrate";
+import { vacuumInto } from "./db/backup";
 
-const [command = "serve"] = Bun.argv.slice(2);
+const [command = "serve", ...args] = Bun.argv.slice(2);
 const log = createLogger();
 
-if (command === "serve") {
-  let config;
+function loadConfigOrExit(): Config {
   try {
-    config = loadConfig(Bun.env);
+    return loadConfig(Bun.env);
   } catch (e) {
     if (e instanceof ConfigError) {
       log.error("config", { message: e.message });
@@ -16,9 +21,42 @@ if (command === "serve") {
     }
     throw e;
   }
-  const app = createApp({ config, log, health: () => true });
+}
+
+if (command === "serve") {
+  const config = loadConfigOrExit();
+  mkdirSync(config.dataDir, { recursive: true });
+  const db = openDatabase(join(config.dataDir, "storylane.db"));
+  try {
+    backupThenMigrate(db, { dataDir: config.dataDir, version: pkg.version, log });
+  } catch (e) {
+    log.error("migration failed; restore backups/pre-<version>.db if needed", { message: (e as Error).message });
+    process.exit(1);
+  }
+  const app = createApp({
+    config,
+    log,
+    health: () => {
+      try {
+        db.$client.query("select 1").get();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
   Bun.serve({ port: config.port, hostname: "0.0.0.0", fetch: app.fetch });
-  log.info("listening", { port: config.port, data_dir: config.dataDir });
+  log.info("listening", { port: config.port, data_dir: config.dataDir, version: pkg.version });
+} else if (command === "backup") {
+  const [target] = args;
+  if (!target) {
+    log.error("usage: storylane backup <path>");
+    process.exit(2);
+  }
+  const config = loadConfigOrExit();
+  const db = openDatabase(join(config.dataDir, "storylane.db"));
+  vacuumInto(db, target);
+  log.info("backup written", { path: target });
 } else {
   log.error("unknown command", { command });
   process.exit(2);
