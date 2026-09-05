@@ -242,10 +242,7 @@ main() {
   # directory) is unusable to every consumer while passing a bare existence test.
   declare -a EXPECTED_LINKS=(
     "AGENTS.md:CLAUDE.md:file"
-    "apps/ios/AGENTS.md:CLAUDE.md:file"
-    "apps/web/AGENTS.md:CLAUDE.md:file"
     ".agents/skills/advisor/SKILL.md:../../../.claude/skills/advisor/SKILL.md:file"
-    "apps/web/.claude/agent-memory:../../../.claude/agent-memory:dir"
   )
 
   for entry in "${EXPECTED_LINKS[@]}"; do

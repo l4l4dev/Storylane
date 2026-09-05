@@ -1,12 +1,10 @@
 # Storylane — Agent Instructions
 
-<!-- AGENTS.md here is a symlink to this file; apps/web and apps/ios each have
-     their own AGENTS.md -> CLAUDE.md symlink pointing at their OWN sibling, not
-     at this one. Claude Code reads CLAUDE.md, Codex reads AGENTS.md.
-     Do not "fix" any of them into a real file — the copy is what drifted before,
-     and `backlog agents --update-instructions` offers CLAUDE.md and AGENTS.md as
-     separate targets that are now one inode: pick CLAUDE.md only, or its
-     write-then-rename replaces the symlink with a duplicate. -->
+<!-- AGENTS.md here is a symlink to this file. Claude Code reads CLAUDE.md,
+     Codex reads AGENTS.md. Do not "fix" it into a real file — the copy is what
+     drifted before, and `backlog agents --update-instructions` offers CLAUDE.md
+     and AGENTS.md as separate targets that are now one inode: pick CLAUDE.md
+     only, or its write-then-rename replaces the symlink with a duplicate. -->
 
 ## About This Project
 
@@ -17,7 +15,7 @@ Since 2026-09-05 the project is being rewritten as a self-hostable single-contai
 ## Critical Rules
 
 - Always ask before making architectural changes or large-scale refactors
-- Before implementing a large plan (new tables/RLS, algorithm rewrites, concurrency-sensitive
+- Before implementing a large plan (new tables/permissions, algorithm rewrites, concurrency-sensitive
   changes), get it reviewed via the `/advisor` skill (fable-advisor agent) — then show the verdict
   to the user with your plan
 - Never use `git add -A` or `git add .` — always specify files explicitly
@@ -148,7 +146,7 @@ Every Backlog task MUST have an assignee — set it at creation time, never leav
 - Tasks a model implements: assign the model best matched to the task's content:
   - `@claude-haiku-4-5` — mechanical, low-risk edits (renames, copy tweaks, config)
   - `@claude-sonnet-5` — standard feature/bugfix implementation (default choice)
-  - `@claude-opus-5` — architecture-sensitive work: new tables/RLS, concurrency,
+  - `@claude-opus-5` — architecture-sensitive work: new tables/permissions, concurrency,
     cross-cutting refactors, notification/event paths
   - `@claude-fable-5` — design review, planning, and final review passes (fable-advisor).
     When Fable is unavailable (plan window closed), these duties fall to `@claude-opus-5`
