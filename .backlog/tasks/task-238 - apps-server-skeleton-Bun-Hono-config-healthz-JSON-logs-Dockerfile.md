@@ -1,11 +1,11 @@
 ---
 id: TASK-238
 title: 'apps/server skeleton: Bun + Hono, config, /healthz, JSON logs, Dockerfile'
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-09-05 15:47'
-updated_date: '2026-09-05 15:48'
+updated_date: '2026-09-05 17:00'
 labels: []
 milestone: m-8
 dependencies:
@@ -31,3 +31,9 @@ Design doc sections 2 and 7. Create apps/server as a Bun workspace package runni
 - [ ] #4 docker build produces an image that answers /healthz with -v storylane:/data; image size under 250 MB
 - [ ] #5 bun test passes for the config and healthz modules
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on rewrite/self-hosted (39cdcab): Bun+Hono skeleton, config with 4 STORYLANE_* vars, /healthz, JSON request log, Dockerfile (oven/bun:1-slim, non-root, 80.9 MB). Dockerfile deviations from the plan kept: BUN_INSTALL/PATH for global pnpm; mkdir packages/core/node_modules (no prod deps). Deferred: onError branches untested; eslint config arrives with TASK-240.
+<!-- SECTION:NOTES:END -->
