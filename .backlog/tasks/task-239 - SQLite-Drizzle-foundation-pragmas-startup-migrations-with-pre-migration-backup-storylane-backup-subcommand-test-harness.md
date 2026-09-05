@@ -3,11 +3,11 @@ id: TASK-239
 title: >-
   SQLite + Drizzle foundation: pragmas, startup migrations with pre-migration
   backup, storylane backup subcommand, test harness
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-09-05 15:47'
-updated_date: '2026-09-05 15:48'
+updated_date: '2026-09-05 17:19'
 labels: []
 milestone: m-8
 dependencies:
@@ -33,3 +33,9 @@ Design doc section 5. Open /data/storylane.db with journal_mode=WAL, synchronous
 - [ ] #4 Test harness helper gives each test an isolated :memory: DB with migrations applied; used by at least one test
 - [ ] #5 All writing transactions go through a helper that issues BEGIN IMMEDIATE
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on rewrite/self-hosted: c5eebcd (SQLite via Drizzle, pragmas, boot migrations behind pre-migration backup, backup subcommand, :memory: harness) + d2fab79 (atomic .tmp+rename backup, backup CLI exit 1 with JSON log, kept-backup test, temp cleanup). Deferred: backup subcommand still stack-traces when the data dir does not exist (openDatabase outside try/catch); drizzle.config.ts outside tsconfig include.
+<!-- SECTION:NOTES:END -->
