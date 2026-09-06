@@ -16,7 +16,7 @@ loadInProject(db, scopedItems, "id");
 new ProjectTx();
 
 // @ts-expect-error _create needs the module-private token, which nothing outside tx.ts can name.
-ProjectTx._create(tx.tx, "p", "owner", actor);
+ProjectTx._create(Symbol("x"), tx.tx, "p", "owner", actor);
 
 // OK: a synchronous callback.
 withProject(db, actor, "p", "project:read", (t) => t.projectId);

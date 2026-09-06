@@ -1,7 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
-import { Hono } from "hono";
-import { failClosed } from "../src/authz/middleware";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
@@ -29,9 +27,12 @@ const actors: Record<Role, Actor> = {
   owner: ownerA,
 };
 
-// Only middleware registered with app.use(path, …) is exempt: it is both ALL and wildcarded.
+// Only these exact middleware registrations (app.use(path, …) in app.ts) are exempt — an
+// explicit allowlist, not a heuristic, so a real route registered with app.all(...) still
+// needs a manifest entry even if its path happens to end in "/*".
+const EXEMPT_MIDDLEWARE_PATHS = new Set(["/*", "/api/projects/:id/*"]);
 const registered = app.routes
-  .filter((r) => !(r.method === "ALL" && r.path.endsWith("/*")))
+  .filter((r) => !(r.method === "ALL" && EXEMPT_MIDDLEWARE_PATHS.has(r.path)))
   .map((r) => `${r.method} ${r.path}`);
 
 describe("route manifest", () => {
@@ -53,7 +54,7 @@ describe("permission matrix over project routes", () => {
     const [method, path] = key.split(" ") as [string, string];
     it(`${key} is addressed by project id`, () => {
       // A project-scoped route declared with another param name would silently skip the matrix.
-      expect(path).toContain("/api/projects/:id");
+      expect(path).toMatch(/^\/api\/projects\/:id(\/|$)/);
     });
     for (const role of ROLES) {
       it(`${key} as ${role} → ${expected(rule, role)}`, async () => {
@@ -103,12 +104,11 @@ describe("fail-closed middleware", () => {
   });
 
   it("covers the single-segment /api/projects/:id path, not only deeper ones", async () => {
-    // The trailing wildcard must match zero segments, or GET /api/projects/:id itself
-    // would run unguarded. Probed on a bare app so the real route cannot answer first.
-    const bare = new Hono();
-    bare.use("/api/projects/:id/*", failClosed());
-    bare.get("/api/projects/:id", (c) => c.json({ leak: true }));
-    const res = await bare.request(`/api/projects/${projectId}`);
+    // The trailing wildcard must match zero segments, or GET /api/projects/:id itself would
+    // run unguarded. Built through makeTestApp/createApp (production registration order),
+    // using POST so the leak sits at the same path as the real (guarded) GET route.
+    const { app: leaky } = makeTestApp(db, (a) => a.post("/api/projects/:id", (c) => c.json({ leak: true })));
+    const res = await leaky.request(`/api/projects/${projectId}`, { method: "POST", headers: asOwner });
     expect(res.status).toBe(500);
   });
 

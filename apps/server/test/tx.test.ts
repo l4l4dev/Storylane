@@ -49,13 +49,21 @@ describe("withProject", () => {
     expect(status(() => withProject(db, owner, pA, "story:delete", () => 1))).toBe(200);
   });
   it("returns 404 for an unknown project even to an admin", () => {
-    const admin: Actor = { kind: "user", userId: "u-admin", isAdmin: true };
+    // A real (seeded, enabled) user — an unseeded id would hit the disabled-user 401 branch
+    // first, which is a different case (see "returns 401 for a disabled user" below).
+    const admin = seedUser(db, "admin@example.test", true);
     expect(status(() => withProject(db, admin, "nope", "project:read", () => 1))).toBe(404);
   });
   it("returns 401 for a disabled user, whatever their membership", () => {
     disableUser(db, owner);
     expect(status(() => withProject(db, owner, pA, "project:read", () => 1))).toBe(401);
     expect(status(() => withProject(db, owner, pA, "story:write", () => 1))).toBe(401);
+  });
+  it("returns 401 for a disabled user even when the project doesn't exist", () => {
+    // The disabled check must not depend on the project lookup, or a disabled user probing
+    // a project id would learn whether it exists (404) before learning they're disabled (401).
+    disableUser(db, owner);
+    expect(status(() => withProject(db, owner, "no-such-project", "project:read", () => 1))).toBe(401);
   });
   it("rejects writes to an archived project with 409, before the role check", () => {
     db.run(sql`update projects set archived_at = 1 where id = ${pA}`);
@@ -82,6 +90,42 @@ describe("withProject", () => {
       }),
     ).toThrow("boom");
     expect(db.select().from(scopedItems).all()).toHaveLength(0);
+  });
+});
+
+describe("ProjectTx invalidation", () => {
+  it("throws if a callback captures tx and uses it after withProject returns", () => {
+    let captured: import("../src/db/tx").ProjectTx | undefined;
+    withProject(db, owner, pA, "story:write", (tx) => {
+      captured = tx;
+      return 1;
+    });
+    expect(() => captured!.tx).toThrow("ProjectTx used outside its transaction");
+    expect(() => loadInProject(captured!, scopedItems, "a1")).toThrow("ProjectTx used outside its transaction");
+  });
+
+  it("rejects a thenable returned from the callback, and its deferred insert throws even if invoked", () => {
+    // A structurally-thenable object passes the NotPromise type (a loosely-typed `then` is
+    // not recognized as PromiseLike), so this must be caught at runtime instead. `then` closes
+    // over the live `tx` param, mirroring the reported bypass: an INSERT meant to run after
+    // this function returns (i.e. after commit) if some caller awaited the result.
+    let sneaky: { then(cb: (v: number) => void): void } | undefined;
+    expect(() =>
+      withProject(db, owner, pA, "story:write", (tx) => {
+        sneaky = {
+          then(cb) {
+            tx.tx.insert(scopedItems).values({ id: "sneaky", projectId: pA, position: 0, label: "" }).run();
+            cb(1);
+          },
+        };
+        return sneaky as unknown as number;
+      }),
+    ).toThrow("withProject callback must be synchronous");
+    // Defense in depth: even if the runtime thenable check above were absent or buggy, the
+    // captured tx is invalid by the time anything could call sneaky.then(), so the insert
+    // inside it throws rather than silently writing after commit.
+    expect(() => sneaky!.then(() => {})).toThrow("ProjectTx used outside its transaction");
+    expect(db.select().from(scopedItems).where(eq(scopedItems.id, "sneaky")).all()).toHaveLength(0);
   });
 });
 

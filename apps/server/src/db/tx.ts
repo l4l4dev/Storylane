@@ -34,12 +34,29 @@ const CREATE_TOKEN = Symbol("ProjectTx");
 
 /** The only handle through which project data may be read or written. */
 export class ProjectTx {
+  #tx: Tx;
+  #live = true;
+
   private constructor(
-    readonly tx: Tx,
+    tx: Tx,
     readonly projectId: string,
     readonly role: MemberRole,
     readonly actor: Actor,
-  ) {}
+  ) {
+    this.#tx = tx;
+  }
+
+  /** The drizzle transaction handle. Throws once the transaction it belongs to has returned. */
+  get tx(): Tx {
+    if (!this.#live) throw new Error("ProjectTx used outside its transaction");
+    return this.#tx;
+  }
+
+  /** @internal — withProject/withTwoProjects call this once their db.transaction() call returns. */
+  _invalidate(): void {
+    this.#live = false;
+  }
+
   /** @internal — the token makes withProject/withTwoProjects the only possible callers. */
   static _create(
     token: typeof CREATE_TOKEN,
@@ -53,31 +70,27 @@ export class ProjectTx {
   }
 }
 
-function resolveRole(tx: Tx, actor: UserActor, projectId: string): { role: Role; archived: boolean } {
-  const project = tx
-    .select({ id: projects.id, archivedAt: projects.archivedAt })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .get();
-  if (!project) throw new HttpError(404, "not_found");
-  const user = tx
-    .select({ disabledAt: users.disabledAt })
-    .from(users)
-    .where(eq(users.id, actor.userId))
-    .get();
-  if (!user || user.disabledAt !== null) throw new HttpError(401, "unauthenticated");
-  const m = tx
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, actor.userId)))
-    .get();
-  return { role: (m?.role ?? "non-member") as Role, archived: project.archivedAt !== null };
+/**
+ * A synchronous callback must never return something that looks like a Promise: nothing here
+ * awaits the result, so a thenable would only ever run its `.then()` after this function has
+ * already returned (and the transaction has committed) — if some caller happened to await it.
+ * `NotPromise` blocks this at compile time for ordinary async functions; this catches the rest
+ * (a hand-built thenable, or a widened function type `tsc` cannot see through) at runtime.
+ */
+function rejectThenable<T>(result: T): T {
+  if ((typeof result === "object" && result !== null) || typeof result === "function") {
+    const then = (result as { then?: unknown }).then;
+    if (typeof then === "function") throw new Error("withProject callback must be synchronous");
+  }
+  return result;
 }
 
-/** Precedence is fixed by spec/permissions.md: 401 → 404 → 409 → 403. */
+/** Precedence is fixed by spec/permissions.md: 401 (anon) → 401 (disabled) → 404 → 409 → 403. */
 function authorizeIn(tx: Tx, actor: Actor, projectId: string, action: Action): ProjectTx {
-  // Before the project lookup: an anonymous caller must not learn whether the project exists.
+  // Before any lookup: an anonymous caller must not learn whether the project exists.
   if (actor.kind === "anonymous") throw new HttpError(401, "unauthenticated");
+  // Independent of projectId, so a disabled user gets 401 even for an unknown project.
+  if (isUserDisabled(tx, actor)) throw new HttpError(401, "unauthenticated");
   const { role, archived } = resolveRole(tx, actor, projectId);
   // Deliberate defense in depth: resolveRole cannot return these, but a ProjectTx
   // must carry a membership role even if that ever changes.
@@ -92,6 +105,26 @@ function authorizeIn(tx: Tx, actor: Actor, projectId: string, action: Action): P
   return ProjectTx._create(CREATE_TOKEN, tx, projectId, role, actor);
 }
 
+function isUserDisabled(tx: Tx, actor: UserActor): boolean {
+  const user = tx.select({ disabledAt: users.disabledAt }).from(users).where(eq(users.id, actor.userId)).get();
+  return !user || user.disabledAt !== null;
+}
+
+function resolveRole(tx: Tx, actor: UserActor, projectId: string): { role: Role; archived: boolean } {
+  const project = tx
+    .select({ id: projects.id, archivedAt: projects.archivedAt })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .get();
+  if (!project) throw new HttpError(404, "not_found");
+  const m = tx
+    .select({ role: projectMembers.role })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, actor.userId)))
+    .get();
+  return { role: (m?.role ?? "non-member") as Role, archived: project.archivedAt !== null };
+}
+
 /**
  * Opens a top-level transaction; do not nest withProject calls
  * (no savepoint support yet — the inner call would commit the outer one).
@@ -104,7 +137,17 @@ export function withProject<T>(
   fn: (tx: ProjectTx) => NotPromise<T>,
 ): T {
   const behavior = isWrite(action) ? "immediate" : "deferred";
-  return db.transaction((tx) => fn(authorizeIn(tx, actor, projectId, action)), { behavior }) as T;
+  let ptx: ProjectTx | undefined;
+  try {
+    return db.transaction((tx) => {
+      ptx = authorizeIn(tx, actor, projectId, action);
+      return rejectThenable(fn(ptx));
+    }, { behavior }) as T;
+  } finally {
+    // The transaction has returned (committed or rolled back) by the time finally runs;
+    // ptx must not be usable by a closure the caller kept from inside fn.
+    ptx?._invalidate();
+  }
 }
 
 /** Same nesting rule as withProject: this is the top-level transaction. */
@@ -116,10 +159,18 @@ export function withTwoProjects<T>(
   action: Action,
   fn: (from: ProjectTx, to: ProjectTx) => NotPromise<T>,
 ): T {
-  return db.transaction(
-    (tx) => fn(authorizeIn(tx, actor, fromId, action), authorizeIn(tx, actor, toId, action)),
-    { behavior: "immediate" },
-  ) as T;
+  let fromTx: ProjectTx | undefined;
+  let toTx: ProjectTx | undefined;
+  try {
+    return db.transaction((tx) => {
+      fromTx = authorizeIn(tx, actor, fromId, action);
+      toTx = authorizeIn(tx, actor, toId, action);
+      return rejectThenable(fn(fromTx, toTx));
+    }, { behavior: "immediate" }) as T;
+  } finally {
+    fromTx?._invalidate();
+    toTx?._invalidate();
+  }
 }
 
 export function loadInProject<TTable extends ScopedTable>(
