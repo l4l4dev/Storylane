@@ -4,9 +4,14 @@ An open-source agile project management tool that rebuilds the Pivotal Tracker
 workflow: velocity-based automatic iteration planning and a strict story-state
 flow, as a self-hostable single-container app.
 
+Try it:
+
 ```bash
 docker run -d -p 3000:3000 -v storylane:/data ghcr.io/l4l4dev/storylane
 ```
+
+Then open `http://localhost:3000`. See [INSTALL.md](INSTALL.md) for running it
+for a team behind HTTPS, upgrades, and backups.
 
 Images: `ghcr.io/l4l4dev/storylane:edge` (main), `:rewrite` (rewrite branch),
 `:latest` and `:<version>` (releases). Build status: see Actions → publish.
