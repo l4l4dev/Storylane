@@ -3,11 +3,11 @@ id: TASK-241
 title: >-
   apps/web skeleton: Vite + React + Tailwind/shadcn, served by the server, dev
   proxy
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-09-05 15:47'
-updated_date: '2026-09-05 15:48'
+updated_date: '2026-09-06 01:32'
 labels: []
 milestone: m-8
 dependencies:
@@ -32,3 +32,9 @@ Design doc section 2. Create apps/web as a Vite + React SPA with Tailwind v4 and
 - [ ] #3 Docker image includes the built SPA and opening the root shows the shell with /healthz status
 - [ ] #4 vitest runs for the web package with at least one component test
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on rewrite/self-hosted: 7fc98f2 (Vite+React shell, Tailwind v4, server static serving with SPA fallback, static.test.ts, Dockerfile web stage, .dockerignore for leftover .next etc.) + afece08 (harness isolates server tests from apps/web/dist; web eslint config). Image 81,002,412 bytes by docker image inspect. Deferred: comment that missing assets → index.html and that staticRoot existence is evaluated at boot; no test covers GET /* in the route matrix (harness uses non-existent static root).
+<!-- SECTION:NOTES:END -->
