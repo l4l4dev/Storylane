@@ -53,7 +53,8 @@ export class ProjectTx {
   }
 
   /** @internal — withProject/withTwoProjects call this once their db.transaction() call returns. */
-  _invalidate(): void {
+  _invalidate(token: typeof CREATE_TOKEN): void {
+    if (token !== CREATE_TOKEN) throw new Error("ProjectTx is invalidated by withProject/withTwoProjects only");
     this.#live = false;
   }
 
@@ -146,7 +147,7 @@ export function withProject<T>(
   } finally {
     // The transaction has returned (committed or rolled back) by the time finally runs;
     // ptx must not be usable by a closure the caller kept from inside fn.
-    ptx?._invalidate();
+    ptx?._invalidate(CREATE_TOKEN);
   }
 }
 
@@ -168,8 +169,8 @@ export function withTwoProjects<T>(
       return rejectThenable(fn(fromTx, toTx));
     }, { behavior: "immediate" }) as T;
   } finally {
-    fromTx?._invalidate();
-    toTx?._invalidate();
+    fromTx?._invalidate(CREATE_TOKEN);
+    toTx?._invalidate(CREATE_TOKEN);
   }
 }
 

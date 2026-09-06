@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { disableUser, makeTestDb, seedProject, seedUser } from "./harness";
-import { loadInProject, reorder, withProject, withTwoProjects, type Actor } from "../src/db/tx";
+import { loadInProject, reorder, withProject, withTwoProjects, type Actor, type ProjectTx } from "../src/db/tx";
 import { scopedItems } from "./scoped-items";
 import { HttpError } from "../src/http-error";
 import { ALL_ACTIONS, expected } from "../src/authz/permissions";
@@ -126,6 +126,36 @@ describe("ProjectTx invalidation", () => {
     // inside it throws rather than silently writing after commit.
     expect(() => sneaky!.then(() => {})).toThrow("ProjectTx used outside its transaction");
     expect(db.select().from(scopedItems).where(eq(scopedItems.id, "sneaky")).all()).toHaveLength(0);
+  });
+
+  it("rejects an async callback smuggled in through an explicit `any` type argument", () => {
+    // NotPromise<any> is `any`, so an explicit <any> defeats the compile-time guard entirely;
+    // rejectThenable is what actually stops it. The insert runs synchronously (an async function
+    // body runs up to its first await before returning a pending Promise), but the throw below
+    // rolls the whole transaction back, so it never lands.
+    expect(() =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately bypassing NotPromise<T>
+      withProject<any>(db, owner, pA, "story:write", async (tx) => {
+        tx.tx.insert(scopedItems).values({ id: "async-any", projectId: pA, position: 0, label: "" }).run();
+        // eslint-disable-next-line local/no-await-in-transaction -- the point of this test is that the runtime catches what the lint rule would also catch
+        await Promise.resolve();
+        return 1;
+      }),
+    ).toThrow("withProject callback must be synchronous");
+    expect(db.select().from(scopedItems).where(eq(scopedItems.id, "async-any")).all()).toHaveLength(0);
+  });
+
+  it("rejects an async callback smuggled in through a widened function-type variable", () => {
+    // tsc cannot see that `f` is async once it's held as `(tx: ProjectTx) => unknown`.
+    const f: (tx: ProjectTx) => unknown = async (tx) => {
+      tx.tx.insert(scopedItems).values({ id: "async-widened", projectId: pA, position: 0, label: "" }).run();
+      await Promise.resolve();
+      return 1;
+    };
+    expect(() => withProject(db, owner, pA, "story:write", f)).toThrow(
+      "withProject callback must be synchronous",
+    );
+    expect(db.select().from(scopedItems).where(eq(scopedItems.id, "async-widened")).all()).toHaveLength(0);
   });
 });
 

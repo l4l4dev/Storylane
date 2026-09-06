@@ -18,6 +18,9 @@ new ProjectTx();
 // @ts-expect-error _create needs the module-private token, which nothing outside tx.ts can name.
 ProjectTx._create(Symbol("x"), tx.tx, "p", "owner", actor);
 
+// @ts-expect-error _invalidate needs the module-private token too, for the same reason.
+tx._invalidate(Symbol("x"));
+
 // OK: a synchronous callback.
 withProject(db, actor, "p", "project:read", (t) => t.projectId);
 
