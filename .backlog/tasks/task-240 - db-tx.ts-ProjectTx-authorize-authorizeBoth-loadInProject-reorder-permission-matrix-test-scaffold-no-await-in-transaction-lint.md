@@ -3,11 +3,11 @@ id: TASK-240
 title: >-
   db/tx.ts: ProjectTx, authorize, authorizeBoth, loadInProject, reorder +
   permission matrix test scaffold + no-await-in-transaction lint
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-09-05 15:47'
-updated_date: '2026-09-05 15:48'
+updated_date: '2026-09-06 01:16'
 labels: []
 milestone: m-8
 dependencies:
@@ -34,3 +34,9 @@ Design doc section 3 and the transaction rules of section 5. Implement authorize
 - [ ] #4 Matrix test runs green with the routes that exist and fails when a new route is registered without a row (demonstrated in a test)
 - [ ] #5 Lint fails on await inside db.transaction and passes otherwise (fixture tests)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on rewrite/self-hosted: 65d3a40 (core), ed6ee45 (14 review fixes: NotPromise + lint on withProject, token-gated _create, ALS-bound fail-closed, matrix hardening, fixture validation, scoped_items out of migrations, disabled_at, precedence 404→409→403), bae410a (live flag + runtime thenable rejection, disabled-before-404, no-op guard removed), b01c502 (async-via-any tests, token-gated _invalidate). Reviewed by SDD task review + 3 scoped re-reviews + authz-reviewer x2. bun test 85/85. PHASE-1 CARRY-OVER (must do before/with first services): (1) projectId-aware authz store — middleware verifies c.req.param('id') is in the authorized set; (2) lint banning '.tx.' outside src/db and src/services; (3) savepoint/nesting support or enforce single withProject per request; (4) last-owner 409 with member routes; (5) explicit write flag in fixture instead of ':read' suffix; (6) email lookups must use COLLATE NOCASE; (7) reorder scope vs UNIQUE test when real tables land; (8) carry project row on ProjectTx to avoid re-query.
+<!-- SECTION:NOTES:END -->
