@@ -3,11 +3,11 @@ id: TASK-242
 title: >-
   CI: GitHub Actions publishes multi-arch image to ghcr (edge on main, latest +
   version on v* tags)
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-09-05 15:47'
-updated_date: '2026-09-05 15:48'
+updated_date: '2026-09-06 01:37'
 labels: []
 milestone: m-8
 dependencies:
@@ -33,3 +33,9 @@ Design doc section 7. Replace the deleted deploy workflow with build-and-publish
 - [ ] #3 Tag push publishes :latest and :<version>
 - [ ] #4 README shows the docker run one-liner using the ghcr image
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on rewrite/self-hosted (2886199): .github/workflows/publish.yml (test job: core/server/web tests, lint, typecheck; image job on push: multi-arch to ghcr with edge/rewrite/semver/latest tags), Dockerfile GIT_SHA→STORYLANE_GIT_SHA, README image tags. Owner acceptance after first push: docker manifest inspect ghcr.io/l4l4dev/storylane:rewrite shows amd64+arm64, then set the ghcr package to public. Deferred: SHA-pin actions.
+<!-- SECTION:NOTES:END -->
