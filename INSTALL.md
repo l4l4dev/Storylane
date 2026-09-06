@@ -20,7 +20,7 @@ Then open `http://localhost:3000` in a browser.
 
 For now the page shows a status shell ("server: ok") rather than a setup
 wizard — the setup page (creating your first admin account and project)
-arrives in a later phase. This step only proves the container runs and the
+arrives in phase 1. This step only proves the container runs and the
 database initializes correctly.
 
 To stop it:
