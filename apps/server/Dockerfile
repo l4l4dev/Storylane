@@ -11,6 +11,13 @@ COPY packages/core/package.json packages/core/
 RUN pnpm install --frozen-lockfile --filter @storylane/server... --prod \
  && mkdir -p packages/core/node_modules
 
+FROM base AS web
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/web/package.json apps/web/
+RUN pnpm install --frozen-lockfile --filter @storylane/web
+COPY apps/web ./apps/web
+RUN pnpm --filter @storylane/web build
+
 FROM base AS runtime
 ENV NODE_ENV=production STORYLANE_DATA_DIR=/data STORYLANE_PORT=3000
 RUN groupadd -r storylane && useradd -r -g storylane -d /app storylane \
@@ -21,6 +28,7 @@ COPY --from=deps /app/packages/core/node_modules ./packages/core/node_modules
 COPY apps/server ./apps/server
 COPY packages/core ./packages/core
 COPY spec/fixtures ./spec/fixtures
+COPY --from=web /app/apps/web/dist ./apps/web/dist
 USER storylane
 VOLUME /data
 EXPOSE 3000

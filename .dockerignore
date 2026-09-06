@@ -6,3 +6,9 @@ apps/web/dist
 .backlog
 docs
 specs
+apps/web/.next
+apps/web/test-results
+apps/web/.env*
+**/*.tsbuildinfo
+apps/web/components
+apps/web/lib

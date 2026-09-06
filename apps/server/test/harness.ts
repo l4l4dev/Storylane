@@ -43,7 +43,11 @@ export function seedProject(db: Db, owner: Actor, others: Array<[Actor, "member"
   return id;
 }
 
-export function makeTestApp(db: Db, extra?: (app: Hono) => void): { app: Hono; lines: string[] } {
+export function makeTestApp(
+  db: Db,
+  extra?: (app: Hono) => void,
+  opts?: { staticRoot?: string },
+): { app: Hono; lines: string[] } {
   const lines: string[] = [];
   const app = createApp({
     config: loadConfig({}),
@@ -51,6 +55,7 @@ export function makeTestApp(db: Db, extra?: (app: Hono) => void): { app: Hono; l
     health: () => true,
     db,
     testActorHeader: true,
+    ...(opts?.staticRoot !== undefined ? { staticRoot: opts.staticRoot } : {}),
   });
   extra?.(app);
   return { app, lines };

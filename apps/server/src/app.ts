@@ -1,4 +1,8 @@
 import { Hono, type Context } from "hono";
+import { serveStatic } from "hono/bun";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join, relative } from "node:path";
 import type { Config } from "./config";
 import { HttpError } from "./http-error";
 import { requestLogger, type Logger } from "./log";
@@ -8,6 +12,8 @@ import { failClosed } from "./authz/middleware";
 import type { Db } from "./db/client";
 import type { Actor } from "./db/tx";
 
+const DEFAULT_STATIC_ROOT = fileURLToPath(new URL("../../web/dist", import.meta.url));
+
 export interface AppDeps {
   config: Config;
   log: Logger;
@@ -16,6 +22,8 @@ export interface AppDeps {
   actorOf?: (c: Context) => Actor;
   /** Enables the `x-test-actor` header actor. Tests only — production leaves this false. */
   testActorHeader?: boolean;
+  /** Directory holding the built SPA (index.html + assets). Defaults to apps/web/dist. */
+  staticRoot?: string;
 }
 
 const anonymous: Actor = { kind: "anonymous" };
@@ -47,6 +55,16 @@ export function createApp(deps: AppDeps): Hono {
   app.use("/api/projects/:id/*", failClosed());
   app.route("/", healthzRoute(deps.health));
   app.route("/", projectRoutes(deps.db, actorOf));
+  const staticRoot = deps.staticRoot ?? DEFAULT_STATIC_ROOT;
+  if (existsSync(staticRoot)) {
+    // hono/bun's serveStatic resolves `root` relative to process.cwd(), not to this file —
+    // rebase an absolute staticRoot onto cwd so it works regardless of caller cwd.
+    app.use("/*", serveStatic({ root: relative(process.cwd(), staticRoot) }));
+    app.get("/*", (c) => {
+      if (c.req.path.startsWith("/api/")) return c.json({ error: "not_found" }, 404);
+      return c.html(Bun.file(join(staticRoot, "index.html")).text());
+    });
+  }
   app.notFound((c) => c.json({ error: "not_found" }, 404));
   app.onError((err, c) => {
     if (err instanceof HttpError) return c.json({ error: err.code }, err.status as 400);
