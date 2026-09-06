@@ -3,9 +3,9 @@ name: publish
 on:
   push:
     branches: [main, rewrite/self-hosted]
-    # v[0-9]* excludes the pre-rewrite archive tag v0-supabase, which must not
-    # trigger a publish.
-    tags: ["v[0-9]*"]
+    # Only semver-shaped tags publish. The pre-rewrite archive tag v0-supabase
+    # has no dots and is excluded explicitly as well.
+    tags: ["v[0-9]*.[0-9]*.[0-9]*", "!v0-supabase"]
   pull_request:
 
 permissions:
