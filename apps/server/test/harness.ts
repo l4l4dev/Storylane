@@ -1,5 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { Hono } from "hono";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
@@ -49,13 +51,17 @@ export function makeTestApp(
   opts?: { staticRoot?: string },
 ): { app: Hono; lines: string[] } {
   const lines: string[] = [];
+  // Tests must not depend on whether apps/web/dist happens to exist on disk (e.g. from a local
+  // `pnpm --filter @storylane/web build`): default to a path that never exists so createApp's
+  // static-serving block stays off unless a test opts in via `opts.staticRoot`.
+  const staticRoot = opts?.staticRoot ?? join(tmpdir(), `storylane-no-static-${crypto.randomUUID()}`);
   const app = createApp({
     config: loadConfig({}),
     log: createLogger((l) => lines.push(l)),
     health: () => true,
     db,
     testActorHeader: true,
-    ...(opts?.staticRoot !== undefined ? { staticRoot: opts.staticRoot } : {}),
+    staticRoot,
   });
   extra?.(app);
   return { app, lines };
