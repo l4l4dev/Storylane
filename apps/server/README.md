@@ -1,8 +1,10 @@
 # @storylane/server
 
-Self-hostable single-process Storylane server: Hono on Bun, SQLite (later), and
-a Vite SPA served statically (later). This package currently provides the app
-skeleton — config parsing, JSON request logging, and `GET /healthz`.
+Self-hostable single-process Storylane server: Hono on Bun, SQLite (via
+`bun:sqlite`, migrations, and an online-backup subcommand), an authorization
+core (`ProjectTx`, permission matrix), and the built `apps/web` SPA served
+statically. Also provides config parsing, JSON request logging, and
+`GET /healthz`.
 
 ## Development
 

@@ -3,6 +3,7 @@ node_modules
 .git
 apps/web/dist
 **/*.test.ts
+apps/server/test
 .backlog
 docs
 specs

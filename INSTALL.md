@@ -10,11 +10,18 @@ web UI all live in one image and store everything under `/data`.
 
 ## 1. Try it in 60 seconds
 
+This image is published by CI from this repository (`.github/workflows/publish.yml`)
+and is public — no login needed to pull it.
+
 Run:
 
 ```bash
-docker run -d -p 3000:3000 -v storylane:/data ghcr.io/l4l4dev/storylane
+docker run -d -p 3000:3000 -v storylane:/data ghcr.io/l4l4dev/storylane:edge
 ```
+
+No tagged release exists yet, so `:edge` (built from `main`) is the entry point;
+after the first tagged release, `:latest` becomes available — until then use
+`:edge`.
 
 Then open `http://localhost:3000` in a browser.
 
@@ -69,7 +76,11 @@ Open `.env` in a text editor and set:
 DOMAIN=your-actual-domain.example.org
 STORYLANE_BASE_URL=https://your-actual-domain.example.org
 STORYLANE_TRUST_PROXY=true
+STORYLANE_BIND=127.0.0.1
 ```
+
+`STORYLANE_BIND=127.0.0.1` keeps port 3000 reachable only from Caddy on the
+same host, not from outside — Caddy alone should terminate TLS on 80/443.
 
 `DOMAIN` must already resolve (in public DNS) to this host before you start
 Caddy — that's how Caddy proves domain ownership to get a certificate. If DNS
@@ -161,9 +172,12 @@ docker compose exec app bun src/index.ts backup /data/backups/manual-$(date +%F)
 ```
 
 This uses SQLite's online backup mechanism (`VACUUM INTO`), so it's safe to
-run while the app is serving traffic. Copy the resulting file off the host —
-a backup that stays in the same Docker volume as the live database doesn't
-protect you from losing that volume:
+run while the app is serving traffic. The backup command refuses to overwrite
+an existing file (it exits with the error `backup target already exists`), so
+each run needs a filename that doesn't exist yet — that's why the date-stamped
+name above matters, and why the nightly cron example below embeds the date too.
+Copy the resulting file off the host — a backup that stays in the same Docker
+volume as the live database doesn't protect you from losing that volume:
 
 ```bash
 docker compose cp app:/data/backups/manual-2026-09-06.db ./manual-2026-09-06.db

@@ -67,7 +67,7 @@ Most work here is done by AI agents — keep context small:
 
 ---
 
-Server conventions live in `apps/server/`, Web conventions in `apps/web/` — each directory's instruction file is loaded automatically when working under it.
+Server and Web conventions live in `apps/server/README.md` and `apps/web/README.md`.
 
 ## Spec Kit (experimental)
 
@@ -89,7 +89,7 @@ existing project before adopting it elsewhere. Rules of coexistence:
   when it conflicts with CLAUDE.md, CLAUDE.md wins. It is hand-maintained: the
   `/speckit-constitution` skill is deliberately removed (it would regenerate
   the file from the generic template); amend the file directly instead.
-- **Trial phase**: one small feature (no new tables/RLS) runs the full native
+- **Trial phase**: one small feature (no new tables/permissions) runs the full native
   pipeline (`/speckit-specify → plan → tasks → implement`) to observe friction;
   permanent rules (including whether to keep `/speckit-implement` /
   `/speckit-taskstoissues`) get decided here afterwards.
@@ -129,7 +129,7 @@ Codex reviews a PR when it is opened for review, so opening one is a free extra 
 NOT re-review commits pushed to an already-open PR — comment `@codex review` on the PR after
 each round of fixes, or the new commits merge unreviewed.
 
-- **Open a PR** for anything covered by the `/advisor` rule above (new tables/RLS, algorithm
+- **Open a PR** for anything covered by the `/advisor` rule above (new tables/permissions, algorithm
   rewrites, concurrency-sensitive changes), or any feature/fix that touches multiple
   files/subsystems as one unit of work.
 - **Direct push to `main` is fine** for chore/config/docs tweaks, single- or few-line fixes, and

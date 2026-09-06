@@ -36,6 +36,6 @@ MCP (later)    ┘     JSON API · static SPA · SSE · in-process worker
 | Routes | `apps/server/src/routes/` |
 | SPA | `apps/web/` (served from `apps/web/dist` in production) |
 | Pure logic + fixtures | `packages/core/`, `spec/fixtures/` |
-| Distribution | `Dockerfile`, `docker-compose.yml`, `INSTALL.md` |
+| Distribution | `apps/server/Dockerfile`, `docker-compose.yml`, `INSTALL.md` |
 
 The pre-rewrite architecture (Supabase, RLS, RPCs, Next.js) is preserved at tag `v0-supabase`: `git show v0-supabase:ARCHITECTURE.md`.

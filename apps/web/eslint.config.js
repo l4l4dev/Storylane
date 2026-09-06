@@ -5,7 +5,7 @@ export default tseslint.config(
   { ignores: ["dist/**", "node_modules/**"] },
   ...tseslint.configs.recommended,
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "vite.config.ts", "vitest.config.ts"],
     plugins: { "react-hooks": reactHooks },
     rules: { ...reactHooks.configs["recommended-latest"].rules },
   },

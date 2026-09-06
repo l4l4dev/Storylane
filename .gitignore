@@ -58,6 +58,12 @@ supabase/.branches/
 supabase/.temp/
 
 # ============================================================
+# Local server data (STORYLANE_DATA_DIR default for local dev)
+# ============================================================
+apps/server/.data/
+.data/
+
+# ============================================================
 # Claude Code — personal overrides, never team-shared
 # ============================================================
 .claude/settings.local.json

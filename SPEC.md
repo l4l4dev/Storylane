@@ -12,12 +12,12 @@ This file is an index. Read only the section file relevant to the task at hand â
 
 | Layer | Technology | Notes |
 |---|---|---|
-| iOS | Swift / SwiftUI | iOS 17+ |
-| Web Frontend | React + TypeScript | Next.js (App Router) |
-| Backend | Supabase | DB, Auth, Realtime, Storage |
-| Realtime | Supabase Realtime | Used for collaboration features |
-| Authentication | Supabase Auth | Google / GitHub OAuth |
-| Web Hosting | Vercel | Hobby plan (free) |
+| iOS | Swift / SwiftUI | iOS 17+, deferred (see Backlog doc-22) |
+| Server | Bun + Hono | Single process, JSON API + static SPA + SSE |
+| Database | SQLite via Drizzle | `bun:sqlite`, forward-only migrations on boot |
+| Web Frontend | React + TypeScript | Vite + Tailwind |
+| Authentication | Built-in email + password | Phase 1; no third-party OAuth yet |
+| Deploy | Single container | `ghcr.io/l4l4dev/storylane`, docker compose with optional Caddy |
 
 ---
 
@@ -36,4 +36,4 @@ This file is an index. Read only the section file relevant to the task at hand â
 | [spec/local-dev.md](spec/local-dev.md) | Prerequisites and local setup commands | Onboarding or environment troubleshooting |
 | [spec/glossary.md](spec/glossary.md) | Domain term definitions | Clarifying terminology |
 
-See also [ARCHITECTURE.md](ARCHITECTURE.md) for how these entities relate across Web / iOS / Supabase.
+See also [ARCHITECTURE.md](ARCHITECTURE.md) for how these entities relate across Web / iOS / Server.

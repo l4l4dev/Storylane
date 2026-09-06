@@ -12,13 +12,15 @@ these adjust severity and add checks this repo cares about.
   (this repo is public; the owner is referred to as `@l4l4dev`). Test fixtures must
   use fictional identities.
 - `console.log` (or debug logging) left in committed app code.
-- Direct `activity_logs` INSERT from client/server code — DB triggers are the only
-  recording path (exceptions are listed in `ARCHITECTURE.md`).
+- `activity_logs` rows are written by service code inside the same transaction as
+  the change, through `recordActivity(tx, …)` (phase 2); never from route handlers
+  directly.
 - Behavior that silently diverges from `spec/` or from original Pivotal Tracker
   behavior for tracker interactions. Divergence is allowed only when the spec records
   it as deliberate (`spec/ux-principles.md` "never diverge by accident").
 - New feature logic with no test next to the source (`*.test.ts(x)`, Vitest /
-  Testing Library; Swift Testing on iOS).
+  Testing Library; `*.test.ts` under `apps/server`, Bun's test runner). iOS is
+  deferred — no Swift test convention yet.
 
 ## Repo conventions (nits when violated)
 

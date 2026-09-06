@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${STORYLANE_IMAGE:-ghcr.io/l4l4dev/storylane}:${STORYLANE_IMAGE_TAG:-latest}
+    image: ${STORYLANE_IMAGE:-ghcr.io/l4l4dev/storylane}:${STORYLANE_IMAGE_TAG:-edge}
     restart: unless-stopped
     environment:
       STORYLANE_PORT: "3000"
@@ -10,7 +10,7 @@ services:
     volumes:
       - storylane-data:/data
     ports:
-      - "${STORYLANE_HOST_PORT:-3000}:3000"
+      - "${STORYLANE_BIND:-0.0.0.0}:${STORYLANE_HOST_PORT:-3000}:3000"
 
   caddy:
     image: caddy:2

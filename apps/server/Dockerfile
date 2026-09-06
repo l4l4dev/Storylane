@@ -33,7 +33,7 @@ COPY --from=web /app/apps/web/dist ./apps/web/dist
 USER storylane
 VOLUME /data
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=3s CMD bun -e "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=3s CMD bun -e "const p=process.env.STORYLANE_PORT||'3000';fetch('http://127.0.0.1:'+p+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 WORKDIR /app/apps/server
 ENTRYPOINT ["bun", "src/index.ts"]
 CMD ["serve"]
