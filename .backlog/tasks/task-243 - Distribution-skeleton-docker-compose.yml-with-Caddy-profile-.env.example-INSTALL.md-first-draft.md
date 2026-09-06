@@ -3,11 +3,11 @@ id: TASK-243
 title: >-
   Distribution skeleton: docker-compose.yml with Caddy profile, .env.example,
   INSTALL.md first draft
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-09-05 15:47'
-updated_date: '2026-09-05 15:48'
+updated_date: '2026-09-06 01:54'
 labels: []
 milestone: m-8
 dependencies:
@@ -31,3 +31,9 @@ Design doc section 7. Ship at the repo root: docker-compose.yml with services ap
 - [ ] #2 .env.example documents every variable the server reads
 - [ ] #3 INSTALL.md has the sections listed in the description and is linked from README
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on rewrite/self-hosted (e4f011b + wording fix): docker-compose.yml (app + caddy profile https, STORYLANE_IMAGE/TAG override, named volume storylane-data, DOMAIN runtime guard in caddy entrypoint because Compose evaluates ${DOMAIN:?} regardless of profile), Caddyfile, .env.example, INSTALL.md (8 sections; restore copies through the app image to keep non-root ownership). Verified locally with the storylane:dev image.
+<!-- SECTION:NOTES:END -->
