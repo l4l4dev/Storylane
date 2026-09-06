@@ -19,7 +19,8 @@ COPY apps/web ./apps/web
 RUN pnpm --filter @storylane/web build
 
 FROM base AS runtime
-ENV NODE_ENV=production STORYLANE_DATA_DIR=/data STORYLANE_PORT=3000
+ARG GIT_SHA=dev
+ENV NODE_ENV=production STORYLANE_DATA_DIR=/data STORYLANE_PORT=3000 STORYLANE_GIT_SHA=$GIT_SHA
 RUN groupadd -r storylane && useradd -r -g storylane -d /app storylane \
  && mkdir -p /data && chown storylane:storylane /data
 COPY --from=deps /app/node_modules ./node_modules

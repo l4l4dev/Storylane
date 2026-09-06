@@ -8,6 +8,9 @@ flow, as a self-hostable single-container app.
 docker run -d -p 3000:3000 -v storylane:/data ghcr.io/l4l4dev/storylane
 ```
 
+Images: `ghcr.io/l4l4dev/storylane:edge` (main), `:rewrite` (rewrite branch),
+`:latest` and `:<version>` (releases). Build status: see Actions → publish.
+
 > **Status: rewrite in progress.** The pre-rewrite hosted architecture (tag
 > `v0-supabase`) is being replaced by a single-container Bun/Hono + SQLite
 > server. See [docs/design/2026-09-05-self-host-rewrite-design.md](docs/design/2026-09-05-self-host-rewrite-design.md).
