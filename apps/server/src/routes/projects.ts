@@ -17,6 +17,7 @@ import {
 } from "../services/projects";
 import { createState, deleteState, listStates, reorderStates, updateState, type StatePatch } from "../services/states";
 import { POINT_SCALES, STATE_CATEGORIES, type PointScale, type StateCategory } from "../db/schema";
+import { ACTION_LABEL_MAX, DESCRIPTION_MAX, NAME_MAX, assertMaxLength } from "./limits";
 
 const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
@@ -32,9 +33,6 @@ function requireIdList(value: unknown): string[] {
   return value as string[];
 }
 
-const NAME_MAX = 120;
-const DESCRIPTION_MAX = 2000;
-
 /**
  * Shapes and bounds the PATCH body; every check throws HttpError so it can run inside the
  * withProject callback (auth precedence over body validation — spec/permissions.md).
@@ -43,16 +41,14 @@ function validateProjectPatch(input: Record<string, unknown>): ProjectPatch {
   const patch: ProjectPatch = {};
   if (input.name !== undefined) {
     if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
-    if (input.name.length > NAME_MAX) throw new HttpError(400, "name_too_long");
+    assertMaxLength(input.name, NAME_MAX, "name_too_long");
     patch.name = input.name;
   }
   if (input.description !== undefined) {
     if (input.description !== null && typeof input.description !== "string") {
       throw new HttpError(400, "description_invalid");
     }
-    if (typeof input.description === "string" && input.description.length > DESCRIPTION_MAX) {
-      throw new HttpError(400, "description_too_long");
-    }
+    if (typeof input.description === "string") assertMaxLength(input.description, DESCRIPTION_MAX, "description_too_long");
     patch.description = input.description as string | null;
   }
   if (input.pointScale !== undefined) {
@@ -78,12 +74,14 @@ function validateStatePatch(input: Record<string, unknown>): StatePatch {
   const patch: StatePatch = {};
   if (input.name !== undefined) {
     if (typeof input.name !== "string" || input.name.length === 0) throw new HttpError(400, "name_required");
+    assertMaxLength(input.name, NAME_MAX, "name_too_long");
     patch.name = input.name;
   }
   if (input.actionLabel !== undefined) {
     if (input.actionLabel !== null && typeof input.actionLabel !== "string") {
       throw new HttpError(400, "action_label_invalid");
     }
+    if (typeof input.actionLabel === "string") assertMaxLength(input.actionLabel, ACTION_LABEL_MAX, "action_label_too_long");
     patch.actionLabel = input.actionLabel as string | null;
   }
   // A category is only ever accepted so updateState's own immutability check (409, not 400)
@@ -107,6 +105,7 @@ export function projectRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Contex
       const input = await body(c);
       const template = input.template === "minimal" ? ("minimal" as ProjectTemplate) : ("classic" as ProjectTemplate);
       if (typeof input.name !== "string") throw new HttpError(400, "name_required");
+      assertMaxLength(input.name, NAME_MAX, "name_too_long");
       return c.json(createProject(db, actor, { name: input.name, template }), 201);
     })
     .get("/api/projects/:id", (c) =>
@@ -138,11 +137,13 @@ export function projectRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Contex
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "state:write", (tx) => {
           if (typeof input.name !== "string" || input.name.length === 0) throw new HttpError(400, "name_required");
+          assertMaxLength(input.name, NAME_MAX, "name_too_long");
           const category = requireCategory(input.category);
           if (input.actionLabel !== undefined && input.actionLabel !== null && typeof input.actionLabel !== "string") {
             throw new HttpError(400, "action_label_invalid");
           }
           const actionLabel = (input.actionLabel as string | null | undefined) ?? null;
+          if (actionLabel !== null) assertMaxLength(actionLabel, ACTION_LABEL_MAX, "action_label_too_long");
           return createState(tx, { name: input.name, category, actionLabel });
         }),
         201,

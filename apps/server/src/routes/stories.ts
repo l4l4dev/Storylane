@@ -7,6 +7,7 @@ import type { EventBus } from "../events/bus";
 import { HttpError } from "../http-error";
 import { STORY_TYPES, type StoryType } from "../db/schema";
 import { createStory, deleteStory, listStories, moveStory, readBoard, updateStory } from "../services/stories";
+import { DESCRIPTION_MAX, TITLE_MAX, assertMaxLength } from "./limits";
 
 const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
@@ -43,15 +44,30 @@ function optionalNullableString(value: unknown, code: string): string | null | u
 type StoryInput = Parameters<typeof createStory>[1];
 type StoryPatch = Parameters<typeof updateStory>[2];
 
+const CREATE_KEYS = new Set(["title", "description", "storyType", "points", "stateId", "assigneeId"]);
+const PATCH_KEYS = new Set(["title", "description", "storyType", "points", "assigneeId"]);
+
+/** An unrecognized key is a caller mistake, not a field to drop: see validateStoryPatch. */
+function rejectUnknownKeys(input: Record<string, unknown>, allowed: ReadonlySet<string>): void {
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) throw new HttpError(400, "invalid_body", `unknown field ${key}`);
+  }
+}
+
 /**
  * Shapes and bounds a create body. Called inside the withProject callback so authorization
  * decides first (spec/permissions.md); the point *scale* is the service's call, not the route's.
  */
 function validateStoryInput(input: Record<string, unknown>): StoryInput {
+  rejectUnknownKeys(input, CREATE_KEYS);
   if (typeof input.title !== "string") throw new HttpError(400, "title_required");
+  assertMaxLength(input.title, TITLE_MAX, "title_too_long");
   const result: StoryInput = { title: input.title, description: null };
   const description = optionalNullableString(input.description, "description_invalid");
-  if (description !== undefined) result.description = description;
+  if (description !== undefined) {
+    if (description !== null) assertMaxLength(description, DESCRIPTION_MAX, "description_too_long");
+    result.description = description;
+  }
   const storyType = optionalStoryType(input.storyType);
   if (storyType !== undefined) result.storyType = storyType;
   const points = optionalPoints(input.points);
@@ -63,8 +79,6 @@ function validateStoryInput(input: Record<string, unknown>): StoryInput {
   return result;
 }
 
-const PATCH_KEYS = new Set(["title", "description", "storyType", "points", "assigneeId"]);
-
 /**
  * Same precedence rule as validateStoryInput. An absent key means "leave it alone" — so an
  * unrecognized one must be refused, not ignored: accepting `{ stateId }` here and dropping it
@@ -72,16 +86,17 @@ const PATCH_KEYS = new Set(["title", "description", "storyType", "points", "assi
  */
 function validateStoryPatch(input: Record<string, unknown>): StoryPatch {
   if ("stateId" in input) throw new HttpError(400, "state_id_unsupported", "moves go through /move");
-  for (const key of Object.keys(input)) {
-    if (!PATCH_KEYS.has(key)) throw new HttpError(400, "invalid_body", `unknown field ${key}`);
-  }
+  rejectUnknownKeys(input, PATCH_KEYS);
   const patch: StoryPatch = {};
   if (input.title !== undefined) {
     if (typeof input.title !== "string") throw new HttpError(400, "title_required");
+    assertMaxLength(input.title, TITLE_MAX, "title_too_long");
     patch.title = input.title;
   }
   if (input.description !== undefined) {
-    patch.description = optionalNullableString(input.description, "description_invalid") as string | null;
+    const description = optionalNullableString(input.description, "description_invalid") as string | null;
+    if (description !== null) assertMaxLength(description, DESCRIPTION_MAX, "description_too_long");
+    patch.description = description;
   }
   const storyType = optionalStoryType(input.storyType);
   if (storyType !== undefined) patch.storyType = storyType;
