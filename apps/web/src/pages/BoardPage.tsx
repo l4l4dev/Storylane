@@ -67,7 +67,7 @@ export function BoardPage({ projectId }: { projectId: string }) {
 
   // Until the project's own fetch lands the role is unknown, and a control that turns out to be
   // a 403 is worse than one that appears a moment late (ux-principles #1).
-  const canWrite = project.data !== undefined && project.data.role !== "viewer";
+  const canWrite = project.data !== undefined && (project.data.role === "owner" || project.data.role === "member");
 
   const scaleValues = useMemo(
     () => pointScaleValues(project.data?.pointScale ?? "fibonacci", project.data?.customPoints ?? null),
