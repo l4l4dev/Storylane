@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { resetTokens, users } from "../db/schema";
 import { assertNoOpenTransaction, type UserActor } from "../db/tx";
@@ -83,4 +83,17 @@ export function consumeResetToken(db: Db, token: string, passwordHash: string, n
     },
     { behavior: "immediate" },
   );
+}
+
+/**
+ * Same shape as purgeExpiredSessions: a dead reset token (already used, or past its own
+ * expiry — `usable()` already refuses both) is only ever a row this table doesn't need to keep
+ * growing, never a security backstop.
+ */
+export function purgeExpiredResetTokens(db: Db, now = Date.now()): number {
+  return db
+    .delete(resetTokens)
+    .where(or(lt(resetTokens.expiresAt, now), isNotNull(resetTokens.usedAt)))
+    .returning({ id: resetTokens.id })
+    .all().length;
 }

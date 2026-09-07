@@ -9,6 +9,7 @@ import { backupThenMigrate } from "./db/migrate";
 import { vacuumInto } from "./db/backup";
 import { actorFromRequest } from "./auth/actor";
 import { purgeExpiredSessions } from "./auth/sessions";
+import { purgeExpiredResetTokens } from "./services/reset";
 import { ensureSetupToken } from "./setup/setup-token";
 import { EventBus } from "./events/bus";
 
@@ -38,9 +39,13 @@ if (command === "serve") {
     process.exit(1);
   }
   ensureSetupToken(db, log);
-  const purge = () => log.info("sessions purged", { count: purgeExpiredSessions(db) });
+  const purge = () => {
+    log.info("sessions purged", { count: purgeExpiredSessions(db) });
+    // Dead rows are already refused by usable()/mintResetToken's own checks; this only keeps
+    // the table from growing.
+    log.info("reset tokens purged", { count: purgeExpiredResetTokens(db) });
+  };
   purge();
-  // Dead rows are already refused by resolveSession; this only keeps the table from growing.
   // unref'd so the sweep never holds the process open on its own.
   setInterval(purge, 60 * 60 * 1000).unref();
   const bus = new EventBus();

@@ -19,9 +19,22 @@ describe("redactPath", () => {
     expect(redactPath("/api/invites/abcDEF123_-xyz/")).toBe("/api/invites/:token");
   });
 
+  it("redacts the SPA's own reset and invite-accept pages (Task 9a routes, no /api prefix)", () => {
+    expect(redactPath("/reset/abcDEF123_-xyz")).toBe("/reset/:token");
+    expect(redactPath("/invite/abcDEF123_-xyz")).toBe("/invite/:token");
+  });
+
+  it("redacts a trailing-junk variant of the SPA paths too", () => {
+    expect(redactPath("/reset/abcDEF123_-xyz/")).toBe("/reset/:token");
+    expect(redactPath("/invite/abcDEF123_-xyz/")).toBe("/invite/:token");
+  });
+
   it("leaves an unrelated path untouched", () => {
     expect(redactPath("/api/projects/abc-123")).toBe("/api/projects/abc-123");
     expect(redactPath("/api/me")).toBe("/api/me");
     expect(redactPath("/healthz")).toBe("/healthz");
+    // Not the SPA's secret routes: must not be caught by the new /reset, /invite patterns.
+    expect(redactPath("/reset-password-info")).toBe("/reset-password-info");
+    expect(redactPath("/invitations")).toBe("/invitations");
   });
 });

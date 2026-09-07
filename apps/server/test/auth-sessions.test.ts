@@ -5,6 +5,7 @@ import { hashToken } from "../src/auth/tokens";
 import {
   changePassword,
   createSession,
+  createSessionIfCurrent,
   deleteSession,
   purgeExpiredSessions,
   resolveSession,
@@ -207,5 +208,60 @@ describe("changePassword", () => {
     expect(resolveSession(db, keep)).not.toBeNull();
     expect(stored(otherId).hash).toBe("x");
     expect(stored(otherId).changedAt).toBeNull();
+  });
+});
+
+describe("createSessionIfCurrent", () => {
+  // seedUser stores passwordHash "x" and a null credentials_changed_at — the caller's `expected`
+  // here plays the role of "the (passwordHash, credentialsChangedAt) snapshot the login route
+  // read in the same query it verified the plaintext password against".
+  const initialSnapshot = { passwordHash: "x", credentialsChangedAt: null };
+
+  it("creates the session when the row still matches the snapshot the caller read", () => {
+    const created = createSessionIfCurrent(db, userId, initialSnapshot, 1_700_000_000_000);
+    expect(created).not.toBeNull();
+    expect(db.select().from(sessions).all()).toHaveLength(1);
+    expect(db.select().from(sessions).all()[0]!.id).toBe(hashToken(created!.secret));
+  });
+
+  it("refuses — and inserts no session row — when the hash changed since the caller's snapshot (login-vs-reset race)", () => {
+    // A password reset (or self password change) landing strictly between the login route's
+    // verifyPassword and its session insert: the hash/marker the caller read is no longer current.
+    changePassword(db, userId, "new-hash", 1_700_000_000_000);
+    const created = createSessionIfCurrent(db, userId, initialSnapshot, 1_700_000_000_001);
+    expect(created).toBeNull();
+    expect(db.select().from(sessions).all()).toHaveLength(0);
+  });
+
+  it("refuses when credentials_changed_at moved even though the hash is unchanged (revoke-only write)", () => {
+    // revokeUserSessions bumps the marker without touching the hash — the marker moving is what
+    // actually matters here, not just the hash column.
+    revokeUserSessions(db, userId, 1_700_000_000_000);
+    const created = createSessionIfCurrent(db, userId, initialSnapshot, 1_700_000_000_001);
+    expect(created).toBeNull();
+    expect(db.select().from(sessions).all()).toHaveLength(0);
+  });
+
+  it("accepts when the caller's snapshot already reflects a prior change (no false positive on a fresh, correct read)", () => {
+    // Exactly the "reset then immediately log in with the new password" happy path: the caller
+    // read the row *after* the change, so its snapshot already matches — this must not be
+    // confused with the race case above just because the change is recent.
+    changePassword(db, userId, "new-hash", 1_700_000_000_000);
+    const created = createSessionIfCurrent(
+      db,
+      userId,
+      { passwordHash: "new-hash", credentialsChangedAt: 1_700_000_000_000 },
+      1_700_000_000_000, // even the exact same millisecond as the change — no ambiguity here
+    );
+    expect(created).not.toBeNull();
+  });
+
+  it("refuses for an unknown user", () => {
+    expect(createSessionIfCurrent(db, "no-such-user", initialSnapshot)).toBeNull();
+  });
+
+  it("refuses for a disabled user", () => {
+    disableUser(db, { kind: "user", userId, isAdmin: false });
+    expect(createSessionIfCurrent(db, userId, initialSnapshot)).toBeNull();
   });
 });

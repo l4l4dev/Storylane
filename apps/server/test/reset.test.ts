@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
 import { disableUser, makeTestApp, makeTestDb, seedUser, seedUserWithPassword } from "./harness";
-import { consumeResetToken, mintResetToken, RESET_TTL_MS } from "../src/services/reset";
+import { consumeResetToken, mintResetToken, purgeExpiredResetTokens, RESET_TTL_MS } from "../src/services/reset";
 import { createRateLimiter } from "../src/auth/rate-limit";
 import { createSession } from "../src/auth/sessions";
+import { MAX_TOKEN_LENGTH } from "../src/auth/tokens";
 import { resetTokens, sessions } from "../src/db/schema";
 import type { Db } from "../src/db/client";
 import type { Actor, UserActor } from "../src/db/tx";
@@ -61,6 +62,43 @@ describe("POST /api/admin/users/:userId/reset-link", () => {
     disableUser(db, target);
     expect((await mint(admin, userIdOf(target))).status).toBe(404);
   });
+
+  it("rate-limits mint per admin and answers 429 past the limit", async () => {
+    const now = 0;
+    const limiter = createRateLimiter({ limit: 30, windowMs: 15 * 60 * 1000, now: () => now });
+    const limited = makeTestApp(db, undefined, { adminLimiter: limiter }).app;
+    for (let i = 0; i < 30; i++) {
+      const res = await limited.request(`${ORIGIN}/api/admin/users/${userIdOf(target)}/reset-link`, {
+        method: "POST",
+        headers: jsonAs(admin),
+        body: "{}",
+      });
+      expect(res.status).toBe(200);
+    }
+    const blocked = await limited.request(`${ORIGIN}/api/admin/users/${userIdOf(target)}/reset-link`, {
+      method: "POST",
+      headers: jsonAs(admin),
+      body: "{}",
+    });
+    expect(blocked.status).toBe(429);
+    expect(await blocked.json()).toEqual({ error: "too_many_requests" });
+  });
+
+  it("keys the mint limiter per admin, not globally — a second admin is unaffected", async () => {
+    const secondAdmin = seedUser(db, "admin2@example.test", true);
+    const now = 0;
+    const limiter = createRateLimiter({ limit: 1, windowMs: 15 * 60 * 1000, now: () => now });
+    const limited = makeTestApp(db, undefined, { adminLimiter: limiter }).app;
+    const post = (actor: Actor) =>
+      limited.request(`${ORIGIN}/api/admin/users/${userIdOf(target)}/reset-link`, {
+        method: "POST",
+        headers: jsonAs(actor),
+        body: "{}",
+      });
+    expect((await post(admin)).status).toBe(200);
+    expect((await post(admin)).status).toBe(429);
+    expect((await post(secondAdmin)).status).toBe(200);
+  });
 });
 
 describe("using a reset link", () => {
@@ -100,6 +138,12 @@ describe("using a reset link", () => {
 
     expect((await use(token, "yet another secret")).status).toBe(404);
     expect((await app.request(`${ORIGIN}/api/auth/reset/${token}`)).status).toBe(404);
+  });
+
+  it("404s an over-length token on both preview and reset, without hashing it", async () => {
+    const overLong = "a".repeat(MAX_TOKEN_LENGTH + 1);
+    expect((await app.request(`${ORIGIN}/api/auth/reset/${overLong}`)).status).toBe(404);
+    expect((await use(overLong, "a whole new secret")).status).toBe(404);
   });
 
   it("refuses an expired token and a too-short password", async () => {
@@ -185,5 +229,30 @@ describe("using a reset link", () => {
     expect(db.select().from(sessions).all()).toHaveLength(1);
     consumeResetToken(db, token, "irrelevant-hash", concurrentLoginAt);
     expect(db.select().from(sessions).all()).toHaveLength(0);
+  });
+});
+
+describe("purgeExpiredResetTokens", () => {
+  it("deletes an expired token but keeps a live one", () => {
+    const now = 1_700_000_000_000;
+    mintResetToken(db, admin as UserActor, userIdOf(target), now - RESET_TTL_MS - 1); // already expired
+    mintResetToken(db, admin as UserActor, userIdOf(target), now); // still live
+    expect(db.select().from(resetTokens).all()).toHaveLength(2);
+    expect(purgeExpiredResetTokens(db, now)).toBe(1);
+    expect(db.select().from(resetTokens).all()).toHaveLength(1);
+  });
+
+  it("deletes a used token even if it has not expired yet", () => {
+    const { token } = mintResetToken(db, admin as UserActor, userIdOf(target));
+    const passwordHash = "irrelevant-hash";
+    consumeResetToken(db, token, passwordHash);
+    expect(purgeExpiredResetTokens(db)).toBe(1);
+    expect(db.select().from(resetTokens).all()).toHaveLength(0);
+  });
+
+  it("leaves an unused, unexpired token alone", () => {
+    mintResetToken(db, admin as UserActor, userIdOf(target));
+    expect(purgeExpiredResetTokens(db)).toBe(0);
+    expect(db.select().from(resetTokens).all()).toHaveLength(1);
   });
 });

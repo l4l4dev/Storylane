@@ -6,10 +6,24 @@ import type { Actor } from "../db/tx";
 import type { Logger } from "../log";
 import { requireAdmin } from "../authz/admin";
 import { mintResetToken } from "../services/reset";
+import { createRateLimiter, type RateLimiter } from "../auth/rate-limit";
+import { HttpError } from "../http-error";
 
-export function adminRoutes(deps: { db: Db; config: Config; log: Logger; actorOf: (c: Context) => Actor }) {
+/** An admin is already an authenticated, accountable actor — keyed by admin id, not IP. */
+const ADMIN_MINT_LIMIT = { limit: 30, windowMs: 15 * 60 * 1000 };
+
+export function adminRoutes(deps: {
+  db: Db;
+  config: Config;
+  log: Logger;
+  actorOf: (c: Context) => Actor;
+  /** POST /api/admin/users/:userId/reset-link limiter; tests inject a fake clock. */
+  limiter?: RateLimiter;
+}) {
+  const mintAttempts = deps.limiter ?? createRateLimiter(ADMIN_MINT_LIMIT);
   return new Hono().post("/api/admin/users/:userId/reset-link", (c) => {
     const admin = requireAdmin(deps.actorOf(c));
+    if (!mintAttempts.check(admin.userId)) throw new HttpError(429, "too_many_requests");
     c.header("Cache-Control", "no-store");
     const { token, expiresAt } = mintResetToken(deps.db, admin, c.req.param("userId"));
     const path = `/reset/${token}`;

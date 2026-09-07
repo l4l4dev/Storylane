@@ -38,6 +38,8 @@ export interface AppDeps {
   inviteLimiter?: RateLimiter;
   /** GET|POST /api/auth/reset/:token limiter; tests inject a fake clock. */
   resetLimiter?: RateLimiter;
+  /** POST /api/admin/users/:userId/reset-link limiter; tests inject a fake clock. */
+  adminLimiter?: RateLimiter;
   /** Enables the `x-test-actor` header actor. Tests only — production leaves this false. */
   testActorHeader?: boolean;
   /** Directory holding the built SPA (index.html + assets). Defaults to apps/web/dist. */
@@ -98,7 +100,16 @@ export function createApp(deps: AppDeps): Hono {
       actorOf,
     ),
   );
-  app.route("/", adminRoutes({ db: deps.db, config: deps.config, log: deps.log, actorOf }));
+  app.route(
+    "/",
+    adminRoutes({
+      db: deps.db,
+      config: deps.config,
+      log: deps.log,
+      actorOf,
+      ...(deps.adminLimiter ? { limiter: deps.adminLimiter } : {}),
+    }),
+  );
   app.route("/", projectRoutes({ db: deps.db, bus, actorOf }));
   app.route(
     "/",

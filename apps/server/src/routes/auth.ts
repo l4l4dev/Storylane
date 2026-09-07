@@ -14,8 +14,9 @@ import {
   verifyPassword,
 } from "../auth/password";
 import { clearSessionCookie, readSessionCookie, setSessionCookie } from "../auth/cookies";
-import { changePassword, createSession, deleteSession } from "../auth/sessions";
+import { changePassword, createSessionIfCurrent, deleteSession } from "../auth/sessions";
 import { clientIp, createRateLimiter, LOGIN_LIMITS, PASSWORD_CHANGE_LIMIT, type RateLimiter } from "../auth/rate-limit";
+import { assertTokenLength } from "../auth/tokens";
 import { consumeResetToken, previewResetToken } from "../services/reset";
 
 /** Same shape as invites' ACCEPT_LIMIT: 20 tries per IP per 15 minutes, per public token route. */
@@ -78,6 +79,7 @@ export function authRoutes(deps: AuthDeps, actorOf: (c: Context) => Actor) {
         email: users.email,
         displayName: users.displayName,
         passwordHash: users.passwordHash,
+        credentialsChangedAt: users.credentialsChangedAt,
         isAdmin: users.isAdmin,
         disabledAt: users.disabledAt,
       })
@@ -127,8 +129,18 @@ export function authRoutes(deps: AuthDeps, actorOf: (c: Context) => Actor) {
       // A caller arriving with an older session must not keep it: one cookie, one session row.
       const presented = readSessionCookie(c);
       if (presented) deleteSession(deps.db, presented);
-      const { secret, absoluteExpiresAt } = createSession(deps.db, user.id);
-      setSessionCookie(c, deps.config, secret, absoluteExpiresAt);
+      // A password change (self-service or an admin reset) committing while the KDF above was
+      // running must not be undone by a session minted from this now-stale verification —
+      // createSessionIfCurrent rechecks passwordHash/credentialsChangedAt against exactly the
+      // snapshot findByEmail took, right before the INSERT.
+      const created = createSessionIfCurrent(deps.db, user.id, {
+        passwordHash: user.passwordHash,
+        credentialsChangedAt: user.credentialsChangedAt,
+      });
+      // Same uniform answer as a wrong password: the credentials this login just verified are
+      // no longer current, so from the caller's perspective this is exactly a failed login.
+      if (!created) throw new HttpError(401, "invalid_credentials");
+      setSessionCookie(c, deps.config, created.secret, created.absoluteExpiresAt);
       return c.json({ id: user.id, email: user.email, displayName: user.displayName, isAdmin: user.isAdmin });
     })
     .post("/api/auth/logout", (c) => {
@@ -160,15 +172,23 @@ export function authRoutes(deps: AuthDeps, actorOf: (c: Context) => Actor) {
       // New hash, no surviving sessions and the generation marker, in one transaction.
       changePassword(deps.db, user.id, passwordHash, changedAt);
       // changedAt + 1: resolveSession refuses a session stamped in the same millisecond as the
-      // change, so the caller's own replacement has to sit strictly after it.
-      const { secret, absoluteExpiresAt } = createSession(deps.db, user.id, changedAt + 1);
-      setSessionCookie(c, deps.config, secret, absoluteExpiresAt);
+      // change, so the caller's own replacement has to sit strictly after it. Guarded the same
+      // way as login: a second change (another admin reset, or a concurrent /me/password call
+      // for this user) landing between our changePassword commit and this insert must not have
+      // its effect undone by a session minted from our now-stale write — createSessionIfCurrent
+      // rechecks passwordHash/credentialsChangedAt against exactly what changePassword just
+      // committed (passwordHash, changedAt).
+      const created = createSessionIfCurrent(deps.db, user.id, { passwordHash, credentialsChangedAt: changedAt }, changedAt + 1);
+      if (!created) throw new HttpError(401, "invalid_credentials");
+      setSessionCookie(c, deps.config, created.secret, created.absoluteExpiresAt);
       return c.json({ ok: true });
     })
     .get("/api/auth/reset/:token", (c) => {
       if (!resetAttempts.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
       c.header("Cache-Control", "no-store");
-      const preview = previewResetToken(deps.db, c.req.param("token"));
+      const token = c.req.param("token");
+      assertTokenLength(token); // before hashToken — see auth/tokens.ts
+      const preview = previewResetToken(deps.db, token);
       if (!preview) throw new HttpError(404, "not_found");
       return c.json(preview);
     })
@@ -176,6 +196,7 @@ export function authRoutes(deps: AuthDeps, actorOf: (c: Context) => Actor) {
       if (!resetAttempts.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
       c.header("Cache-Control", "no-store");
       const token = c.req.param("token");
+      assertTokenLength(token); // before hashToken — see auth/tokens.ts
       const body = (await c.req.json().catch(() => ({}))) as { password?: unknown };
       const password = requireString(body.password, "password");
       assertPasswordAcceptable(password);

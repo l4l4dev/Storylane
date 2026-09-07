@@ -27,7 +27,7 @@ export interface MatrixContext {
   iceboxOrder: string[];
   /** A pending invite in the seeded project, for the invites matrix rows. */
   inviteId: string;
-  /** Any seeded user id, for the admin route's anonymous-401 row. */
+  /** Any seeded user id, for the admin route's own matrix row and its anonymous/non-admin sweep rows. */
   userId: string;
 }
 

@@ -293,10 +293,16 @@ describe("project-scoped fail-closed", () => {
   });
 });
 
-describe("self and admin rules reject anonymous callers", () => {
+describe("self and admin rules reject anonymous callers, admin rules also reject non-admins", () => {
   // Logout is the one exception: it is idempotent by design, so a caller with no session gets
   // 204 and a cleared cookie rather than an error.
   const IDEMPOTENT_WITHOUT_SESSION = new Set(["POST /api/auth/logout"]);
+  const urlFor = (path: string, fixture: MatrixFixture) => {
+    let url = path.replace(":id", projectId);
+    for (const [name, value] of Object.entries(fixture.params ?? {})) url = url.replace(`:${name}`, value);
+    expect(url).not.toContain("/:"); // a param with no fixture would make this row meaningless
+    return url;
+  };
 
   for (const [key, rule] of Object.entries(ROUTE_ACTIONS)) {
     if (rule !== "self" && rule !== "admin") continue;
@@ -304,15 +310,29 @@ describe("self and admin rules reject anonymous callers", () => {
     const [method, path] = key.split(" ") as [string, string];
     it(`${key} as anonymous → 401`, async () => {
       const fixture = FIXTURES[key] ?? {};
-      let url = path.replace(":id", projectId);
-      for (const [name, value] of Object.entries(fixture.params ?? {})) url = url.replace(`:${name}`, value);
-      expect(url).not.toContain("/:");
-      const res = await app.request(url, {
+      const res = await app.request(urlFor(path, fixture), {
         method,
         ...(method === "GET" ? {} : { headers: { "content-type": "application/json" } }),
         ...(fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
       });
       expect(res.status).toBe(401);
+    });
+    if (rule !== "admin") continue;
+    // `outsider` is a seeded, signed-in user with no admin flag and no relation to the seeded
+    // project — the generic "signed in, not an admin" actor for every current and future
+    // `admin`-rule route, so a route added without requireAdmin fails this sweep instead of
+    // only its own hand-written test.
+    it(`${key} as a signed-in non-admin → 403`, async () => {
+      const fixture = FIXTURES[key] ?? {};
+      const res = await app.request(urlFor(path, fixture), {
+        method,
+        headers: {
+          "x-test-actor": JSON.stringify(outsider),
+          ...(method === "GET" ? {} : { "content-type": "application/json" }),
+        },
+        ...(fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
+      });
+      expect(res.status).toBe(403);
     });
   }
 });

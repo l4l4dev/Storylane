@@ -23,10 +23,17 @@ export function createLogger(out: (line: string) => void = (l) => console.log(l)
  * The trailing `(\/.*)?` swallows anything after the token (a stray slash, an unmatched
  * sub-path Hono answers 404 for): the token still occupies that first segment and must still be
  * masked, and requestLogger logs the path regardless of the response status.
+ *
+ * `/reset/:token` and `/invite/:token` (no `/api` prefix) are the SPA's own routes (Task 9a,
+ * `apps/web/src/app-routes.tsx`): the browser's GET for the page itself carries the same clear
+ * token in its path and goes through this same `requestLogger`, served by app.ts's SPA-fallback
+ * catch-all — so they need the identical masking as their `/api/...` counterparts.
  */
 const SECRET_PATH_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/^(\/api\/invites)\/[^/]+(\/accept)?(\/.*)?$/, "$1/:token$2"],
   [/^(\/api\/auth\/reset)\/[^/]+(\/.*)?$/, "$1/:token"],
+  [/^(\/invite)\/[^/]+(\/.*)?$/, "$1/:token"],
+  [/^(\/reset)\/[^/]+(\/.*)?$/, "$1/:token"],
 ];
 
 export function redactPath(path: string): string {

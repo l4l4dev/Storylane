@@ -31,6 +31,62 @@ export function createSession(db: Db, userId: string, now = Date.now()): { secre
   return { secret, absoluteExpiresAt };
 }
 
+/**
+ * Guards the gap between "the caller verified a plaintext password against a hash it read" and
+ * "the session row lands" — a password change (self-service or an admin reset) committing in
+ * that gap must not be undone by a session minted from the stale verification. Re-reads the
+ * user row inside the same immediate transaction as the INSERT: if either the hash or
+ * `credentials_changed_at` no longer match the snapshot the caller took at the moment it
+ * established identity, no session is created and the caller answers the same uniform 401 as a
+ * wrong password.
+ *
+ * This is a snapshot-equality (compare-and-swap) check, not a `readAt`/`Date.now()` inequality:
+ * `credentials_changed_at` has millisecond resolution, and an inequality against "now" false-
+ * positives whenever a legitimate, fully sequential prior change (e.g. a password reset
+ * immediately followed by a login with the new password) lands in the same millisecond as the
+ * login that follows it — which a fast caller (this codebase's own tests included) hits
+ * routinely. Comparing against the exact value the caller already read has no such ambiguity:
+ * either nothing changed since that read (proceed) or something did (refuse), regardless of
+ * clock granularity.
+ *
+ * `expected` must be read in the same query as the credential the caller just verified, so the
+ * two fields describe one consistent snapshot — see the login route (findByEmail's own read) and
+ * /api/me/password (its own just-committed changePassword values).
+ */
+export function createSessionIfCurrent(
+  db: Db,
+  userId: string,
+  expected: { passwordHash: string; credentialsChangedAt: number | null },
+  now = Date.now(),
+): { secret: string; absoluteExpiresAt: number } | null {
+  assertNoOpenTransaction("createSessionIfCurrent");
+  return db.transaction(
+    (tx) => {
+      const row = tx
+        .select({ passwordHash: users.passwordHash, credentialsChangedAt: users.credentialsChangedAt, disabledAt: users.disabledAt })
+        .from(users)
+        .where(eq(users.id, userId))
+        .get();
+      if (!row || row.disabledAt !== null) return null;
+      if (row.passwordHash !== expected.passwordHash) return null;
+      if (row.credentialsChangedAt !== expected.credentialsChangedAt) return null;
+      const secret = newSecret();
+      const absoluteExpiresAt = now + SESSION_ABSOLUTE_MS;
+      tx.insert(sessions)
+        .values({
+          id: hashToken(secret),
+          userId,
+          createdAt: now,
+          idleExpiresAt: now + SESSION_IDLE_MS,
+          absoluteExpiresAt,
+        })
+        .run();
+      return { secret, absoluteExpiresAt };
+    },
+    { behavior: "immediate" },
+  );
+}
+
 export function resolveSession(db: Db, secret: string, now = Date.now()): SessionUser | null {
   const id = hashToken(secret);
   const row = db

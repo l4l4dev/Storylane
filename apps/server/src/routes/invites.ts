@@ -10,6 +10,7 @@ import { assertPasswordAcceptable, hashPassword } from "../auth/password";
 import { setSessionCookie } from "../auth/cookies";
 import { createSession } from "../auth/sessions";
 import { clientIp, createRateLimiter, type RateLimiter } from "../auth/rate-limit";
+import { assertTokenLength } from "../auth/tokens";
 import {
   acceptInvite,
   listInvites,
@@ -92,7 +93,9 @@ export function inviteRoutes(deps: {
     )
     .get("/api/invites/:token", (c) => {
       if (!limiter.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
-      const preview = previewInvite(deps.db, c.req.param("token"));
+      const token = c.req.param("token");
+      assertTokenLength(token); // before hashToken — see auth/tokens.ts
+      const preview = previewInvite(deps.db, token);
       if (!preview) throw new HttpError(404, "not_found");
       c.header("Cache-Control", "no-store");
       return c.json(preview);
@@ -101,6 +104,7 @@ export function inviteRoutes(deps: {
       if (!limiter.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
       c.header("Cache-Control", "no-store");
       const token = c.req.param("token");
+      assertTokenLength(token); // before hashToken — see auth/tokens.ts
       const actor = deps.actorOf(c);
       if (actor.kind === "user") {
         const result = acceptInvite(deps.db, token, actor);

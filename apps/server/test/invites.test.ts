@@ -4,7 +4,7 @@ import { createProject } from "../src/services/projects";
 import { INVITE_TTL_MS } from "../src/services/invites";
 import { invites, projectMembers, projects, users } from "../src/db/schema";
 import { SESSION_COOKIE } from "../src/auth/sessions";
-import { hashToken } from "../src/auth/tokens";
+import { hashToken, MAX_TOKEN_LENGTH } from "../src/auth/tokens";
 import { createRateLimiter } from "../src/auth/rate-limit";
 import { EventBus } from "../src/events/bus";
 import { newId } from "../src/id";
@@ -97,6 +97,17 @@ describe("previewing and accepting", () => {
     expect(preview.status).toBe(200);
     expect(await preview.json()).toEqual({ projectId, projectName: "P", role: "viewer" });
     expect((await app.request(`${ORIGIN}/api/invites/not-a-token`)).status).toBe(404);
+  });
+
+  it("404s an over-length token on both preview and accept, without hashing it", async () => {
+    const overLong = "a".repeat(MAX_TOKEN_LENGTH + 1);
+    expect((await app.request(`${ORIGIN}/api/invites/${overLong}`)).status).toBe(404);
+    const res = await app.request(`${ORIGIN}/api/invites/${overLong}/accept`, {
+      method: "POST",
+      headers: jsonAs(stranger),
+      body: "{}",
+    });
+    expect(res.status).toBe(404);
   });
 
   it("never writes the raw token into the request log", async () => {
