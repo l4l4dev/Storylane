@@ -3,8 +3,10 @@ import type { Db } from "../db/client";
 import { HttpError } from "../http-error";
 import { hasAnyUser } from "./setup-token";
 
-/** /api/setup must stay reachable, or the instance could never be set up. */
-const EXEMPT = (path: string) => path === "/api/setup" || path.startsWith("/api/setup/");
+/** /api/setup must stay reachable, or the instance could never be set up. Exact match only — a
+ * subpath like /api/setup/x is a real route that does not exist and must still 409, not slip
+ * through as if it were the setup endpoint. */
+const EXEMPT = (path: string) => path === "/api/setup";
 
 /**
  * While the instance has no user, API calls answer 409 setup_required as JSON (never a

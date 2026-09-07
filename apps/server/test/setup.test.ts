@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
-import { makeTestApp, makeTestDb, seedProject, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedProject, seedUser, loginAs } from "./harness";
+import { createApp } from "../src/app";
+import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
 import { ensureSetupToken, hasAnyUser, SETUP_TOKEN_TTL_MS } from "../src/setup/setup-token";
 import { instanceMeta, users } from "../src/db/schema";
 import { SESSION_COOKIE } from "../src/auth/sessions";
+import { createRateLimiter } from "../src/auth/rate-limit";
+import { kdfStats, resetKdfPeak } from "../src/auth/password";
 import type { Db } from "../src/db/client";
 
 let db: Db;
@@ -128,7 +132,9 @@ describe("POST /api/setup", () => {
     const [a, b] = await Promise.all([post(app, "/api/setup", body(token)), post(app, "/api/setup", body(token))]);
     const statuses = [a.status, b.status].sort();
     expect(statuses[0]!).toBe(200);
-    expect([403, 404]).toContain(statuses[1]!);
+    // The loser's completeSetup transaction always sees the winner's committed row first
+    // (the "no users yet" check runs before the token check), so it is exactly 404 — never 403.
+    expect(statuses[1]!).toBe(404);
     expect(db.select().from(users).all()).toHaveLength(1);
   });
 
@@ -139,5 +145,133 @@ describe("POST /api/setup", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "password_too_short" });
     expect(db.select().from(users).all()).toHaveLength(0);
+  });
+
+  it("never spends the KDF on a wrong token", async () => {
+    ensureSetupToken(db, createLogger(() => {}));
+    const { app } = makeTestApp(db);
+    resetKdfPeak();
+    const res = await post(app, "/api/setup", body("not-the-token"));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "setup_token_invalid" });
+    expect(kdfStats()).toEqual({ inFlight: 0, peak: 0 });
+  });
+
+  it("trims the email before storing it, and the trimmed address logs in", async () => {
+    const token = ensureSetupToken(db, createLogger(() => {}))!;
+    const { app } = makeTestApp(db);
+    const res = await post(app, "/api/setup", { ...body(token), email: "  admin@example.test  " });
+    expect(res.status).toBe(200);
+    const row = db.select().from(users).all()[0]!;
+    expect(row.email).toBe("admin@example.test");
+    const cookie = await loginAs(app, "admin@example.test", "correct horse battery");
+    expect(cookie).toContain(`${SESSION_COOKIE}=`);
+  });
+
+  it("rejects an over-long email before creating anything", async () => {
+    const token = ensureSetupToken(db, createLogger(() => {}))!;
+    const { app } = makeTestApp(db);
+    const longEmail = `${"a".repeat(250)}@example.test`; // 263 chars, over the 254 limit
+    const res = await post(app, "/api/setup", { ...body(token), email: longEmail });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
+    expect(db.select().from(users).all()).toHaveLength(0);
+  });
+
+  it("rejects an over-long display name before creating anything", async () => {
+    const token = ensureSetupToken(db, createLogger(() => {}))!;
+    const { app } = makeTestApp(db);
+    const res = await post(app, "/api/setup", { ...body(token), displayName: "x".repeat(81) });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
+    expect(db.select().from(users).all()).toHaveLength(0);
+  });
+
+  it("rejects an email with no @ or an empty local/domain part", async () => {
+    const token = ensureSetupToken(db, createLogger(() => {}))!;
+    const { app } = makeTestApp(db);
+    for (const email of ["not-an-email", "@example.test", "admin@"]) {
+      const res = await post(app, "/api/setup", { ...body(token), email });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_body" });
+    }
+    expect(db.select().from(users).all()).toHaveLength(0);
+  });
+});
+
+describe("setup gate exemption is exact", () => {
+  it("gates /api/me while no user exists", async () => {
+    const { app } = makeTestApp(db);
+    expect((await app.request(`${ORIGIN}/api/me`)).status).toBe(409);
+  });
+
+  it("gates /api/auth/login while no user exists", async () => {
+    const { app } = makeTestApp(db);
+    const res = await app.request(`${ORIGIN}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: ORIGIN },
+      body: JSON.stringify({ email: "a@example.test", password: "x" }),
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("gates a path merely prefixed with /api/setup/", async () => {
+    const { app } = makeTestApp(db);
+    expect((await app.request(`${ORIGIN}/api/setup/x`)).status).toBe(409);
+  });
+
+  it("gates a double-slash variant of /api/setup", async () => {
+    const { app } = makeTestApp(db);
+    expect((await app.request(`${ORIGIN}/api//setup`)).status).toBe(409);
+  });
+
+  it("does not treat a differently-cased path as /api/setup", async () => {
+    const { app } = makeTestApp(db);
+    // Hono's router is case-sensitive: "/API/setup" never matches "/api/*", so the request
+    // never reaches the gate at all and falls through to the app's plain JSON 404 handler.
+    expect((await app.request(`${ORIGIN}/API/setup`)).status).toBe(404);
+  });
+
+  it("still enforces CSRF ahead of the gate for POST /api/setup", async () => {
+    const { app } = makeTestApp(db);
+    const res = await app.request(`${ORIGIN}/api/setup`, { method: "POST", body: JSON.stringify({}) });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "csrf_check_failed" });
+  });
+});
+
+describe("POST /api/setup rate limit", () => {
+  it("blocks the 11th attempt within the window and resets after it", async () => {
+    let clock = 0;
+    const limiter = createRateLimiter({ limit: 10, windowMs: 15 * 60 * 1000, now: () => clock });
+    const app = createApp({
+      config: loadConfig({}),
+      log: createLogger(() => {}),
+      health: () => true,
+      db,
+      setupLimiter: limiter,
+    });
+    ensureSetupToken(db, createLogger(() => {}));
+    // A wrong token keeps every attempt at 403 so the limiter is the only thing under test.
+    for (let i = 0; i < 10; i++) {
+      const res = await post(app, "/api/setup", { token: "wrong", email: "a@example.test", displayName: "A", password: "correct horse battery" });
+      expect(res.status).toBe(403);
+    }
+    const eleventh = await post(app, "/api/setup", {
+      token: "wrong",
+      email: "a@example.test",
+      displayName: "A",
+      password: "correct horse battery",
+    });
+    expect(eleventh.status).toBe(429);
+    expect(await eleventh.json()).toEqual({ error: "too_many_requests" });
+    clock = 15 * 60 * 1000 + 1;
+    const afterWindow = await post(app, "/api/setup", {
+      token: "wrong",
+      email: "a@example.test",
+      displayName: "A",
+      password: "correct horse battery",
+    });
+    expect(afterWindow.status).toBe(403);
   });
 });
