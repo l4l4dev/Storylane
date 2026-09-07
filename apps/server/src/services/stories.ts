@@ -281,14 +281,19 @@ export function moveStory(
   target: { stateId: string | null; orderedIds: string[] },
 ): StoryRow {
   const current = readOne(tx, storyId);
+  const previousCategory = categoryOf(tx, current.stateId);
   const targetCategory = assertPlaceable(tx, current, target.stateId);
+  // completed_at keys on the CATEGORY, so moving between two done states keeps the original
+  // stamp (spec/data-model.md `stories.completed_at`); stateChanged is a different question,
+  // answering "which activity row" and "which column needs re-densifying".
+  const categoryChanged = previousCategory !== targetCategory;
   const stateChanged = current.stateId !== target.stateId;
   const now = Date.now();
   tx.tx
     .update(stories)
     .set({
       stateId: target.stateId,
-      completedAt: nextCompletedAt(targetCategory, stateChanged ? null : current.completedAt, now),
+      completedAt: nextCompletedAt(targetCategory, categoryChanged ? null : current.completedAt, now),
       updatedAt: now,
     })
     .where(and(eq(stories.id, storyId), eq(stories.projectId, tx.projectId)))
@@ -318,6 +323,13 @@ export function deleteStory(tx: ProjectTx, storyId: string): void {
   // storyId stays null for the same reason: the row it would point at is already gone.
   recordActivity(tx, {
     action: "story.deleted",
-    payload: { storyId, number: story.number, title: story.title, stateId: story.stateId },
+    payload: {
+      storyId,
+      number: story.number,
+      title: story.title,
+      stateId: story.stateId,
+      storyType: story.storyType,
+      points: story.points,
+    },
   });
 }

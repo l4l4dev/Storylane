@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { makeTestDb, seedUser } from "./harness";
 import { createProject } from "../src/services/projects";
-import { listStates } from "../src/services/states";
+import { createState, listStates } from "../src/services/states";
 import {
   createStory,
   deleteStory,
@@ -243,6 +243,59 @@ describe("moveStory", () => {
   });
 });
 
+describe("moveStory completed_at", () => {
+  /** Date.now() has ms resolution: without this, a re-stamp is indistinguishable from a keep. */
+  const tick = () => {
+    const t = Date.now();
+    while (Date.now() === t) {
+      /* spin until the wall clock advances */
+    }
+  };
+
+  const addDoneState = (name: string) =>
+    withProject(db, owner, projectId, "state:write", (tx) =>
+      createState(tx, { name, category: "done", actionLabel: null }),
+    ).id;
+
+  const inDone = () => {
+    const story = write((tx) => createStory(tx, { title: "a", stateId: at("unstarted").id, points: 2 }));
+    return write((tx) => moveStory(tx, story.id, { stateId: at("done").id, orderedIds: [story.id] }));
+  };
+
+  it("keeps the original stamp when moving between two done-category states", () => {
+    const done = inDone();
+    expect(done.completedAt).toBeGreaterThan(0);
+    const other = addDoneState("Shipped");
+    tick();
+    const moved = write((tx) => moveStory(tx, done.id, { stateId: other, orderedIds: [done.id] }));
+    expect(moved.stateId).toBe(other);
+    expect(moved.completedAt).toBe(done.completedAt);
+  });
+
+  it("clears the stamp when leaving the done category", () => {
+    const done = inDone();
+    const back = write((tx) => moveStory(tx, done.id, { stateId: at("unstarted").id, orderedIds: [done.id] }));
+    expect(back.completedAt).toBeNull();
+  });
+
+  it("stamps on entering the done category", () => {
+    const story = write((tx) => createStory(tx, { title: "a", stateId: at("unstarted").id, points: 2 }));
+    expect(story.completedAt).toBeNull();
+    const done = write((tx) => moveStory(tx, story.id, { stateId: at("done").id, orderedIds: [story.id] }));
+    expect(done.completedAt).toBeGreaterThan(0);
+  });
+
+  it("keeps the stamp on a pure reorder inside the done column", () => {
+    const doneId = at("done").id;
+    const a = inDone();
+    const b = write((tx) => createStory(tx, { title: "b", stateId: at("unstarted").id, points: 2 }));
+    write((tx) => moveStory(tx, b.id, { stateId: doneId, orderedIds: [a.id, b.id] }));
+    tick();
+    const reordered = write((tx) => moveStory(tx, a.id, { stateId: doneId, orderedIds: [b.id, a.id] }));
+    expect(reordered.completedAt).toBe(a.completedAt);
+  });
+});
+
 describe("deleteStory", () => {
   it("keeps the activity trail with story_id nulled and logs story.deleted", () => {
     const story = write((tx) => createStory(tx, { title: "a" }));
@@ -251,7 +304,12 @@ describe("deleteStory", () => {
     const rows = db.select().from(activityLogs).all();
     expect(rows.every((r) => r.storyId === null)).toBe(true);
     expect(activityFor("story.deleted")).toHaveLength(1);
-    expect(JSON.parse(activityFor("story.deleted")[0]!.payload!)).toMatchObject({ number: 1, title: "a" });
+    expect(JSON.parse(activityFor("story.deleted")[0]!.payload!)).toMatchObject({
+      number: 1,
+      title: "a",
+      storyType: "feature",
+      points: null,
+    });
   });
 
   it("closes the gap left in the column it was deleted from", () => {
