@@ -59,10 +59,10 @@ export function InviteAcceptPage({ token, onJoined }: { token: string; onJoined:
       ) : (
         <form onSubmit={accept} className="flex flex-col gap-2">
           <Field label="Your name">
-            <input className={inputClass} style={{ borderColor: "var(--line)" }} value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
+            <input className={inputClass} style={{ borderColor: "var(--line)" }} autoComplete="name" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
           </Field>
           <Field label="Email">
-            <input className={inputClass} style={{ borderColor: "var(--line)" }} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <input className={inputClass} style={{ borderColor: "var(--line)" }} type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </Field>
           <Field label="Password" hint="At least 12 characters.">
             <input className={inputClass} style={{ borderColor: "var(--line)" }} type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />

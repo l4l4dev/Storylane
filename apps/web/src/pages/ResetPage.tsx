@@ -2,9 +2,11 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { apiFetch, errorMessage } from "../lib/api";
 import { useResource } from "../lib/use-resource";
+import { useSession } from "../lib/session";
 import { buttonClass, Field, inputClass } from "../components/Field";
 
 export function ResetPage({ token }: { token: string }) {
+  const { refresh } = useSession();
   const preview = useResource<{ email: string }>(`/api/auth/reset/${token}`);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -15,6 +17,10 @@ export function ResetPage({ token }: { token: string }) {
     setError(null);
     try {
       await apiFetch(`/api/auth/reset/${token}`, { method: "POST", body: { password } });
+      // The server revokes every session belonging to this user (design §4) — including the
+      // caller's own, if they reached this page while signed in — so the cached `me` is stale
+      // by the time they follow the "Go to sign in" link.
+      refresh();
       setDone(true);
     } catch (e) {
       setError(errorMessage(e));

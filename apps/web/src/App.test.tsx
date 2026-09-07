@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { App } from "./App";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.history.pushState({}, "", "/");
+});
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -26,5 +29,15 @@ describe("App shell", () => {
     );
     render(<App />);
     expect(await screen.findByText(/signed in as owner/i)).toBeInTheDocument();
+  });
+
+  it("never renders nothing for a signed-in user on an unmatched path (e.g. /login after reset)", async () => {
+    window.history.pushState({}, "", "/login");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      json(200, { id: "u1", email: "owner@example.test", displayName: "Owner", isAdmin: false }),
+    );
+    const { container } = render(<App />);
+    expect(await screen.findByText(/signed in as owner/i)).toBeInTheDocument();
+    expect(container).not.toBeEmptyDOMElement();
   });
 });

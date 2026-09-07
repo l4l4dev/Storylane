@@ -51,7 +51,6 @@ const MESSAGES: Record<string, string> = {
   state_id_required: "Pick a column.",
   state_id_unsupported: "Stories cannot be moved to that column directly.",
   assignee_not_member: "That person is not a member of this project.",
-  email_taken: "That email already has an account. Sign in instead.",
   password_too_short: "Use at least 12 characters.",
   password_too_long: "That password is too long.",
   too_many_requests: "Too many attempts. Wait a few minutes and try again.",

@@ -1,4 +1,4 @@
-import { Route, Switch, useLocation } from "wouter";
+import { Redirect, Route, Switch, useLocation } from "wouter";
 import { useSession } from "./lib/session";
 import { LoginPage } from "./pages/LoginPage";
 import { SetupPage } from "./pages/SetupPage";
@@ -30,6 +30,12 @@ export function AppRoutes() {
           </Route>
           <Route path="/">
             <main className="p-6 text-sm">Signed in as {session.me.displayName}.</main>
+          </Route>
+          {/* Any other URL for a signed-in user (e.g. /login or /setup, reached via back/forward
+              or a stale link like the post-reset "/login?reset=1") must not fall through to
+              `Switch` rendering nothing — send them to the shell instead. */}
+          <Route>
+            <Redirect to="/" />
           </Route>
         </>
       ) : (
