@@ -50,6 +50,12 @@ describe("POST /api/auth/login", () => {
     expect(res.status).toBe(200);
   });
 
+  it("trims surrounding whitespace from the email, symmetric with invite registration", async () => {
+    const { app } = makeTestApp(db);
+    const res = await post(app, "/api/auth/login", { email: "  owner@example.test  ", password: PASSWORD });
+    expect(res.status).toBe(200);
+  });
+
   it("rejects a body without an email or password with 400", async () => {
     const { app } = makeTestApp(db);
     expect((await post(app, "/api/auth/login", { password: PASSWORD })).status).toBe(400);

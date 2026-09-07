@@ -10,6 +10,7 @@
     "member:change-role":      { "anonymous": 401, "non-member": 404, "viewer": 403, "member": 403, "owner": 200 },
     "member:remove":           { "anonymous": 401, "non-member": 404, "viewer": 403, "member": 403, "owner": 200 },
     "member:leave":            { "anonymous": 401, "non-member": 404, "viewer": 200, "member": 200, "owner": 403 },
+    "invite:read":             { "anonymous": 401, "non-member": 404, "viewer": 403, "member": 403, "owner": 200 },
     "state:read":              { "anonymous": 401, "non-member": 404, "viewer": 200, "member": 200, "owner": 200 },
     "state:write":             { "anonymous": 401, "non-member": 404, "viewer": 403, "member": 200, "owner": 200 },
     "state:delete":            { "anonymous": 401, "non-member": 404, "viewer": 403, "member": 403, "owner": 200 },

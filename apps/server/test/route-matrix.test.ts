@@ -9,6 +9,7 @@ import { ALL_ACTIONS, expected, ROLES, type Action, type Role } from "../src/aut
 import { withProject, type Actor } from "../src/db/tx";
 import { projects, projectStates, stories } from "../src/db/schema";
 import { matrixFixtures, type MatrixFixture } from "./matrix-fixtures";
+import { mintInvite } from "../src/services/invites";
 
 const db = makeTestDb();
 const { app } = makeTestApp(db);
@@ -32,7 +33,8 @@ function seedFullProject() {
   // Icebox (state_id NULL) has no category, so no estimation gate stands between the move
   // fixture and a 200 — the row asserts authorization, not the gate.
   const storyId = seedStory(db, id, { title: "Matrix seed", stateId: null, position: 0 });
-  return { id, stateId, stateIds: [stateId, todoId, doneId], storyId };
+  const seededInvite = withProject(db, ownerA, id, "member:invite", (tx) => mintInvite(tx, { role: "member" }));
+  return { id, stateId, stateIds: [stateId, todoId, doneId], storyId, inviteId: seededInvite.invite.id };
 }
 
 const seeded = seedFullProject();
@@ -44,6 +46,7 @@ const fixturesFor = (t: ReturnType<typeof seedFullProject>): Record<string, Matr
     stateIds: t.stateIds,
     storyId: t.storyId,
     iceboxOrder: [t.storyId],
+    inviteId: t.inviteId,
   });
 const FIXTURES = fixturesFor(seeded);
 const actors: Record<Role, Actor> = {

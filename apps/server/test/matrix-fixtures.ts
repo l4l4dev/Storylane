@@ -25,11 +25,15 @@ export interface MatrixContext {
   storyId: string;
   /** The Icebox column's ids after the move — what `reorder` demands the move fixture name. */
   iceboxOrder: string[];
+  /** A pending invite in the seeded project, for the invites matrix rows. */
+  inviteId: string;
 }
 
 export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture> {
   return {
     "GET /api/projects/:id/events": { stream: true },
+    "POST /api/projects/:id/invites": { body: { role: "member" } },
+    "DELETE /api/projects/:id/invites/:inviteId": { params: { inviteId: ctx.inviteId } },
     "POST /api/me/password": { body: { currentPassword: "x", newPassword: "y" } },
     "PATCH /api/projects/:id": { body: { name: "renamed by the matrix" } },
     "POST /api/projects/:id/archive": { body: {} },

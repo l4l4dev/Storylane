@@ -99,7 +99,9 @@ export function authRoutes(deps: AuthDeps, actorOf: (c: Context) => Actor) {
       // its payload once it is already over the limit.
       if (!limiters.ip.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
       const body = (await c.req.json().catch(() => ({}))) as LoginBody;
-      const email = requireString(body.email, "email");
+      // Trimmed the same way setup/invite registration trims it, so a user who registered via
+      // an invite with accidental whitespace around their email can still log in.
+      const email = requireString(body.email, "email").trim();
       const password = requireString(body.password, "password");
       assertNotOverLong(password);
       const emailKey = email.toLowerCase();

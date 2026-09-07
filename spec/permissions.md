@@ -23,6 +23,7 @@ never leaks.
 | `member:change-role` | 401 | 404 | 403 | 403 | 200 |
 | `member:remove` | 401 | 404 | 403 | 403 | 200 |
 | `member:leave` | 401 | 404 | 200 | 200 | 403 |
+| `invite:read` | 401 | 404 | 403 | 403 | 200 |
 | `state:read` | 401 | 404 | 200 | 200 | 200 |
 | `state:write` | 401 | 404 | 403 | 200 | 200 |
 | `state:delete` | 401 | 404 | 403 | 403 | 200 |
@@ -47,6 +48,10 @@ never leaks.
 split — Pivotal-style, any member operates any story (owner decision
 2026-07-19). Deletion stays owner-only. `story:move-cross-project` needs the
 row for **both** projects (`withTwoProjects`).
+
+`member:invite` covers minting **and** revoking an invitation; `invite:read`
+covers listing a project's pending invitations, which is owner-only
+bookkeeping (`member:read` is 200 for viewers and must not carry it).
 
 ### Invariants the matrix cannot express
 
@@ -78,3 +83,21 @@ invitations are **not** an admin action; they belong to project owners.
 
 While no user exists, every `/api/**` route answers `409 setup_required` and
 the SPA shows `/setup` (design doc §7).
+
+### Routes outside the matrix
+
+Some routes are not project-scoped and therefore have no `(action, role)` cell.
+They declare a rule in the server's route manifest
+(`apps/server/src/authz/route-manifest.ts`) and the matrix test asserts the
+rule exists for every registered route:
+
+- `public` — no session needed: `POST /api/auth/login`, `GET /api/invites/:token`,
+  `POST /api/invites/:token/accept`, `GET|POST /api/auth/reset/:token`.
+- `self` — any signed-in user, acting only on their own data:
+  `GET /api/me`, `POST /api/me/password`, `POST /api/auth/logout`,
+  `GET /api/projects`, `POST /api/projects` (a create has no role in a project
+  that does not exist yet).
+- `admin` — `users.is_admin` only (instance plane): anonymous → 401,
+  signed-in non-admin → 403.
+- `setup` — reachable only while the instance has no user
+  (`GET|POST /api/setup`); afterwards 404.

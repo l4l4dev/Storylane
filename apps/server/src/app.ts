@@ -13,6 +13,7 @@ import { eventRoutes } from "./routes/events";
 import { failClosed } from "./authz/middleware";
 import { EventBus } from "./events/bus";
 import { authRoutes } from "./routes/auth";
+import { inviteRoutes } from "./routes/invites";
 import { setupRoutes } from "./routes/setup";
 import { setupGate } from "./setup/gate";
 import { csrfGuard } from "./auth/csrf";
@@ -84,6 +85,7 @@ export function createApp(deps: AppDeps): Hono {
     authRoutes({ db: deps.db, config: deps.config, ...(deps.limiters ? { limiters: deps.limiters } : {}) }, actorOf),
   );
   app.route("/", projectRoutes({ db: deps.db, bus, actorOf }));
+  app.route("/", inviteRoutes({ db: deps.db, bus, config: deps.config, actorOf }));
   app.route("/", storyRoutes({ db: deps.db, bus, actorOf }));
   app.route(
     "/",
