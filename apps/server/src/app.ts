@@ -9,6 +9,9 @@ import { requestLogger, type Logger } from "./log";
 import { healthzRoute } from "./routes/healthz";
 import { projectRoutes } from "./routes/projects";
 import { failClosed } from "./authz/middleware";
+import { authRoutes } from "./routes/auth";
+import { csrfGuard } from "./auth/csrf";
+import type { RateLimiter } from "./auth/rate-limit";
 import type { Db } from "./db/client";
 import type { Actor } from "./db/tx";
 
@@ -20,6 +23,8 @@ export interface AppDeps {
   health: () => boolean;
   db: Db;
   actorOf?: (c: Context) => Actor;
+  /** Login limiters; tests inject a fake clock. Defaults to LOGIN_LIMITS with the real clock. */
+  limiters?: { ip: RateLimiter; email: RateLimiter };
   /** Enables the `x-test-actor` header actor. Tests only — production leaves this false. */
   testActorHeader?: boolean;
   /** Directory holding the built SPA (index.html + assets). Defaults to apps/web/dist. */
@@ -52,8 +57,14 @@ export function createApp(deps: AppDeps): Hono {
   // Narrow on purpose: the trailing wildcard also matches zero segments, so this covers
   // /api/projects/:id and everything below it, but not a future non-project-scoped
   // GET /api/projects (the caller's own project list).
+  // Before failClosed: a request rejected for CSRF must never reach the authorization scope.
+  app.use("/api/*", csrfGuard(deps.config));
   app.use("/api/projects/:id/*", failClosed());
   app.route("/", healthzRoute(deps.health));
+  app.route(
+    "/",
+    authRoutes({ db: deps.db, config: deps.config, ...(deps.limiters ? { limiters: deps.limiters } : {}) }, actorOf),
+  );
   app.route("/", projectRoutes(deps.db, actorOf));
   const staticRoot = deps.staticRoot ?? DEFAULT_STATIC_ROOT;
   if (existsSync(staticRoot)) {

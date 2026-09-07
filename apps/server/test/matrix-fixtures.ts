@@ -22,5 +22,8 @@ export interface MatrixContext {
 // ctx is unused until the first parameterized route lands; the signature is already what later tasks import.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function matrixFixtures(_ctx: MatrixContext): Record<string, MatrixFixture> {
-  return {};
+  return {
+    "POST /api/auth/login": { body: { email: "nobody@example.test", password: "not the password" } },
+    "POST /api/me/password": { body: { currentPassword: "x", newPassword: "y" } },
+  };
 }

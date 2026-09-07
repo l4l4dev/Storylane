@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { makeTestDb, seedProject, seedUser } from "./harness";
+import { revokeUserSessions } from "../src/auth/sessions";
 import { withProject, withTwoProjects, type Actor } from "../src/db/tx";
 import type { Db } from "../src/db/client";
 
@@ -43,5 +44,20 @@ describe("withProject nesting", () => {
     const outsider = seedUser(db, "outsider@example.test");
     expect(() => withProject(db, outsider, pA, "project:read", () => 1)).toThrow();
     expect(withProject(db, owner, pA, "project:read", (tx) => tx.projectId)).toBe(pA);
+  });
+});
+
+describe("revokeUserSessions nesting", () => {
+  it("refuses to run inside withProject", () => {
+    if (owner.kind !== "user") throw new Error("unreachable");
+    const userId = owner.userId;
+    expect(() =>
+      withProject(db, owner, pA, "project:read", () => revokeUserSessions(db, userId)),
+    ).toThrow("revokeUserSessions cannot run inside withProject");
+  });
+
+  it("runs on its own outside withProject", () => {
+    if (owner.kind !== "user") throw new Error("unreachable");
+    expect(revokeUserSessions(db, owner.userId)).toBe(0);
   });
 });

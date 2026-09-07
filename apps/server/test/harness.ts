@@ -18,6 +18,7 @@ import {
 } from "../src/db/schema";
 import { newId } from "../src/id";
 import { hashPassword } from "../src/auth/password";
+import { actorFromRequest } from "../src/auth/actor";
 import { CREATE_SCOPED_ITEMS } from "./scoped-items";
 import type { Actor } from "../src/db/tx";
 
@@ -70,6 +71,16 @@ export function makeTestApp(
     log: createLogger((l) => lines.push(l)),
     health: () => true,
     db,
+    // Both actor sources: the matrix tests address routes by header, the auth-route tests by a
+    // real session cookie.
+    actorOf: (c) => {
+      const raw = c.req.header("x-test-actor");
+      if (raw) {
+        const parsed = JSON.parse(raw) as Actor;
+        if (parsed.kind === "user") return { kind: "user", userId: parsed.userId, isAdmin: parsed.isAdmin === true };
+      }
+      return actorFromRequest(db)(c);
+    },
     testActorHeader: true,
     staticRoot,
   });
@@ -150,4 +161,17 @@ export async function seedUserWithPassword(
     .where(eq(users.id, actor.userId))
     .run();
   return actor;
+}
+
+/** Logs in through the real route and returns the `name=value` cookie pair for later requests. */
+export async function loginAs(app: Hono, email: string, password: string, origin = "http://127.0.0.1"): Promise<string> {
+  const res = await app.request(`${origin}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin },
+    body: JSON.stringify({ email, password }),
+  });
+  if (res.status !== 200) throw new Error(`loginAs failed: ${res.status} ${await res.text()}`);
+  const cookie = res.headers.get("set-cookie")?.split(";")[0];
+  if (!cookie) throw new Error("loginAs: no session cookie in the response");
+  return cookie;
 }

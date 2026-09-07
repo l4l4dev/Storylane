@@ -7,6 +7,8 @@ import { createApp } from "./app";
 import { openDatabase } from "./db/client";
 import { backupThenMigrate } from "./db/migrate";
 import { vacuumInto } from "./db/backup";
+import { actorFromRequest } from "./auth/actor";
+import { purgeExpiredSessions } from "./auth/sessions";
 
 const [command = "serve", ...args] = Bun.argv.slice(2);
 const log = createLogger();
@@ -33,10 +35,16 @@ if (command === "serve") {
     log.error("migration failed; restore backups/pre-<version>.db if needed", { message: (e as Error).message });
     process.exit(1);
   }
+  const purge = () => log.info("sessions purged", { count: purgeExpiredSessions(db) });
+  purge();
+  // Dead rows are already refused by resolveSession; this only keeps the table from growing.
+  // unref'd so the sweep never holds the process open on its own.
+  setInterval(purge, 60 * 60 * 1000).unref();
   const app = createApp({
     config,
     log,
     db,
+    actorOf: actorFromRequest(db),
     testActorHeader: false,
     health: () => {
       try {

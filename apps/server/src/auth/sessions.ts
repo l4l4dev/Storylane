@@ -1,5 +1,6 @@
 import { eq, lt, or } from "drizzle-orm";
 import type { Db } from "../db/client";
+import { assertNoOpenTransaction } from "../db/tx";
 import { sessions, users } from "../db/schema";
 import { hashToken, newSecret } from "./tokens";
 
@@ -69,6 +70,7 @@ export function deleteSession(db: Db, secret: string): void {
  * (bun:sqlite has no savepoints here — see db/tx.ts).
  */
 export function revokeUserSessions(db: Db, userId: string, now = Date.now()): number {
+  assertNoOpenTransaction("revokeUserSessions");
   return db.transaction((tx) => {
     const deleted = tx.delete(sessions).where(eq(sessions.userId, userId)).returning({ id: sessions.id }).all();
     // Same transaction as the DELETE: a login committing between the two would otherwise keep a

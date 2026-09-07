@@ -32,7 +32,7 @@ const actors: Record<Role, Actor> = {
 // Only these exact middleware registrations (app.use(path, …) in app.ts) are exempt — an
 // explicit allowlist, not a heuristic, so a real route registered with app.all(...) still
 // needs a manifest entry even if its path happens to end in "/*".
-const EXEMPT_MIDDLEWARE_PATHS = new Set(["/*", "/api/projects/:id/*"]);
+const EXEMPT_MIDDLEWARE_PATHS = new Set(["/*", "/api/projects/:id/*", "/api/*"]);
 const registered = app.routes
   .filter((r) => !(r.method === "ALL" && EXEMPT_MIDDLEWARE_PATHS.has(r.path)))
   .map((r) => `${r.method} ${r.path}`);
@@ -204,4 +204,28 @@ describe("project-scoped fail-closed", () => {
     const res = await good.request(`/api/projects/${projectId}/same`, { headers: asOwner });
     expect(res.status).toBe(200);
   });
+});
+
+describe("self and admin rules reject anonymous callers", () => {
+  // Logout is the one exception: it is idempotent by design, so a caller with no session gets
+  // 204 and a cleared cookie rather than an error.
+  const IDEMPOTENT_WITHOUT_SESSION = new Set(["POST /api/auth/logout"]);
+
+  for (const [key, rule] of Object.entries(ROUTE_ACTIONS)) {
+    if (rule !== "self" && rule !== "admin") continue;
+    if (IDEMPOTENT_WITHOUT_SESSION.has(key)) continue;
+    const [method, path] = key.split(" ") as [string, string];
+    it(`${key} as anonymous → 401`, async () => {
+      const fixture = FIXTURES[key] ?? {};
+      let url = path.replace(":id", projectId);
+      for (const [name, value] of Object.entries(fixture.params ?? {})) url = url.replace(`:${name}`, value);
+      expect(url).not.toContain("/:");
+      const res = await app.request(url, {
+        method,
+        headers: fixture.body === undefined ? {} : { "content-type": "application/json" },
+        ...(fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
+      });
+      expect(res.status).toBe(401);
+    });
+  }
 });

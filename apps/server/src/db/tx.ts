@@ -133,6 +133,14 @@ function resolveRole(tx: Tx, actor: UserActor, projectId: string): { role: Role;
  */
 let transactionOpen = false;
 
+/**
+ * For code that must own its own top-level transaction (revokeUserSessions): bun:sqlite has no
+ * savepoints here, so opening one inside a withProject callback would commit the outer one.
+ */
+export function assertNoOpenTransaction(what: string): void {
+  if (transactionOpen) throw new Error(`${what} cannot run inside withProject`);
+}
+
 function openTransaction<T>(run: () => T): T {
   if (transactionOpen) throw new Error("withProject cannot be nested");
   transactionOpen = true;
