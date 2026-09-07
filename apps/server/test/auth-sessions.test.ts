@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, disableUser, seedUser } from "./harness";
 import { hashToken } from "../src/auth/tokens";
 import {
+  changePassword,
   createSession,
   deleteSession,
   purgeExpiredSessions,
@@ -165,10 +166,46 @@ describe("credentials_changed_at", () => {
     expect(resolveSession(db, racing, now + 1_000)).toBeNull();
   });
 
-  it("accepts a session created at or after the change", () => {
+  it("rejects a session created in the same millisecond as the change", () => {
     const now = 1_700_000_000_000;
     revokeUserSessions(db, userId, now);
-    expect(resolveSession(db, createSession(db, userId, now).secret, now + 1_000)).not.toBeNull();
+    // Millisecond resolution cannot order these two, so the tie goes to the revoke.
+    expect(resolveSession(db, createSession(db, userId, now).secret, now + 1_000)).toBeNull();
+  });
+
+  it("accepts a session created after the change", () => {
+    const now = 1_700_000_000_000;
+    revokeUserSessions(db, userId, now);
     expect(resolveSession(db, createSession(db, userId, now + 1).secret, now + 1_000)).not.toBeNull();
+  });
+});
+
+describe("changePassword", () => {
+  const stored = (id: string) =>
+    db
+      .select({ hash: users.passwordHash, changedAt: users.credentialsChangedAt })
+      .from(users)
+      .where(eq(users.id, id))
+      .get()!;
+
+  it("swaps the hash, drops every session and stamps the marker in one step", () => {
+    const now = 1_700_000_000_000;
+    const a = createSession(db, userId, now - 10).secret;
+    const b = createSession(db, userId, now - 5).secret;
+    expect(changePassword(db, userId, "new-hash", now)).toBe(2);
+    expect(stored(userId)).toEqual({ hash: "new-hash", changedAt: now });
+    expect(db.select().from(sessions).all()).toHaveLength(0);
+    expect(resolveSession(db, a, now)).toBeNull();
+    expect(resolveSession(db, b, now)).toBeNull();
+  });
+
+  it("leaves another user's sessions and hash alone", () => {
+    const other = seedUser(db, "other@example.test");
+    const otherId = (other as { userId: string }).userId;
+    const keep = createSession(db, otherId).secret;
+    changePassword(db, userId, "new-hash", Date.now());
+    expect(resolveSession(db, keep)).not.toBeNull();
+    expect(stored(otherId).hash).toBe("x");
+    expect(stored(otherId).changedAt).toBeNull();
   });
 });

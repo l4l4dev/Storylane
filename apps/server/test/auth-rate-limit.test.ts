@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
 import { loadConfig } from "../src/config";
-import { clientIp, createRateLimiter } from "../src/auth/rate-limit";
+import { clientIp, createRateLimiter, MAX_KEYS } from "../src/auth/rate-limit";
 
 describe("createRateLimiter", () => {
   it("allows `limit` attempts per window, then blocks", () => {
@@ -31,6 +31,31 @@ describe("createRateLimiter", () => {
     expect(limiter.check("a")).toBe(true);
   });
 
+  it("evicts the oldest bucket once the key cap is reached", () => {
+    let clock = 0;
+    const limiter = createRateLimiter({ limit: 1, windowMs: 1000, maxKeys: 2, now: () => clock });
+    limiter.check("a");
+    clock = 1;
+    limiter.check("b");
+    clock = 2;
+    // "c" pushes the map past the cap, so the oldest bucket ("a") is dropped.
+    limiter.check("c");
+    expect(limiter.hits("a")).toBe(0);
+    expect(limiter.hits("b")).toBe(1);
+    expect(limiter.hits("c")).toBe(1);
+    // A key whose window rolled over counts as freshly seen, so it is not the next eviction.
+    clock = 2000;
+    limiter.check("b");
+    clock = 2001;
+    limiter.check("d");
+    expect(limiter.hits("b")).toBe(1);
+    expect(limiter.hits("c")).toBe(0);
+  });
+
+  it("keeps the default cap at MAX_KEYS", () => {
+    expect(MAX_KEYS).toBe(10_000);
+  });
+
   it("counts hits past the limit", () => {
     const limiter = createRateLimiter({ limit: 1, windowMs: 1000 });
     limiter.check("a");
@@ -52,9 +77,11 @@ describe("clientIp", () => {
     expect(await ipOf({}, { "x-forwarded-for": "203.0.113.9" })).not.toBe("203.0.113.9");
   });
 
-  it("uses the left-most X-Forwarded-For entry when trusted", async () => {
+  it("uses the right-most X-Forwarded-For entry when trusted", async () => {
+    // Only the last entry was appended by our own proxy; everything left of it is
+    // client-supplied and would otherwise let one attacker spread over unlimited buckets.
     expect(await ipOf({ STORYLANE_TRUST_PROXY: "true" }, { "x-forwarded-for": "203.0.113.9, 10.0.0.1" })).toBe(
-      "203.0.113.9",
+      "10.0.0.1",
     );
   });
 

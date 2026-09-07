@@ -82,7 +82,9 @@ describe("permission matrix over project routes", () => {
         expect(url).not.toContain("/:"); // a param with no fixture would make every row meaningless
         const headers: Record<string, string> =
           actor.kind === "anonymous" ? {} : { "x-test-actor": JSON.stringify(actor) };
-        if (fixture.body !== undefined) headers["content-type"] = "application/json";
+        // csrfGuard rejects any unsafe request that is not application/json, so every non-GET
+        // row must carry the header or the matrix would assert 403 instead of the real answer.
+        if (method !== "GET") headers["content-type"] = "application/json";
         const res = await app.request(url, {
           method,
           headers,
@@ -134,7 +136,11 @@ describe("fail-closed middleware", () => {
     // run unguarded. Built through makeTestApp/createApp (production registration order),
     // using POST so the leak sits at the same path as the real (guarded) GET route.
     const { app: leaky } = makeTestApp(db, (a) => a.post("/api/projects/:id", (c) => c.json({ leak: true })));
-    const res = await leaky.request(`/api/projects/${projectId}`, { method: "POST", headers: asOwner });
+    // application/json so csrfGuard (which runs first) lets the request reach failClosed.
+    const res = await leaky.request(`/api/projects/${projectId}`, {
+      method: "POST",
+      headers: { ...asOwner, "content-type": "application/json" },
+    });
     expect(res.status).toBe(500);
   });
 
@@ -222,7 +228,7 @@ describe("self and admin rules reject anonymous callers", () => {
       expect(url).not.toContain("/:");
       const res = await app.request(url, {
         method,
-        headers: fixture.body === undefined ? {} : { "content-type": "application/json" },
+        ...(method === "GET" ? {} : { headers: { "content-type": "application/json" } }),
         ...(fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
       });
       expect(res.status).toBe(401);

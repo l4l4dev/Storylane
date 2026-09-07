@@ -50,8 +50,10 @@ export function resolveSession(db: Db, secret: string, now = Date.now()): Sessio
   if (!row) return null;
   if (now >= row.absoluteExpiresAt || now >= row.idleExpiresAt) return null;
   if (row.disabledAt !== null) return null;
-  // A row the revoke's DELETE could not see because its INSERT had not committed yet.
-  if (row.credentialsChangedAt !== null && row.createdAt < row.credentialsChangedAt) return null;
+  // A row the revoke's DELETE could not see because its INSERT had not committed yet. The
+  // comparison includes equality: created_at has millisecond resolution, so a session stamped
+  // in the same millisecond as the change cannot be shown to postdate it — the revoke wins.
+  if (row.credentialsChangedAt !== null && row.createdAt <= row.credentialsChangedAt) return null;
   const slid = Math.min(now + SESSION_IDLE_MS, row.absoluteExpiresAt);
   if (slid - row.idleExpiresAt >= SESSION_TOUCH_MS || slid < row.idleExpiresAt) {
     db.update(sessions).set({ idleExpiresAt: slid }).where(eq(sessions.id, id)).run();
@@ -78,6 +80,25 @@ export function revokeUserSessions(db: Db, userId: string, now = Date.now()): nu
     tx.update(users).set({ credentialsChangedAt: now }).where(eq(users.id, userId)).run();
     return deleted.length;
   }, { behavior: "immediate" });
+}
+
+/**
+ * A password change is one fact: new hash, no surviving sessions, new generation marker. Split
+ * across statements, a login committing between them would keep a session the change was meant
+ * to invalidate, so all three go in one immediate transaction.
+ *
+ * Same rule as revokeUserSessions: hash outside, call this at the top level.
+ */
+export function changePassword(db: Db, userId: string, passwordHash: string, now: number): number {
+  assertNoOpenTransaction("changePassword");
+  return db.transaction(
+    (tx) => {
+      const deleted = tx.delete(sessions).where(eq(sessions.userId, userId)).returning({ id: sessions.id }).all();
+      tx.update(users).set({ passwordHash, credentialsChangedAt: now }).where(eq(users.id, userId)).run();
+      return deleted.length;
+    },
+    { behavior: "immediate" },
+  );
 }
 
 /** Either expiry passing makes a row dead, so both are swept. */

@@ -72,17 +72,98 @@ describe("csrfGuard", () => {
     expect(res.status).toBe(403);
   });
 
-  it("leaves GET and cookie-less requests alone", async () => {
+  it("leaves GET alone, and lets a cookie-less request with no Origin through", async () => {
     const get = await appWith().request("http://tracker.example.test/api/thing", {
       headers: { ...withCookie, origin: "http://evil.example.test" },
     });
     expect(get.status).toBe(200);
-    const anonymous = await appWith().request("http://tracker.example.test/api/thing", {
+    // curl/CLI login: no cookie and no Origin at all. A browser always sends Origin on a
+    // cross-site POST, so allowing this does not open a CSRF path.
+    const cli = await appWith().request("http://tracker.example.test/api/thing", {
       method: "POST",
       headers: { ...json },
       body: "{}",
     });
-    expect(anonymous.status).toBe(200);
+    expect(cli.status).toBe(200);
+  });
+
+  it("rejects a foreign Origin even without a session cookie", async () => {
+    // The login route itself: a cross-site page must not be able to POST credentials, or a
+    // forced login lands the victim in the attacker's account.
+    const res = await appWith().request("http://tracker.example.test/api/thing", {
+      method: "POST",
+      headers: { ...json, origin: "https://evil.example" },
+      body: "{}",
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "csrf_check_failed" });
+  });
+
+  it("rejects a non-JSON content type even without a session cookie", async () => {
+    // text/plain is one of the content types a no-cors form POST can send.
+    const res = await appWith().request("http://tracker.example.test/api/thing", {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: "{}",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("guards every unsafe method, not only POST", async () => {
+    const app = appWith();
+    app.delete("/api/thing", (c) => c.json({ ok: true }));
+    app.patch("/api/thing", (c) => c.json({ ok: true }));
+    for (const method of ["DELETE", "PATCH"]) {
+      const res = await app.request("http://tracker.example.test/api/thing", {
+        method,
+        headers: { ...withCookie, ...json, origin: "https://evil.example" },
+        body: "{}",
+      });
+      expect(res.status).toBe(403);
+    }
+  });
+
+  it("accepts the forwarded origin behind a trusted TLS-terminating proxy", async () => {
+    const app = appWith({ STORYLANE_TRUST_PROXY: "true" });
+    const good = await app.request("http://10.0.0.5:3000/api/thing", {
+      method: "POST",
+      headers: {
+        ...withCookie,
+        ...json,
+        origin: "https://tracker.example.test",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "tracker.example.test",
+      },
+      body: "{}",
+    });
+    expect(good.status).toBe(200);
+    const bad = await app.request("http://10.0.0.5:3000/api/thing", {
+      method: "POST",
+      headers: {
+        ...withCookie,
+        ...json,
+        origin: "https://evil.example",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "tracker.example.test",
+      },
+      body: "{}",
+    });
+    expect(bad.status).toBe(403);
+  });
+
+  it("ignores the forwarded headers when the proxy is not trusted", async () => {
+    const res = await appWith().request("http://10.0.0.5:3000/api/thing", {
+      method: "POST",
+      headers: {
+        ...withCookie,
+        ...json,
+        origin: "https://evil.example",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "evil.example",
+      },
+      body: "{}",
+    });
+    expect(res.status).toBe(403);
   });
 
   it("compares against STORYLANE_BASE_URL when it is set", async () => {

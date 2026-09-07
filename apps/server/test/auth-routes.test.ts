@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { Hono } from "hono";
-import { makeTestApp, makeTestDb, seedUserWithPassword, disableUser, seedProject } from "./harness";
+import { makeTestApp, makeTestDb, seedUserWithPassword, disableUser, seedProject, loginAs } from "./harness";
 import { SESSION_COOKIE } from "../src/auth/sessions";
 import { sessions } from "../src/db/schema";
+import { ABSENT_USER_HASH } from "../src/routes/auth";
+import { ARGON2_PARAMS, MAX_PASSWORD_LENGTH } from "../src/auth/password";
 import type { Db } from "../src/db/client";
 
 let db: Db;
@@ -85,6 +87,27 @@ describe("POST /api/auth/login", () => {
     expect((await post(app, "/api/auth/login", { email: "owner@example.test", password: PASSWORD })).status).toBe(200);
     for (let i = 0; i < 4; i++) await post(app, "/api/auth/login", { email: "owner@example.test", password: "bad" });
     expect((await post(app, "/api/auth/login", { email: "owner@example.test", password: PASSWORD })).status).toBe(200);
+  });
+
+  it("rotates: a session presented on a successful login is replaced", async () => {
+    const { app } = makeTestApp(db);
+    const old = await loginAs(app, "owner@example.test", PASSWORD);
+    expect((await get(app, "/api/me", old)).status).toBe(200);
+    const fresh = cookieFrom(
+      await post(app, "/api/auth/login", { email: "owner@example.test", password: PASSWORD }, old),
+    );
+    expect(fresh).not.toBe(old);
+    expect((await get(app, "/api/me", old)).status).toBe(401);
+    expect((await get(app, "/api/me", fresh)).status).toBe(200);
+    expect(db.select().from(sessions).all()).toHaveLength(1);
+  });
+
+  it("verifies against a dummy hash carrying the production argon2 parameters", () => {
+    // A stale constant would make "unknown email" cheaper than "wrong password" again.
+    const params = /\$argon2id\$v=19\$m=(\d+),t=(\d+),/.exec(ABSENT_USER_HASH);
+    expect(params).not.toBeNull();
+    expect(Number(params![1])).toBe(ARGON2_PARAMS.memoryCost);
+    expect(Number(params![2])).toBe(ARGON2_PARAMS.timeCost);
   });
 
   it("blocks per IP once the IP limit is reached regardless of the email", async () => {
@@ -178,6 +201,30 @@ describe("POST /api/me/password", () => {
     const short = await post(app, "/api/me/password", { currentPassword: PASSWORD, newPassword: "short" }, cookie);
     expect(short.status).toBe(400);
     expect(await short.json()).toEqual({ error: "password_too_short" });
+  });
+
+  it("refuses an over-long current password before spending a KDF slot", async () => {
+    const { app } = makeTestApp(db);
+    const cookie = cookieFrom(await post(app, "/api/auth/login", { email: "owner@example.test", password: PASSWORD }));
+    const res = await post(
+      app,
+      "/api/me/password",
+      { currentPassword: "x".repeat(MAX_PASSWORD_LENGTH + 1), newPassword: "long enough here" },
+      cookie,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "password_too_long" });
+  });
+
+  it("rate-limits repeated wrong current passwords per user", async () => {
+    const { app } = makeTestApp(db);
+    const cookie = cookieFrom(await post(app, "/api/auth/login", { email: "owner@example.test", password: PASSWORD }));
+    const attempt = (currentPassword: string) =>
+      post(app, "/api/me/password", { currentPassword, newPassword: "long enough here" }, cookie);
+    for (let i = 0; i < 5; i++) expect((await attempt("wrong wrong wrong")).status).toBe(401);
+    const blocked = await attempt(PASSWORD);
+    expect(blocked.status).toBe(429);
+    expect(await blocked.json()).toEqual({ error: "too_many_requests" });
   });
 
   it("401s for an anonymous caller without touching the stored hash", async () => {

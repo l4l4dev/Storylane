@@ -9,32 +9,42 @@ export interface RateLimiter {
   reset(key?: string): void;
 }
 
+/** Hard bound on tracked keys: an attacker choosing the key must not be able to grow the map. */
+export const MAX_KEYS = 10_000;
+
 /**
  * Fixed window, in memory. Hand-written rather than a dependency: one process, no shared
  * state to coordinate, and the limiter needs an injectable clock for the tests.
  */
-export function createRateLimiter(opts: { limit: number; windowMs: number; now?: () => number }): RateLimiter {
+export function createRateLimiter(opts: {
+  limit: number;
+  windowMs: number;
+  maxKeys?: number;
+  now?: () => number;
+}): RateLimiter {
   const now = opts.now ?? (() => Date.now());
+  const maxKeys = opts.maxKeys ?? MAX_KEYS;
+  // Insertion order is bucket-start order (a rolled-over key is deleted before it is re-added),
+  // so the first entry is always the oldest window — evicting it is what bounds the map.
   const buckets = new Map<string, { start: number; count: number }>();
   const current = (key: string) => {
     const t = now();
     const bucket = buckets.get(key);
-    if (!bucket || t - bucket.start >= opts.windowMs) {
-      const fresh = { start: t, count: 0 };
-      buckets.set(key, fresh);
-      return fresh;
+    if (bucket && t - bucket.start < opts.windowMs) return bucket;
+    buckets.delete(key);
+    while (buckets.size >= maxKeys) {
+      const oldest = buckets.keys().next();
+      if (oldest.done) break;
+      buckets.delete(oldest.value);
     }
-    return bucket;
+    const fresh = { start: t, count: 0 };
+    buckets.set(key, fresh);
+    return fresh;
   };
   return {
     check(key) {
       const bucket = current(key);
       bucket.count += 1;
-      // Keep the map from growing without bound on a busy instance.
-      if (buckets.size > 10_000) {
-        const t = now();
-        for (const [k, b] of buckets) if (t - b.start >= opts.windowMs) buckets.delete(k);
-      }
       return bucket.count <= opts.limit;
     },
     hits: (key) => buckets.get(key)?.count ?? 0,
@@ -45,6 +55,9 @@ export function createRateLimiter(opts: { limit: number; windowMs: number; now?:
   };
 }
 
+/** Same shape as LOGIN_LIMITS: a wrong current password is a guess, and each one costs a KDF. */
+export const PASSWORD_CHANGE_LIMIT = { limit: 5, windowMs: 15 * 60 * 1000 } as const;
+
 export const LOGIN_LIMITS = {
   perIp: { limit: 20, windowMs: 15 * 60 * 1000 },
   perEmail: { limit: 5, windowMs: 15 * 60 * 1000 },
@@ -52,12 +65,13 @@ export const LOGIN_LIMITS = {
 
 /**
  * X-Forwarded-For is honoured only with STORYLANE_TRUST_PROXY=true (design §4), and then only
- * its left-most entry: the documented deployment is one reverse proxy in front of the server,
- * which appends the real client and is trusted not to forward a client-supplied header.
+ * its right-most entry: that is the one our own proxy appended. Trusting the left-most value
+ * would let a client send its own X-Forwarded-For and get a fresh rate-limit bucket per guess.
  */
 export function clientIp(c: Context, config: Config): string {
   if (config.trustProxy) {
-    const forwarded = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
+    const chain = c.req.header("x-forwarded-for")?.split(",");
+    const forwarded = chain?.[chain.length - 1]?.trim();
     if (forwarded) return forwarded;
   }
   try {
