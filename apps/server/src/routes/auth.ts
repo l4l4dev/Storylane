@@ -181,9 +181,13 @@ export function authRoutes(deps: AuthDeps, actorOf: (c: Context) => Actor) {
       assertPasswordAcceptable(password);
       // Pre-KDF check, same shape as invites' accept: a garbage token never burns the KDF.
       // consumeResetToken's own in-transaction recheck stays authoritative for the real race.
-      const now = Date.now();
-      if (!previewResetToken(deps.db, token, now)) throw new HttpError(404, "not_found");
+      if (!previewResetToken(deps.db, token)) throw new HttpError(404, "not_found");
       const passwordHash = await hashPassword(password);
+      // Taken after the KDF, not before: credentials_changed_at must postdate every session a
+      // concurrent login could have created while hashPassword was running, or resolveSession's
+      // createdAt <= credentialsChangedAt check would let that session survive the reset — the
+      // same ordering /api/me/password already uses (changedAt below).
+      const now = Date.now();
       const { userId } = consumeResetToken(deps.db, token, passwordHash, now);
       deps.log.info("password reset used", { userId });
       // Deliberately no session: the user proves the new password by logging in, same as any

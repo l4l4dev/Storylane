@@ -110,6 +110,22 @@ membership.
 independent of project membership: non-admin → 403, anonymous → 401. Project
 invitations are **not** an admin action; they belong to project owners.
 
+`user:reset-link` mints a password reset for one user
+(`POST /api/admin/users/:userId/reset-link`): a random 256-bit token stored
+only as its SHA-256 hash (`reset_tokens.token_hash`), expiring after one hour
+(`RESET_TTL_MS`), single-use. The clear token appears exactly once, in the
+mint response; a deactivated user 404s the mint the same as an unknown one, so
+a disabled account's credentials stay out of reach. As with invitations, every
+invalid state on the public preview/consume routes
+(`GET|POST /api/auth/reset/:token`) — unknown token, expired, already used, or
+bound to a now-disabled user — answers one uniform `404`. Consuming a link
+runs the token recheck, the `used_at` stamp, and the credential change (new
+hash, every session of that user revoked, `credentials_changed_at` bumped) in
+one immediate transaction; every *other* outstanding, unused link for that
+same user is spent in the same transaction, so a second admin-minted link
+cannot later overwrite the password this one just set. The reset response
+starts no session: the user proves the new password by logging in.
+
 ### Setup
 
 While no user exists, every `/api/**` route answers `409 setup_required` and
@@ -123,13 +139,13 @@ They declare a rule in the server's route manifest
 rule exists for every registered route:
 
 - `public` — no session needed: `GET /healthz`, `POST /api/auth/login`,
-  `GET /api/invites/:token`, `POST /api/invites/:token/accept`, and (arriving
-  in Task 8b) `GET|POST /api/auth/reset/:token`.
+  `GET /api/invites/:token`, `POST /api/invites/:token/accept`, and
+  `GET|POST /api/auth/reset/:token`.
 - `self` — any signed-in user, acting only on their own data:
   `GET /api/me`, `POST /api/me/password`, `POST /api/auth/logout`,
   `GET /api/projects`, `POST /api/projects` (a create has no role in a project
   that does not exist yet).
 - `admin` — `users.is_admin` only (instance plane): anonymous → 401,
-  signed-in non-admin → 403.
+  signed-in non-admin → 403. `POST /api/admin/users/:userId/reset-link`.
 - `setup` — reachable only while the instance has no user
   (`GET|POST /api/setup`); afterwards 404.

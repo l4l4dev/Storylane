@@ -38,6 +38,7 @@ MCP (later)    ┘     JSON API · static SPA · SSE · in-process worker
 | Activity log | `apps/server/src/services/activity.ts` (`recordActivity`, only writer) |
 | Routes | `apps/server/src/routes/` |
 | Invitations (owner-minted, single-use) | `apps/server/src/services/invites.ts`; see `spec/permissions.md` "Invitations" |
+| Password reset links (instance-admin-minted, single-use) | `apps/server/src/services/reset.ts`, `apps/server/src/authz/admin.ts`; see `spec/permissions.md` "Instance admin plane" |
 | SPA | `apps/web/` (served from `apps/web/dist` in production) |
 | Pure logic + fixtures | `packages/core/`, `spec/fixtures/` |
 | Distribution | `apps/server/Dockerfile`, `docker-compose.yml`, `INSTALL.md` |

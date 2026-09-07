@@ -10,6 +10,7 @@ import { mintResetToken } from "../services/reset";
 export function adminRoutes(deps: { db: Db; config: Config; log: Logger; actorOf: (c: Context) => Actor }) {
   return new Hono().post("/api/admin/users/:userId/reset-link", (c) => {
     const admin = requireAdmin(deps.actorOf(c));
+    c.header("Cache-Control", "no-store");
     const { token, expiresAt } = mintResetToken(deps.db, admin, c.req.param("userId"));
     const path = `/reset/${token}`;
     // Never the token itself — see log.ts's redaction of this same path for the public routes.

@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
-import { makeTestApp, makeTestDb, seedUser, seedUserWithPassword } from "./harness";
-import { RESET_TTL_MS } from "../src/services/reset";
+import { disableUser, makeTestApp, makeTestDb, seedUser, seedUserWithPassword } from "./harness";
+import { consumeResetToken, mintResetToken, RESET_TTL_MS } from "../src/services/reset";
 import { createRateLimiter } from "../src/auth/rate-limit";
+import { createSession } from "../src/auth/sessions";
 import { resetTokens, sessions } from "../src/db/schema";
 import type { Db } from "../src/db/client";
-import type { Actor } from "../src/db/tx";
+import type { Actor, UserActor } from "../src/db/tx";
 
 let db: Db;
 let admin: Actor;
@@ -54,6 +55,11 @@ describe("POST /api/admin/users/:userId/reset-link", () => {
 
   it("404s for an unknown user", async () => {
     expect((await mint(admin, "no-such-user")).status).toBe(404);
+  });
+
+  it("404s for a disabled user — a deactivated account's credentials stay out of reach", async () => {
+    disableUser(db, target);
+    expect((await mint(admin, userIdOf(target))).status).toBe(404);
   });
 });
 
@@ -137,5 +143,47 @@ describe("using a reset link", () => {
     const blocked = await limited.request(`${ORIGIN}/api/auth/reset/${token}`);
     expect(blocked.status).toBe(429);
     expect(await blocked.json()).toEqual({ error: "too_many_requests" });
+  });
+
+  it("lets only one of two concurrent uses of the same token succeed", async () => {
+    const { token } = (await (await mint(admin, userIdOf(target))).json()) as { token: string };
+    const [first, second] = await Promise.all([use(token, "winner secret"), use(token, "loser secret")]);
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 404]);
+    // The password that landed is whichever request's transaction committed first — either is
+    // fine; what matters is exactly one of them took effect.
+    const relogin = await app.request(`${ORIGIN}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: ORIGIN },
+      body: JSON.stringify({ email: "target@example.test", password: "winner secret" }),
+    });
+    expect([200, 401]).toContain(relogin.status);
+  });
+
+  it("spends every other outstanding link for the same user once one is used (no re-takeover via a second link)", async () => {
+    const { token: tokenA } = (await (await mint(admin, userIdOf(target))).json()) as { token: string };
+    const { token: tokenB } = (await (await mint(admin, userIdOf(target))).json()) as { token: string };
+    expect((await use(tokenA, "set via link A")).status).toBe(200);
+    // Link B was never used directly, but it must not still be able to overwrite the password
+    // link A just set.
+    expect((await use(tokenB, "stolen via link B")).status).toBe(404);
+    const relogin = await app.request(`${ORIGIN}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: ORIGIN },
+      body: JSON.stringify({ email: "target@example.test", password: "set via link A" }),
+    });
+    expect(relogin.status).toBe(200);
+  });
+
+  it("consumeResetToken's now must postdate every session it is meant to invalidate (service-level contract)", () => {
+    // Mirrors the ordering the route relies on: `now` is taken *after* hashPassword resolves, so
+    // a session created while the KDF was still running (createdAt <= that now) does not survive.
+    const mintedBy = admin as UserActor;
+    const { token } = mintResetToken(db, mintedBy, userIdOf(target));
+    const concurrentLoginAt = Date.now();
+    createSession(db, userIdOf(target), concurrentLoginAt);
+    expect(db.select().from(sessions).all()).toHaveLength(1);
+    consumeResetToken(db, token, "irrelevant-hash", concurrentLoginAt);
+    expect(db.select().from(sessions).all()).toHaveLength(0);
   });
 });
