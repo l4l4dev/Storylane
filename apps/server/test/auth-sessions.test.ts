@@ -11,7 +11,7 @@ import {
   SESSION_ABSOLUTE_MS,
   SESSION_IDLE_MS,
 } from "../src/auth/sessions";
-import { sessions } from "../src/db/schema";
+import { sessions, users } from "../src/db/schema";
 import type { Db } from "../src/db/client";
 
 let db: Db;
@@ -124,5 +124,51 @@ describe("deleteSession / revokeUserSessions / purgeExpiredSessions", () => {
     createSession(db, userId, now);
     expect(purgeExpiredSessions(db, now + SESSION_ABSOLUTE_MS + 1)).toBe(1);
     expect(db.select().from(sessions).all()).toHaveLength(0);
+  });
+
+  it("purges an idle-expired row whose absolute expiry is still in the future", () => {
+    const now = 1_700_000_000_000;
+    createSession(db, userId, now);
+    const idleGone = now + SESSION_IDLE_MS + 1;
+    expect(idleGone).toBeLessThan(now + SESSION_ABSOLUTE_MS);
+    expect(purgeExpiredSessions(db, idleGone)).toBe(1);
+    expect(db.select().from(sessions).all()).toHaveLength(0);
+  });
+
+  it("counts only what it actually deleted", () => {
+    const now = 1_700_000_000_000;
+    createSession(db, userId, now);
+    createSession(db, userId, now + SESSION_IDLE_MS); // still live at the purge clock
+    expect(purgeExpiredSessions(db, now + SESSION_IDLE_MS + 1)).toBe(1);
+    expect(db.select().from(sessions).all()).toHaveLength(1);
+  });
+});
+
+describe("credentials_changed_at", () => {
+  const marker = (id: string) =>
+    db.select({ at: users.credentialsChangedAt }).from(users).where(eq(users.id, id)).get()!.at;
+
+  it("is stamped by revokeUserSessions", () => {
+    const now = 1_700_000_000_000;
+    createSession(db, userId, now);
+    expect(marker(userId)).toBeNull();
+    expect(revokeUserSessions(db, userId, now + 5)).toBe(1);
+    expect(marker(userId)).toBe(now + 5);
+  });
+
+  it("rejects a session row that predates the change (login/revoke race)", () => {
+    const now = 1_700_000_000_000;
+    revokeUserSessions(db, userId, now);
+    // A login whose INSERT was in flight while the revoke deleted rows: it survives the DELETE,
+    // so only the marker can tell it apart from a session issued after the password change.
+    const racing = createSession(db, userId, now - 1_000).secret;
+    expect(resolveSession(db, racing, now + 1_000)).toBeNull();
+  });
+
+  it("accepts a session created at or after the change", () => {
+    const now = 1_700_000_000_000;
+    revokeUserSessions(db, userId, now);
+    expect(resolveSession(db, createSession(db, userId, now).secret, now + 1_000)).not.toBeNull();
+    expect(resolveSession(db, createSession(db, userId, now + 1).secret, now + 1_000)).not.toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { eq, lt } from "drizzle-orm";
+import { eq, lt, or } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { sessions, users } from "../db/schema";
 import { hashToken, newSecret } from "./tokens";
@@ -35,10 +35,12 @@ export function resolveSession(db: Db, secret: string, now = Date.now()): Sessio
   const row = db
     .select({
       userId: sessions.userId,
+      createdAt: sessions.createdAt,
       idleExpiresAt: sessions.idleExpiresAt,
       absoluteExpiresAt: sessions.absoluteExpiresAt,
       isAdmin: users.isAdmin,
       disabledAt: users.disabledAt,
+      credentialsChangedAt: users.credentialsChangedAt,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -47,6 +49,8 @@ export function resolveSession(db: Db, secret: string, now = Date.now()): Sessio
   if (!row) return null;
   if (now >= row.absoluteExpiresAt || now >= row.idleExpiresAt) return null;
   if (row.disabledAt !== null) return null;
+  // A row the revoke's DELETE could not see because its INSERT had not committed yet.
+  if (row.credentialsChangedAt !== null && row.createdAt < row.credentialsChangedAt) return null;
   const slid = Math.min(now + SESSION_IDLE_MS, row.absoluteExpiresAt);
   if (slid - row.idleExpiresAt >= SESSION_TOUCH_MS || slid < row.idleExpiresAt) {
     db.update(sessions).set({ idleExpiresAt: slid }).where(eq(sessions.id, id)).run();
@@ -58,15 +62,27 @@ export function deleteSession(db: Db, secret: string): void {
   db.delete(sessions).where(eq(sessions.id, hashToken(secret))).run();
 }
 
-/** Password change and admin reset revoke every session of that user (design §4). */
-export function revokeUserSessions(db: Db, userId: string): number {
-  const doomed = db.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, userId)).all();
-  db.delete(sessions).where(eq(sessions.userId, userId)).run();
-  return doomed.length;
+/**
+ * Password change and admin reset revoke every session of that user (design §4).
+ *
+ * Opens its own top-level transaction, so it must not be called inside a withProject callback
+ * (bun:sqlite has no savepoints here — see db/tx.ts).
+ */
+export function revokeUserSessions(db: Db, userId: string, now = Date.now()): number {
+  return db.transaction((tx) => {
+    const deleted = tx.delete(sessions).where(eq(sessions.userId, userId)).returning({ id: sessions.id }).all();
+    // Same transaction as the DELETE: a login committing between the two would otherwise keep a
+    // session that the password change was meant to invalidate.
+    tx.update(users).set({ credentialsChangedAt: now }).where(eq(users.id, userId)).run();
+    return deleted.length;
+  }, { behavior: "immediate" });
 }
 
+/** Either expiry passing makes a row dead, so both are swept. */
 export function purgeExpiredSessions(db: Db, now = Date.now()): number {
-  const doomed = db.select({ id: sessions.id }).from(sessions).where(lt(sessions.absoluteExpiresAt, now)).all();
-  db.delete(sessions).where(lt(sessions.absoluteExpiresAt, now)).run();
-  return doomed.length;
+  return db
+    .delete(sessions)
+    .where(or(lt(sessions.absoluteExpiresAt, now), lt(sessions.idleExpiresAt, now)))
+    .returning({ id: sessions.id })
+    .all().length;
 }

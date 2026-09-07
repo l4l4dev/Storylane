@@ -47,6 +47,17 @@ describe("session cookie", () => {
     expect(res.headers.get("set-cookie")).not.toContain("Secure");
   });
 
+  it("takes the first of a duplicated cookie instead of throwing", async () => {
+    // A stale cookie on a parent domain or path can make the browser send the name twice; the
+    // request must resolve to one string, and an unparseable pair must not reach the KDF.
+    const res = await appWith({}).request("http://127.0.0.1/read", {
+      headers: { cookie: `${SESSION_COOKIE}=first; other=1; ${SESSION_COOKIE}=second` },
+    });
+    // Hono's getCookie returns the first occurrence (verified against hono 4.13 in this repo);
+    // either choice is safe here because a wrong value simply fails to resolve to a session.
+    expect(await res.json()).toEqual({ secret: "first" });
+  });
+
   it("clears with Max-Age=0 and reads back a cookie", async () => {
     const cleared = await appWith({}).request("http://127.0.0.1/clear");
     expect(cleared.headers.get("set-cookie")).toContain("Max-Age=0");

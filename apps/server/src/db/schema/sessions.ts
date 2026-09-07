@@ -15,7 +15,12 @@ export const sessions = sqliteTable(
     idleExpiresAt: integer("idle_expires_at").notNull(),
     absoluteExpiresAt: integer("absolute_expires_at").notNull(),
   },
-  (t) => [index("sessions_user").on(t.userId), index("sessions_absolute").on(t.absoluteExpiresAt)],
+  (t) => [
+    index("sessions_user").on(t.userId),
+    index("sessions_absolute").on(t.absoluteExpiresAt),
+    // purgeExpiredSessions sweeps on either expiry, so both need an index.
+    index("sessions_idle").on(t.idleExpiresAt),
+  ],
 );
 
 export const invites = sqliteTable(

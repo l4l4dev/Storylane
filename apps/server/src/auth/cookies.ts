@@ -27,6 +27,10 @@ export function clearSessionCookie(c: Context, config: Config): void {
   deleteCookie(c, SESSION_COOKIE, { path: "/", secure: isSecureRequest(c, config), sameSite: "Lax" });
 }
 
+/**
+ * Not `__Host-` prefixed: that prefix requires Secure, which the plain-http LAN deployment
+ * cannot set. Revisit in phase 2, once https is the only supported deployment.
+ */
 export function readSessionCookie(c: Context): string | null {
   return getCookie(c, SESSION_COOKIE) ?? null;
 }
