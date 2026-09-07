@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { makeTestApp, makeTestDb, seedUser } from "./harness";
 import { createProject } from "../src/services/projects";
 import { INVITE_TTL_MS } from "../src/services/invites";
-import { invites, projectMembers, users } from "../src/db/schema";
+import { invites, projectMembers, projects, users } from "../src/db/schema";
 import { SESSION_COOKIE } from "../src/auth/sessions";
 import { eq } from "drizzle-orm";
 import type { Db } from "../src/db/client";
@@ -153,6 +153,33 @@ describe("previewing and accepting", () => {
     expect(
       (await app.request(`${ORIGIN}/api/invites/${revoked.token}/accept`, { method: "POST", headers: jsonAs(stranger), body: "{}" })).status,
     ).toBe(404);
+  });
+
+  it("refuses to join an archived project with the same 404", async () => {
+    const { token } = (await (await mint(owner)).json()) as { token: string };
+    db.update(projects).set({ archivedAt: Date.now() }).where(eq(projects.id, projectId)).run();
+    expect((await app.request(`${ORIGIN}/api/invites/${token}`)).status).toBe(404);
+    expect(
+      (await app.request(`${ORIGIN}/api/invites/${token}/accept`, { method: "POST", headers: jsonAs(stranger), body: "{}" })).status,
+    ).toBe(404);
+    const membership = db
+      .select()
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, (stranger as { userId: string }).userId))
+      .get();
+    expect(membership).toBeUndefined();
+  });
+
+  it("does not consume the invite when the accepting user is already a member, so its intended recipient can still use it", async () => {
+    const { token } = (await (await mint(owner, "viewer")).json()) as { token: string };
+    await app.request(`${ORIGIN}/api/invites/${token}/accept`, { method: "POST", headers: jsonAs(member), body: "{}" });
+    const secondAccept = await app.request(`${ORIGIN}/api/invites/${token}/accept`, {
+      method: "POST",
+      headers: jsonAs(stranger),
+      body: "{}",
+    });
+    expect(secondAccept.status).toBe(200);
+    expect(((await secondAccept.json()) as { role: string }).role).toBe("viewer");
   });
 
   it("is idempotent for a user who is already a member", async () => {

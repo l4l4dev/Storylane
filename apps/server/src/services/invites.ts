@@ -39,6 +39,9 @@ export function mintInvite(tx: ProjectTx, input: { role: MemberRole; now?: numbe
   const token = newSecret();
   const id = newId();
   if (tx.actor.kind !== "user") throw new HttpError(401, "unauthenticated");
+  // Defense in depth: the route only ever passes member/viewer, but a future caller must not be
+  // able to mint an owner invite just by widening MemberRole at the call site.
+  if (input.role === "owner") throw new HttpError(400, "role_invalid");
   tx.tx
     .insert(invites)
     .values({
@@ -52,7 +55,11 @@ export function mintInvite(tx: ProjectTx, input: { role: MemberRole; now?: numbe
     })
     .run();
   recordActivity(tx, { action: "member.invited", payload: { role: input.role } });
-  const invite = tx.tx.select(ROW).from(invites).where(eq(invites.id, id)).get() as InviteRow;
+  const invite = tx.tx
+    .select(ROW)
+    .from(invites)
+    .where(and(eq(invites.id, id), eq(invites.projectId, tx.projectId)))
+    .get() as InviteRow;
   return { token, invite };
 }
 
@@ -67,14 +74,22 @@ export function listInvites(tx: ProjectTx): InviteRow[] {
 
 export function revokeInvite(tx: ProjectTx, inviteId: string, now = Date.now()): InviteRow {
   loadInProject(tx, invites, inviteId);
-  tx.tx.update(invites).set({ revokedAt: now }).where(eq(invites.id, inviteId)).run();
+  const scoped = and(eq(invites.id, inviteId), eq(invites.projectId, tx.projectId));
+  tx.tx.update(invites).set({ revokedAt: now }).where(scoped).run();
   recordActivity(tx, { action: "member.invite_revoked" });
-  return tx.tx.select(ROW).from(invites).where(eq(invites.id, inviteId)).get() as InviteRow;
+  return tx.tx.select(ROW).from(invites).where(scoped).get() as InviteRow;
 }
 
-/** A bad, expired, revoked or already-used token is one indistinguishable 404. */
-function usable(db: Db, token: string, now: number) {
-  const row = db
+/**
+ * A bad, expired, revoked, already-used, or archived-project token is one indistinguishable
+ * 404 — an invite into an archived project must not become a side door around the project's
+ * write lock (spec/permissions.md "Archived project").
+ *
+ * `reader` is `{ select }` rather than `Db`, so a caller inside a transaction passes its own
+ * `tx` (never the plain `db` — see setup/setup-token.ts's readTokenRow for the same split).
+ */
+function usable(reader: Pick<Db, "select">, token: string, now: number) {
+  const row = reader
     .select({
       id: invites.id,
       projectId: invites.projectId,
@@ -83,12 +98,15 @@ function usable(db: Db, token: string, now: number) {
       acceptedAt: invites.acceptedAt,
       revokedAt: invites.revokedAt,
       projectName: projects.name,
+      archivedAt: projects.archivedAt,
     })
     .from(invites)
     .innerJoin(projects, eq(projects.id, invites.projectId))
     .where(eq(invites.tokenHash, hashToken(token)))
     .get();
-  if (!row || row.revokedAt !== null || row.acceptedAt !== null || now >= row.expiresAt) return null;
+  if (!row || row.revokedAt !== null || row.acceptedAt !== null || now >= row.expiresAt || row.archivedAt !== null) {
+    return null;
+  }
   return row;
 }
 
@@ -105,7 +123,7 @@ export function previewInvite(db: Db, token: string, now = Date.now()): InvitePr
 export function acceptInvite(db: Db, token: string, actor: UserActor, now = Date.now()): InvitePreview {
   return db.transaction(
     (tx) => {
-      const row = usable(db, token, now);
+      const row = usable(tx, token, now);
       if (!row) throw new HttpError(404, "not_found");
       const existing = tx
         .select({ role: projectMembers.role })
@@ -121,8 +139,11 @@ export function acceptInvite(db: Db, token: string, actor: UserActor, now = Date
           action: "member.joined",
           payload: { role: row.role, via: "invite" },
         });
+        // Only a join that actually changed membership consumes the invite: an already-member
+        // accepting a leaked link must not be able to burn the token for the person it was
+        // meant for.
+        tx.update(invites).set({ acceptedAt: now, acceptedBy: actor.userId }).where(eq(invites.id, row.id)).run();
       }
-      tx.update(invites).set({ acceptedAt: now, acceptedBy: actor.userId }).where(eq(invites.id, row.id)).run();
       return { projectId: row.projectId, projectName: row.projectName, role };
     },
     { behavior: "immediate" },
@@ -138,7 +159,7 @@ export function registerAndAcceptInvite(
 ): { userId: string; preview: InvitePreview } {
   const userId = db.transaction(
     (tx) => {
-      if (usable(db, token, now) === null) throw new HttpError(404, "not_found");
+      if (usable(tx, token, now) === null) throw new HttpError(404, "not_found");
       // users.email is UNIQUE COLLATE NOCASE, so the lookup must use the same collation.
       const taken = tx
         .select({ id: users.id })
