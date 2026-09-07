@@ -14,8 +14,10 @@ RUN pnpm install --frozen-lockfile --filter @storylane/server... --prod \
 FROM base AS web
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json apps/web/
-RUN pnpm install --frozen-lockfile --filter @storylane/web
+COPY packages/core/package.json packages/core/
+RUN pnpm install --frozen-lockfile --filter @storylane/web...
 COPY apps/web ./apps/web
+COPY packages/core ./packages/core
 RUN pnpm --filter @storylane/web build
 
 FROM base AS runtime
