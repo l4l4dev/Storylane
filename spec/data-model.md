@@ -411,9 +411,11 @@ stories (
   position     int  NOT NULL DEFAULT 0,   -- order within the backlog
   assignee_id  uuid REFERENCES profiles(id) ON DELETE SET NULL,
   -- also FOREIGN KEY (project_id, assignee_id)
-  --   REFERENCES project_members(project_id, user_id) ON DELETE SET NULL (assignee_id):
-  -- the assignee must be a member of the story's own project, and removing a
-  -- member unassigns their stories. Lock-order consequences in spec/permissions.md.
+  --   REFERENCES project_members(project_id, user_id) (no ON DELETE clause: SQLite
+  --   cannot SET NULL a single column of a composite key). The assignee must be a
+  --   member of the story's own project; the BEFORE DELETE trigger
+  --   stories_unassign_on_member_removal nulls assignee_id when a membership row
+  --   is removed (migration 0003). Lock-order consequences in spec/permissions.md.
   created_by   uuid REFERENCES profiles(id),
   created_at   timestamptz DEFAULT now(),
   updated_at   timestamptz DEFAULT now()
