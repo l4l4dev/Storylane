@@ -1,6 +1,6 @@
 import { eq, lt, or } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { assertNoOpenTransaction } from "../db/tx";
+import { assertNoOpenTransaction, type Tx } from "../db/tx";
 import { sessions, users } from "../db/schema";
 import { hashToken, newSecret } from "./tokens";
 
@@ -87,18 +87,23 @@ export function revokeUserSessions(db: Db, userId: string, now = Date.now()): nu
  * across statements, a login committing between them would keep a session the change was meant
  * to invalidate, so all three go in one immediate transaction.
  *
+ * Exported so a caller that already owns a top-level transaction (services/reset.ts's
+ * consumeResetToken, which must stamp its token's used_at in the same transaction as the
+ * credential change) can fold this in rather than opening a second, nested one — bun:sqlite has
+ * no savepoints here (db/tx.ts).
+ */
+export function changePasswordInTx(tx: Tx, userId: string, passwordHash: string, now: number): number {
+  const deleted = tx.delete(sessions).where(eq(sessions.userId, userId)).returning({ id: sessions.id }).all();
+  tx.update(users).set({ passwordHash, credentialsChangedAt: now }).where(eq(users.id, userId)).run();
+  return deleted.length;
+}
+
+/**
  * Same rule as revokeUserSessions: hash outside, call this at the top level.
  */
 export function changePassword(db: Db, userId: string, passwordHash: string, now: number): number {
   assertNoOpenTransaction("changePassword");
-  return db.transaction(
-    (tx) => {
-      const deleted = tx.delete(sessions).where(eq(sessions.userId, userId)).returning({ id: sessions.id }).all();
-      tx.update(users).set({ passwordHash, credentialsChangedAt: now }).where(eq(users.id, userId)).run();
-      return deleted.length;
-    },
-    { behavior: "immediate" },
-  );
+  return db.transaction((tx) => changePasswordInTx(tx, userId, passwordHash, now), { behavior: "immediate" });
 }
 
 /** Either expiry passing makes a row dead, so both are swept. */

@@ -13,6 +13,7 @@ import { eventRoutes } from "./routes/events";
 import { failClosed } from "./authz/middleware";
 import { EventBus } from "./events/bus";
 import { authRoutes } from "./routes/auth";
+import { adminRoutes } from "./routes/admin";
 import { inviteRoutes } from "./routes/invites";
 import { setupRoutes } from "./routes/setup";
 import { setupGate } from "./setup/gate";
@@ -35,6 +36,8 @@ export interface AppDeps {
   setupLimiter?: RateLimiter;
   /** GET /api/invites/:token and POST .../accept limiter; tests inject a fake clock. */
   inviteLimiter?: RateLimiter;
+  /** GET|POST /api/auth/reset/:token limiter; tests inject a fake clock. */
+  resetLimiter?: RateLimiter;
   /** Enables the `x-test-actor` header actor. Tests only — production leaves this false. */
   testActorHeader?: boolean;
   /** Directory holding the built SPA (index.html + assets). Defaults to apps/web/dist. */
@@ -84,8 +87,18 @@ export function createApp(deps: AppDeps): Hono {
   app.route("/", setupRoutes({ db: deps.db, config: deps.config, ...(deps.setupLimiter ? { limiter: deps.setupLimiter } : {}) }));
   app.route(
     "/",
-    authRoutes({ db: deps.db, config: deps.config, ...(deps.limiters ? { limiters: deps.limiters } : {}) }, actorOf),
+    authRoutes(
+      {
+        db: deps.db,
+        config: deps.config,
+        log: deps.log,
+        ...(deps.limiters ? { limiters: deps.limiters } : {}),
+        ...(deps.resetLimiter ? { resetLimiter: deps.resetLimiter } : {}),
+      },
+      actorOf,
+    ),
   );
+  app.route("/", adminRoutes({ db: deps.db, config: deps.config, log: deps.log, actorOf }));
   app.route("/", projectRoutes({ db: deps.db, bus, actorOf }));
   app.route(
     "/",

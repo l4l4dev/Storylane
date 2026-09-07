@@ -47,6 +47,7 @@ const fixturesFor = (t: ReturnType<typeof seedFullProject>): Record<string, Matr
     storyId: t.storyId,
     iceboxOrder: [t.storyId],
     inviteId: t.inviteId,
+    userId: (ownerA as { userId: string }).userId,
   });
 const FIXTURES = fixturesFor(seeded);
 const actors: Record<Role, Actor> = {

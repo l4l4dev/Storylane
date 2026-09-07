@@ -6,6 +6,7 @@ import type { Config } from "../config";
 import type { Actor, UserActor } from "../db/tx";
 import { users } from "../db/schema";
 import { HttpError } from "../http-error";
+import type { Logger } from "../log";
 import {
   assertPasswordAcceptable,
   hashPassword,
@@ -15,11 +16,18 @@ import {
 import { clearSessionCookie, readSessionCookie, setSessionCookie } from "../auth/cookies";
 import { changePassword, createSession, deleteSession } from "../auth/sessions";
 import { clientIp, createRateLimiter, LOGIN_LIMITS, PASSWORD_CHANGE_LIMIT, type RateLimiter } from "../auth/rate-limit";
+import { consumeResetToken, previewResetToken } from "../services/reset";
+
+/** Same shape as invites' ACCEPT_LIMIT: 20 tries per IP per 15 minutes, per public token route. */
+const RESET_LIMIT = { limit: 20, windowMs: 15 * 60 * 1000 };
 
 export interface AuthDeps {
   db: Db;
   config: Config;
+  log: Logger;
   limiters?: { ip: RateLimiter; email: RateLimiter };
+  /** GET|POST /api/auth/reset/:token limiter; tests inject a fake clock. */
+  resetLimiter?: RateLimiter;
 }
 
 interface LoginBody {
@@ -60,6 +68,7 @@ export function authRoutes(deps: AuthDeps, actorOf: (c: Context) => Actor) {
   // Not part of AuthDeps: the caller is already authenticated here, so there is no fake-clock
   // test that needs to inject it.
   const passwordChanges = createRateLimiter(PASSWORD_CHANGE_LIMIT);
+  const resetAttempts = deps.resetLimiter ?? createRateLimiter(RESET_LIMIT);
 
   /** The users.email index is COLLATE NOCASE; the lookup must use the same collation. */
   const findByEmail = (email: string) =>
@@ -154,6 +163,31 @@ export function authRoutes(deps: AuthDeps, actorOf: (c: Context) => Actor) {
       // change, so the caller's own replacement has to sit strictly after it.
       const { secret, absoluteExpiresAt } = createSession(deps.db, user.id, changedAt + 1);
       setSessionCookie(c, deps.config, secret, absoluteExpiresAt);
+      return c.json({ ok: true });
+    })
+    .get("/api/auth/reset/:token", (c) => {
+      if (!resetAttempts.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
+      c.header("Cache-Control", "no-store");
+      const preview = previewResetToken(deps.db, c.req.param("token"));
+      if (!preview) throw new HttpError(404, "not_found");
+      return c.json(preview);
+    })
+    .post("/api/auth/reset/:token", async (c) => {
+      if (!resetAttempts.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
+      c.header("Cache-Control", "no-store");
+      const token = c.req.param("token");
+      const body = (await c.req.json().catch(() => ({}))) as { password?: unknown };
+      const password = requireString(body.password, "password");
+      assertPasswordAcceptable(password);
+      // Pre-KDF check, same shape as invites' accept: a garbage token never burns the KDF.
+      // consumeResetToken's own in-transaction recheck stays authoritative for the real race.
+      const now = Date.now();
+      if (!previewResetToken(deps.db, token, now)) throw new HttpError(404, "not_found");
+      const passwordHash = await hashPassword(password);
+      const { userId } = consumeResetToken(deps.db, token, passwordHash, now);
+      deps.log.info("password reset used", { userId });
+      // Deliberately no session: the user proves the new password by logging in, same as any
+      // other password change (auth-routes tests assert zero surviving/new sessions here).
       return c.json({ ok: true });
     });
 }

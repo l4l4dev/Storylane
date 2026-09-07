@@ -27,6 +27,8 @@ export interface MatrixContext {
   iceboxOrder: string[];
   /** A pending invite in the seeded project, for the invites matrix rows. */
   inviteId: string;
+  /** Any seeded user id, for the admin route's anonymous-401 row. */
+  userId: string;
 }
 
 export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture> {
@@ -34,6 +36,7 @@ export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture
     "GET /api/projects/:id/events": { stream: true },
     "POST /api/projects/:id/invites": { body: { role: "member" } },
     "DELETE /api/projects/:id/invites/:inviteId": { params: { inviteId: ctx.inviteId } },
+    "POST /api/admin/users/:userId/reset-link": { params: { userId: ctx.userId }, body: {} },
     "POST /api/me/password": { body: { currentPassword: "x", newPassword: "y" } },
     "PATCH /api/projects/:id": { body: { name: "renamed by the matrix" } },
     "POST /api/projects/:id/archive": { body: {} },

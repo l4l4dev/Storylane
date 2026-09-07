@@ -67,6 +67,7 @@ export function makeTestApp(
     heartbeatMs?: number;
     maxStreamsPerUser?: number;
     inviteLimiter?: RateLimiter;
+    resetLimiter?: RateLimiter;
   },
 ): { app: Hono; lines: string[]; bus: EventBus } {
   const lines: string[] = [];
@@ -84,6 +85,7 @@ export function makeTestApp(
     ...(opts?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.heartbeatMs }),
     ...(opts?.maxStreamsPerUser === undefined ? {} : { maxStreamsPerUser: opts.maxStreamsPerUser }),
     ...(opts?.inviteLimiter === undefined ? {} : { inviteLimiter: opts.inviteLimiter }),
+    ...(opts?.resetLimiter === undefined ? {} : { resetLimiter: opts.resetLimiter }),
     // Both actor sources: the matrix tests address routes by header, the auth-route tests by a
     // real session cookie.
     actorOf: (c) => {
