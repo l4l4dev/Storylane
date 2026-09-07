@@ -3,10 +3,11 @@ id: TASK-248
 title: >-
   First-run setup: one-time setup token, 409 setup_required gate, admin
   creation, /setup page
-status: To Do
+status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-09-07 02:55'
+updated_date: '2026-09-07 05:15'
 labels: []
 milestone: m-9
 dependencies:
@@ -31,3 +32,9 @@ Design doc §7 steps 1–4. On boot with zero users: generate a setup token, log
 - [ ] #3 While no user exists, GET /api/projects/:id → 409 setup_required (test) and the SPA shows /setup
 - [ ] #4 Boot log contains exactly one setup-token line when no admin exists and none afterwards (test on the logger output)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on rewrite/phase-1: 07ff3bc + 4f0ede4 (setup token minted per boot and logged once while no user exists, hash-only storage, 409 setup_required gate mounted csrf→gate→failClosed with exact /api/setup exemption, single-admin creation in one immediate transaction, pre-KDF read-only token check, per-IP limiter, input hygiene). 242 tests. authz-reviewer: approve with fixes (all fixed). Web /setup page is TASK-253. Deferred: INSTALL note that the token expires in 30 minutes and a restart reissues it (TASK-254); login route email trim symmetry.
+<!-- SECTION:NOTES:END -->
