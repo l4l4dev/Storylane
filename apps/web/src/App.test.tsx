@@ -23,21 +23,29 @@ describe("App shell", () => {
     expect(await screen.findByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 
-  it("greets a signed-in user", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      json(200, { id: "u1", email: "owner@example.test", displayName: "Owner", isAdmin: false }),
-    );
+  it("shows the project list for a signed-in user", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/me") {
+        return json(200, { id: "u1", email: "owner@example.test", displayName: "Owner", isAdmin: false });
+      }
+      return json(200, []);
+    });
     render(<App />);
-    expect(await screen.findByText(/signed in as owner/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /projects/i })).toBeInTheDocument();
   });
 
   it("never renders nothing for a signed-in user on an unmatched path (e.g. /login after reset)", async () => {
     window.history.pushState({}, "", "/login");
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      json(200, { id: "u1", email: "owner@example.test", displayName: "Owner", isAdmin: false }),
-    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/me") {
+        return json(200, { id: "u1", email: "owner@example.test", displayName: "Owner", isAdmin: false });
+      }
+      return json(200, []);
+    });
     const { container } = render(<App />);
-    expect(await screen.findByText(/signed in as owner/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /projects/i })).toBeInTheDocument();
     expect(container).not.toBeEmptyDOMElement();
   });
 });
