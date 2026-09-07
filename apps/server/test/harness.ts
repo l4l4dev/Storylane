@@ -17,6 +17,7 @@ import {
   type StoryType,
 } from "../src/db/schema";
 import { newId } from "../src/id";
+import { hashPassword } from "../src/auth/password";
 import { CREATE_SCOPED_ITEMS } from "./scoped-items";
 import type { Actor } from "../src/db/tx";
 
@@ -131,4 +132,22 @@ export function seedStory(
     })
     .run();
   return id;
+}
+
+/** Cheap argon2id parameters: these tests assert behaviour, not cost. */
+const TEST_ARGON2 = { algorithm: "argon2id", memoryCost: 1024, timeCost: 1 } as const;
+
+export async function seedUserWithPassword(
+  db: Db,
+  email: string,
+  password: string,
+  opts: { isAdmin?: boolean } = {},
+): Promise<Actor> {
+  const actor = seedUser(db, email, opts.isAdmin ?? false);
+  if (actor.kind !== "user") throw new Error("unreachable");
+  db.update(users)
+    .set({ passwordHash: await hashPassword(password, TEST_ARGON2) })
+    .where(eq(users.id, actor.userId))
+    .run();
+  return actor;
 }
