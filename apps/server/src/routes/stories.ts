@@ -61,8 +61,18 @@ function validateStoryInput(input: Record<string, unknown>): StoryInput {
   return result;
 }
 
-/** Same precedence rule as validateStoryInput. An absent key means "leave it alone". */
+const PATCH_KEYS = new Set(["title", "description", "storyType", "points", "assigneeId"]);
+
+/**
+ * Same precedence rule as validateStoryInput. An absent key means "leave it alone" — so an
+ * unrecognized one must be refused, not ignored: accepting `{ stateId }` here and dropping it
+ * would answer 200 to a caller who believes she moved the story.
+ */
 function validateStoryPatch(input: Record<string, unknown>): StoryPatch {
+  if ("stateId" in input) throw new HttpError(400, "state_id_unsupported", "moves go through /move");
+  for (const key of Object.keys(input)) {
+    if (!PATCH_KEYS.has(key)) throw new HttpError(400, "invalid_body", `unknown field ${key}`);
+  }
   const patch: StoryPatch = {};
   if (input.title !== undefined) {
     if (typeof input.title !== "string") throw new HttpError(400, "title_required");

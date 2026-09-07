@@ -92,6 +92,8 @@ function categoryOf(tx: ProjectTx, stateId: string | null): StateCategory | null
   return loadInProject(tx, projectStates, stateId).category as StateCategory;
 }
 
+/** Hand-written scope rather than loadInProject: this needs the COLUMNS projection, not the
+ *  whole row — the `projectId` term is what makes it project-scoped and must stay. */
 function readOne(tx: ProjectTx, storyId: string): StoryRow {
   const row = tx.tx
     .select(COLUMNS)
