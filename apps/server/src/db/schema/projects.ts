@@ -2,9 +2,16 @@ import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, primaryKey, index, check } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
 
+export const POINT_SCALES = ["fibonacci", "linear", "custom"] as const;
+export type PointScale = (typeof POINT_SCALES)[number];
+
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  description: text("description"),
+  pointScale: text("point_scale", { enum: POINT_SCALES }).notNull().default("fibonacci"),
+  /** JSON array of numbers, only read when pointScale === "custom" (never used in WHERE). */
+  customPoints: text("custom_points"),
   createdBy: text("created_by")
     .notNull()
     .references(() => users.id),

@@ -99,8 +99,12 @@ Per-project board columns (doc-8 §2, supersedes the removed free-mode
 `custom_statuses`) — freely named, added, removed, and reordered in
 Settings, rebuilding the old free-mode column freedom on top of the tracker
 machinery (iterations/velocity intact). System semantics attach to a fixed
-**category** per state, not to its name. Same RLS pattern as the former
-custom_statuses (members read/write, owner-only delete).
+**category** per state, not to its name.
+
+Project scoping is `UNIQUE (id, project_id)` plus composite foreign keys
+(`stories.(state_id, project_id) → project_states(id, project_id)`), read
+through `loadInProject(tx, table, id)`; authorization itself is
+`spec/permissions.md` / `withProject`, not RLS.
 
 ```sql
 project_states (
@@ -416,6 +420,11 @@ stories (
 )
 ```
 
+Project scoping is `UNIQUE (id, project_id)` plus composite foreign keys
+(`stories.(state_id, project_id) → project_states(id, project_id)`), read
+through `loadInProject(tx, table, id)`; authorization itself is
+`spec/permissions.md` / `withProject`, not RLS.
+
 **Container stories & roll-up (doc-18 §1–§5, is_container lifecycle superseded
 by doc-20 §2):** a story with children, or one explicitly pinned as an epic
 while childless (`epic_pinned`, doc-20 §2), is a **container** (an "epic"); a
@@ -538,11 +547,14 @@ Two rules keep it consistent (TASK-58's position-sequence + splice RPCs):
    the frontier (the bug that motivated rule 1).
 
 DB-enforced where the scope is flat: `UNIQUE(project_id, position)` on
-project_states and `UNIQUE(story_id, position)` on tasks,
-both `DEFERRABLE INITIALLY DEFERRED` (a rewrite collides mid-statement and
-reconciles at commit). `stories` and `backlog_dividers` are **not** constrained:
-their position is scoped by zone, not by a single column, and the two tables
-share one backlog order space, so no single-column UNIQUE expresses it.
+project_states and `UNIQUE(story_id, position)` on tasks. SQLite has no
+`DEFERRABLE INITIALLY DEFERRED`, so a dense rewrite cannot rely on
+end-of-statement reconciliation: every renumbering goes through
+`reorder(tx, table, scope, orderedIds)`
+(`apps/server/src/db/tx.ts`), which writes `position = -rank - 1` for the whole
+scope and then `position = rank`, so no intermediate state collides. `stories`
+and `backlog_dividers` stay unconstrained: their position is scoped by zone,
+not by a single column.
 
 ### Backlog zone predicate (canonical)
 
