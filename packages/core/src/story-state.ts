@@ -71,6 +71,9 @@ export function computeStateGate(
     return { kind: "none" };
   }
   const current = sorted[currentIndex];
+  if (!current) {
+    return { kind: "none" };
+  }
 
   if (current.category === "rejected") {
     const target = sorted.find((s) => s.category === "in_progress");

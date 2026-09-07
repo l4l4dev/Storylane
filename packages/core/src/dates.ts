@@ -10,7 +10,8 @@
 export const MS_PER_DAY = 86_400_000;
 
 export function parseDateOnly(dateStr: string): number {
-  const [year, month, day] = dateStr.split("-").map(Number);
+  // NaN defaults keep a malformed string producing NaN, as an out-of-range digit already does.
+  const [year = NaN, month = NaN, day = NaN] = dateStr.split("-").map(Number);
   return Date.UTC(year, month - 1, day);
 }
 

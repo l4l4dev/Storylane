@@ -10,6 +10,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@storylane/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(bun-types@1.4.1)

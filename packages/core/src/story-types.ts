@@ -15,8 +15,10 @@ export function storyTypeUsesPoints(type: string): boolean {
 
 // Point scales (see spec/features.md "Story Management"): points are chosen
 // from the project's scale, never free numeric input.
+const FIBONACCI: readonly number[] = [0, 1, 2, 3, 5, 8, 13];
+
 const POINT_SCALES: Record<string, readonly number[]> = {
-  fibonacci: [0, 1, 2, 3, 5, 8, 13],
+  fibonacci: FIBONACCI,
   linear: [0, 1, 2, 3],
 };
 
@@ -32,5 +34,5 @@ export function pointScaleValues(
   if (pointScale === "custom") {
     return [...(customPoints ?? [])];
   }
-  return [...(POINT_SCALES[pointScale] ?? POINT_SCALES.fibonacci)];
+  return [...(POINT_SCALES[pointScale] ?? FIBONACCI)];
 }
