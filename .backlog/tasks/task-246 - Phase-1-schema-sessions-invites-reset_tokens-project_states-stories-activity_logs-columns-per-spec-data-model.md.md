@@ -3,10 +3,11 @@ id: TASK-246
 title: >-
   Phase-1 schema: sessions, invites, reset_tokens, project_states, stories,
   activity_logs columns per spec/data-model.md
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-09-07 02:54'
+updated_date: '2026-09-07 04:15'
 labels: []
 milestone: m-9
 dependencies:
@@ -31,3 +32,9 @@ Design doc §5 and spec/data-model.md carried over to SQLite conventions (text U
 - [ ] #2 Schema types are exported from apps/server/src/db/schema and used by later tasks; no test-only table ships in the migration
 - [ ] #3 spec/data-model.md 'Position ordering invariant' and 'Composite FK' paragraphs updated to the SQLite wording (deferrable UNIQUE replaced by the two-step reorder)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on rewrite/phase-1: 8348382 (migration 0003: sessions, invites, reset_tokens, project_states, stories, projects columns; 4 guard triggers; harness seedState/seedStory; spec/data-model.md SQLite wording), ff506c4 (point_scale enforced by RAISE(ABORT) triggers — Drizzle's CHECK path would rebuild projects unsafely; assignee composite FK to project_members without ON DELETE + BEFORE DELETE trigger stories_unassign_on_member_removal), 64f6223 (spec wording). 134 tests. Deferred: points validated against point_scale in the app layer (TASK-250); services must not double-unassign on member removal.
+<!-- SECTION:NOTES:END -->
