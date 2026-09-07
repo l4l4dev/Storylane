@@ -78,6 +78,7 @@ CREATE TABLE `stories` (
 	FOREIGN KEY (`assignee_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`state_id`,`project_id`) REFERENCES `project_states`(`id`,`project_id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`project_id`,`assignee_id`) REFERENCES `project_members`(`project_id`,`user_id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "stories_story_type" CHECK("stories"."story_type" in ('feature','bug','chore','release')),
 	CONSTRAINT "stories_points" CHECK("stories"."points" is null or "stories"."points" >= 0)
 );
@@ -117,4 +118,25 @@ WHEN new.story_id IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM stories WHERE id = new.story_id AND project_id = new.project_id)
 BEGIN
   SELECT RAISE(ABORT, 'activity_logs.story_id must belong to the same project');
+END;
+--> statement-breakpoint
+CREATE TRIGGER projects_point_scale_valid_insert
+BEFORE INSERT ON projects
+WHEN new.point_scale NOT IN ('fibonacci','linear','custom')
+BEGIN
+  SELECT RAISE(ABORT, 'projects.point_scale must be one of fibonacci, linear, custom');
+END;
+--> statement-breakpoint
+CREATE TRIGGER projects_point_scale_valid_update
+BEFORE UPDATE OF point_scale ON projects
+WHEN new.point_scale NOT IN ('fibonacci','linear','custom')
+BEGIN
+  SELECT RAISE(ABORT, 'projects.point_scale must be one of fibonacci, linear, custom');
+END;
+--> statement-breakpoint
+CREATE TRIGGER stories_unassign_on_member_removal
+BEFORE DELETE ON project_members
+BEGIN
+  UPDATE stories SET assignee_id = NULL
+  WHERE project_id = old.project_id AND assignee_id = old.user_id;
 END;

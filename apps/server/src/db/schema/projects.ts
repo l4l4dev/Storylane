@@ -5,6 +5,13 @@ import { users } from "./auth";
 export const POINT_SCALES = ["fibonacci", "linear", "custom"] as const;
 export type PointScale = (typeof POINT_SCALES)[number];
 
+/**
+ * No table-level check() on point_scale, deliberately: `projects` shipped in 0001, and Drizzle
+ * expresses a new CHECK on an existing SQLite table as a DROP/CREATE rebuild whose INSERT..SELECT
+ * reads the not-yet-added columns — SQLite's double-quoted-identifier fallback turns those into
+ * string literals rather than erroring, so the rebuild silently corrupts every existing row.
+ * point_scale is guarded by the projects_point_scale_valid_{insert,update} triggers in 0003.
+ */
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

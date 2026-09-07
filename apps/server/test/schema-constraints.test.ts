@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { makeTestDb, seedProject, seedState, seedStory, seedUser } from "./harness";
 import { newId } from "../src/id";
+import { POINT_SCALES } from "../src/db/schema";
 import type { Db } from "../src/db/client";
 import type { Actor } from "../src/db/tx";
 
@@ -162,7 +163,7 @@ describe("sessions, invites, reset_tokens", () => {
 });
 
 describe("guard triggers", () => {
-  it("installs the four guard triggers", () => {
+  it("installs every guard trigger", () => {
     const rows = db.$client
       .query("select name from sqlite_master where type = 'trigger' order by name")
       .all() as { name: string }[];
@@ -170,7 +171,65 @@ describe("guard triggers", () => {
       "activity_logs_story_in_project_insert",
       "activity_logs_story_in_project_update",
       "project_states_category_immutable",
+      "projects_point_scale_valid_insert",
+      "projects_point_scale_valid_update",
       "stories_number_pinned",
+      "stories_unassign_on_member_removal",
     ]);
+  });
+});
+
+describe("projects.point_scale", () => {
+  const insertProject = (scale: string) =>
+    run("insert into projects (id, name, point_scale, created_by, created_at) values (?,?,?,?,?)", [
+      newId(), "P", scale, (owner as { userId: string }).userId, Date.now(),
+    ]);
+
+  it("rejects an unknown point scale", () => {
+    expect(() => insertProject("bogus")).toThrow(/projects.point_scale must be one of/);
+  });
+
+  it("accepts every scale in POINT_SCALES", () => {
+    for (const scale of POINT_SCALES) expect(() => insertProject(scale)).not.toThrow();
+  });
+
+  it("refuses to update a project onto an unknown point scale", () => {
+    expect(() => run("update projects set point_scale = 'bogus' where id = ?", [projectId])).toThrow(
+      /projects.point_scale must be one of/,
+    );
+  });
+});
+
+describe("stories.assignee_id", () => {
+  const assign = (storyId: string, userId: string | null) =>
+    run("update stories set assignee_id = ? where id = ?", [userId, storyId]);
+
+  it("refuses an assignee who is not a member of the story's project", () => {
+    const outsider = seedUser(db, "outsider@example.test") as { userId: string };
+    const storyId = seedStory(db, projectId, { title: "one" });
+    expect(() => assign(storyId, outsider.userId)).toThrow(/FOREIGN KEY/);
+  });
+
+  it("accepts an assignee who is a member", () => {
+    const member = seedUser(db, "member@example.test") as { userId: string };
+    const withMember = seedProject(db, owner, [[{ kind: "user", userId: member.userId, isAdmin: false }, "member"]]);
+    const storyId = seedStory(db, withMember, { title: "one" });
+    expect(() => assign(storyId, member.userId)).not.toThrow();
+  });
+
+  it("unassigns only that project's stories when the membership row goes", () => {
+    const member = seedUser(db, "leaver@example.test") as { userId: string };
+    const actor = { kind: "user", userId: member.userId, isAdmin: false } as const;
+    const a = seedProject(db, owner, [[actor, "member"]]);
+    const b = seedProject(db, owner, [[actor, "member"]]);
+    const inA = seedStory(db, a, { title: "in a" });
+    const inB = seedStory(db, b, { title: "in b" });
+    assign(inA, member.userId);
+    assign(inB, member.userId);
+    run("delete from project_members where project_id = ? and user_id = ?", [a, member.userId]);
+    const assigneeOf = (id: string) =>
+      (db.$client.query("select assignee_id as a from stories where id = ?").get(id) as { a: string | null }).a;
+    expect(assigneeOf(inA)).toBeNull();
+    expect(assigneeOf(inB)).toBe(member.userId);
   });
 });

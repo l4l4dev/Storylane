@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "8b0c33d6-8ab4-4d6b-879a-56f6d9865766",
+  "id": "fc9b932d-a951-45b0-82c3-da6e918aee9e",
   "prevId": "e2f2dec6-be1d-478e-9f25-3f785353c98c",
   "tables": {
     "instance_meta": {
@@ -986,6 +986,21 @@
             "project_id"
           ],
           "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "stories_assignee_member_fk": {
+          "name": "stories_assignee_member_fk",
+          "tableFrom": "stories",
+          "tableTo": "project_members",
+          "columnsFrom": [
+            "project_id",
+            "assignee_id"
+          ],
+          "columnsTo": [
+            "project_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },

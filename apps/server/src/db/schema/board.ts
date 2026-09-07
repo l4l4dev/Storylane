@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index, check, uniqueIndex, foreignKey } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
-import { projects } from "./projects";
+import { projectMembers, projects } from "./projects";
 
 /** The four system categories. Semantics attach to the category, never to a state's name. */
 export const STATE_CATEGORIES = ["unstarted", "in_progress", "done", "rejected"] as const;
@@ -68,5 +68,14 @@ export const stories = sqliteTable(
       foreignColumns: [projectStates.id, projectStates.projectId],
       name: "stories_state_project_fk",
     }).onDelete("restrict"),
+    // The assignee must be a member of the story's own project (spec/data-model.md "stories").
+    // Not ON DELETE SET NULL: SQLite nulls *every* column of a composite child key, which would
+    // hit the NOT NULL project_id (the spec's column-restricted `SET NULL (assignee_id)` is a
+    // Postgres-only form). The stories_unassign_on_member_removal trigger in 0003 does it instead.
+    foreignKey({
+      columns: [t.projectId, t.assigneeId],
+      foreignColumns: [projectMembers.projectId, projectMembers.userId],
+      name: "stories_assignee_member_fk",
+    }),
   ],
 );
