@@ -25,6 +25,13 @@ export interface ProjectSummary {
   role: MemberRole;
 }
 
+export interface ProjectPatch {
+  name?: string;
+  description?: string | null;
+  pointScale?: PointScale;
+  customPoints?: number[] | null;
+}
+
 export type { ProjectTemplate };
 
 /**
@@ -126,10 +133,7 @@ function assertValidPointScale(pointScale: PointScale, customPoints: number[] | 
   }
 }
 
-export function updateProject(
-  tx: ProjectTx,
-  patch: { name?: string; description?: string | null; pointScale?: PointScale; customPoints?: number[] | null },
-): ProjectDetail {
+export function updateProject(tx: ProjectTx, patch: ProjectPatch): ProjectDetail {
   const set: Record<string, unknown> = {};
   if (patch.name !== undefined) {
     if (patch.name.trim().length === 0) throw new HttpError(400, "name_required");

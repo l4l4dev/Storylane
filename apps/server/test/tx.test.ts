@@ -211,10 +211,19 @@ describe("reorder", () => {
       expect(rows.map((r) => r.position)).toEqual([0, 1, 2, 3, 4]);
     });
   });
-  it("rejects an id list that is not a permutation of the scope", () => {
+  it("404s on an id the scope never had", () => {
     withProject(db, owner, pA, "story:write", (tx) => {
       tx.tx.insert(scopedItems).values({ id: "x1", projectId: pA, position: 0, label: "" }).run();
-      expect(() => reorder(tx, scopedItems, eq(scopedItems.projectId, pA), ["x1", "ghost"])).toThrow(/permutation/);
+      expect(status(() => reorder(tx, scopedItems, eq(scopedItems.projectId, pA), ["x1", "ghost"]))).toBe(404);
+    });
+  });
+
+  it("400s on a list that is the wrong size or has a duplicate", () => {
+    withProject(db, owner, pA, "story:write", (tx) => {
+      tx.tx.insert(scopedItems).values({ id: "x1", projectId: pA, position: 0, label: "" }).run();
+      tx.tx.insert(scopedItems).values({ id: "x2", projectId: pA, position: 1, label: "" }).run();
+      expect(status(() => reorder(tx, scopedItems, eq(scopedItems.projectId, pA), ["x1"]))).toBe(400);
+      expect(status(() => reorder(tx, scopedItems, eq(scopedItems.projectId, pA), ["x1", "x1"]))).toBe(400);
     });
   });
 });

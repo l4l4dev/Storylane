@@ -229,9 +229,16 @@ export function reorder(tx: ProjectTx, table: OrderedTable, scope: SQL, orderedI
     .where(and(scope, eq(table.projectId, tx.projectId)))
     .all() as { id: string }[];
   const have = new Set(current.map((r) => r.id));
+  // An id the caller could not have gotten from this project's own list is a client error
+  // shaped like "not found", not a shape problem with the request — distinct from a
+  // wrong-count/duplicate list, which is the request being malformed regardless of which ids
+  // it named.
+  if (orderedIds.some((id) => !have.has(id))) {
+    throw new HttpError(404, "not_found");
+  }
   const want = new Set(orderedIds);
-  if (have.size !== want.size || [...have].some((id) => !want.has(id))) {
-    throw new Error("reorder: orderedIds is not a permutation of the scoped rows");
+  if (want.size !== orderedIds.length || want.size !== have.size) {
+    throw new HttpError(400, "ordered_ids_invalid", "orderedIds must list every row in scope exactly once");
   }
   orderedIds.forEach((id, rank) => {
     tx.tx

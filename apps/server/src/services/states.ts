@@ -16,6 +16,12 @@ export interface StateRow {
 
 export type ProjectTemplate = "classic" | "minimal";
 
+export interface StatePatch {
+  name?: string;
+  actionLabel?: string | null;
+  category?: StateCategory;
+}
+
 const COLUMNS = {
   id: projectStates.id,
   name: projectStates.name,
@@ -85,11 +91,7 @@ export function createState(
   return readAll(tx).find((s) => s.id === id)!;
 }
 
-export function updateState(
-  tx: ProjectTx,
-  stateId: string,
-  patch: { name?: string; actionLabel?: string | null; category?: StateCategory },
-): StateRow {
+export function updateState(tx: ProjectTx, stateId: string, patch: StatePatch): StateRow {
   const current = loadInProject(tx, projectStates, stateId);
   // The DB trigger is the backstop; refusing here gives the client a code it can show.
   if (patch.category !== undefined && patch.category !== current.category) {
@@ -99,7 +101,11 @@ export function updateState(
   if (patch.name !== undefined) set.name = patch.name;
   if (patch.actionLabel !== undefined) set.actionLabel = patch.actionLabel;
   if (Object.keys(set).length > 0) {
-    tx.tx.update(projectStates).set(set as never).where(eq(projectStates.id, stateId)).run();
+    tx.tx
+      .update(projectStates)
+      .set(set as never)
+      .where(and(eq(projectStates.id, stateId), eq(projectStates.projectId, tx.projectId)))
+      .run();
     recordActivity(tx, { action: "state.updated", payload: { stateId, ...set } });
   }
   return readAll(tx).find((s) => s.id === stateId)!;
@@ -131,7 +137,10 @@ export function deleteState(tx: ProjectTx, stateId: string): void {
     .limit(1)
     .get();
   if (inUse) throw new HttpError(409, "state_in_use");
-  tx.tx.delete(projectStates).where(eq(projectStates.id, stateId)).run();
+  tx.tx
+    .delete(projectStates)
+    .where(and(eq(projectStates.id, stateId), eq(projectStates.projectId, tx.projectId)))
+    .run();
   reorder(
     tx,
     projectStates,

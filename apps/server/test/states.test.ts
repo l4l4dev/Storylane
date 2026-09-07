@@ -85,12 +85,26 @@ describe("state writes", () => {
     expect(after.map((s) => s.position)).toEqual(before.map((_, i) => i));
   });
 
-  it("rejects a reorder that is not a permutation", () => {
+  it("400s a reorder with the wrong count", () => {
     const project = createProject(db, owner, { name: "P" });
     const states = withProject(db, owner, project.id, "state:read", (tx) => listStates(tx));
-    expect(() =>
-      withProject(db, owner, project.id, "state:write", (tx) => reorderStates(tx, [states[0]!.id])),
-    ).toThrow(/permutation/);
+    expect(
+      status(() => withProject(db, owner, project.id, "state:write", (tx) => reorderStates(tx, [states[0]!.id]))),
+    ).toBe(400);
+  });
+
+  it("404s a reorder naming a state from another project", () => {
+    const project = createProject(db, owner, { name: "P" });
+    const other = createProject(db, owner, { name: "Other" });
+    const states = withProject(db, owner, project.id, "state:read", (tx) => listStates(tx));
+    const foreign = withProject(db, owner, other.id, "state:read", (tx) => listStates(tx))[0]!.id;
+    expect(
+      status(() =>
+        withProject(db, owner, project.id, "state:write", (tx) =>
+          reorderStates(tx, [...states.slice(1).map((s) => s.id), foreign]),
+        ),
+      ),
+    ).toBe(404);
   });
 });
 
