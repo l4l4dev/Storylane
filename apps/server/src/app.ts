@@ -8,6 +8,7 @@ import { HttpError } from "./http-error";
 import { requestLogger, type Logger } from "./log";
 import { healthzRoute } from "./routes/healthz";
 import { projectRoutes } from "./routes/projects";
+import { storyRoutes } from "./routes/stories";
 import { failClosed } from "./authz/middleware";
 import { authRoutes } from "./routes/auth";
 import { setupRoutes } from "./routes/setup";
@@ -74,6 +75,7 @@ export function createApp(deps: AppDeps): Hono {
     authRoutes({ db: deps.db, config: deps.config, ...(deps.limiters ? { limiters: deps.limiters } : {}) }, actorOf),
   );
   app.route("/", projectRoutes(deps.db, actorOf));
+  app.route("/", storyRoutes(deps.db, actorOf));
   const staticRoot = deps.staticRoot ?? DEFAULT_STATIC_ROOT;
   if (existsSync(staticRoot)) {
     // hono/bun's serveStatic resolves `root` relative to process.cwd(), not to this file —

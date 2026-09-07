@@ -21,6 +21,10 @@ export interface MatrixContext {
   stateId: string;
   /** The project's states, in position order — a valid permutation for the reorder fixture. */
   stateIds: string[];
+  /** A story in the seeded project the matrix may read, PATCH, move and (freshly seeded) DELETE. */
+  storyId: string;
+  /** The Icebox column's ids after the move — what `reorder` demands the move fixture name. */
+  iceboxOrder: string[];
 }
 
 export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture> {
@@ -33,5 +37,12 @@ export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture
     "POST /api/projects/:id/states/reorder": { body: { orderedIds: ctx.stateIds } },
     "PATCH /api/projects/:id/states/:stateId": { params: { stateId: ctx.stateId }, body: { name: "Matrix" } },
     "DELETE /api/projects/:id/states/:stateId": { params: { stateId: ctx.stateId } },
+    "POST /api/projects/:id/stories": { body: { title: "Matrix story" } },
+    "PATCH /api/projects/:id/stories/:storyId": { params: { storyId: ctx.storyId }, body: { title: "Matrix" } },
+    "POST /api/projects/:id/stories/:storyId/move": {
+      params: { storyId: ctx.storyId },
+      body: { stateId: null, orderedIds: ctx.iceboxOrder },
+    },
+    "DELETE /api/projects/:id/stories/:storyId": { params: { storyId: ctx.storyId } },
   };
 }
