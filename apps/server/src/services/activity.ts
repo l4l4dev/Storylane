@@ -27,21 +27,44 @@ export interface ActivityEntry {
   payload?: Record<string, unknown> | null;
 }
 
+/** Not exported: only this module can produce a value of this type. */
+const CREATE_TOKEN = Symbol("BootstrapScope");
+
 /**
  * Project creation and invite acceptance write activity before the actor is a member, so
  * withProject cannot authorize them; they pass this instead. Every other caller passes a
  * ProjectTx. Both shapes carry tx/projectId/actor, which is all this module needs.
+ *
+ * A private field (not just a private constructor) makes this nominal: a plain
+ * `{ tx, projectId, actor }` literal no longer structurally satisfies BootstrapScope,
+ * so bootstrapScope() stays the only way to produce one (same pattern as ProjectTx).
  */
-export interface BootstrapScope {
-  readonly tx: Tx;
-  readonly projectId: string;
-  readonly actor: Actor;
+export class BootstrapScope {
+  #tx: Tx;
+
+  private constructor(
+    tx: Tx,
+    readonly projectId: string,
+    readonly actor: Actor,
+  ) {
+    this.#tx = tx;
+  }
+
+  get tx(): Tx {
+    return this.#tx;
+  }
+
+  /** @internal — bootstrapScope() calls this; the token makes it the only possible caller. */
+  static _create(token: typeof CREATE_TOKEN, tx: Tx, projectId: string, actor: Actor): BootstrapScope {
+    if (token !== CREATE_TOKEN) throw new Error("BootstrapScope is created by bootstrapScope() only");
+    return new BootstrapScope(tx, projectId, actor);
+  }
 }
 
 export type ActivityScope = ProjectTx | BootstrapScope;
 
 export function bootstrapScope(tx: Tx, projectId: string, actor: Actor): BootstrapScope {
-  return { tx, projectId, actor };
+  return BootstrapScope._create(CREATE_TOKEN, tx, projectId, actor);
 }
 
 const KNOWN = new Set<string>(ACTIVITY_ACTIONS);

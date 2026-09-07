@@ -1,6 +1,7 @@
 import { scopedItems } from "./scoped-items";
 import { loadInProject, withProject, withTwoProjects, ProjectTx, type Actor } from "../src/db/tx";
 import type { Db } from "../src/db/client";
+import { type BootstrapScope } from "../src/services/activity";
 
 declare const db: Db;
 declare const tx: ProjectTx;
@@ -29,3 +30,7 @@ withProject(db, actor, "p", "story:write", async (t) => t.projectId);
 
 // @ts-expect-error same for the two-project form.
 withTwoProjects(db, actor, "a", "b", "story:move-cross-project", async (x, y) => [x.projectId, y.projectId]);
+
+// @ts-expect-error BootstrapScope can only be constructed via bootstrapScope() — a literal with
+// the same shape must not type-check, or a caller could forge one before the actor is a member.
+({ tx: tx.tx, projectId: "p", actor }) satisfies BootstrapScope;
