@@ -17,7 +17,8 @@ MCP (later)    ┘     JSON API · static SPA · SSE · in-process worker
 - **The server is the only entry point.** No client holds a DB connection or a service key. iOS/MCP use the same JSON API with Personal Access Tokens.
 - **Project data is reachable only through a `ProjectTx`** (`apps/server/src/db/tx.ts`): `withProject(actor, projectId, action, fn)` authorizes, opens the transaction, and hands `fn` a `ProjectTx`. Repositories and services never accept a raw `db`. Rows by id are loaded with `loadInProject(tx, table, id)` (404 outside the project).
 - **Permissions come from `spec/permissions.md` via `spec/fixtures/permissions.json`.** `can(role, action)` reads the fixture; the route matrix test (`apps/server/test/route-matrix.test.ts`) fails when a route has no manifest entry.
-- **Fail closed.** A `/api/projects/:id/**` response produced without a `ProjectTx` is turned into 500 in every environment. Non-members get 404, never 403.
+- **Fail closed, per project.** A successful `/api/projects/:id/**` response must have authorized *that* project id (`src/authz/context.ts`); anything else is turned into 500 in every environment. Non-members get 404, never 403.
+- **One `withProject` per request.** Nesting throws — there are no savepoints; services take the `ProjectTx` they are handed. Routes never touch `.tx` (`local/no-project-tx-escape`).
 - **`bun:sqlite` transactions are synchronous.** No `await` inside `db.transaction()`; the ESLint rule `local/no-await-in-transaction` enforces it. Writes use `behavior: "immediate"`.
 - **Behaviour lives in `services/`, guards stay in the DB.** activity log, outbox, completed_at, container flags are explicit code in one transaction; composite `(id, project_id)` keys, unique `(project_id, number)`, and `RAISE(ABORT)` guard triggers stay in SQLite.
 - **Read `project_states.category`, never the state name** (unchanged from v0).
@@ -33,6 +34,8 @@ MCP (later)    ┘     JSON API · static SPA · SSE · in-process worker
 | Config / env | `apps/server/src/config.ts` |
 | DB open, pragmas, migrations, backup | `apps/server/src/db/` |
 | Authorization core | `apps/server/src/db/tx.ts`, `apps/server/src/authz/` |
+| Services (all project writes) | `apps/server/src/services/` |
+| Activity log | `apps/server/src/services/activity.ts` (`recordActivity`, only writer) |
 | Routes | `apps/server/src/routes/` |
 | SPA | `apps/web/` (served from `apps/web/dist` in production) |
 | Pure logic + fixtures | `packages/core/`, `spec/fixtures/` |
