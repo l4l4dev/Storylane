@@ -20,7 +20,16 @@ export function withProjectChange<T>(
   action: Action,
   fn: (tx: ProjectTx) => NotPromise<T>,
 ): T {
-  const result = withProject(deps.db, actor, projectId, action, fn);
-  deps.bus.publish(projectId);
+  // Captured from the authorized tx itself rather than reusing the caller's `projectId`: today
+  // they are always equal, but publish should be structurally bound to what authorization
+  // actually granted, not to the caller's own copy of the id.
+  let authorizedId!: string;
+  const result = withProject(deps.db, actor, projectId, action, (tx) => {
+    authorizedId = tx.projectId;
+    return fn(tx);
+  });
+  // A throw from fn (or from authorization itself) propagates out of withProject before this
+  // line, so a rolled-back change never publishes.
+  deps.bus.publish(authorizedId);
   return result;
 }

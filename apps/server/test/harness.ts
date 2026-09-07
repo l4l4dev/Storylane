@@ -60,7 +60,7 @@ export function seedProject(db: Db, owner: Actor, others: Array<[Actor, "member"
 export function makeTestApp(
   db: Db,
   extra?: (app: Hono) => void,
-  opts?: { staticRoot?: string; bus?: EventBus; heartbeatMs?: number },
+  opts?: { staticRoot?: string; bus?: EventBus; heartbeatMs?: number; maxStreamsPerUser?: number },
 ): { app: Hono; lines: string[]; bus: EventBus } {
   const lines: string[] = [];
   const bus = opts?.bus ?? new EventBus();
@@ -75,6 +75,7 @@ export function makeTestApp(
     db,
     bus,
     ...(opts?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.heartbeatMs }),
+    ...(opts?.maxStreamsPerUser === undefined ? {} : { maxStreamsPerUser: opts.maxStreamsPerUser }),
     // Both actor sources: the matrix tests address routes by header, the auth-route tests by a
     // real session cookie.
     actorOf: (c) => {

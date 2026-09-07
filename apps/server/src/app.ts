@@ -40,6 +40,8 @@ export interface AppDeps {
   bus?: EventBus;
   /** SSE heartbeat interval; tests shorten it. Defaults to SSE_HEARTBEAT_MS. */
   heartbeatMs?: number;
+  /** Per-user concurrent SSE stream cap; tests shrink it. Defaults to SSE_MAX_STREAMS_PER_USER. */
+  maxStreamsPerUser?: number;
 }
 
 const anonymous: Actor = { kind: "anonymous" };
@@ -85,7 +87,13 @@ export function createApp(deps: AppDeps): Hono {
   app.route("/", storyRoutes({ db: deps.db, bus, actorOf }));
   app.route(
     "/",
-    eventRoutes({ db: deps.db, bus, actorOf, ...(deps.heartbeatMs === undefined ? {} : { heartbeatMs: deps.heartbeatMs }) }),
+    eventRoutes({
+      db: deps.db,
+      bus,
+      actorOf,
+      ...(deps.heartbeatMs === undefined ? {} : { heartbeatMs: deps.heartbeatMs }),
+      ...(deps.maxStreamsPerUser === undefined ? {} : { maxStreamsPerUser: deps.maxStreamsPerUser }),
+    }),
   );
   const staticRoot = deps.staticRoot ?? DEFAULT_STATIC_ROOT;
   if (existsSync(staticRoot)) {
