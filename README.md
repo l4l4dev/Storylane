@@ -7,7 +7,7 @@ flow, as a self-hostable single-container app.
 Try it:
 
 ```bash
-docker run -d -p 3000:3000 -v storylane:/data ghcr.io/l4l4dev/storylane:edge
+docker run -d --name storylane -p 3000:3000 -v storylane:/data ghcr.io/l4l4dev/storylane:edge
 ```
 
 Then open `http://localhost:3000`. See [INSTALL.md](INSTALL.md) for running it

@@ -49,7 +49,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
         </p>
       </form>
       <p className="text-xs" style={{ color: "var(--ink-muted)" }}>
-        Forgot your password? An instance admin can send you a one-time reset link.
+        Forgot your password? Ask your instance admin — see INSTALL.md, Password reset.
       </p>
     </main>
   );

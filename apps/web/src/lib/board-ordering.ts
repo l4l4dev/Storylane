@@ -34,3 +34,19 @@ export function moveStoryTo(
   destination.storyIds.splice(index, 0, storyId);
   return next;
 }
+
+/**
+ * True when the drop would leave every column exactly as it was — dropping a card back on its
+ * own slot. The caller uses this to skip the `/move` POST entirely rather than send a no-op.
+ */
+export function isNoopMove(
+  columns: ColumnView[],
+  storyId: string,
+  targetStateId: string | null,
+  targetIndex: number,
+): boolean {
+  const next = moveStoryTo(columns, storyId, targetStateId, targetIndex);
+  return columns.every(
+    (column, i) => column.stateId === next[i]!.stateId && column.storyIds.join(",") === next[i]!.storyIds.join(","),
+  );
+}

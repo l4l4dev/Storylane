@@ -1,25 +1,37 @@
 import { useState } from "react";
 import { apiFetch, errorMessage } from "../lib/api";
 import { buttonClass, Field, inputClass } from "./Field";
+import { PointButtons } from "./PointButtons";
 
 const STORY_TYPES = ["feature", "bug", "chore", "release"] as const;
 
 /**
- * New stories start in the Icebox (spec/features.md "Icebox"), so this always posts
- * `stateId: null` — the quick-add sits on the Icebox column, the group it adds to (principle 4).
+ * Posts into whichever column it's rendered on (`stateId`) — the Icebox and the first
+ * `unstarted` column both get one (spec/features.md "Icebox" says new stories start there;
+ * spec/screens.md "Kanban view" puts the `+` on the first unstarted column).
  */
-export function QuickAddCard({ projectId, onAdded }: { projectId: string; onAdded: () => void }) {
+export function QuickAddCard({
+  projectId,
+  stateId,
+  scaleValues,
+  onAdded,
+}: {
+  projectId: string;
+  stateId: string | null;
+  scaleValues: number[];
+  onAdded: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [storyType, setStoryType] = useState<(typeof STORY_TYPES)[number]>("feature");
-  const [points, setPoints] = useState("");
+  const [points, setPoints] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
     setOpen(false);
     setTitle("");
     setStoryType("feature");
-    setPoints("");
+    setPoints(null);
     setError(null);
   }
 
@@ -32,8 +44,10 @@ export function QuickAddCard({ projectId, onAdded }: { projectId: string; onAdde
         body: {
           title,
           storyType,
-          points: points === "" ? null : Number(points),
-          stateId: null,
+          // Points are feature-only in this UI (see StoryCard) — a non-feature type never had a
+          // button row to set one from, so it always posts null here.
+          points: storyType === "feature" ? points : null,
+          stateId,
         },
       });
       reset();
@@ -61,7 +75,10 @@ export function QuickAddCard({ projectId, onAdded }: { projectId: string; onAdde
           className={inputClass}
           style={{ borderColor: "var(--line)" }}
           value={storyType}
-          onChange={(e) => setStoryType(e.target.value as (typeof STORY_TYPES)[number])}
+          onChange={(e) => {
+            setStoryType(e.target.value as (typeof STORY_TYPES)[number]);
+            setPoints(null);
+          }}
         >
           {STORY_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -70,15 +87,11 @@ export function QuickAddCard({ projectId, onAdded }: { projectId: string; onAdde
           ))}
         </select>
       </Field>
-      <Field label="Points">
-        <input
-          className={inputClass}
-          style={{ borderColor: "var(--line)" }}
-          type="number"
-          value={points}
-          onChange={(e) => setPoints(e.target.value)}
-        />
-      </Field>
+      {storyType === "feature" && (
+        <Field label="Points" hint="Optional — you can estimate it later.">
+          <PointButtons scaleValues={scaleValues} value={points} onSelect={setPoints} />
+        </Field>
+      )}
       <p role="alert" className="min-h-4 text-xs" style={{ color: "var(--danger)" }}>{error ?? ""}</p>
       <div className="flex gap-2">
         <button type="submit" className={buttonClass} style={{ borderColor: "var(--line)" }}>

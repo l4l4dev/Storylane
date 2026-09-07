@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BoardPage } from "./BoardPage";
 
@@ -7,6 +7,21 @@ afterEach(() => vi.restoreAllMocks());
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+/** Dispatches by "METHOD url" so call order (board vs. project vs. an action) never matters,
+ * and — unlike `mockResolvedValue`, which hands out the same already-consumed `Response` to
+ * every call — always builds a fresh `Response` per call. */
+function mockApi(routes: Record<string, () => Response>) {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = typeof input === "string" ? input : input.toString();
+    const method = (init?.method ?? "GET").toUpperCase();
+    const handler = routes[`${method} ${url}`];
+    if (!handler) throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+    return handler();
+  });
+}
+
+const project = { pointScale: "fibonacci", customPoints: null };
 
 const board = {
   states: [
@@ -24,7 +39,10 @@ const board = {
 
 describe("BoardPage", () => {
   it("renders one column per state plus the Icebox, with counts and point sums", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(200, board));
+    mockApi({
+      "GET /api/projects/p1/board": () => json(200, board),
+      "GET /api/projects/p1": () => json(200, project),
+    });
     render(<BoardPage projectId="p1" />);
     expect(await screen.findByRole("heading", { name: /icebox/i })).toBeInTheDocument();
     for (const name of ["Unstarted", "Started", "Accepted"]) {
@@ -35,47 +53,59 @@ describe("BoardPage", () => {
   });
 
   it("shows the story number and title on every card", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(200, board));
+    mockApi({
+      "GET /api/projects/p1/board": () => json(200, board),
+      "GET /api/projects/p1": () => json(200, project),
+    });
     render(<BoardPage projectId="p1" />);
     expect(await screen.findByText("Ready")).toBeInTheDocument();
     expect(screen.getByText("#2")).toBeInTheDocument();
   });
 
   it("advances a story with its state's action label and refetches", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(json(200, board))
-      .mockResolvedValueOnce(json(200, { id: "s2", stateId: "doing" }))
-      .mockResolvedValue(json(200, board));
+    const fetchSpy = mockApi({
+      "GET /api/projects/p1/board": () => json(200, board),
+      "GET /api/projects/p1": () => json(200, project),
+      "POST /api/projects/p1/stories/s2/move": () => json(200, { id: "s2", stateId: "doing" }),
+    });
     render(<BoardPage projectId="p1" />);
     await userEvent.click(await screen.findByRole("button", { name: /^start$/i }));
-    await waitFor(() => expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(2));
-    const [path, init] = fetchSpy.mock.calls[1] as [string, RequestInit];
+    const moveCall = await waitFor(() => {
+      const call = fetchSpy.mock.calls.find(([url]) => String(url).endsWith("/stories/s2/move"));
+      if (!call) throw new Error("move not called yet");
+      return call as [string, RequestInit];
+    });
+    const [path, init] = moveCall;
     expect(path).toBe("/api/projects/p1/stories/s2/move");
     expect(JSON.parse(init.body as string)).toEqual({ stateId: "doing", orderedIds: ["s2"] });
   });
 
   it("quick-adds a story into the Icebox, where new stories land", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(json(200, board))
-      .mockResolvedValueOnce(json(201, { id: "s3", number: 3, title: "New one" }))
-      .mockResolvedValue(json(200, board));
+    const fetchSpy = mockApi({
+      "GET /api/projects/p1/board": () => json(200, board),
+      "GET /api/projects/p1": () => json(200, project),
+      "POST /api/projects/p1/stories": () => json(201, { id: "s3", number: 3, title: "New one" }),
+    });
     render(<BoardPage projectId="p1" />);
-    await userEvent.click(await screen.findByRole("button", { name: /add a story/i }));
-    await userEvent.type(screen.getByLabelText(/title/i), "New one");
-    await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
-    await waitFor(() => expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(2));
-    const [path, init] = fetchSpy.mock.calls[1] as [string, RequestInit];
-    expect(path).toBe("/api/projects/p1/stories");
+    const iceboxColumn = await screen.findByTestId("column-icebox");
+    await userEvent.click(within(iceboxColumn).getByRole("button", { name: /add a story/i }));
+    await userEvent.type(within(iceboxColumn).getByLabelText(/title/i), "New one");
+    await userEvent.click(within(iceboxColumn).getByRole("button", { name: /^add$/i }));
+    const createCall = await waitFor(() => {
+      const call = fetchSpy.mock.calls.find(([url]) => String(url) === "/api/projects/p1/stories");
+      if (!call) throw new Error("create not called yet");
+      return call as [string, RequestInit];
+    });
+    const [, init] = createCall;
     expect(JSON.parse(init.body as string)).toMatchObject({ title: "New one", stateId: null });
   });
 
   it("surfaces a rejected move and puts the card back", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(json(200, board))
-      .mockResolvedValueOnce(json(409, { error: "estimate_required" }))
-      .mockResolvedValue(json(200, board));
+    mockApi({
+      "GET /api/projects/p1/board": () => json(200, board),
+      "GET /api/projects/p1": () => json(200, project),
+      "POST /api/projects/p1/stories/s2/move": () => json(409, { error: "estimate_required" }),
+    });
     render(<BoardPage projectId="p1" />);
     await userEvent.click(await screen.findByRole("button", { name: /^start$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/estimate/i);
@@ -93,7 +123,10 @@ describe("BoardPage", () => {
         { stateId: "done", stories: [{ ...board.columns[1]!.stories[0]!, id: "s9", stateId: "done", completedAt: 1_700_000_000_000 }] },
       ],
     };
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(200, doneBoard));
+    mockApi({
+      "GET /api/projects/p1/board": () => json(200, doneBoard),
+      "GET /api/projects/p1": () => json(200, project),
+    });
     render(<BoardPage projectId="p1" />);
     await screen.findByText("Ready");
     expect(screen.queryAllByRole("button", { name: /start|finish/i })).toHaveLength(0);

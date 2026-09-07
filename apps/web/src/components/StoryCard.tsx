@@ -4,6 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { computeStateGate, type GateState } from "@storylane/core";
 import { apiFetch, errorMessage } from "../lib/api";
 import { buttonClass } from "./Field";
+import { PointButtons } from "./PointButtons";
 
 export interface StoryView {
   id: string;
@@ -23,30 +24,37 @@ export function StoryCard({
   projectId,
   story,
   states,
+  scaleValues,
   onAdvance,
   onEstimated,
 }: {
   projectId: string;
   story: StoryView;
   states: GateState[];
+  /** The project's point scale, resolved once in BoardPage. */
+  scaleValues: number[];
   onAdvance: (targetStateId: string) => void;
   onEstimated: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: story.id });
   const gate = computeStateGate(states, story.stateId);
-  const [editing, setEditing] = useState(false);
-  const [points, setPoints] = useState(String(story.points ?? ""));
+  const [showPoints, setShowPoints] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function submitPoints(event: React.FormEvent) {
-    event.preventDefault();
+  // Points are feature-only in this UI (packages/core's storyTypeUsesPoints also allows `bug`,
+  // since a bug's points are optional and stored, but phase 1 gives it no estimate control here).
+  const isFeature = story.storyType === "feature";
+  const targetCategory = gate.kind === "advance" ? (states.find((s) => s.id === gate.targetStateId)?.category ?? null) : null;
+  // Pivotal behaviour: an unestimated feature whose only move is out of an unstarted-category
+  // state shows the point row in place of the advance button — there is nothing else to click
+  // that wouldn't just bounce off the server's estimate gate (no dead controls, principle 1).
+  const blockedUnestimated = isFeature && story.points === null && gate.kind === "advance" && targetCategory !== null && targetCategory !== "unstarted";
+
+  async function selectPoints(points: number) {
     setError(null);
     try {
-      await apiFetch(`/api/projects/${projectId}/stories/${story.id}`, {
-        method: "PATCH",
-        body: { points: points === "" ? null : Number(points) },
-      });
-      setEditing(false);
+      await apiFetch(`/api/projects/${projectId}/stories/${story.id}`, { method: "PATCH", body: { points } });
+      setShowPoints(false);
       onEstimated();
     } catch (e) {
       setError(errorMessage(e));
@@ -67,70 +75,55 @@ export function StoryCard({
       </div>
       <div className="flex items-center gap-2 text-xs" style={{ color: "var(--ink-muted)" }}>
         <span>{story.storyType}</span>
-        {editing ? (
-          <form onSubmit={submitPoints} className="flex items-center gap-1" onPointerDown={(e) => e.stopPropagation()}>
-            <input
-              autoFocus
-              type="number"
-              aria-label="Points"
-              className="mono w-12 rounded border px-1"
-              style={{ borderColor: "var(--line)" }}
-              value={points}
-              onChange={(e) => setPoints(e.target.value)}
-            />
-            <button type="submit" className={buttonClass} style={{ borderColor: "var(--line)" }}>
-              Save
-            </button>
-            <button
-              type="button"
-              className={buttonClass}
-              style={{ borderColor: "var(--line)" }}
-              onClick={() => {
-                setPoints(String(story.points ?? ""));
-                setEditing(false);
-              }}
-            >
-              Cancel
-            </button>
-          </form>
-        ) : (
+        {isFeature && story.points !== null && (
+          // The badge toggles the same point-button row open, so re-estimating never needs a
+          // separate control.
           <button
             type="button"
             className="mono underline decoration-dotted"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => setEditing(true)}
+            onClick={() => setShowPoints((v) => !v)}
           >
-            {story.points ?? "estimate"}
+            {story.points}
           </button>
         )}
+        {!isFeature && story.points !== null && <span className="mono">{story.points}</span>}
       </div>
       {error && (
         <p role="alert" className="text-xs" style={{ color: "var(--danger)" }}>
           {error}
         </p>
       )}
-      {/* No dead controls: when there is no advance, nothing is rendered (principle 1). */}
-      {gate.kind === "advance" && (
-        <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.targetStateId)}>
-          {gate.label}
-        </button>
-      )}
-      {gate.kind === "accept-reject" && (
-        <div className="flex gap-1">
-          <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.acceptStateId)}>
-            {gate.acceptLabel}
-          </button>
-          {gate.rejectStateId !== null && (
-            <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.rejectStateId!)}>
-              Reject
+      {isFeature && (blockedUnestimated || showPoints) ? (
+        <div onPointerDown={(e) => e.stopPropagation()}>
+          <PointButtons scaleValues={scaleValues} value={story.points} onSelect={selectPoints} />
+        </div>
+      ) : (
+        <>
+          {/* No dead controls: when there is no advance, nothing is rendered (principle 1). */}
+          {gate.kind === "advance" && (
+            <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.targetStateId)}>
+              {gate.label}
             </button>
           )}
-        </div>
-      )}
-      {gate.kind === "restart" && gate.targetStateId !== null && (
-        <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.targetStateId!)}>
-          Restart
-        </button>
+          {gate.kind === "accept-reject" && (
+            <div className="flex gap-1">
+              <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.acceptStateId)}>
+                {gate.acceptLabel}
+              </button>
+              {gate.rejectStateId !== null && (
+                <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.rejectStateId!)}>
+                  Reject
+                </button>
+              )}
+            </div>
+          )}
+          {gate.kind === "restart" && gate.targetStateId !== null && (
+            <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.targetStateId!)}>
+              Restart
+            </button>
+          )}
+        </>
       )}
     </li>
   );

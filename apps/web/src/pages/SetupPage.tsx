@@ -27,8 +27,14 @@ export function SetupPage({ onReady }: { onReady: () => void }) {
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-6">
       <h1 className="text-xl">Set up Storylane</h1>
+      <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
+        The account you create here becomes the instance admin.
+      </p>
       <form onSubmit={submit} className="flex flex-col gap-2">
-        <Field label="Setup token" hint="Printed once when the container started: docker logs <container>">
+        <Field
+          label="Setup token"
+          hint="docker logs storylane 2>&1 | grep 'setup token' — the token expires after 30 minutes; restart the container to get a new one."
+        >
           <input {...input} autoComplete="off" value={form.token} onChange={set("token")} />
         </Field>
         <Field label="Your name">

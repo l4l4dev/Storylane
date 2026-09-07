@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { columnOf, moveStoryTo, orderedIdsFor, type ColumnView } from "./board-ordering";
+import { columnOf, isNoopMove, moveStoryTo, orderedIdsFor, type ColumnView } from "./board-ordering";
 
 const columns = (): ColumnView[] => [
   { stateId: null, storyIds: ["i1", "i2"] },
@@ -29,6 +29,16 @@ describe("moveStoryTo", () => {
     expect(orderedIdsFor(next, null)).toEqual(["t1", "i1", "i2"]);
   });
 
+  it("moves down within a column", () => {
+    const next = moveStoryTo(columns(), "t1", "todo", 2);
+    expect(orderedIdsFor(next, "todo")).toEqual(["t2", "t3", "t1"]);
+  });
+
+  it("inserts at the end of a non-empty target column", () => {
+    const next = moveStoryTo(columns(), "i1", "todo", 3);
+    expect(orderedIdsFor(next, "todo")).toEqual(["t1", "t2", "t3", "i1"]);
+  });
+
   it("leaves the board untouched for an unknown story or column", () => {
     expect(moveStoryTo(columns(), "ghost", "todo", 0)).toEqual(columns());
     expect(moveStoryTo(columns(), "t1", "nope", 0)).toEqual(columns());
@@ -46,5 +56,17 @@ describe("columnOf", () => {
     expect(columnOf(columns(), "t2")?.stateId).toBe("todo");
     expect(columnOf(columns(), "i2")?.stateId).toBeNull();
     expect(columnOf(columns(), "ghost")).toBeUndefined();
+  });
+});
+
+describe("isNoopMove", () => {
+  it("is true for a drop back on its own slot", () => {
+    expect(isNoopMove(columns(), "t2", "todo", 1)).toBe(true);
+    expect(isNoopMove(columns(), "i1", null, 0)).toBe(true);
+  });
+
+  it("is false for any actual reorder or column change", () => {
+    expect(isNoopMove(columns(), "t2", "todo", 0)).toBe(false);
+    expect(isNoopMove(columns(), "t1", "done", 0)).toBe(false);
   });
 });

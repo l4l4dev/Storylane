@@ -16,19 +16,24 @@ and is public — no login needed to pull it.
 Run:
 
 ```bash
-docker run -d -p 3000:3000 -v storylane:/data ghcr.io/l4l4dev/storylane:edge
+docker run -d --name storylane -p 3000:3000 -v storylane:/data ghcr.io/l4l4dev/storylane:edge
 ```
 
 No tagged release exists yet, so `:edge` (built from `main`) is the entry point;
 after the first tagged release, `:latest` becomes available — until then use
 `:edge`.
 
-Then open `http://localhost:3000` in a browser.
+Then open `http://localhost:3000` in a browser — it shows the setup page.
+Get the one-time setup token from the container's logs:
 
-For now the page shows a status shell ("server: ok") rather than a setup
-wizard — the setup page (creating your first admin account and project)
-arrives in phase 1. This step only proves the container runs and the
-database initializes correctly.
+```bash
+docker logs storylane 2>&1 | grep 'setup token'
+```
+
+Paste that token into the setup page along with your name, email, and a
+password (at least 12 characters), and submit. That account becomes the
+instance admin. The token expires after 30 minutes — restart the container
+(`docker restart storylane`) to get a new one if it does.
 
 To stop it:
 
@@ -276,3 +281,38 @@ docker compose down -v
 ```
 
 Back up first (section 5) if there's any chance you'll want this data again.
+
+## 9. Password reset
+
+There is no self-service "forgot password" flow yet — an instance admin mints
+a one-time reset link for the person who's locked out.
+
+First, find the user's id. There's no admin UI for this yet either, so read
+it straight out of the database with `bun:sqlite` (replace `storylane` with
+your container's name if you didn't use `--name storylane`, and
+`user@example.org` with the person's email):
+
+```bash
+docker exec storylane bun -e "
+import { Database } from 'bun:sqlite';
+const db = new Database('/data/storylane.db');
+console.log(db.query('select id, email from users where email = ?').all('user@example.org'));
+"
+```
+
+Then, as the admin, sign in to Storylane in a browser and copy the
+`storylane_session` cookie value from the browser's dev tools (Application →
+Cookies). Mint the reset link (replace `<user-id>` and `<session-cookie>`):
+
+```bash
+curl -s -X POST http://localhost:3000/api/admin/users/<user-id>/reset-link \
+  -H "Content-Type: application/json" \
+  -H "Sec-Fetch-Site: same-origin" \
+  -b "storylane_session=<session-cookie>" \
+  -d '{}'
+```
+
+The response is JSON: `{"token", "expiresAt", "path", "url"}`. Send the
+person `path` (or `url`, if `STORYLANE_BASE_URL` is set) — opening it lets
+them set a new password. The link expires; mint a fresh one if it does before
+they use it.
