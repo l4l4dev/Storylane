@@ -8,6 +8,7 @@ import { ROUTE_ACTIONS } from "../src/authz/route-manifest";
 import { ALL_ACTIONS, expected, ROLES, type Action, type Role } from "../src/authz/permissions";
 import { withProject, type Actor } from "../src/db/tx";
 import { projects } from "../src/db/schema";
+import { matrixFixtures } from "./matrix-fixtures";
 
 const db = makeTestDb();
 const { app } = makeTestApp(db);
@@ -19,6 +20,7 @@ const projectId = seedProject(db, ownerA, [
   [memberA, "member"],
   [viewerA, "viewer"],
 ]);
+const FIXTURES = matrixFixtures({ projectId });
 const actors: Record<Role, Actor> = {
   anonymous: { kind: "anonymous" },
   "non-member": outsider,
@@ -59,10 +61,19 @@ describe("permission matrix over project routes", () => {
     for (const role of ROLES) {
       it(`${key} as ${role} → ${expected(rule, role)}`, async () => {
         const actor = actors[role];
-        const res = await app.request(path.replace(":id", projectId), {
+        const fixture = FIXTURES[key] ?? {};
+        let url = path.replace(":id", projectId);
+        for (const [name, value] of Object.entries(fixture.params ?? {})) url = url.replace(`:${name}`, value);
+        expect(url).not.toContain("/:"); // a param with no fixture would make every row meaningless
+        const headers: Record<string, string> =
+          actor.kind === "anonymous" ? {} : { "x-test-actor": JSON.stringify(actor) };
+        if (fixture.body !== undefined) headers["content-type"] = "application/json";
+        const res = await app.request(url, {
           method,
-          headers: actor.kind === "anonymous" ? {} : { "x-test-actor": JSON.stringify(actor) },
+          headers,
+          ...(fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
         });
+        if (fixture.stream) await res.body?.cancel();
         const want = expected(rule, role);
         if (want === 200) expect(res.status).toBeLessThan(300);
         else expect(res.status).toBe(want);
@@ -133,5 +144,32 @@ describe("x-test-actor header", () => {
       headers: { "x-test-actor": JSON.stringify(ownerA) },
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("project-scoped fail-closed", () => {
+  const asOwner = { "x-test-actor": JSON.stringify(ownerA) };
+
+  it("turns a handler that authorized another project into 500", async () => {
+    const other = seedProject(db, ownerA);
+    const { app: crossed } = makeTestApp(db, (a) =>
+      a.get("/api/projects/:id/crossed", (c) =>
+        // Authorizes `other`, answers for c.req.param("id") — the phase-0 counter accepted this.
+        c.json(withProject(db, ownerA, other, "project:read", (tx) => ({ id: tx.projectId }))),
+      ),
+    );
+    const res = await crossed.request(`/api/projects/${projectId}/crossed`, { headers: asOwner });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "authorization_missing" });
+  });
+
+  it("accepts a handler that authorized the requested project", async () => {
+    const { app: good } = makeTestApp(db, (a) =>
+      a.get("/api/projects/:id/same", (c) =>
+        c.json(withProject(db, ownerA, c.req.param("id"), "project:read", (tx) => ({ id: tx.projectId }))),
+      ),
+    );
+    const res = await good.request(`/api/projects/${projectId}/same`, { headers: asOwner });
+    expect(res.status).toBe(200);
   });
 });

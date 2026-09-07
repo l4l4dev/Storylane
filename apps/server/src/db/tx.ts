@@ -7,7 +7,7 @@ import { noteAuthorized } from "../authz/context";
 import { expected, isWrite, type Action, type MemberRole, type Role } from "../authz/permissions";
 
 export type Actor = { kind: "anonymous" } | { kind: "user"; userId: string; isAdmin: boolean };
-type UserActor = Extract<Actor, { kind: "user" }>;
+export type UserActor = Extract<Actor, { kind: "user" }>;
 
 /** Drizzle's synchronous transaction handle for bun-sqlite. */
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -17,7 +17,7 @@ export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
  * first await, so a Promise-returning callback is rejected at compile time.
  * `eslint-rules/no-await-in-transaction.js` catches the same mistake in JS.
  */
-type NotPromise<T> = T extends PromiseLike<unknown> ? never : T;
+export type NotPromise<T> = T extends PromiseLike<unknown> ? never : T;
 
 type AnyColumn = SQLiteTable["_"]["columns"][string];
 
@@ -102,7 +102,7 @@ function authorizeIn(tx: Tx, actor: Actor, projectId: string, action: Action): P
   const code = expected(action, role);
   if (code === 403) throw new HttpError(403, "forbidden");
   if (code !== 200) throw new Error(`unexpected permission code ${code} for ${action} as ${role}`);
-  noteAuthorized();
+  noteAuthorized(projectId);
   return ProjectTx._create(CREATE_TOKEN, tx, projectId, role, actor);
 }
 
@@ -127,6 +127,23 @@ function resolveRole(tx: Tx, actor: UserActor, projectId: string): { role: Role;
 }
 
 /**
+ * bun:sqlite has no savepoints here, so an inner transaction would commit the outer one.
+ * One withProject per request: services take the ProjectTx they are given and never open
+ * their own.
+ */
+let transactionOpen = false;
+
+function openTransaction<T>(run: () => T): T {
+  if (transactionOpen) throw new Error("withProject cannot be nested");
+  transactionOpen = true;
+  try {
+    return run();
+  } finally {
+    transactionOpen = false;
+  }
+}
+
+/**
  * Opens a top-level transaction; do not nest withProject calls
  * (no savepoint support yet — the inner call would commit the outer one).
  */
@@ -139,16 +156,18 @@ export function withProject<T>(
 ): T {
   const behavior = isWrite(action) ? "immediate" : "deferred";
   let ptx: ProjectTx | undefined;
-  try {
-    return db.transaction((tx) => {
-      ptx = authorizeIn(tx, actor, projectId, action);
-      return rejectThenable(fn(ptx));
-    }, { behavior }) as T;
-  } finally {
-    // The transaction has returned (committed or rolled back) by the time finally runs;
-    // ptx must not be usable by a closure the caller kept from inside fn.
-    ptx?._invalidate(CREATE_TOKEN);
-  }
+  return openTransaction(() => {
+    try {
+      return db.transaction((tx) => {
+        ptx = authorizeIn(tx, actor, projectId, action);
+        return rejectThenable(fn(ptx));
+      }, { behavior }) as T;
+    } finally {
+      // The transaction has returned (committed or rolled back) by the time finally runs;
+      // ptx must not be usable by a closure the caller kept from inside fn.
+      ptx?._invalidate(CREATE_TOKEN);
+    }
+  });
 }
 
 /** Same nesting rule as withProject: this is the top-level transaction. */
@@ -162,16 +181,18 @@ export function withTwoProjects<T>(
 ): T {
   let fromTx: ProjectTx | undefined;
   let toTx: ProjectTx | undefined;
-  try {
-    return db.transaction((tx) => {
-      fromTx = authorizeIn(tx, actor, fromId, action);
-      toTx = authorizeIn(tx, actor, toId, action);
-      return rejectThenable(fn(fromTx, toTx));
-    }, { behavior: "immediate" }) as T;
-  } finally {
-    fromTx?._invalidate(CREATE_TOKEN);
-    toTx?._invalidate(CREATE_TOKEN);
-  }
+  return openTransaction(() => {
+    try {
+      return db.transaction((tx) => {
+        fromTx = authorizeIn(tx, actor, fromId, action);
+        toTx = authorizeIn(tx, actor, toId, action);
+        return rejectThenable(fn(fromTx, toTx));
+      }, { behavior: "immediate" }) as T;
+    } finally {
+      fromTx?._invalidate(CREATE_TOKEN);
+      toTx?._invalidate(CREATE_TOKEN);
+    }
+  });
 }
 
 export function loadInProject<TTable extends ScopedTable>(

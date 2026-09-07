@@ -1,20 +1,13 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import type { Db } from "../db/client";
 import { withProject, type Actor } from "../db/tx";
-import { projects } from "../db/schema";
+import { readProject } from "../services/projects";
 
 export function projectRoutes(db: Db, actorOf: (c: Context) => Actor) {
   return new Hono().get("/api/projects/:id", (c) => {
     const id = c.req.param("id");
-    const row = withProject(db, actorOf(c), id, "project:read", (tx) =>
-      tx.tx
-        .select({ id: projects.id, name: projects.name, archivedAt: projects.archivedAt })
-        .from(projects)
-        .where(eq(projects.id, tx.projectId))
-        .get(),
-    );
+    const row = withProject(db, actorOf(c), id, "project:read", (tx) => readProject(tx));
     return c.json(row);
   });
 }
