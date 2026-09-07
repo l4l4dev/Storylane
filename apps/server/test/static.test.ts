@@ -2,14 +2,17 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeTestApp, makeTestDb } from "./harness";
+import { makeTestApp, makeTestDb, seedUser } from "./harness";
 
 describe("static SPA serving", () => {
   const dir = mkdtempSync(join(tmpdir(), "sl-web-"));
   mkdirSync(join(dir, "assets"));
   writeFileSync(join(dir, "index.html"), "<!doctype html><title>shell</title>");
   writeFileSync(join(dir, "assets", "app.js"), "console.log(1)");
-  const { app } = makeTestApp(makeTestDb(), undefined, { staticRoot: dir });
+  // Seeded so the setup gate (TASK-248) does not turn these into 409 setup_required.
+  const db = makeTestDb();
+  seedUser(db, "owner@example.test");
+  const { app } = makeTestApp(db, undefined, { staticRoot: dir });
 
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 

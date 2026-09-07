@@ -10,5 +10,7 @@ export const ROUTE_ACTIONS: Record<`${Method} ${string}`, RouteRule> = {
   "POST /api/auth/logout": "self",
   "GET /api/me": "self",
   "POST /api/me/password": "self",
+  "GET /api/setup": "setup",
+  "POST /api/setup": "setup",
   "GET /api/projects/:id": "project:read",
 };

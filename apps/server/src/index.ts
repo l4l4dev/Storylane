@@ -9,6 +9,7 @@ import { backupThenMigrate } from "./db/migrate";
 import { vacuumInto } from "./db/backup";
 import { actorFromRequest } from "./auth/actor";
 import { purgeExpiredSessions } from "./auth/sessions";
+import { ensureSetupToken } from "./setup/setup-token";
 
 const [command = "serve", ...args] = Bun.argv.slice(2);
 const log = createLogger();
@@ -35,6 +36,7 @@ if (command === "serve") {
     log.error("migration failed; restore backups/pre-<version>.db if needed", { message: (e as Error).message });
     process.exit(1);
   }
+  ensureSetupToken(db, log);
   const purge = () => log.info("sessions purged", { count: purgeExpiredSessions(db) });
   purge();
   // Dead rows are already refused by resolveSession; this only keeps the table from growing.

@@ -2,12 +2,15 @@ import { describe, expect, it } from "bun:test";
 import { createApp } from "../src/app";
 import { createLogger } from "../src/log";
 import { loadConfig } from "../src/config";
-import { makeTestDb } from "./harness";
+import { makeTestDb, seedUser } from "./harness";
 
 function build(health: () => boolean) {
   const lines: string[] = [];
   const log = createLogger((l) => lines.push(l));
-  const app = createApp({ config: loadConfig({}), log, health, db: makeTestDb() });
+  const db = makeTestDb();
+  // Seeded so the setup gate (TASK-248) does not turn /api/* requests into 409 setup_required.
+  seedUser(db, "owner@example.test");
+  const app = createApp({ config: loadConfig({}), log, health, db });
   return { app, lines };
 }
 
