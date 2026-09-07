@@ -64,9 +64,8 @@ export function previewResetToken(db: Db, token: string, now = Date.now()): { em
  * token this call had already validated, or leave the credential change applied without the
  * token ever being marked spent.
  *
- * Every other unused, unexpired reset token minted for this user is spent in the same
- * transaction: leaving a second live link outstanding would let whoever holds it overwrite the
- * password this call just set.
+ * Spending this token and every other outstanding one is changePasswordInTx's job (it does it
+ * in this same transaction), so both this path and /api/me/password get it.
  */
 export function consumeResetToken(db: Db, token: string, passwordHash: string, now = Date.now()): { userId: string } {
   assertNoOpenTransaction("consumeResetToken");
@@ -74,10 +73,6 @@ export function consumeResetToken(db: Db, token: string, passwordHash: string, n
     (tx) => {
       const row = usable(tx, token, now);
       if (!row) throw new HttpError(404, "not_found");
-      tx.update(resetTokens)
-        .set({ usedAt: now })
-        .where(and(eq(resetTokens.userId, row.userId), isNull(resetTokens.usedAt)))
-        .run();
       changePasswordInTx(tx, row.userId, passwordHash, now);
       return { userId: row.userId };
     },

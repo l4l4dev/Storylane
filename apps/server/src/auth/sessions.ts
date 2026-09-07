@@ -1,7 +1,7 @@
-import { eq, lt, or } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { assertNoOpenTransaction, type Tx } from "../db/tx";
-import { sessions, users } from "../db/schema";
+import { resetTokens, sessions, users } from "../db/schema";
 import { hashToken, newSecret } from "./tokens";
 
 export const SESSION_COOKIE = "storylane_session";
@@ -150,6 +150,13 @@ export function revokeUserSessions(db: Db, userId: string, now = Date.now()): nu
  */
 export function changePasswordInTx(tx: Tx, userId: string, passwordHash: string, now: number): number {
   const deleted = tx.delete(sessions).where(eq(sessions.userId, userId)).returning({ id: sessions.id }).all();
+  // Every outstanding reset link of this user is part of the same fact: leaving one live would
+  // let whoever holds it overwrite the password this change just set. Both callers need it —
+  // a self-service change (/api/me/password) as much as consumeResetToken.
+  tx.update(resetTokens)
+    .set({ usedAt: now })
+    .where(and(eq(resetTokens.userId, userId), isNull(resetTokens.usedAt)))
+    .run();
   tx.update(users).set({ passwordHash, credentialsChangedAt: now }).where(eq(users.id, userId)).run();
   return deleted.length;
 }

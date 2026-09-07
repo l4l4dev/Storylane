@@ -140,6 +140,26 @@ describe("using a reset link", () => {
     expect((await app.request(`${ORIGIN}/api/auth/reset/${token}`)).status).toBe(404);
   });
 
+  it("is spent by a self-service password change (the link must not overwrite the new password)", async () => {
+    const login = await app.request(`${ORIGIN}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: ORIGIN },
+      body: JSON.stringify({ email: "target@example.test", password: PASSWORD }),
+    });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
+    const { token } = (await (await mint(admin, userIdOf(target))).json()) as { token: string };
+
+    const changed = await app.request(`${ORIGIN}/api/me/password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: ORIGIN, cookie },
+      body: JSON.stringify({ currentPassword: PASSWORD, newPassword: "a whole new secret" }),
+    });
+    expect(changed.status).toBe(200);
+    expect(db.select().from(resetTokens).all().every((row) => row.usedAt !== null)).toBe(true);
+    expect((await app.request(`${ORIGIN}/api/auth/reset/${token}`)).status).toBe(404);
+    expect((await use(token, "the attacker's secret")).status).toBe(404);
+  });
+
   it("404s an over-length token on both preview and reset, without hashing it", async () => {
     const overLong = "a".repeat(MAX_TOKEN_LENGTH + 1);
     expect((await app.request(`${ORIGIN}/api/auth/reset/${overLong}`)).status).toBe(404);
