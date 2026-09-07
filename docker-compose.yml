@@ -10,7 +10,10 @@ services:
     volumes:
       - storylane-data:/data
     ports:
-      - "${STORYLANE_BIND:-0.0.0.0}:${STORYLANE_HOST_PORT:-3000}:3000"
+      # Loopback by default: with STORYLANE_TRUST_PROXY=true (the https profile) a client that
+      # reaches this port directly could forge X-Forwarded-For and defeat the rate limiters.
+      # The LAN deployment overrides it with STORYLANE_BIND=0.0.0.0 (INSTALL §3).
+      - "${STORYLANE_BIND:-127.0.0.1}:${STORYLANE_HOST_PORT:-3000}:3000"
 
   caddy:
     image: caddy:2

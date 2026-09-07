@@ -81,11 +81,14 @@ Open `.env` in a text editor and set:
 DOMAIN=your-actual-domain.example.org
 STORYLANE_BASE_URL=https://your-actual-domain.example.org
 STORYLANE_TRUST_PROXY=true
-STORYLANE_BIND=127.0.0.1
 ```
 
-`STORYLANE_BIND=127.0.0.1` keeps port 3000 reachable only from Caddy on the
-same host, not from outside — Caddy alone should terminate TLS on 80/443.
+You do not need to set `STORYLANE_BIND` here: the compose file already binds
+port 3000 to `127.0.0.1`, so it is reachable only from Caddy on the same host.
+That matters in this mode — `STORYLANE_TRUST_PROXY=true` tells the app to
+believe the `X-Forwarded-For` header Caddy adds, and anyone who could reach
+port 3000 directly could send that header themselves and slip past the
+per-IP rate limits. Caddy alone should be reachable, on 80/443.
 
 `DOMAIN` must already resolve (in public DNS) to this host before you start
 Caddy — that's how Caddy proves domain ownership to get a certificate. If DNS
@@ -122,10 +125,12 @@ cd storylane
 curl -O https://raw.githubusercontent.com/l4l4dev/storylane/main/docker-compose.yml
 ```
 
-Start it (no `.env` file needed unless you want to change the port):
+Port 3000 is bound to `127.0.0.1` by default, which is not reachable from
+other machines — this mode is the one that wants it reachable, so set
+`STORYLANE_BIND` when starting:
 
 ```bash
-docker compose up -d
+STORYLANE_BIND=0.0.0.0 docker compose up -d
 ```
 
 Open `http://<this-machine's-LAN-IP>:3000` from another device on the network,
@@ -134,8 +139,11 @@ or `http://localhost:3000` from the same machine.
 To use a different host port, set `STORYLANE_HOST_PORT` before starting, e.g.:
 
 ```bash
-STORYLANE_HOST_PORT=8080 docker compose up -d
+STORYLANE_BIND=0.0.0.0 STORYLANE_HOST_PORT=8080 docker compose up -d
 ```
+
+(Both are easier to keep in a `.env` file next to `docker-compose.yml` than to
+retype on every command.)
 
 In this mode cookies are **not** marked `Secure`, because the connection is
 plain HTTP. Don't expose this setup directly to the public internet — use
@@ -156,6 +164,9 @@ docker compose up -d
 On startup the server writes a pre-migration snapshot to
 `/data/backups/pre-<version>.db` and then applies any pending database
 migrations automatically, before it starts serving traffic.
+
+These snapshots are never removed automatically — one accumulates per version
+you upgrade through. Delete the older ones once an upgrade has been verified.
 
 If the container exits right after starting and its logs contain
 `migration failed`, the upgrade did not apply:
@@ -262,7 +273,7 @@ Expected output: `{"status":"ok"}`.
   | ------------------------ | ------- | ------------------------------------------- |
   | `STORYLANE_PORT`         | `3000`  | TCP port the server listens on inside the container |
   | `STORYLANE_DATA_DIR`     | `/data` | Directory for the database and backups      |
-  | `STORYLANE_BASE_URL`     | (none)  | Public URL the app is served at; set this when using HTTPS so cookies are marked `Secure` and generated links are absolute |
+  | `STORYLANE_BASE_URL`     | (none)  | Public URL the app is served at; set this when a proxy fronts the app, since it is both the origin the CSRF check accepts and what decides whether the session cookie is marked `Secure`, and it makes generated links absolute |
   | `STORYLANE_TRUST_PROXY`  | `false` | Trust `X-Forwarded-*` headers from a reverse proxy; set to `true` only when a proxy you control (like the bundled Caddy) sits in front |
 
 ## 8. Uninstall

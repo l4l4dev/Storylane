@@ -120,18 +120,17 @@ Tables: `users` (email `UNIQUE COLLATE NOCASE`, argon2id `password_hash`,
 `display_name`, `is_admin`), `sessions`, `api_tokens`, `invites`,
 `reset_tokens`. **Every secret is stored as its SHA-256 hash** (session ids,
 Personal Access Tokens, invite tokens, reset tokens, the setup token); the
-clear text exists only in the cookie, header, or link. Because a session id
-is a 256-bit random value stored hashed, no cookie signing key is needed;
-the only server secret under `/data` is for HMAC of short-lived link tokens
-and is generated on first start.
+clear text exists only in the cookie, header, or link. Because every one of
+them is a 256-bit random value stored hashed, no server-side secret exists
+at all: no cookie signing key, and nothing to keep under `/data`.
 
 Sessions: opaque id in an `HttpOnly; SameSite=Lax` cookie; `Secure` is set
 only when the request is HTTPS (`STORYLANE_BASE_URL` is https, or a trusted
 proxy sends `X-Forwarded-Proto: https`) — a fixed `Secure` flag breaks
 login on `http://192.168.x.x:3000`, which is the home-server case this
-project targets. Absolute expiry plus idle expiry; new id on login; logout
-deletes server-side; password change or admin reset revokes all sessions
-of that user.
+project targets. Absolute expiry (30 days) plus idle expiry (14 days); new
+id on login; logout deletes server-side; password change or admin reset
+revokes all sessions of that user.
 
 CSRF: every cookie-authenticated non-GET request must carry an `Origin`
 (fallback `Sec-Fetch-Site`) matching the instance's own origin and
@@ -139,13 +138,16 @@ CSRF: every cookie-authenticated non-GET request must carry an `Origin`
 exempt.
 
 Rate limiting: login, `/setup`, invite accept and reset endpoints are
-limited per IP and per email. Client IP comes from the socket unless
+limited per IP and per email — login allows 20 attempts per IP and 5 per
+email in a 15-minute window. Client IP comes from the socket unless
 `STORYLANE_TRUST_PROXY=true`, in which case `X-Forwarded-For` is honoured
 (the shipped compose file sets it because Caddy fronts the app).
 
-Passwords: argon2id with explicit parameters (memory 64 MiB, iterations 3,
-parallelism 1), minimum length only, no composition rules. Login failures
-return one uniform message.
+Passwords: argon2id with explicit parameters (memory 64 MiB, iterations 3),
+minimum length only, no composition rules. `Bun.password` exposes only
+`memoryCost` and `timeCost`, so parallelism is whatever the implementation
+fixes it to — not a knob this project sets. Login failures return one
+uniform message.
 
 Password reset without SMTP: an instance admin mints a **one-time reset
 link** and hands it over out of band; admins never set another user's
