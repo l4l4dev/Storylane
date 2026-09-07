@@ -4,10 +4,11 @@ title: >-
   Authentication core: argon2id passwords, hashed sessions with HttpOnly cookie
   (Secure when HTTPS), login/logout, CSRF Origin check, rate limits with
   STORYLANE_TRUST_PROXY
-status: To Do
+status: Done
 assignee:
   - '@claude-opus-5'
 created_date: '2026-09-07 02:55'
+updated_date: '2026-09-07 04:54'
 labels: []
 milestone: m-9
 dependencies:
@@ -33,3 +34,9 @@ Design doc §4. Bun.password (argon2id, explicit params) for hashing; session id
 - [ ] #4 Rate limiter blocks after N failures per IP and per email and honours trust-proxy setting (tests)
 - [ ] #5 authz-reviewer pass recorded in notes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on rewrite/phase-1: 9744269 + c6ddfd5 (argon2id with bounds and KDF semaphore, hashed sessions with absolute/idle expiry and credentials_changed_at, Secure-when-HTTPS cookies, token helpers, migration 0004), f0bb653 + 379259c (login/logout/me/password routes with uniform 401 via init-time dummy hash, CSRF guard on all unsafe methods, per-IP right-most-XFF and per-email limiters with a bounded map, atomic changePassword, purge schedule). 220 tests. authz-reviewer passes on 9744269 and f0bb653 (approve with fixes; all fixed). Deferred: shared XFF helper; injectable clock for the password-change limiter; INSTALL should recommend STORYLANE_BASE_URL when STORYLANE_TRUST_PROXY=true; __Host- cookie prefix (phase 2).
+<!-- SECTION:NOTES:END -->
