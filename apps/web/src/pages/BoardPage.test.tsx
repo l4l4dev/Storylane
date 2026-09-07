@@ -11,7 +11,7 @@ const json = (status: number, body: unknown) =>
 /** Dispatches by "METHOD url" so call order (board vs. project vs. an action) never matters,
  * and — unlike `mockResolvedValue`, which hands out the same already-consumed `Response` to
  * every call — always builds a fresh `Response` per call. */
-function mockApi(routes: Record<string, () => Response>) {
+function mockApi(routes: Record<string, () => Response | Promise<Response>>) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = typeof input === "string" ? input : input.toString();
     const method = (init?.method ?? "GET").toUpperCase();
@@ -111,6 +111,94 @@ describe("BoardPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/estimate/i);
     // The optimistic move was rolled back: the card is in Unstarted again.
     await waitFor(() => expect(screen.getByTestId("column-todo-count")).toHaveTextContent("1"));
+  });
+
+  it("clears pending and shows an error when the post-move reload itself fails", async () => {
+    let boardCalls = 0;
+    mockApi({
+      "GET /api/projects/p1/board": () => {
+        boardCalls += 1;
+        // The mount fetch succeeds; the reload triggered by the move's own success fails once.
+        return boardCalls === 1 ? json(200, board) : json(500, { error: "unexpected" });
+      },
+      "GET /api/projects/p1": () => json(200, project),
+      "POST /api/projects/p1/stories/s2/move": () => json(200, { id: "s2", stateId: "doing" }),
+    });
+    render(<BoardPage projectId="p1" />);
+    await userEvent.click(await screen.findByRole("button", { name: /^start$/i }));
+    // The optimistic view must not stick forever just because the confirming reload failed.
+    expect(await screen.findByRole("alert")).toHaveTextContent(/something went wrong/i);
+    await waitFor(() => expect(screen.getByTestId("column-todo-count")).toHaveTextContent("1"));
+  });
+
+  it("keeps both moves when a second drag starts before the first reload settles", async () => {
+    const twoStoryBoard = {
+      ...board,
+      columns: [
+        { stateId: null, stories: [] },
+        {
+          stateId: "todo",
+          stories: [
+            { id: "s2", number: 2, title: "Ready", storyType: "feature", stateId: "todo", position: 0, points: 2, completedAt: null, assigneeId: null, requesterId: null, description: null },
+            { id: "s10", number: 10, title: "Also ready", storyType: "feature", stateId: "todo", position: 1, points: 2, completedAt: null, assigneeId: null, requesterId: null, description: null },
+          ],
+        },
+        { stateId: "doing", stories: [] },
+        { stateId: "done", stories: [] },
+      ],
+    };
+    const finalBoard = {
+      ...twoStoryBoard,
+      columns: [
+        { stateId: null, stories: [] },
+        { stateId: "todo", stories: [] },
+        {
+          stateId: "doing",
+          stories: twoStoryBoard.columns[1]!.stories.map((s) => ({ ...s, stateId: "doing" })),
+        },
+        { stateId: "done", stories: [] },
+      ],
+    };
+
+    let boardCalls = 0;
+    const slowReload: { release: (() => void) | null } = { release: null };
+    mockApi({
+      "GET /api/projects/p1/board": () => {
+        boardCalls += 1;
+        if (boardCalls === 1) return json(200, twoStoryBoard);
+        if (boardCalls === 2) {
+          // The reload kicked off by the *first* move deliberately never resolves until we
+          // release it below — by then a second move has already landed and superseded it.
+          return new Promise<Response>((resolve) => {
+            slowReload.release = () => resolve(json(200, finalBoard));
+          });
+        }
+        return json(200, finalBoard);
+      },
+      "GET /api/projects/p1": () => json(200, project),
+      "POST /api/projects/p1/stories/s2/move": () => json(200, {}),
+      "POST /api/projects/p1/stories/s10/move": () => json(200, {}),
+    });
+
+    render(<BoardPage projectId="p1" />);
+    await screen.findByText("Ready");
+    await screen.findByText("Also ready");
+
+    await userEvent.click(screen.getAllByRole("button", { name: /^start$/i })[0]!);
+    await waitFor(() => expect(boardCalls).toBe(2));
+
+    // Second drag starts while the first move's confirming reload is still in flight. Scoped to
+    // the "todo" column: the first story's own card still shows a stale "Start" too (its
+    // `stateId` only catches up once the real board data arrives), but it no longer lives here.
+    const todoColumn = screen.getByTestId("column-todo");
+    await userEvent.click(within(todoColumn).getByRole("button", { name: /^start$/i }));
+    await waitFor(() => expect(boardCalls).toBe(3));
+
+    // The stale first reload finally resolves — it must not clobber the second move's outcome.
+    slowReload.release?.();
+
+    await waitFor(() => expect(screen.getByTestId("column-doing-count")).toHaveTextContent("2"));
+    expect(screen.getByTestId("column-todo-count")).toHaveTextContent("0");
   });
 
   it("does not render a disabled advance button on a done story (principle 1)", async () => {

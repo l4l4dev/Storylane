@@ -6,34 +6,29 @@ import { PointButtons } from "./PointButtons";
 const STORY_TYPES = ["feature", "bug", "chore", "release"] as const;
 
 /**
- * Posts into whichever column it's rendered on (`stateId`) — the Icebox and the first
- * `unstarted` column both get one (spec/features.md "Icebox" says new stories start there;
- * spec/screens.md "Kanban view" puts the `+` on the first unstarted column).
+ * The add-story form — BoardColumn mounts this only while open, positioned as an overlay panel
+ * docked over the top of the card list rather than a slot that pushes cards down while typing
+ * (ux-principles #3). Posts into whichever column it's rendered on (`stateId`) — the Icebox and
+ * the first `unstarted` column both get one (spec/features.md "Icebox" says new stories start
+ * there; spec/screens.md "Kanban view" puts the `+` on the first unstarted column).
  */
 export function QuickAddCard({
   projectId,
   stateId,
   scaleValues,
   onAdded,
+  onClose,
 }: {
   projectId: string;
   stateId: string | null;
   scaleValues: number[];
   onAdded: () => void;
+  onClose: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [storyType, setStoryType] = useState<(typeof STORY_TYPES)[number]>("feature");
   const [points, setPoints] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  function reset() {
-    setOpen(false);
-    setTitle("");
-    setStoryType("feature");
-    setPoints(null);
-    setError(null);
-  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -50,23 +45,19 @@ export function QuickAddCard({
           stateId,
         },
       });
-      reset();
       onAdded();
+      onClose();
     } catch (e) {
       setError(errorMessage(e));
     }
   }
 
-  if (!open) {
-    return (
-      <button type="button" className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => setOpen(true)}>
-        + Add a story
-      </button>
-    );
-  }
-
   return (
-    <form onSubmit={submit} className="flex flex-col gap-2 rounded border p-2" style={{ borderColor: "var(--line)" }}>
+    <form
+      onSubmit={submit}
+      className="flex flex-col gap-2 rounded border bg-[var(--surface)] p-2 shadow"
+      style={{ borderColor: "var(--line)" }}
+    >
       <Field label="Title">
         <input className={inputClass} style={{ borderColor: "var(--line)" }} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>
@@ -97,7 +88,7 @@ export function QuickAddCard({
         <button type="submit" className={buttonClass} style={{ borderColor: "var(--line)" }}>
           Add
         </button>
-        <button type="button" className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={reset}>
+        <button type="button" className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={onClose}>
           Cancel
         </button>
       </div>

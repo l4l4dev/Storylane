@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { pointScaleValues } from "@storylane/core";
 import { apiFetch, errorMessage } from "../lib/api";
@@ -34,7 +34,10 @@ export function BoardPage({ projectId }: { projectId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<ColumnView[] | null>(null);
   const reload = board.reload;
-  useProjectEvents(projectId, useCallback(() => reload(), [reload]));
+  // A transient failure here just means the next SSE event or user action tries again — nothing
+  // here awaits this call, so an unhandled rejection would otherwise surface as console noise.
+  const reloadQuietly = useCallback(() => void reload().catch(() => {}), [reload]);
+  useProjectEvents(projectId, reloadQuietly);
 
   // A distance constraint keeps a plain click on a card's button (Start/Finish/Accept/…) from
   // being swallowed: with no constraint, PointerSensor "activates" on pointerdown alone and
@@ -74,20 +77,15 @@ export function BoardPage({ projectId }: { projectId: string }) {
     return unstarted[0]?.id ?? null;
   }, [board.data]);
 
-  // Keeps the optimistic view alive until the board refetch that reflects our own move has
-  // actually arrived — cleared in the effect below. A `reload()` triggered by someone else's SSE
-  // event while our own move is still in flight (this flag not yet set) must NOT clear it early:
-  // that would flicker the card back to its pre-move spot before our own move has landed.
-  const awaitingOwnMoveRef = useRef(false);
-
-  useEffect(() => {
-    if (awaitingOwnMoveRef.current) {
-      setPending(null);
-      awaitingOwnMoveRef.current = false;
-    }
-  }, [board.data]);
+  // Guards against a rapid second drag "losing" to a slower first one: only the *latest*
+  // commit() is allowed to touch `pending`/`error` once its awaits resolve. Without this, a
+  // superseded reload settling late (see use-resource.ts's `reload` — a superseded call
+  // resolves rather than hangs, so an SSE echo of our own move can't leak `pending` forever)
+  // could clear `pending` on behalf of a move that isn't the most recent one anymore.
+  const moveSeqRef = useRef(0);
 
   async function commit(next: ColumnView[], storyId: string, targetStateId: string | null) {
+    const mySeq = ++moveSeqRef.current;
     setError(null);
     setPending(next);
     try {
@@ -95,13 +93,28 @@ export function BoardPage({ projectId }: { projectId: string }) {
         method: "POST",
         body: { stateId: targetStateId, orderedIds: orderedIdsFor(next, targetStateId) },
       });
-      awaitingOwnMoveRef.current = true;
-      reload();
     } catch (e) {
       // Rollback: drop the optimistic view and show the error. The board never changed
       // server-side, so there is nothing new to refetch (principle 2).
-      setPending(null);
-      setError(errorMessage(e));
+      if (mySeq === moveSeqRef.current) {
+        setPending(null);
+        setError(errorMessage(e));
+      }
+      return;
+    }
+    try {
+      // The move is committed server-side now. Keep the optimistic view up until this refresh
+      // (or whatever newer one supersedes it) actually confirms it, so the board never flickers
+      // back to the pre-move layout in between (principle 3).
+      await reload();
+      if (mySeq === moveSeqRef.current) setPending(null);
+    } catch (e) {
+      // The move succeeded, but we couldn't confirm the board reflects it — release the
+      // optimistic view rather than leave it stuck, and surface the refetch's own error.
+      if (mySeq === moveSeqRef.current) {
+        setPending(null);
+        setError(errorMessage(e));
+      }
     }
   }
 
@@ -154,7 +167,7 @@ export function BoardPage({ projectId }: { projectId: string }) {
                 scaleValues={scaleValues}
                 showQuickAdd={column.stateId === null || column.stateId === firstUnstartedId}
                 onAdvance={advance}
-                onAdded={reload}
+                onAdded={reloadQuietly}
               />
             );
           })}
