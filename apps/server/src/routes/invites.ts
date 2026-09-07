@@ -94,17 +94,17 @@ export function inviteRoutes(deps: {
       ),
     )
     .get("/api/invites/:token", (c) => {
+      c.header("Cache-Control", "no-store");
       if (!limiter.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
       const token = c.req.param("token");
       assertTokenLength(token); // before hashToken — see auth/tokens.ts
       const preview = previewInvite(deps.db, token);
       if (!preview) throw new HttpError(404, "not_found");
-      c.header("Cache-Control", "no-store");
       return c.json(preview);
     })
     .post("/api/invites/:token/accept", async (c) => {
-      if (!limiter.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
       c.header("Cache-Control", "no-store");
+      if (!limiter.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
       const token = c.req.param("token");
       assertTokenLength(token); // before hashToken — see auth/tokens.ts
       const actor = deps.actorOf(c);

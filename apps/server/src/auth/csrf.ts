@@ -2,15 +2,10 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { Config } from "../config";
 import { HttpError } from "../http-error";
 import { readSessionCookie } from "./cookies";
+import { lastForwarded } from "./forwarded";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/** Right-most entry only: that is the value our own proxy appended (see clientIp). */
-function forwarded(c: Context, header: string): string | undefined {
-  const chain = c.req.header(header)?.split(",");
-  const last = chain?.[chain.length - 1]?.trim();
-  return last === "" ? undefined : last;
-}
 
 /**
  * With STORYLANE_BASE_URL set, that is the only accepted origin. Without it the instance is
@@ -24,8 +19,8 @@ export function instanceOrigins(c: Context, config: Config): string[] {
   if (config.baseUrl) return [config.baseUrl.origin];
   const url = new URL(c.req.url);
   if (config.trustProxy) {
-    const proto = forwarded(c, "x-forwarded-proto") ?? url.protocol.replace(":", "");
-    const host = forwarded(c, "x-forwarded-host") ?? c.req.header("host") ?? url.host;
+    const proto = lastForwarded(c, "x-forwarded-proto") ?? url.protocol.replace(":", "");
+    const host = lastForwarded(c, "x-forwarded-host") ?? c.req.header("host") ?? url.host;
     return [`${proto}://${host}`];
   }
   return [url.origin];

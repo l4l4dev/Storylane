@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { getConnInfo } from "hono/bun";
 import type { Config } from "../config";
+import { lastForwarded } from "./forwarded";
 
 export interface RateLimiter {
   /** Records an attempt; false means the caller is over the limit for this window. */
@@ -63,15 +64,10 @@ export const LOGIN_LIMITS = {
   perEmail: { limit: 5, windowMs: 15 * 60 * 1000 },
 } as const;
 
-/**
- * X-Forwarded-For is honoured only with STORYLANE_TRUST_PROXY=true (design §4), and then only
- * its right-most entry: that is the one our own proxy appended. Trusting the left-most value
- * would let a client send its own X-Forwarded-For and get a fresh rate-limit bucket per guess.
- */
+/** X-Forwarded-For is honoured only with STORYLANE_TRUST_PROXY=true (design §4); see lastForwarded. */
 export function clientIp(c: Context, config: Config): string {
   if (config.trustProxy) {
-    const chain = c.req.header("x-forwarded-for")?.split(",");
-    const forwarded = chain?.[chain.length - 1]?.trim();
+    const forwarded = lastForwarded(c, "x-forwarded-for");
     if (forwarded) return forwarded;
   }
   try {

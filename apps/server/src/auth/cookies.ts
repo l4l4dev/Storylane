@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Config } from "../config";
+import { lastForwarded } from "./forwarded";
 import { SESSION_COOKIE } from "./sessions";
 
 /**
@@ -9,7 +10,7 @@ import { SESSION_COOKIE } from "./sessions";
  */
 export function isSecureRequest(c: Context, config: Config): boolean {
   if (config.baseUrl?.protocol === "https:") return true;
-  if (config.trustProxy && c.req.header("x-forwarded-proto")?.split(",")[0]?.trim() === "https") return true;
+  if (config.trustProxy && lastForwarded(c, "x-forwarded-proto") === "https") return true;
   return new URL(c.req.url).protocol === "https:";
 }
 

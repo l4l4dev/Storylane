@@ -6,6 +6,7 @@ import { assertPasswordAcceptable, hashPassword } from "../auth/password";
 import { setSessionCookie } from "../auth/cookies";
 import { createSession } from "../auth/sessions";
 import { clientIp, createRateLimiter, type RateLimiter } from "../auth/rate-limit";
+import { assertTokenLength } from "../auth/tokens";
 import { hasAnyUser, peekSetupToken } from "../setup/setup-token";
 import { completeSetup } from "../services/setup";
 
@@ -46,6 +47,7 @@ export function setupRoutes(deps: { db: Db; config: Config; limiter?: RateLimite
       if (!limiter.check(clientIp(c, deps.config))) throw new HttpError(429, "too_many_requests");
       const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
       const token = requireString(body.token, "token");
+      assertTokenLength(token); // before hashToken — see auth/tokens.ts
       const email = normalizeEmail(requireString(body.email, "email"));
       const displayName = normalizeDisplayName(requireString(body.displayName, "display_name"));
       const password = requireString(body.password, "password");

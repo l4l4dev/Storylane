@@ -42,6 +42,17 @@ describe("session cookie", () => {
     expect(res.headers.get("set-cookie")).toContain("Secure");
   });
 
+  it("reads the right-most X-Forwarded-Proto, the one the trusted proxy appended", async () => {
+    const secure = await appWith({ STORYLANE_TRUST_PROXY: "true" }).request("http://127.0.0.1/set", {
+      headers: { "x-forwarded-proto": "http, https" },
+    });
+    expect(secure.headers.get("set-cookie")).toContain("Secure");
+    const forged = await appWith({ STORYLANE_TRUST_PROXY: "true" }).request("http://127.0.0.1/set", {
+      headers: { "x-forwarded-proto": "https, http" },
+    });
+    expect(forged.headers.get("set-cookie")).not.toContain("Secure");
+  });
+
   it("ignores X-Forwarded-Proto when the proxy is not trusted", async () => {
     const res = await appWith({}).request("http://127.0.0.1/set", { headers: { "x-forwarded-proto": "https" } });
     expect(res.headers.get("set-cookie")).not.toContain("Secure");
