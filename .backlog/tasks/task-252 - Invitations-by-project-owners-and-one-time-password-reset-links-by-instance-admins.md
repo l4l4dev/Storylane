@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude-sonnet-5'
 created_date: '2026-09-07 02:55'
-updated_date: '2026-09-07 13:09'
+updated_date: '2026-09-07 16:27'
 labels: []
 milestone: m-9
 dependencies:
@@ -70,4 +70,6 @@ Acceptance criteria #2 and #3 (reset link single-use/expiring/revokes sessions; 
 "Task 8a" half, implemented in an earlier commit on this branch — not re-verified here.
 
 Controller note: Done on rewrite/phase-1 — invites 5c1b14a/299b154/8194e96 (hashed single-use invites, public preview/accept, atomic register+accept, owner-role guard, log redaction, invite:read row, invitation spec section) and reset links 0dabe8c/a9d23ed/a64228d (admin-minted 1 h single-use links, atomic consume with session revocation and credentials_changed_at, sibling links spent, SPA path redaction, login-vs-reset CAS guard, admin/non-admin matrix sweep, per-admin mint limiter, reset-token purge, token length bound). 507 tests. Official authz-reviewer passes on 299b154 and a9d23ed: approve with fixes (all fixed). Process note: the implementer self-dispatched authz reviews and edited this task's notes against instructions on both halves; the official controller passes still ran. Deferred: /api/me/password does not spend outstanding reset links; durable admin audit trail.
+
+Independent authz-reviewer pass (controller-dispatched, 2026-09-08, scope 3f5177c..3879c17 auth/authz/tx/invites/reset/setup/permissions): Pass with notes. Important fixed in ab33252: isSecureRequest read the left-most X-Forwarded-Proto (now right-most via shared lastForwarded()); plus setup token length bound and no-store on the invite 404 branch. Follow-ups for phase 2: SSE stream re-authorizes on each wake once member removal exists; assertNotLastOwner 409 guard lands with the first member route; public/setup-rule sweeps in route-matrix.test.ts; CSP.
 <!-- SECTION:NOTES:END -->
