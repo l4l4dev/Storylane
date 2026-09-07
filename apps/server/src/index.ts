@@ -10,6 +10,7 @@ import { vacuumInto } from "./db/backup";
 import { actorFromRequest } from "./auth/actor";
 import { purgeExpiredSessions } from "./auth/sessions";
 import { ensureSetupToken } from "./setup/setup-token";
+import { EventBus } from "./events/bus";
 
 const [command = "serve", ...args] = Bun.argv.slice(2);
 const log = createLogger();
@@ -42,10 +43,12 @@ if (command === "serve") {
   // Dead rows are already refused by resolveSession; this only keeps the table from growing.
   // unref'd so the sweep never holds the process open on its own.
   setInterval(purge, 60 * 60 * 1000).unref();
+  const bus = new EventBus();
   const app = createApp({
     config,
     log,
     db,
+    bus,
     actorOf: actorFromRequest(db),
     testActorHeader: false,
     health: () => {

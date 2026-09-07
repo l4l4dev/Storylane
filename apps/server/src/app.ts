@@ -9,7 +9,9 @@ import { requestLogger, type Logger } from "./log";
 import { healthzRoute } from "./routes/healthz";
 import { projectRoutes } from "./routes/projects";
 import { storyRoutes } from "./routes/stories";
+import { eventRoutes } from "./routes/events";
 import { failClosed } from "./authz/middleware";
+import { EventBus } from "./events/bus";
 import { authRoutes } from "./routes/auth";
 import { setupRoutes } from "./routes/setup";
 import { setupGate } from "./setup/gate";
@@ -34,6 +36,10 @@ export interface AppDeps {
   testActorHeader?: boolean;
   /** Directory holding the built SPA (index.html + assets). Defaults to apps/web/dist. */
   staticRoot?: string;
+  /** In-process invalidation bus. Defaults to a fresh one per app. */
+  bus?: EventBus;
+  /** SSE heartbeat interval; tests shorten it. Defaults to SSE_HEARTBEAT_MS. */
+  heartbeatMs?: number;
 }
 
 const anonymous: Actor = { kind: "anonymous" };
@@ -57,6 +63,7 @@ function defaultActorOf(testActorHeader: boolean): (c: Context) => Actor {
 
 export function createApp(deps: AppDeps): Hono {
   const actorOf = deps.actorOf ?? defaultActorOf(deps.testActorHeader === true);
+  const bus = deps.bus ?? new EventBus();
   const app = new Hono();
   app.use(requestLogger(deps.log));
   // Narrow on purpose: the trailing wildcard also matches zero segments, so this covers
@@ -74,8 +81,12 @@ export function createApp(deps: AppDeps): Hono {
     "/",
     authRoutes({ db: deps.db, config: deps.config, ...(deps.limiters ? { limiters: deps.limiters } : {}) }, actorOf),
   );
-  app.route("/", projectRoutes(deps.db, actorOf));
-  app.route("/", storyRoutes(deps.db, actorOf));
+  app.route("/", projectRoutes({ db: deps.db, bus, actorOf }));
+  app.route("/", storyRoutes({ db: deps.db, bus, actorOf }));
+  app.route(
+    "/",
+    eventRoutes({ db: deps.db, bus, actorOf, ...(deps.heartbeatMs === undefined ? {} : { heartbeatMs: deps.heartbeatMs }) }),
+  );
   const staticRoot = deps.staticRoot ?? DEFAULT_STATIC_ROOT;
   if (existsSync(staticRoot)) {
     // hono/bun's serveStatic resolves `root` relative to process.cwd(), not to this file —

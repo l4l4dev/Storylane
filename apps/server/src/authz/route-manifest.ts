@@ -24,6 +24,7 @@ export const ROUTE_ACTIONS: Record<`${Method} ${string}`, RouteRule> = {
   "POST /api/projects/:id/states/reorder": "state:write",
   "PATCH /api/projects/:id/states/:stateId": "state:write",
   "DELETE /api/projects/:id/states/:stateId": "state:delete",
+  "GET /api/projects/:id/events": "project:read",
   "GET /api/projects/:id/board": "story:read",
   "GET /api/projects/:id/stories": "story:read",
   "POST /api/projects/:id/stories": "story:write",

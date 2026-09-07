@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db/client";
 import { withProject, type Actor } from "../db/tx";
+import { withProjectChange } from "../events/emit";
+import type { EventBus } from "../events/bus";
 import { HttpError } from "../http-error";
 import {
   createProject,
@@ -90,7 +92,8 @@ function validateStatePatch(input: Record<string, unknown>): StatePatch {
   return patch;
 }
 
-export function projectRoutes(db: Db, actorOf: (c: Context) => Actor) {
+export function projectRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Context) => Actor }) {
+  const { db, actorOf } = deps;
   return new Hono()
     .get("/api/projects", (c) => c.json(listProjects(db, actorOf(c))))
     .post("/api/projects", async (c) => {
@@ -112,20 +115,20 @@ export function projectRoutes(db: Db, actorOf: (c: Context) => Actor) {
     .patch("/api/projects/:id", async (c) => {
       const input = await body(c);
       return c.json(
-        withProject(db, actorOf(c), c.req.param("id"), "project:update", (tx) =>
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "project:update", (tx) =>
           updateProject(tx, validateProjectPatch(input)),
         ),
       );
     })
     .delete("/api/projects/:id", (c) => {
-      withProject(db, actorOf(c), c.req.param("id"), "project:delete", (tx) => deleteProject(tx));
+      withProjectChange(deps, actorOf(c), c.req.param("id"), "project:delete", (tx) => deleteProject(tx));
       return c.body(null, 204);
     })
     .post("/api/projects/:id/archive", (c) =>
-      c.json(withProject(db, actorOf(c), c.req.param("id"), "project:archive", (tx) => setArchived(tx, true))),
+      c.json(withProjectChange(deps, actorOf(c), c.req.param("id"), "project:archive", (tx) => setArchived(tx, true))),
     )
     .post("/api/projects/:id/unarchive", (c) =>
-      c.json(withProject(db, actorOf(c), c.req.param("id"), "project:archive", (tx) => setArchived(tx, false))),
+      c.json(withProjectChange(deps, actorOf(c), c.req.param("id"), "project:archive", (tx) => setArchived(tx, false))),
     )
     .get("/api/projects/:id/states", (c) =>
       c.json(withProject(db, actorOf(c), c.req.param("id"), "state:read", (tx) => listStates(tx))),
@@ -133,7 +136,7 @@ export function projectRoutes(db: Db, actorOf: (c: Context) => Actor) {
     .post("/api/projects/:id/states", async (c) => {
       const input = await body(c);
       return c.json(
-        withProject(db, actorOf(c), c.req.param("id"), "state:write", (tx) => {
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "state:write", (tx) => {
           if (typeof input.name !== "string" || input.name.length === 0) throw new HttpError(400, "name_required");
           const category = requireCategory(input.category);
           if (input.actionLabel !== undefined && input.actionLabel !== null && typeof input.actionLabel !== "string") {
@@ -148,7 +151,7 @@ export function projectRoutes(db: Db, actorOf: (c: Context) => Actor) {
     .post("/api/projects/:id/states/reorder", async (c) => {
       const input = await body(c);
       return c.json(
-        withProject(db, actorOf(c), c.req.param("id"), "state:write", (tx) =>
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "state:write", (tx) =>
           reorderStates(tx, requireIdList(input.orderedIds)),
         ),
       );
@@ -156,13 +159,13 @@ export function projectRoutes(db: Db, actorOf: (c: Context) => Actor) {
     .patch("/api/projects/:id/states/:stateId", async (c) => {
       const input = await body(c);
       return c.json(
-        withProject(db, actorOf(c), c.req.param("id"), "state:write", (tx) =>
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "state:write", (tx) =>
           updateState(tx, c.req.param("stateId"), validateStatePatch(input)),
         ),
       );
     })
     .delete("/api/projects/:id/states/:stateId", (c) => {
-      withProject(db, actorOf(c), c.req.param("id"), "state:delete", (tx) => deleteState(tx, c.req.param("stateId")));
+      withProjectChange(deps, actorOf(c), c.req.param("id"), "state:delete", (tx) => deleteState(tx, c.req.param("stateId")));
       return c.body(null, 204);
     });
 }

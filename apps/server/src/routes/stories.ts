@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db/client";
 import { withProject, type Actor } from "../db/tx";
+import { withProjectChange } from "../events/emit";
+import type { EventBus } from "../events/bus";
 import { HttpError } from "../http-error";
 import { STORY_TYPES, type StoryType } from "../db/schema";
 import { createStory, deleteStory, listStories, moveStory, readBoard, updateStory } from "../services/stories";
@@ -98,7 +100,8 @@ function requireIdList(value: unknown): string[] {
   return value as string[];
 }
 
-export function storyRoutes(db: Db, actorOf: (c: Context) => Actor) {
+export function storyRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Context) => Actor }) {
+  const { db, actorOf } = deps;
   return new Hono()
     .get("/api/projects/:id/board", (c) =>
       c.json(withProject(db, actorOf(c), c.req.param("id"), "story:read", (tx) => readBoard(tx))),
@@ -111,7 +114,7 @@ export function storyRoutes(db: Db, actorOf: (c: Context) => Actor) {
       // caller who may not write gets 401/403/404 before the body is judged (spec/permissions.md).
       const input = await body(c);
       return c.json(
-        withProject(db, actorOf(c), c.req.param("id"), "story:write", (tx) =>
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "story:write", (tx) =>
           createStory(tx, validateStoryInput(input)),
         ),
         201,
@@ -120,7 +123,7 @@ export function storyRoutes(db: Db, actorOf: (c: Context) => Actor) {
     .patch("/api/projects/:id/stories/:storyId", async (c) => {
       const input = await body(c);
       return c.json(
-        withProject(db, actorOf(c), c.req.param("id"), "story:write", (tx) =>
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "story:write", (tx) =>
           updateStory(tx, c.req.param("storyId"), validateStoryPatch(input)),
         ),
       );
@@ -128,7 +131,7 @@ export function storyRoutes(db: Db, actorOf: (c: Context) => Actor) {
     .post("/api/projects/:id/stories/:storyId/move", async (c) => {
       const input = await body(c);
       return c.json(
-        withProject(db, actorOf(c), c.req.param("id"), "story:write", (tx) => {
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "story:write", (tx) => {
           const stateId = optionalStateId(input.stateId);
           // Absent is not the same as null: null means the Icebox, so the move must say which.
           if (stateId === undefined) throw new HttpError(400, "state_id_required");
@@ -138,7 +141,7 @@ export function storyRoutes(db: Db, actorOf: (c: Context) => Actor) {
       );
     })
     .delete("/api/projects/:id/stories/:storyId", (c) => {
-      withProject(db, actorOf(c), c.req.param("id"), "story:delete", (tx) => deleteStory(tx, c.req.param("storyId")));
+      withProjectChange(deps, actorOf(c), c.req.param("id"), "story:delete", (tx) => deleteStory(tx, c.req.param("storyId")));
       return c.body(null, 204);
     });
 }

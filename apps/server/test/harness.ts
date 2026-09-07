@@ -21,6 +21,7 @@ import { hashPassword } from "../src/auth/password";
 import { actorFromRequest } from "../src/auth/actor";
 import { CREATE_SCOPED_ITEMS } from "./scoped-items";
 import type { Actor } from "../src/db/tx";
+import { EventBus } from "../src/events/bus";
 
 export function makeTestDb(): Db {
   const db = openDatabase(":memory:");
@@ -59,9 +60,10 @@ export function seedProject(db: Db, owner: Actor, others: Array<[Actor, "member"
 export function makeTestApp(
   db: Db,
   extra?: (app: Hono) => void,
-  opts?: { staticRoot?: string },
-): { app: Hono; lines: string[] } {
+  opts?: { staticRoot?: string; bus?: EventBus; heartbeatMs?: number },
+): { app: Hono; lines: string[]; bus: EventBus } {
   const lines: string[] = [];
+  const bus = opts?.bus ?? new EventBus();
   // Tests must not depend on whether apps/web/dist happens to exist on disk (e.g. from a local
   // `pnpm --filter @storylane/web build`): default to a path that never exists so createApp's
   // static-serving block stays off unless a test opts in via `opts.staticRoot`.
@@ -71,6 +73,8 @@ export function makeTestApp(
     log: createLogger((l) => lines.push(l)),
     health: () => true,
     db,
+    bus,
+    ...(opts?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.heartbeatMs }),
     // Both actor sources: the matrix tests address routes by header, the auth-route tests by a
     // real session cookie.
     actorOf: (c) => {
@@ -85,7 +89,7 @@ export function makeTestApp(
     staticRoot,
   });
   extra?.(app);
-  return { app, lines };
+  return { app, lines, bus };
 }
 
 export function seedState(

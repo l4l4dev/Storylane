@@ -29,6 +29,7 @@ export interface MatrixContext {
 
 export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture> {
   return {
+    "GET /api/projects/:id/events": { stream: true },
     "POST /api/me/password": { body: { currentPassword: "x", newPassword: "y" } },
     "PATCH /api/projects/:id": { body: { name: "renamed by the matrix" } },
     "POST /api/projects/:id/archive": { body: {} },
