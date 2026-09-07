@@ -1,1 +1,21 @@
 @import "tailwindcss";
+
+:root {
+  --radius: 0.25rem;                 /* 4px base; never hardcode a larger radius */
+  --surface: oklch(0.99 0 0);
+  --surface-2: oklch(0.97 0 0);
+  --ink: oklch(0.22 0 0);
+  --ink-muted: oklch(0.48 0 0);
+  --line: oklch(0.62 0 0);           /* ≥3:1 against --surface: a hairline is the only cue */
+  --accent: oklch(0.55 0.14 250);
+  --danger: oklch(0.52 0.18 25);
+  --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* Headings, ids and point values are mono (spec/ux-principles.md "Typography"). */
+h1, h2, h3, .mono { font-family: var(--font-mono); }

@@ -1,18 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { App } from "./App";
 
 afterEach(() => vi.restoreAllMocks());
 
+const json = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
 describe("App shell", () => {
-  it("shows the server status from /healthz", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ status: "ok" }), { status: 200 }));
+  it("shows the setup page when the API says the instance is new", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(409, { error: "setup_required" }));
     render(<App />);
-    await waitFor(() => expect(screen.getByText(/server: ok/i)).toBeInTheDocument());
+    expect(await screen.findByRole("button", { name: /create admin/i })).toBeInTheDocument();
   });
-  it("shows unavailable when /healthz fails", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("down"));
+
+  it("shows the login page when there is no session", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(401, { error: "unauthenticated" }));
     render(<App />);
-    await waitFor(() => expect(screen.getByText(/server: unavailable/i)).toBeInTheDocument());
+    expect(await screen.findByRole("button", { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it("greets a signed-in user", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      json(200, { id: "u1", email: "owner@example.test", displayName: "Owner", isAdmin: false }),
+    );
+    render(<App />);
+    expect(await screen.findByText(/signed in as owner/i)).toBeInTheDocument();
   });
 });
