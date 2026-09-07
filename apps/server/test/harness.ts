@@ -22,6 +22,7 @@ import { actorFromRequest } from "../src/auth/actor";
 import { CREATE_SCOPED_ITEMS } from "./scoped-items";
 import type { Actor } from "../src/db/tx";
 import { EventBus } from "../src/events/bus";
+import type { RateLimiter } from "../src/auth/rate-limit";
 
 export function makeTestDb(): Db {
   const db = openDatabase(":memory:");
@@ -60,7 +61,13 @@ export function seedProject(db: Db, owner: Actor, others: Array<[Actor, "member"
 export function makeTestApp(
   db: Db,
   extra?: (app: Hono) => void,
-  opts?: { staticRoot?: string; bus?: EventBus; heartbeatMs?: number; maxStreamsPerUser?: number },
+  opts?: {
+    staticRoot?: string;
+    bus?: EventBus;
+    heartbeatMs?: number;
+    maxStreamsPerUser?: number;
+    inviteLimiter?: RateLimiter;
+  },
 ): { app: Hono; lines: string[]; bus: EventBus } {
   const lines: string[] = [];
   const bus = opts?.bus ?? new EventBus();
@@ -76,6 +83,7 @@ export function makeTestApp(
     bus,
     ...(opts?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.heartbeatMs }),
     ...(opts?.maxStreamsPerUser === undefined ? {} : { maxStreamsPerUser: opts.maxStreamsPerUser }),
+    ...(opts?.inviteLimiter === undefined ? {} : { inviteLimiter: opts.inviteLimiter }),
     // Both actor sources: the matrix tests address routes by header, the auth-route tests by a
     // real session cookie.
     actorOf: (c) => {

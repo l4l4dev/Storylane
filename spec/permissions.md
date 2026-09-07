@@ -72,6 +72,37 @@ bookkeeping (`member:read` is 200 for viewers and must not carry it).
   user; time-off dates are readable by members (viewers included) of a shared
   project for capacity math — dates and kind only, nothing private.
 
+### Invitations
+
+An owner mints an invite bound to one project and one role (`member` or
+`viewer` — `owner` is never mintable, and a row somehow carrying it is treated
+as unusable on the read side too, defense in depth). It is a random 256-bit
+token stored only as its SHA-256 hash (`invites.token_hash`); the clear token
+appears exactly once, in the mint response. It expires after 7 days
+(`INVITE_TTL_MS`) and is single-use: accepting it stamps `accepted_at` in the
+same transaction as the membership insert, so a concurrent second accept sees
+it already spent.
+
+Every invalid state — unknown token, expired, revoked, already accepted, or
+bound to a project that is now archived — answers the same uniform `404` from
+both the public preview (`GET /api/invites/:token`) and accept
+(`POST /api/invites/:token/accept`); none of these leak which case applied.
+Accepting while already a member of the bound project is idempotent: it
+answers `200` with the member's *existing* role (an invite can never demote or
+promote an existing member) and does not stamp `accepted_at` — the invite
+stays usable for the recipient it was actually sent to.
+
+Accept runs before the accepting user is a member, so there is no `ProjectTx`
+to authorize through — `withProject` requires a membership row that does not
+exist yet. This is the same shape as project creation: both write
+`project_members` and log activity through `bootstrapScope`, a documented
+exception to "project data only through a `ProjectTx`" for the one moment a
+user is joining, not yet a member. Accepting while logged out (registration)
+runs the token recheck, user insert, membership insert, and activity log in
+one immediate transaction, so a token invalidated between an earlier read-only
+pre-check and the actual write can never leave a registered user with no
+membership.
+
 ### Instance admin plane
 
 `users.is_admin` grants `user:list`, `user:create`, `user:deactivate`,
@@ -91,8 +122,9 @@ They declare a rule in the server's route manifest
 (`apps/server/src/authz/route-manifest.ts`) and the matrix test asserts the
 rule exists for every registered route:
 
-- `public` — no session needed: `POST /api/auth/login`, `GET /api/invites/:token`,
-  `POST /api/invites/:token/accept`, `GET|POST /api/auth/reset/:token`.
+- `public` — no session needed: `GET /healthz`, `POST /api/auth/login`,
+  `GET /api/invites/:token`, `POST /api/invites/:token/accept`, and (arriving
+  in Task 8b) `GET|POST /api/auth/reset/:token`.
 - `self` — any signed-in user, acting only on their own data:
   `GET /api/me`, `POST /api/me/password`, `POST /api/auth/logout`,
   `GET /api/projects`, `POST /api/projects` (a create has no role in a project

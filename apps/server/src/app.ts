@@ -33,6 +33,8 @@ export interface AppDeps {
   limiters?: { ip: RateLimiter; email: RateLimiter };
   /** POST /api/setup limiter; tests inject a fake clock. Defaults to the real clock. */
   setupLimiter?: RateLimiter;
+  /** GET /api/invites/:token and POST .../accept limiter; tests inject a fake clock. */
+  inviteLimiter?: RateLimiter;
   /** Enables the `x-test-actor` header actor. Tests only — production leaves this false. */
   testActorHeader?: boolean;
   /** Directory holding the built SPA (index.html + assets). Defaults to apps/web/dist. */
@@ -85,7 +87,10 @@ export function createApp(deps: AppDeps): Hono {
     authRoutes({ db: deps.db, config: deps.config, ...(deps.limiters ? { limiters: deps.limiters } : {}) }, actorOf),
   );
   app.route("/", projectRoutes({ db: deps.db, bus, actorOf }));
-  app.route("/", inviteRoutes({ db: deps.db, bus, config: deps.config, actorOf }));
+  app.route(
+    "/",
+    inviteRoutes({ db: deps.db, bus, config: deps.config, actorOf, ...(deps.inviteLimiter ? { limiter: deps.inviteLimiter } : {}) }),
+  );
   app.route("/", storyRoutes({ db: deps.db, bus, actorOf }));
   app.route(
     "/",

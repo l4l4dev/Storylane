@@ -14,6 +14,24 @@ export function createLogger(out: (line: string) => void = (l) => console.log(l)
   };
 }
 
+/**
+ * A route's secret path segment must never reach the logs: `docker logs` is readable by anyone
+ * with host access, and the token in these paths is the entire authorization for the request.
+ * `/api/auth/reset/:token` arrives in Task 8b — redacted here already so it is covered from day
+ * one instead of needing a second pass through this file.
+ */
+const SECRET_PATH_PATTERNS: ReadonlyArray<[RegExp, string]> = [
+  [/^(\/api\/invites)\/[^/]+(\/accept)?$/, "$1/:token$2"],
+  [/^(\/api\/auth\/reset)\/[^/]+$/, "$1/:token"],
+];
+
+export function redactPath(path: string): string {
+  for (const [pattern, replacement] of SECRET_PATH_PATTERNS) {
+    if (pattern.test(path)) return path.replace(pattern, replacement);
+  }
+  return path;
+}
+
 export function requestLogger(log: Logger): MiddlewareHandler {
   return async (c, next) => {
     const started = performance.now();
@@ -22,7 +40,7 @@ export function requestLogger(log: Logger): MiddlewareHandler {
     await next();
     log.info("request", {
       method: c.req.method,
-      path: c.req.path,
+      path: redactPath(c.req.path),
       status: c.res.status,
       duration_ms: Math.round((performance.now() - started) * 1000) / 1000,
       request_id: requestId,
