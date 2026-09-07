@@ -130,3 +130,24 @@ describe("deleteState", () => {
     expect(status(() => withProject(db, owner, mine.id, "state:delete", (tx) => deleteState(tx, foreign.id)))).toBe(404);
   });
 });
+
+describe("rollback", () => {
+  it("undoes both the state row and its activity row when the callback throws after createState", () => {
+    const project = createProject(db, owner, { name: "P", template: "minimal" });
+    const before = withProject(db, owner, project.id, "state:read", (tx) => listStates(tx));
+    expect(() =>
+      withProject(db, owner, project.id, "state:write", (tx) => {
+        createState(tx, { name: "Blocked", category: "in_progress" });
+        throw new Error("boom");
+      }),
+    ).toThrow("boom");
+    const after = withProject(db, owner, project.id, "state:read", (tx) => listStates(tx));
+    expect(after.map((s) => s.name)).toEqual(before.map((s) => s.name));
+    const rows = db
+      .select()
+      .from(activityLogs)
+      .all()
+      .filter((r) => r.projectId === project.id && r.action === "state.created" && r.payload?.includes("Blocked"));
+    expect(rows).toHaveLength(0);
+  });
+});

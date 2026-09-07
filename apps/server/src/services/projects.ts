@@ -1,7 +1,7 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { projectMembers, projects, type PointScale } from "../db/schema";
-import type { Actor, ProjectTx } from "../db/tx";
+import { assertNoOpenTransaction, type Actor, type ProjectTx } from "../db/tx";
 import type { MemberRole } from "../authz/permissions";
 import { HttpError } from "../http-error";
 import { newId } from "../id";
@@ -31,6 +31,9 @@ export type { ProjectTemplate };
  * Not project-scoped: there is no project to authorize against yet, so this opens its own
  * immediate transaction and writes its activity rows through bootstrapScope. Any signed-in
  * user may create a project (`"self"` rule in the route manifest).
+ *
+ * Same rule as revokeUserSessions/changePassword: bun:sqlite has no savepoints here, so call
+ * this at the top level, never inside a withProject callback.
  */
 export function createProject(
   db: Db,
@@ -39,6 +42,7 @@ export function createProject(
 ): ProjectDetail {
   if (actor.kind !== "user") throw new HttpError(401, "unauthenticated");
   if (input.name.trim().length === 0) throw new HttpError(400, "name_required");
+  assertNoOpenTransaction("createProject");
   const now = Date.now();
   const id = newId();
   return db.transaction(
@@ -62,7 +66,11 @@ export function createProject(
   );
 }
 
-/** Archived projects come last (spec/ux-principles.md principle 9 — never interleaved). */
+/**
+ * Archived projects come last (spec/ux-principles.md principle 9 — never interleaved); within
+ * each group, alphabetical by name reads better than creation order, case-insensitively so
+ * "bravo" and "Alpha" don't split by case; createdAt only breaks a tie between equal names.
+ */
 export function listProjects(db: Db, actor: Actor): ProjectSummary[] {
   if (actor.kind !== "user") throw new HttpError(401, "unauthenticated");
   return db
@@ -74,7 +82,11 @@ export function listProjects(db: Db, actor: Actor): ProjectSummary[] {
     })
     .from(projects)
     .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, actor.userId)))
-    .orderBy(projects.archivedAt, desc(projects.createdAt))
+    .orderBy(
+      sql`(${projects.archivedAt} is not null)`,
+      sql`${projects.name} collate nocase`,
+      projects.createdAt,
+    )
     .all() as ProjectSummary[];
 }
 
