@@ -3,11 +3,11 @@ import { eq } from "drizzle-orm";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
-import { makeTestApp, makeTestDb, seedProject, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedProject, seedState, seedUser } from "./harness";
 import { ROUTE_ACTIONS } from "../src/authz/route-manifest";
 import { ALL_ACTIONS, expected, ROLES, type Action, type Role } from "../src/authz/permissions";
 import { withProject, type Actor } from "../src/db/tx";
-import { projects } from "../src/db/schema";
+import { projects, projectStates } from "../src/db/schema";
 import { matrixFixtures } from "./matrix-fixtures";
 
 const db = makeTestDb();
@@ -16,11 +16,22 @@ const ownerA = seedUser(db, "o@example.test");
 const memberA = seedUser(db, "m@example.test");
 const viewerA = seedUser(db, "v@example.test");
 const outsider = seedUser(db, "x@example.test");
-const projectId = seedProject(db, ownerA, [
-  [memberA, "member"],
-  [viewerA, "viewer"],
-]);
-const FIXTURES = matrixFixtures({ projectId });
+
+/** A project with the standard three memberships, plus a spare state and two protected ones. */
+function seedFullProject() {
+  const id = seedProject(db, ownerA, [
+    [memberA, "member"],
+    [viewerA, "viewer"],
+  ]);
+  const stateId = seedState(db, id, { name: "Spare", category: "in_progress", position: 0 });
+  const todoId = seedState(db, id, { name: "Todo", category: "unstarted", position: 1 });
+  const doneId = seedState(db, id, { name: "Done", category: "done", position: 2 });
+  return { id, stateId, stateIds: [stateId, todoId, doneId] };
+}
+
+const seeded = seedFullProject();
+const projectId = seeded.id;
+const FIXTURES = matrixFixtures({ projectId, stateId: seeded.stateId, stateIds: seeded.stateIds });
 const actors: Record<Role, Actor> = {
   anonymous: { kind: "anonymous" },
   "non-member": outsider,
@@ -28,6 +39,28 @@ const actors: Record<Role, Actor> = {
   member: memberA,
   owner: ownerA,
 };
+
+// Destructive rows mutate the shared seeded project (or its spare state), and the matrix
+// iterates roles in a fixed order (anonymous, non-member, viewer, member, owner) — the owner
+// row runs last, so an earlier role never sees a deleted project/state. Give each destructive
+// key its own fresh project per role so the shared one stays live for the rest of the matrix.
+const DESTRUCTIVE = new Set(["DELETE /api/projects/:id", "DELETE /api/projects/:id/states/:stateId"]);
+
+/**
+ * POST /api/projects/:id/states runs earlier in ROUTE_ACTIONS and adds a state on the shared
+ * project for the roles that succeed, so a reorder body captured once at setup stops being a
+ * permutation of the project's actual state ids by the time this key's own iteration runs —
+ * read the live set right before building the fixture instead.
+ */
+function currentStateIds(projectId: string): string[] {
+  return db
+    .select({ id: projectStates.id })
+    .from(projectStates)
+    .where(eq(projectStates.projectId, projectId))
+    .orderBy(projectStates.position)
+    .all()
+    .map((r) => r.id);
+}
 
 // Only these exact middleware registrations (app.use(path, …) in app.ts) are exempt — an
 // explicit allowlist, not a heuristic, so a real route registered with app.all(...) still
@@ -76,8 +109,17 @@ describe("permission matrix over project routes", () => {
     for (const role of ROLES) {
       it(`${key} as ${role} → ${expected(rule, role)}`, async () => {
         const actor = actors[role];
-        const fixture = FIXTURES[key] ?? {};
-        let url = path.replace(":id", projectId);
+        // Each destructive role gets its own project/state so an earlier role's delete
+        // never leaves a later role authorizing against an already-gone row.
+        const target = DESTRUCTIVE.has(key) ? seedFullProject() : seeded;
+        const base = DESTRUCTIVE.has(key)
+          ? matrixFixtures({ projectId: target.id, stateId: target.stateId, stateIds: target.stateIds })[key] ?? {}
+          : FIXTURES[key] ?? {};
+        const fixture =
+          key === "POST /api/projects/:id/states/reorder"
+            ? { ...base, body: { orderedIds: currentStateIds(target.id) } }
+            : base;
+        let url = path.replace(":id", target.id);
         for (const [name, value] of Object.entries(fixture.params ?? {})) url = url.replace(`:${name}`, value);
         expect(url).not.toContain("/:"); // a param with no fixture would make every row meaningless
         const headers: Record<string, string> =
@@ -145,8 +187,14 @@ describe("fail-closed middleware", () => {
   });
 
   it("does not catch a non-project route under /api/projects", async () => {
-    const { app: list } = makeTestApp(db, (a) => a.get("/api/projects", (c) => c.json([])));
-    const res = await list.request("/api/projects", { headers: asOwner });
+    // GET /api/projects is now a real route (the caller's own list), so this probes the same
+    // bare path with a method nothing else registers, to keep testing that failClosed's
+    // trailing wildcard leaves the path with no :id segment alone.
+    const { app: list } = makeTestApp(db, (a) => a.put("/api/projects", (c) => c.json([])));
+    const res = await list.request("/api/projects", {
+      method: "PUT",
+      headers: { ...asOwner, "content-type": "application/json" },
+    });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
   });

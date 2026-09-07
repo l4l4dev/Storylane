@@ -17,12 +17,21 @@ export interface MatrixFixture {
  */
 export interface MatrixContext {
   projectId: string;
+  /** A spare state the matrix may PATCH and DELETE without breaking the category minimum. */
+  stateId: string;
+  /** The project's states, in position order — a valid permutation for the reorder fixture. */
+  stateIds: string[];
 }
 
-// ctx is unused until the first parameterized route lands; the signature is already what later tasks import.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function matrixFixtures(_ctx: MatrixContext): Record<string, MatrixFixture> {
+export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture> {
   return {
     "POST /api/me/password": { body: { currentPassword: "x", newPassword: "y" } },
+    "PATCH /api/projects/:id": { body: { name: "renamed by the matrix" } },
+    "POST /api/projects/:id/archive": { body: {} },
+    "POST /api/projects/:id/unarchive": { body: {} },
+    "POST /api/projects/:id/states": { body: { name: "Matrix", category: "in_progress" } },
+    "POST /api/projects/:id/states/reorder": { body: { orderedIds: ctx.stateIds } },
+    "PATCH /api/projects/:id/states/:stateId": { params: { stateId: ctx.stateId }, body: { name: "Matrix" } },
+    "DELETE /api/projects/:id/states/:stateId": { params: { stateId: ctx.stateId } },
   };
 }
