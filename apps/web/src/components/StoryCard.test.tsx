@@ -32,6 +32,7 @@ describe("StoryCard estimate control", () => {
         story={feature()}
         states={states}
         scaleValues={[0, 1, 2, 3, 5, 8]}
+        canWrite
         onAdvance={vi.fn()}
         onEstimated={vi.fn()}
       />,
@@ -51,6 +52,7 @@ describe("StoryCard estimate control", () => {
         story={feature()}
         states={states}
         scaleValues={[0, 1, 2, 3, 5, 8]}
+        canWrite
         onAdvance={vi.fn()}
         onEstimated={onEstimated}
       />,
@@ -72,6 +74,7 @@ describe("StoryCard estimate control", () => {
         story={feature({ points: 3 })}
         states={states}
         scaleValues={[0, 1, 2, 3, 5, 8]}
+        canWrite
         onAdvance={vi.fn()}
         onEstimated={vi.fn()}
       />,
@@ -86,10 +89,28 @@ describe("StoryCard estimate control", () => {
         story={feature({ storyType: "chore", points: null })}
         states={states}
         scaleValues={[0, 1, 2, 3, 5, 8]}
+        canWrite
         onAdvance={vi.fn()}
         onEstimated={vi.fn()}
       />,
     );
     expect(screen.queryByRole("group", { name: /points/i })).not.toBeInTheDocument();
+  });
+
+  it("renders no control at all for a viewer", () => {
+    render(
+      <StoryCard
+        projectId="p1"
+        story={feature({ points: 3 })}
+        states={states}
+        scaleValues={[0, 1, 2, 3, 5, 8]}
+        canWrite={false}
+        onAdvance={vi.fn()}
+        onEstimated={vi.fn()}
+      />,
+    );
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    // The estimate is still shown — as text, not as a control that would 403.
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 });

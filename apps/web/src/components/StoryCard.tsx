@@ -25,6 +25,7 @@ export function StoryCard({
   story,
   states,
   scaleValues,
+  canWrite,
   onAdvance,
   onEstimated,
 }: {
@@ -33,10 +34,12 @@ export function StoryCard({
   states: GateState[];
   /** The project's point scale, resolved once in BoardPage. */
   scaleValues: number[];
+  /** False for a viewer: every write here is a 403, so no control is rendered (principle 1). */
+  canWrite: boolean;
   onAdvance: (targetStateId: string) => void;
   onEstimated: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: story.id });
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: story.id, disabled: !canWrite });
   const gate = computeStateGate(states, story.stateId);
   const [showPoints, setShowPoints] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,13 +64,15 @@ export function StoryCard({
     }
   }
 
+  // A viewer's card is not a drag handle: dnd-kit's `attributes` announce role="button" and a
+  // tabindex, which would be exactly the dead control principle 1 forbids.
   return (
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, borderColor: "var(--line)" }}
       className="flex flex-col gap-1 rounded border bg-[var(--surface)] p-2"
-      {...attributes}
-      {...listeners}
+      {...(canWrite ? attributes : {})}
+      {...(canWrite ? listeners : {})}
     >
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm">{story.title}</span>
@@ -75,56 +80,59 @@ export function StoryCard({
       </div>
       <div className="flex items-center gap-2 text-xs" style={{ color: "var(--ink-muted)" }}>
         <span>{story.storyType}</span>
-        {isFeature && story.points !== null && (
-          // The badge toggles the same point-button row open, so re-estimating never needs a
-          // separate control.
-          <button
-            type="button"
-            className="mono underline decoration-dotted"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => setShowPoints((v) => !v)}
-          >
-            {story.points}
-          </button>
-        )}
-        {!isFeature && story.points !== null && <span className="mono">{story.points}</span>}
+        {story.points !== null &&
+          (isFeature && canWrite ? (
+            // The badge toggles the same point-button row open, so re-estimating never needs a
+            // separate control.
+            <button
+              type="button"
+              className="mono underline decoration-dotted"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => setShowPoints((v) => !v)}
+            >
+              {story.points}
+            </button>
+          ) : (
+            <span className="mono">{story.points}</span>
+          ))}
       </div>
       {error && (
         <p role="alert" className="text-xs" style={{ color: "var(--danger)" }}>
           {error}
         </p>
       )}
-      {isFeature && (blockedUnestimated || showPoints) ? (
-        <div onPointerDown={(e) => e.stopPropagation()}>
-          <PointButtons scaleValues={scaleValues} value={story.points} onSelect={selectPoints} />
-        </div>
-      ) : (
-        <>
-          {/* No dead controls: when there is no advance, nothing is rendered (principle 1). */}
-          {gate.kind === "advance" && (
-            <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.targetStateId)}>
-              {gate.label}
-            </button>
-          )}
-          {gate.kind === "accept-reject" && (
-            <div className="flex gap-1">
-              <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.acceptStateId)}>
-                {gate.acceptLabel}
+      {canWrite &&
+        (isFeature && (blockedUnestimated || showPoints) ? (
+          <div onPointerDown={(e) => e.stopPropagation()}>
+            <PointButtons scaleValues={scaleValues} value={story.points} onSelect={selectPoints} />
+          </div>
+        ) : (
+          <>
+            {/* No dead controls: when there is no advance, nothing is rendered (principle 1). */}
+            {gate.kind === "advance" && (
+              <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.targetStateId)}>
+                {gate.label}
               </button>
-              {gate.rejectStateId !== null && (
-                <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.rejectStateId!)}>
-                  Reject
+            )}
+            {gate.kind === "accept-reject" && (
+              <div className="flex gap-1">
+                <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.acceptStateId)}>
+                  {gate.acceptLabel}
                 </button>
-              )}
-            </div>
-          )}
-          {gate.kind === "restart" && gate.targetStateId !== null && (
-            <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.targetStateId!)}>
-              Restart
-            </button>
-          )}
-        </>
-      )}
+                {gate.rejectStateId !== null && (
+                  <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.rejectStateId!)}>
+                    Reject
+                  </button>
+                )}
+              </div>
+            )}
+            {gate.kind === "restart" && gate.targetStateId !== null && (
+              <button className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => onAdvance(gate.targetStateId!)}>
+                Restart
+              </button>
+            )}
+          </>
+        ))}
     </li>
   );
 }

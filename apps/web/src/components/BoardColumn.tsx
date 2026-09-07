@@ -29,6 +29,7 @@ export function BoardColumn({
   gateStates,
   scaleValues,
   showQuickAdd,
+  canWrite,
   onAdvance,
   onAdded,
 }: {
@@ -41,6 +42,8 @@ export function BoardColumn({
   scaleValues: number[];
   /** True on the Icebox and the first `unstarted` column (spec/screens.md "Kanban view"). */
   showQuickAdd: boolean;
+  /** False for a viewer: no quick-add, no card controls, no dragging (principle 1). */
+  canWrite: boolean;
   onAdvance: (storyId: string, targetStateId: string) => void;
   onAdded: () => void;
 }) {
@@ -50,6 +53,7 @@ export function BoardColumn({
   const points = storyIds.reduce((sum, id) => sum + (storiesById.get(id)?.points ?? 0), 0);
   const isIcebox = state === null;
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const canAdd = showQuickAdd && canWrite;
 
   return (
     <div
@@ -72,7 +76,7 @@ export function BoardColumn({
           {/* Only the trigger lives in the header — the form itself is an overlay below,
               docked over the card list, so opening it never pushes a card or its buttons down
               (ux-principles #3). */}
-          {showQuickAdd && !quickAddOpen && (
+          {canAdd && !quickAddOpen && (
             <button type="button" className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={() => setQuickAddOpen(true)}>
               + Add a story
             </button>
@@ -85,7 +89,7 @@ export function BoardColumn({
         </span>
       </div>
       <div style={{ position: "relative" }}>
-        {showQuickAdd && quickAddOpen && (
+        {canAdd && quickAddOpen && (
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }}>
             <QuickAddCard
               projectId={projectId}
@@ -108,6 +112,7 @@ export function BoardColumn({
                   story={story}
                   states={gateStates}
                   scaleValues={scaleValues}
+                  canWrite={canWrite}
                   onAdvance={(target) => onAdvance(id, target)}
                   onEstimated={onAdded}
                 />

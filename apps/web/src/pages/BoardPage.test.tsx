@@ -21,7 +21,8 @@ function mockApi(routes: Record<string, () => Response | Promise<Response>>) {
   });
 }
 
-const project = { pointScale: "fibonacci", customPoints: null };
+const project = { pointScale: "fibonacci", customPoints: null, role: "member" };
+const viewerProject = { ...project, role: "viewer" };
 
 const board = {
   states: [
@@ -218,5 +219,29 @@ describe("BoardPage", () => {
     render(<BoardPage projectId="p1" />);
     await screen.findByText("Ready");
     expect(screen.queryAllByRole("button", { name: /start|finish/i })).toHaveLength(0);
+  });
+
+  it("shows a viewer no write controls at all (every one of them would 403)", async () => {
+    mockApi({
+      "GET /api/projects/p1/board": () => json(200, board),
+      "GET /api/projects/p1": () => json(200, viewerProject),
+    });
+    render(<BoardPage projectId="p1" />);
+    await screen.findByRole("heading", { name: /icebox/i });
+    await waitFor(() => expect(screen.queryAllByRole("button")).toHaveLength(0));
+    expect(screen.queryByRole("button", { name: /add a story/i })).not.toBeInTheDocument();
+    // The board itself is unaffected: a viewer still reads every column and card.
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.getByTestId("column-todo-points")).toHaveTextContent("2");
+  });
+
+  it("keeps the write controls for a member", async () => {
+    mockApi({
+      "GET /api/projects/p1/board": () => json(200, board),
+      "GET /api/projects/p1": () => json(200, project),
+    });
+    render(<BoardPage projectId="p1" />);
+    expect(await screen.findByRole("button", { name: /^start$/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /add a story/i }).length).toBeGreaterThan(0);
   });
 });

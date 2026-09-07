@@ -26,6 +26,7 @@ interface ProjectDetail {
   // POINT_SCALES rather than importing a server-only type.
   pointScale: "fibonacci" | "linear" | "custom";
   customPoints: number[] | null;
+  role: "owner" | "member" | "viewer";
 }
 
 export function BoardPage({ projectId }: { projectId: string }) {
@@ -63,6 +64,10 @@ export function BoardPage({ projectId }: { projectId: string }) {
     () => (board.data?.states ?? []).map((s) => ({ id: s.id, category: s.category, actionLabel: s.actionLabel, position: s.position })),
     [board.data],
   );
+
+  // Until the project's own fetch lands the role is unknown, and a control that turns out to be
+  // a 403 is worse than one that appears a moment late (ux-principles #1).
+  const canWrite = project.data !== undefined && project.data.role !== "viewer";
 
   const scaleValues = useMemo(
     () => pointScaleValues(project.data?.pointScale ?? "fibonacci", project.data?.customPoints ?? null),
@@ -119,6 +124,7 @@ export function BoardPage({ projectId }: { projectId: string }) {
   }
 
   function onDragEnd(event: DragEndEvent) {
+    if (!canWrite) return;
     const storyId = String(event.active.id);
     const overId = event.over ? String(event.over.id) : null;
     if (overId === null) return;
@@ -166,6 +172,7 @@ export function BoardPage({ projectId }: { projectId: string }) {
                 gateStates={gateStates}
                 scaleValues={scaleValues}
                 showQuickAdd={column.stateId === null || column.stateId === firstUnstartedId}
+                canWrite={canWrite}
                 onAdvance={advance}
                 onAdded={reloadQuietly}
               />

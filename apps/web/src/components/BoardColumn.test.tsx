@@ -17,7 +17,7 @@ const story: StoryView = {
   completedAt: null,
 };
 
-function renderColumn() {
+function renderColumn(canWrite = true) {
   return render(
     <DndContext>
       <BoardColumn
@@ -28,6 +28,7 @@ function renderColumn() {
         gateStates={[]}
         scaleValues={[0, 1, 2, 3]}
         showQuickAdd
+        canWrite={canWrite}
         onAdvance={vi.fn()}
         onAdded={vi.fn()}
       />
@@ -60,5 +61,10 @@ describe("BoardColumn quick-add overlay", () => {
     await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(screen.queryByLabelText(/title/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add a story/i })).toBeInTheDocument();
+  });
+
+  it("offers no quick-add to a viewer", () => {
+    renderColumn(false);
+    expect(screen.queryByRole("button", { name: /add a story/i })).not.toBeInTheDocument();
   });
 });
