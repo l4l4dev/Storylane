@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Link, useRoute } from "wouter";
-import { apiFetch } from "../lib/api";
+import { apiFetch, errorMessage } from "../lib/api";
 import { useResource } from "../lib/use-resource";
 import { buttonClass } from "./Field";
 
@@ -12,9 +13,17 @@ import { buttonClass } from "./Field";
 export function Header({ onSignedOut }: { onSignedOut: () => void }) {
   const [onBoard, params] = useRoute("/projects/:id/board");
   const project = useResource<{ name: string }>(onBoard ? `/api/projects/${params!.id}` : null);
+  const [error, setError] = useState<string | null>(null);
 
   async function signOut() {
-    await apiFetch("/api/auth/logout", { method: "POST" });
+    setError(null);
+    try {
+      await apiFetch("/api/auth/logout", { method: "POST" });
+    } catch (e) {
+      // Still signed in: say so rather than leaving a button that looks like it did nothing.
+      setError(errorMessage(e));
+      return;
+    }
     onSignedOut();
   }
 
@@ -26,9 +35,16 @@ export function Header({ onSignedOut }: { onSignedOut: () => void }) {
         </Link>
         {onBoard && project.data && <span style={{ color: "var(--ink-muted)" }}>{project.data.name}</span>}
       </div>
-      <button type="button" className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={signOut}>
-        Sign out
-      </button>
+      <div className="flex items-center gap-2">
+        {error && (
+          <span role="alert" className="text-xs" style={{ color: "var(--danger)" }}>
+            {error}
+          </span>
+        )}
+        <button type="button" className={buttonClass} style={{ borderColor: "var(--line)" }} onClick={signOut}>
+          Sign out
+        </button>
+      </div>
     </header>
   );
 }

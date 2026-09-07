@@ -57,4 +57,25 @@ describe("useProjectEvents", () => {
     source!.dispatch("project.changed");
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("keeps one subscription when the handler identity changes on every reload", () => {
+    // use-resource's `reload` gets a new identity each time it settles; an effect that depended
+    // on it would close and reopen the stream after every event.
+    const { rerender } = renderHook(({ onChange }: { onChange: () => void }) => useProjectEvents("p1", onChange), {
+      initialProps: { onChange: vi.fn() },
+    });
+    rerender({ onChange: vi.fn() });
+    const latest = vi.fn();
+    rerender({ onChange: latest });
+    expect(FakeEventSource.instances).toHaveLength(1);
+    FakeEventSource.instances[0]!.dispatch("project.changed");
+    expect(latest).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a reconnect as a change: `open` calls onChange too", () => {
+    const onChange = vi.fn();
+    renderHook(() => useProjectEvents("p1", onChange));
+    FakeEventSource.instances[0]!.dispatch("open");
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
 });

@@ -22,4 +22,13 @@ describe("Header", () => {
     expect(fetchSpy).toHaveBeenCalledWith("/api/auth/logout", expect.objectContaining({ method: "POST" }));
     expect(onSignedOut).toHaveBeenCalledTimes(1);
   });
+
+  it("shows an error and stays signed in when sign-out fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(500, { error: "internal" }));
+    const onSignedOut = vi.fn();
+    render(<Header onSignedOut={onSignedOut} />);
+    await userEvent.click(screen.getByRole("button", { name: /sign out/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/something went wrong/i);
+    expect(onSignedOut).not.toHaveBeenCalled();
+  });
 });
