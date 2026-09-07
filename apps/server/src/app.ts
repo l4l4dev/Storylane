@@ -1,4 +1,4 @@
-import { Hono, type Context } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { serveStatic } from "hono/bun";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -52,6 +52,22 @@ export interface AppDeps {
   maxStreamsPerUser?: number;
 }
 
+/**
+ * Set on every response, including the SPA's own pages. `Referrer-Policy: no-referrer` is the
+ * one this design most wants: invite and reset links carry their secret in the URL path
+ * (design §4), which is exactly the shape a `Referer` header leaks. No CSP yet.
+ *
+ * Applied after `next()` and directly on `c.res`: a handler that returns a Response of its own
+ * (hono/bun's serveStatic) never goes through c.json, so prepared headers would not reach it.
+ */
+function responseHeaders(): MiddlewareHandler {
+  return async (c, next) => {
+    await next();
+    c.res.headers.set("Referrer-Policy", "no-referrer");
+    c.res.headers.set("X-Content-Type-Options", "nosniff");
+  };
+}
+
 const anonymous: Actor = { kind: "anonymous" };
 
 function defaultActorOf(testActorHeader: boolean): (c: Context) => Actor {
@@ -76,6 +92,7 @@ export function createApp(deps: AppDeps): Hono {
   const bus = deps.bus ?? new EventBus();
   const app = new Hono();
   app.use(requestLogger(deps.log));
+  app.use(responseHeaders());
   // Narrow on purpose: the trailing wildcard also matches zero segments, so this covers
   // /api/projects/:id and everything below it, but not a future non-project-scoped
   // GET /api/projects (the caller's own project list).

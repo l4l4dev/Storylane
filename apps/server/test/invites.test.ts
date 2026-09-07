@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { makeTestApp, makeTestDb, seedUser } from "./harness";
 import { createProject } from "../src/services/projects";
-import { INVITE_TTL_MS } from "../src/services/invites";
+import { INVITE_TTL_MS, purgeExpiredInvites } from "../src/services/invites";
 import { invites, projectMembers, projects, users } from "../src/db/schema";
 import { SESSION_COOKIE } from "../src/auth/sessions";
 import { hashToken, MAX_TOKEN_LENGTH } from "../src/auth/tokens";
@@ -87,6 +87,39 @@ describe("minting", () => {
     expect((await asOwner.json()) as unknown[]).toHaveLength(1);
     const asMember = await app.request(`${ORIGIN}/api/projects/${projectId}/invites`, { headers: as(member) });
     expect(asMember.status).toBe(403);
+  });
+
+  it("answers Cache-Control: no-store — the response carries the clear token", async () => {
+    const res = await mint(owner);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+  });
+});
+
+describe("purgeExpiredInvites", () => {
+  const seedInvite = (patch: Record<string, unknown>) => {
+    const now = Date.now();
+    const row = {
+      id: newId(),
+      projectId,
+      tokenHash: hashToken(newId()),
+      role: "member",
+      createdBy: (owner as { userId: string }).userId,
+      createdAt: now,
+      expiresAt: now + INVITE_TTL_MS,
+      ...patch,
+    };
+    db.insert(invites).values(row as never).run();
+    return row.id;
+  };
+
+  it("deletes expired, accepted and revoked rows and keeps a live one", () => {
+    const now = Date.now();
+    seedInvite({ expiresAt: now - 1 });
+    seedInvite({ acceptedAt: now - 1, acceptedBy: (member as { userId: string }).userId });
+    seedInvite({ revokedAt: now - 1 });
+    const live = seedInvite({});
+    expect(purgeExpiredInvites(db, now)).toBe(3);
+    expect(db.select({ id: invites.id }).from(invites).all()).toEqual([{ id: live }]);
   });
 });
 

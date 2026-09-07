@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { invites, projectMembers, projects, users } from "../db/schema";
 import { assertNoOpenTransaction, loadInProject, type ProjectTx, type UserActor } from "../db/tx";
@@ -227,4 +227,16 @@ export function registerAndAcceptInvite(
     },
     { behavior: "immediate" },
   );
+}
+
+/**
+ * Same shape as purgeExpiredSessions/purgeExpiredResetTokens: an expired, accepted or revoked
+ * invite is already refused by `usable()`, so sweeping it is housekeeping, never a backstop.
+ */
+export function purgeExpiredInvites(db: Db, now = Date.now()): number {
+  return db
+    .delete(invites)
+    .where(or(lt(invites.expiresAt, now), isNotNull(invites.acceptedAt), isNotNull(invites.revokedAt)))
+    .returning({ id: invites.id })
+    .all().length;
 }

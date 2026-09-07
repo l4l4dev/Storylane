@@ -74,6 +74,8 @@ export function inviteRoutes(deps: {
       // not fire ahead of withProjectChange's 401/403/404 — an anonymous or non-owner caller
       // learns nothing about whether their role value was well-formed.
       const rawRole = (await body(c)).role;
+      // The clear token is in this body: same rule as the public token routes.
+      c.header("Cache-Control", "no-store");
       return c.json(
         withProjectChange(deps, deps.actorOf(c), c.req.param("id"), "member:invite", (tx) =>
           mintInvite(tx, { role: requireInviteRole(rawRole) }),
