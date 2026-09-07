@@ -25,4 +25,27 @@ export default tseslint.config(
     plugins: { local },
     rules: { "local/no-project-tx-escape": "error" },
   },
+  {
+    // The other half of the escape-hatch fence: a service or route that opens its own
+    // connection sidesteps ProjectTx entirely. Both layers receive `Db`/`ProjectTx` as
+    // parameters, so only the *type* may come from the client module. src/db/**,
+    // src/index.ts, src/app.ts (the wiring that legitimately opens the database) and the
+    // tests are outside this glob.
+    files: ["src/services/**/*.ts", "src/routes/**/*.ts"],
+    rules: {
+      "no-restricted-imports": "off",
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/db/client"],
+              allowTypeImports: true,
+              message: "Take the Db/ProjectTx as a parameter; only src/index.ts and src/app.ts open the database.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

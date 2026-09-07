@@ -37,6 +37,8 @@ const registered = app.routes
   .filter((r) => !(r.method === "ALL" && EXEMPT_MIDDLEWARE_PATHS.has(r.path)))
   .map((r) => `${r.method} ${r.path}`);
 
+const isAction = (rule: string): rule is Action => (ALL_ACTIONS as string[]).includes(rule);
+
 describe("route manifest", () => {
   it("covers every registered route", () => {
     const missing = registered.filter((k) => !(k in ROUTE_ACTIONS));
@@ -46,9 +48,22 @@ describe("route manifest", () => {
     const stale = Object.keys(ROUTE_ACTIONS).filter((k) => !registered.includes(k));
     expect(stale).toEqual([]);
   });
-});
 
-const isAction = (rule: string): rule is Action => (ALL_ACTIONS as string[]).includes(rule);
+  it("gives every project-scoped route an Action rule", () => {
+    // The matrix loop below skips non-Action rules ("public"/"self"/"admin"/"setup"), so such a
+    // rule on a project route would silently escape both the shape check and the five-actor sweep.
+    const escaped = Object.entries(ROUTE_ACTIONS)
+      .filter(([key, rule]) => key.split(" ")[1]!.startsWith("/api/projects/") && !isAction(rule))
+      .map(([key, rule]) => `${key} → ${rule}`);
+    expect(escaped).toEqual([]);
+  });
+
+  it("has no fixture for a route that does not exist", () => {
+    // A typo'd fixture key would silently drop the params/body it was meant to supply.
+    const unknown = Object.keys(FIXTURES).filter((k) => !(k in ROUTE_ACTIONS));
+    expect(unknown).toEqual([]);
+  });
+});
 
 describe("permission matrix over project routes", () => {
   for (const [key, rule] of Object.entries(ROUTE_ACTIONS)) {
@@ -159,6 +174,23 @@ describe("project-scoped fail-closed", () => {
       ),
     );
     const res = await crossed.request(`/api/projects/${projectId}/crossed`, { headers: asOwner });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "authorization_missing" });
+  });
+
+  it("ignores a route pattern that names another segment :id", async () => {
+    // The guard matches /api/projects/:id/*, but this route's own pattern calls segment 3 :pid
+    // and segment 5 :id — reading c.req.param("id") after next() would check the wrong project.
+    const other = seedProject(db, ownerA);
+    const { app: renamed } = makeTestApp(db, (a) =>
+      a.get("/api/projects/:pid/link/:id", (c) =>
+        c.json({
+          authorized: withProject(db, ownerA, c.req.param("id"), "project:read", (tx) => tx.projectId),
+          served: c.req.param("pid"),
+        }),
+      ),
+    );
+    const res = await renamed.request(`/api/projects/${other}/link/${projectId}`, { headers: asOwner });
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "authorization_missing" });
   });
