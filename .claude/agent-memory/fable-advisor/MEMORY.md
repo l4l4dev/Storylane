@@ -25,3 +25,5 @@ Verdicts whose task has shipped live in `archive/` — they are not indexed here
 - [Streaming shell + Suspense announce-once mechanics](learnings-streaming-shell-announce-once.md) — TASK-233 pattern approved; SSR live regions don't announce initial content, dup polite announcement on client nav is acceptable; fallback must reuse the route skeleton
 - [Token aliasing kills the state layer](learnings-token-aliasing-kills-state-layer.md) — palette diffs: check accent/muted/secondary vs card/popover delta (hover, keyboard focus), not just text contrast
 - [Spec Kit adoption boundaries](project-speckit-adoption.md) — 2026-08-13 approved: specs/NNN = design doc (no duplicate doc-N), implement/taskstoissues deleted, constitution = pointer file; don't relitigate
+- [Self-host rewrite (2026-09)](project-self-host-rewrite.md) — rewrite/phase-1 branch, design doc path, temporary divergences accepted 2026-09-07 (Icebox column, card estimate control)
+- [Optimistic state must outlive refetch](learnings-optimistic-state-must-outlive-refetch.md) — clearing pending before reload resolves makes a successful drop snap back; check the success path too
