@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@l4l4dev'
 created_date: '2026-09-07 02:55'
-updated_date: '2026-09-07 16:27'
+updated_date: '2026-09-07 16:30'
 labels: []
 milestone: m-9
 dependencies:
@@ -36,4 +36,6 @@ Exit of phase 1 (design §9): a stranger can docker run and use a board. Update 
 
 <!-- SECTION:NOTES:BEGIN -->
 Phase-1 implementation closed 2026-09-08 on rewrite/phase-1 (3f5177c..ab33252, 52 commits). Final whole-branch review (Opus): 1 Critical (Bun.serve idleTimeout 10 s default killed SSE streams before the 20 s heartbeat) + 6 Important, all fixed in 9211472..ab33252; report at .superpowers/sdd/2026-09-07-self-host-phase-1/final-review/REPORT.md (git-ignored; read before deleting the workspace). Owner steps before this task: apply .superpowers/.../final-review/ENV-EXAMPLE-OWNER-DIFF.md to .env.example (STORYLANE_BIND, STORYLANE_IMAGE_TAG=edge until v0.1.0); run /code-review high on rewrite/phase-1; open PR rewrite/phase-1 → main (after TASK-244 merges phase 0); remove the owner's personal name from .backlog/completed/task-91 line 186 (pre-existing public-repo violation, introduced in c3fa30f). Design §4 now records session 30 d/14 d and login limits 20/IP, 5/email per 15 min. Follow-up candidates (need approval to create): stale story.stateId during the optimistic window; SSE re-auth + last-owner guard with member routes; CSP; packages/core typecheck; graceful shutdown; PR image build in CI; STORYLANE_GIT_SHA consumer; wall-clock idleTimeout regression test; advisor 'later' UX items.
+
+2026-09-08 controller docker check found the image build broken (web stage lacked packages/core after the board's @storylane/core import); fixed in 7fd4f44 together with a build-only image-check job on pull requests. Image verified locally: builds, boots, /healthz 200, setup_required gate, setup token in logs, 81 MB. Branch HEAD for review: 7fd4f44.
 <!-- SECTION:NOTES:END -->
