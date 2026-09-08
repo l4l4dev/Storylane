@@ -101,6 +101,22 @@ describe("BoardPage", () => {
     expect(JSON.parse(init.body as string)).toMatchObject({ title: "New one", stateId: null });
   });
 
+  it("gates an optimistically moved card by the column it now sits in", async () => {
+    mockApi({
+      "GET /api/projects/p1/board": () => json(200, board),
+      "GET /api/projects/p1": () => json(200, project),
+      // Never resolves: the board stays in the optimistic window for the whole test.
+      "POST /api/projects/p1/stories/s2/move": () => new Promise<Response>(() => {}),
+    });
+    render(<BoardPage projectId="p1" />);
+    await userEvent.click(await screen.findByRole("button", { name: /^start$/i }));
+    const doing = await screen.findByTestId("column-doing");
+    // The card's next action is Started's label, not Unstarted's: its loaded row still says
+    // "todo" but the column it was moved into decides the gate.
+    expect(await within(doing).findByRole("button", { name: /^finish$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^start$/i })).not.toBeInTheDocument();
+  });
+
   it("surfaces a rejected move and puts the card back", async () => {
     mockApi({
       "GET /api/projects/p1/board": () => json(200, board),

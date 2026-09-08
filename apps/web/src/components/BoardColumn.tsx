@@ -103,8 +103,12 @@ export function BoardColumn({
         <SortableContext items={storyIds} strategy={verticalListSortingStrategy}>
           <ul ref={setNodeRef} className="flex min-h-8 flex-col gap-2">
             {storyIds.map((id) => {
-              const story = storiesById.get(id);
-              if (!story) return null;
+              const loaded = storiesById.get(id);
+              if (!loaded) return null;
+              // During an optimistic move the ordering has the card here while the loaded row
+              // still carries its old state; the card's gate must follow the column it sits in.
+              const columnStateId = state?.id ?? null;
+              const story = loaded.stateId === columnStateId ? loaded : { ...loaded, stateId: columnStateId };
               return (
                 <StoryCard
                   key={id}
