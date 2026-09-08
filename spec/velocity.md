@@ -26,7 +26,7 @@ forecast(sprint) = rate × sprint.capacity      (planned capacity for a future s
   velocity.
 - **Capacity** = Σ over members of their working days in the sprint
   (calendar-aware, minus personal time off). It is **snapshotted onto
-  `iterations.capacity` by the finalization RPC** and never recomputed, so
+  `iterations.capacity` by the finalization service call** and never recomputed, so
   later member removal or calendar edits cannot rewrite history. If lazy
   finalization runs weeks late, capacity reflects membership/time-off at
   that moment (accepted, documented).
@@ -40,12 +40,12 @@ forecast(sprint) = rate × sprint.capacity      (planned capacity for a future s
 
 ### Where the capacity formula lives (TASK-86)
 
-Two implementations, deliberately: `public.project_capacity` (SQL, called by
-`finalize_iteration` — the snapshot invariant has to hold for every client
-and for Edge Functions, so it cannot live in a client) and `projectCapacity`
-(`packages/core/src/capacity.ts`, for planning future sprints, which have no
-row to read a snapshot from). Both are asserted against the single golden
-fixture `spec/fixtures/capacity.json` so they cannot drift.
+One implementation: `projectCapacity` (`packages/core/src/capacity.ts`),
+called directly by `services/iterations.ts` at finalization time — the
+snapshot invariant holds because there is a single server-side entry point,
+not a second copy to keep in sync — and reused for planning future sprints,
+which have no row to read a snapshot from. Asserted against the single
+golden fixture `spec/fixtures/capacity.json`.
 
 Rules both must apply: `working_weekdays` is a **set** (the DB CHECK cannot
 reject duplicates); `holiday` removes a day, `extra_workday` adds one;
@@ -59,7 +59,7 @@ and under-forecast every future sprint. Both implementations spell this as
 an allowlist, not `!= 'viewer'`, so a role added later has to opt in rather
 than land in the math by default.
 
-Only the first pass of a `finalize_iteration` call writes a real capacity.
+Only the first pass of a finalization call writes a real capacity.
 The catch-up loop inserts a gap row and finalizes it in the same call, so
 every later pass writes `capacity = 0` — otherwise a neglected project's
 empty gap rows would enter the window with `points = 0` and crush the rate.
@@ -130,8 +130,9 @@ Replaces the manual "Generate next iteration" / "Mark as done" operations from T
 4. Repeat if more than one `iteration_length` has passed since last access.
 
 Phase 1 trigger is **lazy on first access** (no cron dependency). It may later
-move to a scheduled Edge Function; either way the rule must live in one shared
-place per client — never duplicated per view (see ARCHITECTURE.md).
+move to a scheduled job (mechanism undecided — see design doc §6, "a scheduled
+rollover would need a spec change first"); either way the rule must live in one
+shared place — never duplicated per route (see ARCHITECTURE.md).
 
 ### Manual finish (2026-07-07)
 
@@ -169,7 +170,7 @@ its (normally 0) velocity never drags the running average down. The UI shows a
 "skipped" badge in its place, not "velocity 0".
 
 **Concurrency / double-click:** manual finish is *target-explicit* — the client
-sends the id of the iteration it is finishing (`p_iteration_id`). The RPC acts
+sends the id of the iteration it is finishing. The finalization call acts
 only if that id is still the project's latest, non-done row; a raced or
 double-clicked second call names the now-finished predecessor, sees a newer
 latest row, and returns a no-op event instead of skipping the fresh successor
@@ -180,13 +181,14 @@ in silence.
 
 ### Finalization concurrency & permissions (2026-07-08)
 
-Rollover and manual finish share **one finalization RPC**, and several
+Rollover and manual finish share **one finalization service call**, and several
 clients can race into it (two tabs loading after `end_date`, Finish
 clicked twice, Finish racing a page-load rollover). Rules:
 
-- The RPC takes a per-project advisory lock
-  (`pg_advisory_xact_lock` keyed on the project id) so only one
-  finalization per project runs at a time.
+- The finalization call runs inside one synchronous `BEGIN IMMEDIATE`
+  transaction (ARCHITECTURE.md "`bun:sqlite` transactions are synchronous"),
+  so only one finalization per project is ever mid-flight; a concurrent call
+  waits on `busy_timeout` instead of racing.
 - It is **idempotent**: the done-transition is
   `UPDATE iterations SET state = 'done' … WHERE id = … AND state <> 'done'`;
   zero rows updated means another caller already finalized — return the
@@ -195,14 +197,14 @@ clicked twice, Finish racing a page-load rollover). Rules:
 - Manual finish sets `end_date = LEAST(end_date, today)` — finishing an
   already-overdue iteration must not extend it (the overdue catch-up then
   proceeds as normal rollover).
-- The RPC is SECURITY DEFINER with explicit membership checks inside
-  (`require_project_role`, re-run after the advisory lock so a mid-wait
-  revocation is caught — TASK-142). **Both lazy rollover and manual finish
+- The finalization call re-checks membership inside the transaction
+  (`require_project_role`, re-run after entering the transaction so a
+  mid-wait revocation is caught — TASK-142). **Both lazy rollover and manual finish
   are owner/member only** (owner decision 2026-07-22): rollover is a write
   (finalizes iterations, inserts the successor, moves `stories.iteration_id`),
   and a `viewer` is read-only — an abandoned project stays *visibly*
   abandoned (its expired iteration shown as-is) rather than being advanced by
-  a viewer's page view. A viewer's rollover call is rejected 42501, which the
+  a viewer's page view. A viewer's rollover call is rejected with 403, which the
   clients swallow (`ensureCurrentIteration`) so the board still renders the
   stale row; a writer catches it up on their next visit.
 - A DB trigger rejects setting `stories.iteration_id` to an iteration
@@ -210,8 +212,8 @@ clicked twice, Finish racing a page-load rollover). Rules:
   just after a concurrent finalization (the app's pre-check stays as UX;
   the trigger is the authoritative guard). The finalization path itself
   only moves stories *out* of the done iteration, so it is unaffected.
-- Clients that raced and lost see the refreshed board via Realtime /
-  revalidation; a rejected drop surfaces the existing
+- Clients that raced and lost see the refreshed board via the project SSE
+  stream (`GET /api/projects/:id/events`) / revalidation; a rejected drop surfaces the existing
   "finalized iteration" error message.
 - A manually shortened iteration counts in the velocity window like any
   other done iteration — no proration (Pivotal behavior). A *skipped*
@@ -263,6 +265,6 @@ new length (accepted trade-off). The settings change writes an
 A single sprint can be lengthened in whole weeks (e.g. this sprint only
 2w → 3w for a long holiday); whole-week overrides preserve the start
 weekday, and subsequent sprints continue from the new `end_date`. The
-override runs inside the **existing finalization RPC pattern with the
-per-project advisory lock** ("Finalization concurrency" above) and is
+override runs inside the **existing finalization service call, inside its
+transaction** ("Finalization concurrency" above) and is
 **rejected if the iteration is already `state = 'done'`**.

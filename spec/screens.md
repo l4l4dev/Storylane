@@ -2,7 +2,7 @@
 
 ## Screen Structure
 
-### Web (Next.js)
+### Web (SPA)
 
 ```
 /                         Login / top page
@@ -72,10 +72,10 @@ UsernameEditor is removed from this page (moved to `/settings`).
   - point scale (+ custom points), velocity window;
   - initial member invites via an exact-match username picker (optional,
     addable later) — deliberately not the fuzzy search-as-you-type picker
-    used in project settings, since that RPC requires an existing
+    used in project settings, since that lookup requires an existing
     project_id to stay owner-gated; searching before a project exists can
     only safely support confirm/deny-one-exact-username, not fuzzy
-    enumeration (see TASK-6's rls-security-reviewer finding).
+    enumeration (see TASK-6's finding on user-search enumeration).
 - **Project cards** show: name, a summary line (current iteration number
   and velocity), member avatars (overlapping initials/OAuth avatars, capped
   with a "+N"), and last-updated time.
@@ -274,7 +274,7 @@ a physical column.
   are drag-reorderable among themselves and sit in their own block, ordered
   by `position` (doc-18 §2's single dense position space, ported from
   TASK-188's Icebox-block logic). A header **"+ Add Epic"** button creates a
-  new, childless epic (`create_epic` RPC, doc-20 §2) and lands with the band
+  new, childless epic (`create_epic`, doc-20 §2) and lands with the band
   and the new epic both expanded (ux-principles principle 10).
   - **Expanding an epic reveals every child, regardless of zone** (fixes the
     old accordion's defect: a child that moved out of Icebox used to
@@ -477,7 +477,7 @@ Interactions:
 - **Points total:** the sum of the right cards' tentative points is shown
   against the source's old points.
 - **Preview & commit:** a pre-commit preview lists the children to be created;
-  "Split" runs the `split_story` RPC (doc-18 §6) — each right card becomes a new
+  "Split" runs `split_story` (doc-18 §6) — each right card becomes a new
   child story (`parent_id` = source, `epic_color` inherited), `position` from
   the sequence with a gap opened per the position invariant, reassigned tasks
   moved to their target child, then the source's `points` cleared and

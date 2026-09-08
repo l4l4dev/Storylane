@@ -1,5 +1,19 @@
 # MCP Server (agent access)
 
+> **Stack note (2026-09-08):** this file predates the self-host rewrite and
+> still describes the Supabase-era transport (direct `@supabase/supabase-js`
+> access, RLS, Postgres RPCs). **What still holds:** the product behaviour —
+> the Phase 1 toolset, the "agent is an ordinary project member" rule, the
+> write-path rules (lazy rollover first, archive guard, shared pure logic,
+> atomic multi-write tools). **What's superseded:** the transport and auth
+> mechanism (direct DB connection, RLS, RPC names, `SUPABASE_*` env vars) —
+> the MCP server now talks to the same JSON API as every other client, using
+> a Personal Access Token, per `docs/design/2026-09-05-self-host-rewrite-design.md`
+> §9 (phase 3) and §4 (PATs). The exact tool-call shape (arguments unchanged
+> vs. mapped onto individual routes) is not decided; treat everything below
+> as the product design to reimplement against the new transport, not as
+> current mechanism.
+
 Lets coding agents (Claude Code and other MCP clients) read and write Storylane
 projects, so development work can eventually be managed in Storylane itself
 (dogfooding). Designed 2026-07-11 (TASK-47); implemented in TASK-48.

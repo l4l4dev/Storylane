@@ -2,6 +2,23 @@
 
 ## Integration Implementation Notes
 
+> **Stack note (2026-09-08):** this file predates the self-host rewrite and
+> still describes the Supabase-era pipeline (Edge Functions, `pg_net`,
+> Vault-stored secrets, Postgres RPCs/triggers). **What still holds:** the
+> product behaviour — story-id-in-title/branch matching, the merge-target
+> state being configurable and forward-only, idempotent retries, the Slack
+> notification triggers and gating rules, and the provider header/signature
+> differences. **What's superseded:** inbound webhooks become a server route
+> (`apps/server/src/routes/`, no Edge Function); the transactional
+> finish+assign step becomes one server transaction/service call instead of
+> a Postgres RPC; the Slack outbox is drained by the in-process worker
+> instead of `pg_net` calling an Edge Function; the Slack webhook secret and
+> any signing secrets move to instance settings stored server-side instead
+> of Vault. See `docs/design/2026-09-05-self-host-rewrite-design.md` §6
+> (worker) and §9 (phase 2). The exact route/service boundary is not decided;
+> treat everything below as the product design to reimplement against the
+> new transport, not as current mechanism.
+
 ### GitHub / Forgejo Webhooks
 1. Include the story ID in the PR title or branch name (e.g. `[SL-123]` or `storylane/123`)
    - ID は `stories.number`（プロジェクト毎の連番、Task 12 で追加）を指す。UUID は使わない

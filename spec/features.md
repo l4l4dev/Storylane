@@ -41,7 +41,7 @@
   - `fibonacci`: 0, 1, 2, 3, 5, 8, 13 / `linear`: 0, 1, 2, 3 / `custom`: values from `projects.custom_points`
   - **Estimation gate (category terms):** an unestimated `feature` can only
     sit in Icebox (`state_id IS NULL`) or an `unstarted`-category state; the
-    RPC and board-move deltas reject entry into any `in_progress` / `done` /
+    service call and board-move deltas reject entry into any `in_progress` / `done` /
     `rejected` state
 - Task (checklist) management within stories
 - Assignee, label, and parent ("epic") associations (parent = `stories.parent_id`, doc-18)
@@ -59,7 +59,7 @@
     `epic_color` inherited); the user assigns each child a title, description,
     type, and tentative points, and drags source tasks onto the child that
     should inherit them.
-  - On commit (`split_story` RPC, doc-18 §6): children are inserted with
+  - On commit (`split_story`, doc-18 §6): children are inserted with
     `position` from the sequence (gap opened per the position invariant), the
     source's `points` are cleared and `is_container` flips true (maintenance
     trigger, doc-18 §4, which logs the old points to the activity log).
@@ -70,12 +70,12 @@
     items that carry their own state/iteration/points and count in velocity.
   - You can also nest an existing story under an existing container directly
     from the story-detail **Parent** picker (sets `parent_id`; the single-level
-    trigger, doc-18 §3, rejects an illegal choice) — no RPC needed for the
-    single-child case.
+    trigger, doc-18 §3, rejects an illegal choice) — no extra service call
+    needed for the single-child case.
 - **Move / Copy to another project (2026-07-07):** from the story detail
   menu, targeting any project the user is a member of (either mode).
   **Containers are excluded (doc-18 §8):** a story with `is_container = true`
-  cannot be Moved/Copied — the RPCs reject it and the menu items are
+  cannot be Moved/Copied — the service calls reject it and the menu items are
   hidden/disabled — because deleting the source would `SET NULL` its children's
   `parent_id` and silently explode the epic. Move/regroup the children
   instead; an emptied container that lost its last child auto-reverts to a
@@ -100,10 +100,10 @@
     projects get an activity-log entry.
   - **Copy** duplicates content only (title, description, type, tasks,
     labels) — no comments, no history. Same landing rules as Move.
-  - Implemented as a single Postgres RPC per operation for atomicity.
-  - Hardening (2026-07-08): the RPCs are SECURITY DEFINER (fixed
-    `search_path`, granted to `authenticated` only) and re-check
-    everything explicitly inside: caller has role **owner or member in
+  - Implemented as a single service call (one transaction) per operation for atomicity.
+  - Hardening (2026-07-08): the service calls (`authorizeBoth`, see
+    ARCHITECTURE.md "Project data is reachable only through a `ProjectTx`")
+    re-check everything explicitly inside: caller has role **owner or member in
     both projects** (viewer is not enough), source ≠ target, and neither
     project is archived. Move is implemented as **insert-into-target +
     re-parent tasks/comments/labels + delete-source in one
@@ -114,7 +114,7 @@
     the target Icebox). Labels are recreated by lookup-then-insert
     inside the transaction (`labels` has no `UNIQUE(project_id, name)`;
     a concurrent duplicate is benign). Move/Copy land at the **bottom**
-    of the target Icebox. The RPC inserts the
+    of the target Icebox. The service call inserts the
     `story.moved_out` / `story.moved_in` / `story.copied_in` activity
     rows itself — in-database, single path, consistent with the trigger
     rule in ARCHITECTURE.md. A concurrent editor of the moved story sees
@@ -165,7 +165,7 @@
 #### Team Collaboration
 - **Invite members by user search (2026-07-07, replaces email invite):**
   registered users are found via a search box (matches `username` /
-  `display_name`, backed by a capped SECURITY DEFINER RPC) and invited with
+  `display_name`, backed by a capped server route) and invited with
   a role. Available in project settings and in the project creation form.
 - Role management: owner / member / viewer
 - Comments and @mentions on stories
@@ -187,7 +187,7 @@
   — it lives in My Work instead. The filter is viewer-scoped
   (`is_personal AND created_by = me`), so a personal project someone was
   *invited* to still shows in their list.
-- Seeding runs in the same transaction as the `auth.users` insert; a
+- Seeding runs in the same transaction as the `users` insert; a
   seeding failure fails signup rather than leaving a user without their
   personal project.
 
@@ -222,7 +222,7 @@
 - When mentioned in a comment
 - When a story you own changes state
 - Web: browser notifications / iOS: push notifications
-- Web 通知のトリガーは Supabase Realtime のイベント購読（Task 11 が Task 10 の前提）
+- Web 通知のトリガーはプロジェクトの SSE ストリーム(`GET /api/projects/:id/events`)の購読（Task 11 が Task 10 の前提）
 
 #### Integrations
 - **GitHub**: Link PRs to stories. On PR merge, advance the story to the
@@ -234,4 +234,4 @@
 ### Phase 2 (Future)
 - CSV export
 - Generic Webhook API
-- Avatar upload (Supabase Storage)
+- Avatar upload (server-side file storage, phase 3)

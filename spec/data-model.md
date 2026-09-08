@@ -3,11 +3,11 @@
 ## Data Model
 
 ### users
-References Supabase Auth `auth.users`. Only profile data is managed in a separate table.
+References the `users` table (server-side auth, `docs/design/2026-09-05-self-host-rewrite-design.md` §4). Only profile data is managed in a separate table.
 
 ```sql
 profiles (
-  id           uuid PRIMARY KEY REFERENCES auth.users(id),
+  id           uuid PRIMARY KEY REFERENCES users(id),
   display_name text NOT NULL,
   username     text UNIQUE NOT NULL,  -- @mention 用の一意ハンドル。初回サインイン時に自動生成、設定で変更可（Task 9 で追加）
   avatar_url   text,
@@ -173,8 +173,8 @@ slot ids (`'todo'` / `'today'` / `'done'` / a `my_work_columns` uuid), read-side
 merged against the live free-column set (`resolveColumnOrder` in
 `lib/utils/my-work.ts`) so a stale (deleted) id is dropped and a not-yet-
 ordered one is appended in its default position — no migration needed when a
-column is added or removed. No new RLS: `profiles`' existing own-row UPDATE
-policy already covers writing this column.
+column is added or removed. No new authorization rule needed: the server
+already checks the session user before writing this column.
 ```sql
 my_work_columns (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -186,7 +186,7 @@ my_work_columns (
 )  -- + index on (user_id, position)
 ```
 Seeded one `Doing` row per user (backfill + at signup via `handle_new_user`).
-RLS: own rows, all four ops (`user_id = auth.uid()`).
+Authorization: the server checks the session user owns the row, for all four ops.
 
 ### my_work_story_state (doc-14, reshaped by doc-15, Done-as-status TASK-176)
 Per-user, per-story My Work marks + manual card orders. A card classifies to
@@ -235,9 +235,10 @@ can't borrow another user's column, and column deletion nulls only `column_id`,
 never `user_id` (which is part of the PK). The column-list `SET NULL` form is
 PG15+ (local runs PG17). `today_date`/carry-over use the **client's** local wall
 date, never DB `current_date` (UTC would shift the day boundary to 09:00 JST) —
-only the one-time migration backfill uses `current_date`. RLS: own-rows
-SELECT/UPDATE/DELETE (`user_id = auth.uid()`); INSERT WITH CHECK
-`user_id = auth.uid() AND` caller is a member of the story's project. See spec/permissions.md.
+only the one-time migration backfill uses `current_date`. Authorization: the
+server checks session-user ownership for SELECT/UPDATE/DELETE; INSERT
+additionally requires the caller to be a member of the story's project. See
+spec/permissions.md.
 
 *(`project_my_work_mapping` was removed in doc-15 — free columns never touch a
 project board, so a mapping had nothing left to do.)*
@@ -246,8 +247,8 @@ project board, so a mapping had nothing left to do.)*
 **No longer read or written.** Done was originally an append-only completion log
 backed by this table; the owner's 2026-07-24 decision made Done a plain status
 column read from the story's live `done` category, so `maintain_story_completed_at`
-no longer inserts here and no reader remains. The table (and the `stories` SELECT
-RLS OR-clause that referenced it) is left in place — unread — to avoid destroying
+no longer inserts here and no reader remains. The table (and the extra clause
+in the stories read rule that referenced it) is left in place — unread — to avoid destroying
 production rows on merge; it is dropped by TASK-98's baseline squash + reset. Do
 not add new readers/writers.
 
@@ -280,8 +281,8 @@ user_time_off (
   PRIMARY KEY (user_id, date)
 )
 ```
-`user_time_off` READ policy is `user_id = auth.uid() OR
-shares_project_with(user_id)`, WRITE self-only. The trade-off (a shared
+`user_time_off` read is allowed for the user themself or any co-member of a
+shared project; write is self-only. The trade-off (a shared
 project exposes all your time-off dates to its members, viewers included) is
 accepted and documented in spec/permissions.md. v1 has no per-user weekday patterns —
 "agent works weekends" is expressed via `extra_workday` / time-off dates or
@@ -318,13 +319,13 @@ iterations (
   number      int  NOT NULL,              -- sprint number (1, 2, 3...)
   goal        text,                       -- sprint goal (optional)
   retro_notes text,                       -- TASK-205: retrospective (optional), the backward-looking
-                                          -- counterpart to goal. Same RLS as goal (owner/member write,
-                                          -- any member read) — no dedicated policy
+                                          -- counterpart to goal. Same authorization as goal (owner/member
+                                          -- write, any member read) — no dedicated rule
   start_date  date NOT NULL,
   end_date    date NOT NULL,
   velocity    int,                        -- finalized done-category point sum, snapshotted when done
   capacity    numeric,                    -- doc-8 §7: Σ member working-days for this sprint,
-                                          -- SNAPSHOTTED by the finalization RPC and never recomputed —
+                                          -- SNAPSHOTTED by the finalization service call and never recomputed —
                                           -- later member removal or calendar edits cannot rewrite
                                           -- history. NULL until finalized. rate = Σvelocity ÷ Σcapacity
                                           -- over the window (see spec/velocity.md)
@@ -342,7 +343,7 @@ Goals for **future (virtual) iterations** (2026-07-07) — future iterations
 have no `iterations` row (see spec/velocity.md), so their goals are keyed
 by iteration number. When rollover (or manual finish) creates the real
 iteration row for a number that has a goal here, the goal is adopted into
-`iterations.goal` and this row is deleted. Same RLS pattern as stories
+`iterations.goal` and this row is deleted. Same authorization pattern as stories
 (members read/write). Edited inline on the backlog group headers (see
 spec/screens.md "Backlog groups").
 ```sql
@@ -382,8 +383,8 @@ stories (
                                           -- doc-20 §2: the *intent* to stay an epic with zero children —
                                           -- is_container stays fully derived (relaxing it would reopen the
                                           -- TASK-182 hole where a client sets is_container=false, points=5
-                                          -- to un-containerize a row). Written only by two SECURITY DEFINER
-                                          -- RPCs: create_epic(project_id, title) (childless epic, "+ Add
+                                          -- to un-containerize a row). Written only by two service calls:
+                                          -- create_epic(project_id, title) (childless epic, "+ Add
                                           -- Epic") and set_epic_pinned(story_id, pinned) (pins an existing
                                           -- childless story, "Turn into epic…"; unpins, rejecting while
                                           -- children remain). Any other write path is blocked by a
@@ -450,8 +451,8 @@ property is a **permanent DB invariant, not a one-time clear** (decision-1):
 iteration_id IS NULL))` on `stories`, plus an `is_container` reject guard in
 `set_story_state`, so no later direct UPDATE can re-populate a container's
 board fields (doc-18 §4; the CHECK now also covers a pinned-but-childless
-epic, doc-20 §2). A **container itself cannot be Move/Copied** — the RPCs
-reject `is_container = true` (moving it would `SET NULL` its children's
+epic, doc-20 §2). A **container itself cannot be Move/Copied** — the service
+calls reject `is_container = true` (moving it would `SET NULL` its children's
 `parent_id` and explode the epic); relocate an epic by moving its children
 (doc-18 §8). Attaching/detaching a story to/from an epic (`set_story_parent`,
 doc-20 §5) sets `parent_id` **only** — state/iteration/position are
@@ -510,8 +511,8 @@ activity_logs (
   -- a story delete, so the log survives with story_id nulled + project_id intact.
   FOREIGN KEY (story_id, project_id) REFERENCES stories(id, project_id) ON DELETE NO ACTION
 )
--- Inserted only by SECURITY DEFINER trigger/RPC paths (no client INSERT policy,
--- TASK-55) — see spec/permissions.md.
+-- Inserted only by recordActivity (apps/server/src/services/activity.ts, the
+-- only writer) — no direct client write — see spec/permissions.md.
 ```
 
 ### integrations
@@ -532,7 +533,7 @@ integrations (
 are an **ordering** key, not a dense index. Readers sort by it; no
 one reads it as an array index, and gaps are legal.
 
-Two rules keep it consistent (TASK-58's position-sequence + splice RPCs):
+Two rules keep it consistent (TASK-58's position-sequence + splice logic):
 
 1. **Every INSERT into a positioned table takes `position` from that table's
    sequence default — never an explicit value.** The one exception is
