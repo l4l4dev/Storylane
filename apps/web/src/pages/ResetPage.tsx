@@ -20,7 +20,7 @@ export function ResetPage({ token }: { token: string }) {
       // The server revokes every session belonging to this user (design §4) — including the
       // caller's own, if they reached this page while signed in — so the cached `me` is stale
       // by the time they follow the "Go to sign in" link.
-      refresh();
+      await refresh();
       setDone(true);
     } catch (e) {
       setError(errorMessage(e));

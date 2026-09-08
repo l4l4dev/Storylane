@@ -27,7 +27,7 @@ export function InviteAcceptPage({ token, onJoined }: { token: string; onJoined:
       });
       // The anonymous branch just minted a session cookie; the signed-in branch may have just
       // joined a first project. Either way the session provider's cached `me` is stale.
-      refresh();
+      await refresh();
       onJoined(joined.projectId);
     } catch (e) {
       setError(errorMessage(e));

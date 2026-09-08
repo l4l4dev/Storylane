@@ -51,6 +51,39 @@ describe("ResetPage", () => {
     });
   });
 
+  it("shows an error and does not offer sign-in when the post-reset session reload fails", async () => {
+    let meCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url === "/api/me" && method === "GET") {
+        meCalls += 1;
+        // First call is the provider's mount load (unauthenticated); the second is the
+        // post-reset refresh, which fails.
+        return meCalls === 1 ? json(401, { error: "unauthenticated" }) : json(500, { error: "unexpected" });
+      }
+      if (url === "/api/auth/reset/tok1" && method === "GET") {
+        return json(200, { email: "user@example.test" });
+      }
+      if (url === "/api/auth/reset/tok1" && method === "POST") {
+        return json(200, { ok: true });
+      }
+      throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+    });
+    render(
+      <SessionProvider>
+        <ResetPage token="tok1" />
+      </SessionProvider>,
+    );
+
+    await screen.findByText(/for user@example\.test/i);
+    await userEvent.type(screen.getByLabelText(/password/i), "correct horse battery");
+    await userEvent.click(screen.getByRole("button", { name: /set password/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/something went wrong/i);
+    expect(screen.queryByRole("link", { name: /go to sign in/i })).not.toBeInTheDocument();
+  });
+
   it("explains an invalid or expired token", async () => {
     mockApi({
       "GET /api/auth/reset/bad": () => json(404, { error: "not_found" }),

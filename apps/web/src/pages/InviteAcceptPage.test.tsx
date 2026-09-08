@@ -80,6 +80,42 @@ describe("InviteAcceptPage", () => {
     });
   });
 
+  it("shows an error and does not navigate when the post-accept session reload fails", async () => {
+    let meCalls = 0;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url === "/api/me" && method === "GET") {
+        meCalls += 1;
+        // First call is the provider's mount load (unauthenticated); the second is the
+        // post-accept refresh, which fails.
+        return meCalls === 1 ? json(401, { error: "unauthenticated" }) : json(500, { error: "unexpected" });
+      }
+      if (url === "/api/invites/tok3" && method === "GET") {
+        return json(200, { projectId: "p3", projectName: "Demo Project", role: "viewer" });
+      }
+      if (url === "/api/invites/tok3/accept" && method === "POST") {
+        return json(200, { projectId: "p3", projectName: "Demo Project", role: "viewer" });
+      }
+      throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+    });
+    const onJoined = vi.fn();
+    render(
+      <SessionProvider>
+        <InviteAcceptPage token="tok3" onJoined={onJoined} />
+      </SessionProvider>,
+    );
+
+    await userEvent.type(await screen.findByLabelText(/your name/i), "New Person");
+    await userEvent.type(screen.getByLabelText(/^email$/i), "new@example.test");
+    await userEvent.type(screen.getByLabelText(/password/i), "correct horse battery");
+    await userEvent.click(screen.getByRole("button", { name: /create account and join/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/something went wrong/i);
+    expect(onJoined).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
   it("explains an invalid token", async () => {
     mockApi({
       "GET /api/me": () => json(401, { error: "unauthenticated" }),
