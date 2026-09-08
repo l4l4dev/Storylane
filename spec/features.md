@@ -204,8 +204,8 @@
   page and in the sidebar project switcher
 - Search and sort (last updated / name / created)
 - Account settings (`/settings`): username and display name editing lives
-  here — not on the Projects page, not per project. Avatar comes from OAuth
-  (`avatar_url`); avatar upload is Phase 2.
+  here — not on the Projects page, not per project. There is no OAuth avatar
+  source any more; until avatar upload ships (design §9), avatars are initials.
 
 #### My Work (cross-project personal view, doc-8 §9 + doc-14 — replaces Focus view)
 - All stories assigned to the signed-in user across every project they

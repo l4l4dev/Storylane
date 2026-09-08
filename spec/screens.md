@@ -6,7 +6,8 @@
 
 ```
 /                         Login / top page
-/auth/login               Login (OAuth)
+/login                    Login (email + password); /setup on first run,
+                          /invite/:token and /reset/:token for one-time links
 /dashboard                Projects page (see "Projects page" below)
 /my-work                  My Work: cross-project personal view of stories assigned to the
                           signed-in user (see "My Work" below — screen details deliberately
@@ -77,7 +78,7 @@ UsernameEditor is removed from this page (moved to `/settings`).
     only safely support confirm/deny-one-exact-username, not fuzzy
     enumeration (see TASK-6's finding on user-search enumeration).
 - **Project cards** show: name, a summary line (current iteration number
-  and velocity), member avatars (overlapping initials/OAuth avatars, capped
+  and velocity), member avatars (overlapping initials, capped
   with a "+N"), and last-updated time.
 - **Favorites:** a pin toggle on each card (`project_members.is_favorite`);
   pinned projects sort first here and in the sidebar project switcher.
