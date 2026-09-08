@@ -24,6 +24,7 @@ jobs:
         with: { bun-version: latest }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @storylane/core test
+      - run: pnpm --filter @storylane/core typecheck
       - run: pnpm --filter @storylane/server lint
       - run: pnpm --filter @storylane/server typecheck
       - run: cd apps/server && bun test

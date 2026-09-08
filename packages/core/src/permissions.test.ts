@@ -11,15 +11,21 @@ function parseMatrix(src: string): Record<string, Record<string, number>> {
   const lines = src.split("\n");
   const start = lines.findIndex((l) => /^\|\s*action\s*\|/i.test(l));
   if (start < 0) throw new Error("matrix table not found");
-  const header = lines[start].split("|").map((s) => s.trim()).filter(Boolean);
+  const headerLine = lines[start];
+  if (headerLine === undefined) throw new Error("matrix table not found");
+  const header = headerLine.split("|").map((s) => s.trim()).filter(Boolean);
   const out: Record<string, Record<string, number>> = {};
-  for (let i = start + 2; i < lines.length && lines[i].startsWith("|"); i++) {
-    const cells = lines[i].split("|").map((s) => s.trim()).filter(Boolean);
-    const action = cells[0].replace(/`/g, "");
-    out[action] = {};
+  for (let i = start + 2; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === undefined || !line.startsWith("|")) break;
+    const cells = line.split("|").map((s) => s.trim()).filter(Boolean);
+    const action = cells[0];
+    if (action === undefined) continue;
+    const row: Record<string, number> = {};
     header.slice(1).forEach((role, idx) => {
-      out[action][role] = Number(cells[idx + 1]);
+      row[role] = Number(cells[idx + 1]);
     });
+    out[action.replace(/`/g, "")] = row;
   }
   return out;
 }
