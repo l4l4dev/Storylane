@@ -100,7 +100,21 @@ function main(): void {
   if (command === "serve") {
     const config = loadConfigOrExit();
     try {
-      startServer(config);
+      const server = startServer(config);
+      let shuttingDown = false;
+      const shutdown = (signal: string) => {
+        if (shuttingDown) {
+          // A second signal means the operator wants out now, not after in-flight requests finish.
+          log.info("shutdown forced", { signal });
+          server.stop(true);
+          process.exit(0);
+        }
+        shuttingDown = true;
+        log.info("shutting down", { signal });
+        server.stop().then(() => process.exit(0));
+      };
+      process.on("SIGTERM", () => shutdown("SIGTERM"));
+      process.on("SIGINT", () => shutdown("SIGINT"));
     } catch {
       // startServer already logged what failed.
       process.exit(1);
