@@ -8,6 +8,7 @@ describe("loadConfig", () => {
     expect(c.dataDir).toBe("/data");
     expect(c.baseUrl).toBeNull();
     expect(c.trustProxy).toBe(false);
+    expect(c.gitSha).toBe("dev");
   });
   it("reads every STORYLANE_* variable", () => {
     const c = loadConfig({
@@ -15,11 +16,13 @@ describe("loadConfig", () => {
       STORYLANE_DATA_DIR: "/tmp/sl",
       STORYLANE_BASE_URL: "https://tracker.example.org",
       STORYLANE_TRUST_PROXY: "true",
+      STORYLANE_GIT_SHA: "abc1234",
     });
     expect(c.port).toBe(8080);
     expect(c.dataDir).toBe("/tmp/sl");
     expect(c.baseUrl?.origin).toBe("https://tracker.example.org");
     expect(c.trustProxy).toBe(true);
+    expect(c.gitSha).toBe("abc1234");
   });
   it("rejects a bad port", () => {
     expect(() => loadConfig({ STORYLANE_PORT: "eighty" })).toThrow(ConfigError);

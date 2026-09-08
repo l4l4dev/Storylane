@@ -91,7 +91,7 @@ export function startServer(config: Config, opts: StartServerOptions = {}): Http
     idleTimeout: 0,
     fetch: app.fetch,
   });
-  serverLog.info("listening", { port: server.port, data_dir: config.dataDir, version: pkg.version });
+  serverLog.info("listening", { port: server.port, data_dir: config.dataDir, version: pkg.version, git_sha: config.gitSha });
   return server;
 }
 

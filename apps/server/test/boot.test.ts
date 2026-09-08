@@ -30,7 +30,7 @@ function boot(): { base: string; lines: string[] } {
   const lines: string[] = [];
   // loadConfig refuses port 0 (it is not a port an operator may ask for); the test asks Bun for
   // an ephemeral one instead of racing a hardcoded number.
-  const config: Config = { port: 0, dataDir, baseUrl: null, trustProxy: false };
+  const config: Config = { port: 0, dataDir, baseUrl: null, trustProxy: false, gitSha: "test-sha" };
   server = startServer(config, { log: createLogger((l) => lines.push(l)), heartbeatMs: HEARTBEAT_MS });
   return { base: `http://127.0.0.1:${server.port}`, lines };
 }
@@ -48,6 +48,12 @@ it("serves /healthz over a real Bun.serve listener", async () => {
   const res = await fetch(`${base}/healthz`);
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({ status: "ok" });
+});
+
+it("logs the version and git sha on boot", () => {
+  const { lines } = boot();
+  const listening = lines.map((l) => JSON.parse(l) as { msg: string; git_sha?: string }).find((l) => l.msg === "listening");
+  expect(listening?.git_sha).toBe("test-sha");
 });
 
 it("logs a setup token and completes setup, then keeps an SSE stream open past the heartbeat", async () => {

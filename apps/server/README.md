@@ -29,6 +29,7 @@ value exits with code 2 and a JSON error line on stderr/stdout.
 | `STORYLANE_DATA_DIR`     | `/data` | Directory for persistent data            |
 | `STORYLANE_BASE_URL`     | (none)  | Absolute http(s) URL the app is served at |
 | `STORYLANE_TRUST_PROXY`  | `false` | `"true"` or `"false"`                    |
+| `STORYLANE_GIT_SHA`      | `dev`   | Commit baked into the image at build time (`Dockerfile`'s `GIT_SHA` build arg); not meant for an operator to set |
 
 ## Docker
 

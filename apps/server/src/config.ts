@@ -5,6 +5,7 @@ export interface Config {
   dataDir: string;
   baseUrl: URL | null;
   trustProxy: boolean;
+  gitSha: string;
 }
 
 function parseBool(name: string, raw: string | undefined, fallback: boolean): boolean {
@@ -34,5 +35,12 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     }
     baseUrl = parsed;
   }
-  return { port, dataDir, baseUrl, trustProxy: parseBool("STORYLANE_TRUST_PROXY", env.STORYLANE_TRUST_PROXY, false) };
+  const gitSha = env.STORYLANE_GIT_SHA && env.STORYLANE_GIT_SHA !== "" ? env.STORYLANE_GIT_SHA : "dev";
+  return {
+    port,
+    dataDir,
+    baseUrl,
+    trustProxy: parseBool("STORYLANE_TRUST_PROXY", env.STORYLANE_TRUST_PROXY, false),
+    gitSha,
+  };
 }

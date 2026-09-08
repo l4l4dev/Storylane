@@ -275,6 +275,7 @@ Expected output: `{"status":"ok"}`.
   | `STORYLANE_DATA_DIR`     | `/data` | Directory for the database and backups      |
   | `STORYLANE_BASE_URL`     | (none)  | Public URL the app is served at; set this when a proxy fronts the app, since it is both the origin the CSRF check accepts and what decides whether the session cookie is marked `Secure`, and it makes generated links absolute |
   | `STORYLANE_TRUST_PROXY`  | `false` | Trust `X-Forwarded-*` headers from a reverse proxy; set to `true` only when a proxy you control (like the bundled Caddy) sits in front |
+  | `STORYLANE_GIT_SHA`      | `dev`   | Commit baked into the image at build time; not something an operator sets |
 
 ## 8. Uninstall
 
