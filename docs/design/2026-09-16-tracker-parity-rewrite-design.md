@@ -112,9 +112,15 @@ archived CSS/JS bundles of the application itself. The API reference is the
 primary source for the *model* (state enum, search operators, iteration and
 override shapes, activity `changes[]`, label/epic/project fields and their
 value ranges); the articles are the source for *behaviour* and screenshots.
-If an application stylesheet is archived, font families, sizes, line heights
-and spacing come straight from it; that is unlikely (logged-in pages were
-not crawled), so the main path is screenshot measurement (§5).
+**The application stylesheet is archived** (found 2026-09-16):
+`assets.pivotaltracker.com/next/assets/next/<hash>-next.css` plus its lazy
+chunk, captured 2025-03-03 and 2024-10-09, ~700 KB of plain CSS covering
+panels, story rows, the expanded story, iteration markers, state buttons,
+epics, labels and point scales (class names are CSS-Modules-hashed, e.g.
+`IterationMarker__points___…`). Font stack: Open Sans 300/400/600/700 with
+self-hosted WOFF `@font-face`, Ionicons for icons. Font sizes, line heights,
+paddings and colours therefore come from this file; screenshot measurement
+(§5) is the cross-check, not the primary source.
 
 Derived notes go to `docs/reference/tracker-notes/<screen>.md` (committed, in
 our own words): the elements on the screen, their behaviour, the measured
@@ -280,10 +286,12 @@ step 7 and is unchanged in intent.
 
 Priority order of evidence:
 
-1. **Archived application CSS** (if the corpus hunt finds it): copy font
-   stack, sizes, line heights, paddings, borders as literal values into
-   `apps/web/src/styles/tokens.css`. Colours are copied too as the starting
-   palette.
+1. **Archived application CSS** (found — §3.1): copy font stack, sizes,
+   line heights, paddings, borders as literal values into
+   `apps/web/src/styles/tokens.css`, each token annotated with the source
+   selector. Colours are copied too as the starting palette. Storylane's
+   own CSS is written fresh against these tokens; the archived stylesheet
+   is a reference, never vendored (copyright, and hashed class names).
 2. **`@2x` screenshots**: choose a ruler element whose size is known from
    the CSS or from an unambiguous glyph (a 16px type icon, a 1px hairline
    rendered as 2 device pixels) and derive the image scale from it, since
@@ -315,10 +323,11 @@ the closest freely licensed match is chosen and recorded as a divergence.
 - The spec is rewritten incrementally, so for a while `spec/` mixes
   rewritten and not-yet-rewritten sections. Each section header states
   which it is.
-- Reproducing from screenshots caps fidelity at roughly 1 CSS px per
-  measurement, and font sizes are inferred rather than measured. Exact
-  parity would require the application CSS, which is not expected to be
-  archived; the corpus hunt for it is a bounded, one-time attempt.
+- The archived application CSS is the 2025-03 build, so it describes the
+  final UI exactly, but 27 of its 29 lazy JS chunks (dashboard, settings,
+  integrations forms) are not archived: behaviour for those screens still
+  comes from articles and screenshots, and dimensions there fall back to
+  screenshot measurement at roughly 1 CSS px.
 - Squashing migrations discards the phase-1 upgrade path. Acceptable only
   because no instance exists outside this machine; the moment an image is
   published, forward-only applies again.
