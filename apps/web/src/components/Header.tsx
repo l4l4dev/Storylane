@@ -11,7 +11,7 @@ import { buttonClass } from "./Field";
  * the router.
  */
 export function Header({ onSignedOut }: { onSignedOut: () => void }) {
-  const [onBoard, params] = useRoute("/projects/:id/board");
+  const [onBoard, params] = useRoute("/projects/:id");
   const project = useResource<{ name: string }>(onBoard ? `/api/projects/${params!.id}` : null);
   const [error, setError] = useState<string | null>(null);
 
