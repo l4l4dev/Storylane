@@ -133,8 +133,13 @@ that shapes the step-1 schema is decided here, from Tracker's REST API v5.
 
 - **Story**: type Feature / Bug / Chore / Release. State column is a CHECK
   over Tracker's eight API values: `unscheduled` (Icebox), `unstarted`,
-  `planned`, `started`, `finished`, `delivered`, `accepted`, `rejected`
-  *(corpus: how the UI surfaces `planned`)*. `#<n>` per-project sequence;
+  `planned`, `started`, `finished`, `delivered`, `accepted`, `rejected`.
+  `planned` exists only under manual planning (a story placed in Current
+  by hand; renders as unstarted with a Start button), so "unstarted"
+  queries read `unstarted OR planned`. Transitions differ by type: a
+  Release has no `started` (it goes straight to `finished`) and a Chore has
+  no `finished` (Finish accepts it) — see
+  `docs/reference/tracker-notes/core-model.md` §1. `#<n>` per-project sequence;
   one Requester; zero or more Owners; Markdown description; labels;
   estimate; followers; `created_at`, `updated_at`, **`accepted_at`** (the
   column iterations are derived from, present from step 1); Release
@@ -163,17 +168,21 @@ that shapes the step-1 schema is decided here, from Tracker's REST API v5.
   rollover mutation — the time boundary is a read-time computation, so the
   old `spec/velocity.md` "finalization concurrency" hazard does not exist
   in this model.
-- **Velocity and planning are computed on read.** Velocity is the average
-  of accepted points over the last N done iterations (N = 1, 2 or 3, the
-  velocity strategy), or the initial velocity while there are fewer, or the
-  manual override. Team strength scales the capacity of one iteration.
-  With **automatic planning** on, the Current + Backlog list is cut into
-  Current and future iterations by capacity *(corpus: the overflow rule for
-  the story that crosses the line; started / finished / delivered stories
-  stay in Current regardless of points; accepted stories stay in Current
-  until the iteration ends)*. With automatic planning off, the user places
-  iteration markers by hand *(corpus: marker semantics)*. The pure
-  functions live in `packages/core` with golden fixtures.
+- **Velocity and planning are computed on read.** Velocity is Tracker's
+  published formula over the last N done iterations (N = 1–4, the velocity
+  strategy): sum of accepted points divided by team strength, over the sum
+  of iteration lengths in weeks, times the default iteration length,
+  rounded down, skipping iterations with team strength 0; the initial
+  velocity applies while there are fewer, and a manual override replaces
+  it. With **automatic planning** on, the Current + Backlog list is cut by
+  an asymmetric rule: Current keeps taking stories until its total is at or
+  above velocity (unestimated bugs/chores keep flowing in until it is
+  exceeded; Start always overrides capacity), while each future iteration
+  takes only what fits. With automatic planning off, the user places
+  iteration markers by hand. Details, worked examples and the remaining
+  open questions (tie-breaking, oversize stories) are in
+  `docs/reference/tracker-notes/core-model.md` §3. The pure functions live
+  in `packages/core` with golden fixtures.
 - **Attachments to a story**: Tasks (checklist, drag-ordered), Comments
   (with file attachments and `@mention`), Followers, Blockers (another
   story `#n` or free text; resolved when the referenced story is accepted),
