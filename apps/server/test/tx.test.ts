@@ -45,7 +45,7 @@ describe("withProject", () => {
   it("maps roles to the fixture for a write action", () => {
     expect(status(() => withProject(db, member, pA, "story:write", () => 1))).toBe(200);
     expect(status(() => withProject(db, viewer, pA, "story:write", () => 1))).toBe(403);
-    expect(status(() => withProject(db, member, pA, "story:delete", () => 1))).toBe(403);
+    expect(status(() => withProject(db, member, pA, "story:delete", () => 1))).toBe(200);
     expect(status(() => withProject(db, owner, pA, "story:delete", () => 1))).toBe(200);
   });
   it("returns 404 for an unknown project even to an admin", () => {

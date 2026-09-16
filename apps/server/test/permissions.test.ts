@@ -8,11 +8,10 @@ const READ_ACTIONS: readonly Action[] = [
   "project:read",
   "member:read",
   "invite:read",
-  "state:read",
   "story:read",
   "iteration:read",
   "activity:read",
-  "export:read",
+  "search:read",
 ];
 
 describe("isWrite", () => {

@@ -24,30 +24,39 @@ never leaks.
 | `member:remove` | 401 | 404 | 403 | 403 | 200 |
 | `member:leave` | 401 | 404 | 200 | 200 | 403 |
 | `invite:read` | 401 | 404 | 403 | 403 | 200 |
-| `state:read` | 401 | 404 | 200 | 200 | 200 |
-| `state:write` | 401 | 404 | 403 | 200 | 200 |
-| `state:delete` | 401 | 404 | 403 | 403 | 200 |
 | `story:read` | 401 | 404 | 200 | 200 | 200 |
 | `story:write` | 401 | 404 | 403 | 200 | 200 |
-| `story:delete` | 401 | 404 | 403 | 403 | 200 |
+| `story:delete` | 401 | 404 | 403 | 200 | 200 |
 | `story:move-cross-project` | 401 | 404 | 403 | 200 | 200 |
+| `follower:write` | 401 | 404 | 200 | 200 | 200 |
 | `task:write` | 401 | 404 | 403 | 200 | 200 |
 | `comment:create` | 401 | 404 | 403 | 200 | 200 |
 | `comment:update-own` | 401 | 404 | 403 | 200 | 200 |
-| `comment:delete` | 401 | 404 | 403 | 403 | 200 |
+| `comment:delete` | 401 | 404 | 403 | 200 | 200 |
+| `attachment:write` | 401 | 404 | 403 | 200 | 200 |
+| `attachment:delete` | 401 | 404 | 403 | 200 | 200 |
 | `label:write` | 401 | 404 | 403 | 200 | 200 |
-| `label:delete` | 401 | 404 | 403 | 403 | 200 |
+| `label:delete` | 401 | 404 | 403 | 200 | 200 |
+| `epic:write` | 401 | 404 | 403 | 200 | 200 |
+| `epic:delete` | 401 | 404 | 403 | 200 | 200 |
+| `blocker:write` | 401 | 404 | 403 | 200 | 200 |
+| `review:write` | 401 | 404 | 403 | 200 | 200 |
+| `review-type:write` | 401 | 404 | 403 | 403 | 200 |
 | `iteration:read` | 401 | 404 | 200 | 200 | 200 |
-| `iteration:update-goal` | 401 | 404 | 403 | 200 | 200 |
-| `iteration:rollover` | 401 | 404 | 403 | 200 | 200 |
-| `calendar-exception:write` | 401 | 404 | 403 | 200 | 200 |
+| `iteration:override` | 401 | 404 | 403 | 200 | 200 |
 | `activity:read` | 401 | 404 | 200 | 200 | 200 |
-| `export:read` | 401 | 404 | 200 | 200 | 200 |
+| `search:read` | 401 | 404 | 200 | 200 | 200 |
+
+Role definitions follow `docs/reference/tracker-notes/core-model.md` §8: a
+member may do anything with stories, tasks, comments, attachments, labels,
+epics, blockers and reviews; only an owner edits project settings, review
+types and membership; a viewer is read-only except for following/unfollowing
+their own stories.
 
 `story:write` covers create, update, move, reorder, transition, estimate and
-split — Pivotal-style, any member operates any story (owner decision
-2026-07-19). Deletion stays owner-only. `story:move-cross-project` needs the
-row for **both** projects (`withTwoProjects`).
+split — Pivotal-style, any member operates any story. Deletion is also
+member-level. `story:move-cross-project` needs the row for **both** projects
+(`withTwoProjects`).
 
 `member:invite` covers minting **and** revoking an invitation; `invite:read`
 covers listing a project's pending invitations, which is owner-only
@@ -64,13 +73,16 @@ bookkeeping (`member:read` is 200 for viewers and must not carry it).
   `404`, so archiving never reveals that a project exists, and a viewer gets
   `409` rather than `403` because the project is closed to everyone. This
   replaces the DB-level lock that was never built for v0 (former TASK-30).
-- **Rollover.** `iteration:rollover` runs lazily on an owner's or member's
-  request; a viewer's request and the background worker never trigger it
-  (`spec/velocity.md` "Rollover", owner decision 2026-07-22).
 - **Own comment.** `comment:update-own` also requires actor = author.
-- **Per-user rows.** Time-off and My Work rows are read/written only by their
-  user; time-off dates are readable by members (viewers included) of a shared
-  project for capacity math — dates and kind only, nothing private.
+  `comment:delete` is allowed to the author or to any project owner; another
+  member deleting someone else's comment gets `403` from the service.
+- **Own follow.** `follower:write` is `200` for a viewer only for the
+  viewer's own follow row; adding or removing somebody else's follow is
+  refused to a viewer by the service.
+- **Iteration override.** `iteration:override` is member-level by
+  assumption: Tracker sets iteration length and team strength from the
+  iteration header in the Current panel, which members use, not from the
+  owner-only Settings page.
 
 ### Invitations
 
