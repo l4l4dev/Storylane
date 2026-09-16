@@ -28,13 +28,15 @@ export function withProjectChange<T>(
   let version = 0;
   const result = withProject(deps.db, actor, projectId, action, (tx) => {
     authorizedId = tx.projectId;
-    const before = projectVersion(tx);
+    // Development only, on purpose: in production a missing history row must not turn into a
+    // failed request, and the `before` read is skipped so a write never pays a SELECT for an
+    // assertion that cannot fire. The condition is the version, not a row count, because that
+    // is the number the SSE event and since_version are built on.
+    const inDevelopment = process.env.NODE_ENV === "development";
+    const before = inDevelopment ? projectVersion(tx) : 0;
     const out = fn(tx);
     version = projectVersion(tx);
-    // Development only, on purpose: in production a missing history row must not turn into a
-    // failed request. The condition is the version, not a row count, because that is the number
-    // the SSE event and since_version are built on.
-    if (process.env.NODE_ENV === "development" && version === before) {
+    if (inDevelopment && version === before) {
       throw new Error(`${action} completed without recording activity`);
     }
     return out;

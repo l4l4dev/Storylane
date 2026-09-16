@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { makeTestDb, seedProject, seedStory, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedProject, seedStory, seedUser } from "./harness";
 import { withProject } from "../src/db/tx";
 import { listActivity, projectVersion, recordActivity, storyActivity } from "../src/services/activity";
+import { createProject, setArchived, updateProject } from "../src/services/projects";
+import type { ActivityRow } from "../src/services/activity";
 import type { Db } from "../src/db/client";
 import type { Actor } from "../src/db/tx";
 
@@ -82,5 +84,64 @@ describe("recordActivity", () => {
     expect(recorded.projectVersion).toBe(1);
     const rows = withProject(db, owner, projectId, "activity:read", (tx) => listActivity(tx, {}));
     expect(rows[0]!.performed_by_id).toBe((owner as { userId: string }).userId);
+  });
+});
+
+describe("activity payloads", () => {
+  it("records a project update with snake_case column names, not Drizzle's property names", () => {
+    const project = createProject(db, owner, { name: "P" });
+    withProject(db, owner, project.id, "project:update", (tx) =>
+      updateProject(tx, { name: "Renamed", description: "d", pointScale: "0,1,2,4,8" }),
+    );
+    const rows = withProject(db, owner, project.id, "activity:read", (tx) => listActivity(tx, {}));
+    const update = rows.at(-1)!;
+    expect(Object.keys(update.changes[0]!.new_values!).sort()).toEqual(["description", "name", "point_scale"]);
+    expect(update.changes[0]!.new_values!.point_scale).toBe("0,1,2,4,8");
+  });
+
+  it("records an archive as the column it wrote", () => {
+    const project = createProject(db, owner, { name: "P" });
+    withProject(db, owner, project.id, "project:archive", (tx) => setArchived(tx, true));
+    const rows = withProject(db, owner, project.id, "activity:read", (tx) => listActivity(tx, {}));
+    const values = rows.at(-1)!.changes[0]!.new_values!;
+    expect(Object.keys(values)).toEqual(["archived_at"]);
+    expect(typeof values.archived_at).toBe("number");
+  });
+});
+
+describe("GET /api/projects/:id/activity", () => {
+  const ORIGIN = "http://127.0.0.1";
+  const as = (actor: Actor) => ({ "x-test-actor": JSON.stringify(actor) });
+
+  it("authorizes before it validates the query", async () => {
+    const app = makeTestApp(db).app;
+    // Anonymous with an invalid since_version: 401 wins over the 400 the query would earn.
+    const anon = await app.request(`${ORIGIN}/api/projects/${projectId}/activity?since_version=-1`);
+    expect(anon.status).toBe(401);
+    const stranger = seedUser(db, "stranger@example.test");
+    const outsider = await app.request(`${ORIGIN}/api/projects/${projectId}/activity?since_version=-1`, {
+      headers: as(stranger),
+    });
+    expect(outsider.status).toBe(404);
+    const member = await app.request(`${ORIGIN}/api/projects/${projectId}/activity?since_version=-1`, {
+      headers: as(owner),
+    });
+    expect(member.status).toBe(400);
+    expect(await member.json()).toEqual({ error: "since_version_invalid" });
+  });
+
+  it("returns the rows after since_version", async () => {
+    const app = makeTestApp(db).app;
+    withProject(db, owner, projectId, "story:write", (tx) => {
+      recordActivity(tx, entry("one"));
+      recordActivity(tx, entry("two"));
+    });
+    const res = await app.request(`${ORIGIN}/api/projects/${projectId}/activity?since_version=1`, {
+      headers: as(owner),
+    });
+    expect(res.status).toBe(200);
+    const rows = (await res.json()) as ActivityRow[];
+    expect(rows.map((r) => r.project_version)).toEqual([2]);
+    expect(rows[0]!.message).toBe("Owner edited two");
   });
 });

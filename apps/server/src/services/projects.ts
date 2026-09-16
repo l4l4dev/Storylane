@@ -8,10 +8,18 @@ import { HttpError } from "../http-error";
 import { newId } from "../id";
 import { bootstrapScope, recordActivity } from "./activity";
 
-/** projects.week_start_day's own default; the start_date guard trigger compares against it. */
+/**
+ * PROVISIONAL (Task 7 owns the settings service): projects.week_start_day's own default. Task 7
+ * decides what a new project actually starts on; this pair exists only because the
+ * projects_start_date_matches_week_start trigger refuses an insert without a valid start_date.
+ */
 const DEFAULT_WEEK_START_DAY = 1;
 
-/** The most recent `weekStartDay` on or before `now`, as the YYYY-MM-DD the trigger expects. */
+/**
+ * PROVISIONAL (Task 7 owns the settings service): the most recent `weekStartDay` on or before
+ * `now` in UTC, as the YYYY-MM-DD the trigger expects. "The most recent UTC Monday" is an
+ * invented default — Task 7 replaces it with the one its Step 7 specifies.
+ */
 function mostRecentWeekStart(now: number, weekStartDay: number): string {
   const back = (isoWeekday(now) - weekStartDay + 7) % 7;
   return formatDateOnly(now - back * MS_PER_DAY);
@@ -23,7 +31,10 @@ export interface ProjectDetail {
   description: string | null;
   archivedAt: number | null;
   role: MemberRole;
-  /** Comma-separated ascending point values (core-model §2.2). */
+  /**
+   * PROVISIONAL (Task 7 owns the settings service): the comma-separated ascending point values
+   * (core-model §2.2). Task 7 adds the rest of the settings fields and `point_scale_is_custom`.
+   */
   pointScale: string;
 }
 
@@ -37,6 +48,7 @@ export interface ProjectSummary {
 export interface ProjectPatch {
   name?: string;
   description?: string | null;
+  /** PROVISIONAL (Task 7 owns the settings service): see ProjectDetail.pointScale. */
   pointScale?: string;
 }
 
@@ -68,6 +80,8 @@ export function createProject(db: Db, actor: Actor, input: { name: string }): Pr
         .run();
       tx.insert(projectMembers).values({ projectId: id, userId: actor.userId, role: "owner", joinedAt: now }).run();
       recordActivity(bootstrapScope(tx, id, actor), {
+        // PROVISIONAL (Task 7 owns the settings service): placeholder activity copy — Tracker's
+        // own wording for these actions is not specified in the plan.
         kind: "project_update_activity",
         message: `created ${input.name.trim()}`,
         highlight: "created",
@@ -142,22 +156,33 @@ function assertValidPointScale(pointScale: string): void {
 
 export function updateProject(tx: ProjectTx, patch: ProjectPatch): ProjectDetail {
   const set: Record<string, unknown> = {};
+  // An activity payload carries column names (ActivityChange in services/activity.ts), so it
+  // cannot reuse `set` — those are Drizzle's camelCase property names.
+  const newValues: Record<string, unknown> = {};
   if (patch.name !== undefined) {
-    if (patch.name.trim().length === 0) throw new HttpError(400, "name_required");
-    set.name = patch.name.trim();
+    const name = patch.name.trim();
+    if (name.length === 0) throw new HttpError(400, "name_required");
+    set.name = name;
+    newValues.name = name;
   }
-  if (patch.description !== undefined) set.description = patch.description;
+  if (patch.description !== undefined) {
+    set.description = patch.description;
+    newValues.description = patch.description;
+  }
   if (patch.pointScale !== undefined) {
     assertValidPointScale(patch.pointScale);
     set.pointScale = patch.pointScale;
+    newValues.point_scale = patch.pointScale;
   }
   if (Object.keys(set).length > 0) {
     tx.tx.update(projects).set(set as never).where(eq(projects.id, tx.projectId)).run();
     recordActivity(tx, {
+      // PROVISIONAL (Task 7 owns the settings service): Tracker's own wording for a project
+      // update is not in the plan; these strings are placeholders it will replace.
       kind: "project_update_activity",
       message: "updated the project",
       highlight: "updated",
-      changes: [{ kind: "project", id: tx.projectId, change_type: "update", new_values: { ...set } }],
+      changes: [{ kind: "project", id: tx.projectId, change_type: "update", new_values: newValues }],
       primaryResources: [{ kind: "project", id: tx.projectId }],
     });
   }
@@ -165,18 +190,14 @@ export function updateProject(tx: ProjectTx, patch: ProjectPatch): ProjectDetail
 }
 
 export function setArchived(tx: ProjectTx, archived: boolean): ProjectDetail {
-  tx.tx
-    .update(projects)
-    .set({ archivedAt: archived ? Date.now() : null })
-    .where(eq(projects.id, tx.projectId))
-    .run();
+  const archivedAt = archived ? Date.now() : null;
+  tx.tx.update(projects).set({ archivedAt }).where(eq(projects.id, tx.projectId)).run();
   recordActivity(tx, {
+    // PROVISIONAL (Task 7 owns the settings service): placeholder copy, as above.
     kind: "project_update_activity",
     message: archived ? "archived the project" : "unarchived the project",
     highlight: archived ? "archived" : "unarchived",
-    changes: [
-      { kind: "project", id: tx.projectId, change_type: "update", new_values: { archived } },
-    ],
+    changes: [{ kind: "project", id: tx.projectId, change_type: "update", new_values: { archived_at: archivedAt } }],
     primaryResources: [{ kind: "project", id: tx.projectId }],
   });
   return readProject(tx);

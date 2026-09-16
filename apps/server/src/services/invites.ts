@@ -66,6 +66,8 @@ export function mintInvite(tx: ProjectTx, input: { role: InviteRole; now?: numbe
     })
     .run();
   recordActivity(tx, {
+    // PROVISIONAL (Task 7 owns the settings service): placeholder activity copy — Tracker's own
+    // wording for membership actions is not specified in the plan.
     kind: "project_membership_create_activity",
     message: `invited a ${input.role}`,
     highlight: "invited",
@@ -94,6 +96,7 @@ export function revokeInvite(tx: ProjectTx, inviteId: string, now = Date.now()):
   const scoped = and(eq(invites.id, inviteId), eq(invites.projectId, tx.projectId));
   tx.tx.update(invites).set({ revokedAt: now }).where(scoped).run();
   recordActivity(tx, {
+    // PROVISIONAL (Task 7 owns the settings service): placeholder activity copy, as above.
     kind: "project_membership_delete_activity",
     message: "revoked an invitation",
     highlight: "revoked",
@@ -170,6 +173,7 @@ export function acceptInvite(db: Db, token: string, actor: UserActor, now = Date
           .values({ projectId: row.projectId, userId: actor.userId, role: row.role, joinedAt: now })
           .run();
         recordedVersion = recordActivity(bootstrapScope(tx, row.projectId, actor), {
+          // PROVISIONAL (Task 7 owns the settings service): placeholder activity copy, as above.
           kind: "project_membership_create_activity",
           message: `joined as a ${row.role}`,
           highlight: "joined",
@@ -250,6 +254,7 @@ export function registerAndAcceptInvite(
         .values({ projectId: row.projectId, userId, role: row.role, joinedAt: now })
         .run();
       const { projectVersion } = recordActivity(bootstrapScope(tx, row.projectId, actor), {
+        // PROVISIONAL (Task 7 owns the settings service): placeholder activity copy, as above.
         kind: "project_membership_create_activity",
         message: `joined as a ${row.role}`,
         highlight: "joined",
