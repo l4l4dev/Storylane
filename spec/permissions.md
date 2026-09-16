@@ -64,15 +64,17 @@ bookkeeping (`member:read` is 200 for viewers and must not carry it).
 
 ### Invariants the matrix cannot express
 
-- **Last owner.** The sole owner can never be demoted, removed, or leave:
-  `member:change-role`, `member:remove`, `member:leave` answer `409 last_owner`.
+- **Last owner.** The sole owner can never be demoted or removed:
+  `member:change-role` and `member:remove` answer `409 last_owner`.
+  `member:leave` is `403` for any owner instead — transfer ownership first.
 - **Archived project.** With `projects.archived_at` set, `:read` actions are
   unaffected and every other action answers `409 project_archived` for every
   role, except `project:archive` (un-archive) and `project:delete`, which stay
-  owner-only. Precedence is `404` → `409` → `403`: a non-member still gets
-  `404`, so archiving never reveals that a project exists, and a viewer gets
-  `409` rather than `403` because the project is closed to everyone. This
-  replaces the DB-level lock that was never built for v0 (former TASK-30).
+  owner-only, and `member:leave`, which a member may still do. Precedence is
+  `404` → `409` → `403`: a non-member still gets `404`, so archiving never
+  reveals that a project exists, and a viewer gets `409` rather than `403`
+  because the project is closed to everyone. This replaces the DB-level lock
+  that was never built for v0 (former TASK-30).
 - **Own comment.** `comment:update-own` also requires actor = author.
   `comment:delete` is allowed to the author or to any project owner; another
   member deleting someone else's comment gets `403` from the service.

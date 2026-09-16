@@ -36,8 +36,8 @@
   },
   "adminActions": ["user:list", "user:create", "user:deactivate", "user:reset-link", "instance:settings"],
   "notes": {
-    "last-owner": "The sole owner of a project can never be demoted, removed, or leave. member:change-role / member:remove / member:leave return 409 last_owner in that case.",
-    "archived": "When projects.archived_at is set, :read actions are unaffected and every other action returns 409 project_archived for every role, except project:archive (un-archive) and project:delete, which stay owner-only. Precedence is 404 then 409 then 403.",
+    "last-owner": "member:change-role / member:remove return 409 last_owner for the sole owner; member:leave is 403 for any owner -- transfer ownership first.",
+    "archived": "When projects.archived_at is set, :read actions are unaffected and every other action returns 409 project_archived for every role, except project:archive (un-archive), project:delete, which stay owner-only, and member:leave, which a member may still do. Precedence is 404 then 409 then 403.",
     "member-scope": "Tracker's rule: a member may do anything with stories, tasks, comments, attachments, labels, epics, blockers and reviews; only an owner edits project settings, review types and membership.",
     "comment-own": "comment:update-own additionally requires the actor to be the comment's author. comment:delete is allowed to the author or to any project owner; another member deleting someone else's comment gets 403 from the service.",
     "follower-self": "follower:write is 200 for a viewer only for the viewer's own follow row. Adding or removing somebody else's follow is refused to a viewer by the service.",

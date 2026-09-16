@@ -81,6 +81,8 @@ describe("withProject", () => {
     expect(status(() => withProject(db, owner, pA, "project:delete", () => 1))).toBe(200);
     expect(status(() => withProject(db, member, pA, "project:archive", () => 1))).toBe(403);
     expect(status(() => withProject(db, member, pA, "project:delete", () => 1))).toBe(403);
+    // A member may still leave an archived project instead of getting stuck at 409.
+    expect(status(() => withProject(db, member, pA, "member:leave", () => 1))).toBe(200);
   });
   it("rolls back when fn throws", () => {
     expect(() =>

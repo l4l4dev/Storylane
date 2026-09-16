@@ -96,7 +96,13 @@ function authorizeIn(tx: Tx, actor: Actor, projectId: string, action: Action): P
   // Deliberate defense in depth: resolveRole cannot return these, but a ProjectTx
   // must carry a membership role even if that ever changes.
   if (role === "anonymous" || role === "non-member") throw new HttpError(404, "not_found");
-  if (archived && isWrite(action) && action !== "project:archive" && action !== "project:delete") {
+  if (
+    archived &&
+    isWrite(action) &&
+    action !== "project:archive" &&
+    action !== "project:delete" &&
+    action !== "member:leave"
+  ) {
     throw new HttpError(409, "project_archived");
   }
   const code = expected(action, role);
