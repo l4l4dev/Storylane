@@ -2,7 +2,7 @@ name: publish
 
 on:
   push:
-    branches: [main, rewrite/tracker]
+    branches: [main]
     # Only semver-shaped tags publish. The pre-rewrite archive tag v0-supabase
     # has no dots and is excluded explicitly as well.
     tags: ["v[0-9]*.[0-9]*.[0-9]*", "!v0-supabase"]

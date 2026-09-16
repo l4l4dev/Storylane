@@ -238,31 +238,28 @@ step 7 and is unchanged in intent.
 
 ## 4. Repository, branches and Backlog
 
-- New branch **`rewrite/tracker`** from `rewrite/phase-1` (HEAD eea9178). The
-  foundation is inherited; the domain and web directories are removed in the
-  first commits of the new branch rather than rewritten in place.
-- **Migrations are squashed into a fresh `0000`** in the first commits of
-  `rewrite/tracker`. Nothing in 0000–0004 has shipped (no push, no tag, no
-  public image), so "never edit a shipped migration" is not violated, and
-  dropping `project_states` on top of five files would carry forward
-  workarounds (the three-value point-scale trigger, the missing
-  `activity_logs.story_id` FK) that only exist because of forward-only
-  history.
-- `rewrite/self-hosted` and `rewrite/phase-1` exist only on this machine
-  (91 commits; origin has `main` and one chore branch). Before any deletion
-  work: tag them `rewrite-phase-0` / `rewrite-phase-1`; the owner pushes the
-  branches and tags (push is an owner action).
-- `main` is currently a strict ancestor of `rewrite/phase-1`. **No commits
-  land on `main` until `rewrite/tracker` merges**, so the merge stays a
-  fast-forward. This includes Backlog housekeeping (`.backlog/` is tracked
-  and would conflict) — every Backlog operation happens on `rewrite/tracker`.
-- TASK-244 and TASK-254 (merge phase 0/1 to main, tag v0.1.0) are on hold;
-  the first release to `main` is the Tracker-parity build once steps 2–4
+- **Owner decision 2026-09-16 (later the same day): `main` is the living
+  branch.** The rewrite branches were fast-forwarded into `main`
+  (`rewrite/self-hosted` → `rewrite/phase-1` → `rewrite/tracker`), `main`
+  and the tags `rewrite-phase-0` / `rewrite-phase-1` were pushed, and the
+  three branches were deleted locally (the tags keep the points). The
+  pre-rewrite app survives only as the tag `v0-supabase`.
+- Step work happens on short-lived branches off `main` (`feat/tracker-step-1a`,
+  …) merged through PRs, per CLAUDE.md's PR rule for schema and algorithm
+  work; docs and Backlog housekeeping may go straight to `main`.
+- **Migrations are squashed into a fresh `0000`** in step 1a. Nothing in
+  0000–0004 has shipped (no release tag, no public image), so "never edit a
+  shipped migration" is not violated, and dropping `project_states` on top
+  of five files would carry forward workarounds (the three-value point-scale
+  trigger, the missing `activity_logs.story_id` FK) that only exist because
+  of forward-only history. The `:main` image built before step 1a lands is
+  therefore not upgradeable — nobody is meant to be running it.
+- TASK-244 and TASK-254 (phase 0/1 release, tag v0.1.0) are superseded by
+  the merge; the first release is the Tracker-parity build once steps 2–4
   pass. Proposal for the owner: fold both into one "Tracker first release"
   task so m-8 / m-9 can close.
-- `.github/workflows/publish.yml` publishes the image from `main` and
-  `rewrite/self-hosted`; replace the latter with `rewrite/tracker` so the
-  Docker form is exercised on every push (PRs run tests only).
+- `.github/workflows/publish.yml` publishes the image from `main` only (PRs
+  run tests only).
 - Agent context must not describe deleted tables: in the step-1 commit
   series, revise the hook-injected part of `ARCHITECTURE.md` ("read
   `project_states.category`", "iteration rollover is lazy"), the CLAUDE.md

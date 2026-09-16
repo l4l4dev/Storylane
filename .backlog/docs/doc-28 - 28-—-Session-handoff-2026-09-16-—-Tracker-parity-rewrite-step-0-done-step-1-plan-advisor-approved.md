@@ -5,7 +5,7 @@ title: >-
   plan advisor-approved
 type: guide
 created_date: '2026-09-16 11:51'
-updated_date: '2026-09-16 11:52'
+updated_date: '2026-09-16 12:06'
 ---
 # Session handoff 2026-09-16 — Tracker-parity rewrite
 
@@ -92,3 +92,25 @@ whether the owner has created the proposed tasks (if not, ask — never create t
 - `iteration_overrides` is keyed `(project_id, number)` — the one exception to the
   `(id, project_id)` invariant; no child FK may ever reference it (advisor condition).
 - The advisor's corpus findings live in `.claude/agent-memory/fable-advisor/learnings-core-model-note-gaps.md`.
+
+## Update 2026-09-16 (later the same day) — main is the living branch
+
+- Owner approved the Backlog proposal: m-10 → "Tracker parity 1: core model + project view",
+  m-11 → "Tracker parity 2: panels and periphery"; tasks **TASK-255 (step 1a, opus)**,
+  TASK-256 (1b, sonnet; Task 9 on opus), TASK-257 (1c, opus), TASK-258 (step 2), TASK-259
+  (step 3), TASK-260 (step 4), TASK-261 (owner) created. The "Proposed Backlog changes" table
+  above is now history.
+- Owner asked to merge into `main` and push: `main` fast-forwarded to the rewrite (e43cce2),
+  pushed with tags `rewrite-phase-0` / `rewrite-phase-1`; local branches `rewrite/*`,
+  `chore/spec-kit-init`, `fix/design-language-consistency` deleted (all merged). `publish.yml`
+  builds from `main` only. Design §4 rewritten accordingly. Step work goes on short branches
+  off `main` with PRs (`feat/tracker-step-1a` first).
+- **Local cleanup the model was not allowed to run** (permission denied for `rm`); all of it is
+  regenerable or preserved in the `v0-supabase` tag — owner runs it when convenient:
+  `rm -rf apps/web/.next apps/web/components apps/web/lib apps/web/test-results apps/web/tsconfig.tsbuildinfo apps/web/dist supabase apps/ios apps/mcp .superpowers/sdd/2026-09-06-self-host-phase-0 .superpowers/sdd/2026-09-07-self-host-phase-1 .superpowers/sdd/progress.md .superpowers/sdd/final-review-fix-report.md .superpowers/sdd/review-*.diff .superpowers/sdd/task-*-brief.md .superpowers/sdd/task-*-report.md`
+  Kept on purpose: `apps/web/.env.local`, `apps/mcp/.env.local`, `secrets.local.md`,
+  `ACCOUNT_SETUP.md`, `LOCAL_DEV.md` (owner's local notes / keys of the discarded stack — revoke
+  or delete by hand).
+- Corrected first prompt for the next session: start from `main`, create `feat/tracker-step-1a`,
+  execute plan Tasks 1–6 for TASK-255 with superpowers:subagent-driven-development, open a PR
+  to `main` when the task review chain is clean.
