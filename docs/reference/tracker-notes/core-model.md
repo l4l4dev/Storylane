@@ -86,6 +86,18 @@ single-owner view (source: `api §story`).
 10. Accepting a story with unresolved blockers, reviews or tasks raises a
     confirmation modal rather than being refused
     (source: `article:blocked_stories`).
+11. `accepted` is **not** terminal: an accepted story can return to
+    `unstarted`. Cycle time describes a story that "goes back to unstarted
+    after being accepted" and burndown counts stories that leave the accepted
+    set again (source: `articles/analytics_cycle_time.md:59`,
+    `articles/analytics_burndown.md:42`).
+12. Following from 6, 7 and 11, the per-type state sets are narrower than the
+    eight. A release is only ever `unscheduled`, `unstarted`, `planned`,
+    `finished`, `accepted` — it has no `started`, and nothing in the corpus
+    delivers or rejects one. A chore is only ever `unscheduled`, `unstarted`,
+    `planned`, `started`, `accepted` — Finish accepts it outright, so it never
+    reaches `finished`, `delivered` or `rejected` (source:
+    `article:story_states`). Features and bugs use all eight.
 
 ### 1.3 Story types
 
@@ -154,7 +166,11 @@ Fields: `id` (RO), `story_id` (RO), `person_id` (CO, creator),
    Types can be renamed and hidden but never deleted; custom types can be added
    (source: `article:reviews`).
 2. A review is one (type, reviewer, status) triple on a story; reviewers are
-   project members. Search: `review:<type>`, `review_status:<status>`,
+   project members. A review may be created before anyone is assigned, so the
+   uniqueness we enforce — `reviews_story_type_reviewer` on
+   `(project_id, story_id, review_type_id, reviewer_id)` — deliberately allows
+   several reviews of the same type on one story while their `reviewer_id` is
+   NULL: SQLite treats each NULL as distinct in a unique index. Search: `review:<type>`, `review_status:<status>`,
    `review:<type>&<status>` (type first), `reviewer:<person>`; there is no
    `has:reviews` (source: `article:reviews`, `article:advanced_search`).
 
@@ -205,7 +221,7 @@ Source for the whole table: `api §project`.
 | `version` | int | RO; incremented on every change in the project |
 | `iteration_length` | int | weeks; articles constrain to 1–4, default 1 |
 | `week_start_day` | enum | `Sunday`…`Saturday`; default Monday |
-| `point_scale` | string[255] | comma-separated values; built-ins `0,1,2,3`, `0,1,2,4,8`, `0,1,2,3,5,8` |
+| `point_scale` | string[255] | comma-separated values; built-ins `0,1,2,3`, `0,1,2,4,8`, `0,1,2,3,5,8`; a new project starts on Linear `0,1,2,3` (source: `articles/estimating_stories.md:13`) |
 | `point_scale_is_custom` | boolean | RO; set when the string is not a built-in |
 | `bugs_and_chores_are_estimatable` | boolean | |
 | `automatic_planning` | boolean | false suspends emergent planning of the Current iteration |

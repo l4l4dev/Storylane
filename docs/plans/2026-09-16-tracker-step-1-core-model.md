@@ -22,7 +22,7 @@
 - Routes never touch `.tx` (`local/no-project-tx-escape`); `src/services/**` and `src/routes/**` may not import `src/db/client` for anything but the `Db` type.
 - Writes use `behavior: "immediate"` (`withProject` derives it from `isWrite(action)`). One `withProject` per request — nesting throws.
 - Conventions: ids are `text` UUIDv7 via `newId()`; instants are `integer` UTC milliseconds; calendar dates are `text` `YYYY-MM-DD`; booleans are `integer` 0/1; enums are `text` + CHECK with the value list declared once in a TS module; JSON is stored as `text` and never used in `WHERE`.
-- Sequences (`stories.number`) are `MAX(x)+1` **inside** the transaction. Dense reordering uses `reorder(tx, table, scope, orderedIds)` and is reserved for small lists (tasks, labels, epics, review types); stories use sparse positions (Task 9).
+- Sequences (`stories.number`) are `MAX(x)+1` **inside** the transaction. Dense reordering uses `reorder(tx, table, scope, orderedIds)` and is reserved for small lists (tasks, epics, review types — labels have no position); stories use sparse positions (Task 9). Positions are 1-based multiples of `POSITION_GAP`, never 0, so a new head can always be inserted.
 - Response-code precedence `401 (anon) → 401 (disabled) → 404 (missing / non-member) → 409 (archived write) → 403`. 409 codes: `project_archived`, `setup_required`, `last_owner`, `estimate_required`, `invalid_transition`.
 - Migrations are generated with `pnpm --filter @storylane/server db:generate`. Drizzle Kit does not emit triggers — hand-append trigger SQL to the newly generated, not-yet-committed file, separated by `--> statement-breakpoint`. After Task 5 the single migration `0000` is treated as shipped again: never edit it in a later task; add `0001`, `0002`, … instead.
 - Every route registered in `app.ts` needs a `ROUTE_ACTIONS` entry (`apps/server/test/route-matrix.test.ts` fails otherwise) and, when project-scoped, a passing five-actor matrix row plus a `matrix-fixtures.ts` entry.
@@ -55,7 +55,7 @@ Two further decisions the note leaves implicit:
 11. **`current_iteration_number` is derived, never stored** (design §3.2: "Iterations are derived, not stored"), computed by `currentIterationNumber()` from the project calendar and serialized as a read-only field.
 12. **`point_scale` is the comma-separated string** Tracker uses, stored verbatim; `point_scale_is_custom` is computed on read by comparing against the three built-ins. The old `point_scale` enum column and its guard triggers are gone.
 
-**Deferred out of step 1 by the design:** `saved_searches` (step 7 — `search-query.ts` ships now, the saved-search table and its routes do not), analytics/burndown rollups (step 9), integrations, webhooks, source commits, notifications, reactions, story templates, Google attachments (step 10 / divergence list §10), per-member `project_color` and `favorite` *routes* (step 8 — the columns land now so the dashboard needs no migration).
+**Deferred out of step 1 by the design:** `saved_searches` (step 7 — `search-query.ts` ships now, the saved-search table and its routes do not), analytics/burndown rollups (step 9), integrations, webhooks, source commits, notifications, reactions, story templates, Google attachments (step 10 / divergence list §10), per-member `project_color` and `favorite` *routes* (step 8 — the columns land now so the dashboard needs no migration), epic followers (`following.epic_id` — step 1 follows stories only).
 
 ---
 
@@ -668,7 +668,7 @@ MSG
   export type StoryList = (typeof STORY_LISTS)[number];
   export const REVIEW_STATUSES = ["unstarted", "in_review", "pass", "revise"] as const;
   export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
-  export const DEFAULT_POINT_SCALE = "0,1,2,3,5,8";
+  export const DEFAULT_POINT_SCALE = "0,1,2,3";
   export const BUILT_IN_POINT_SCALES = ["0,1,2,3", "0,1,2,4,8", "0,1,2,3,5,8"] as const;
   ```
   plus the tables `projects`, `projectMembers`, `stories`, `storyOwners`, `storyFollowers`, `labels`, `storyLabels`, `epics`, `tasks`, `comments`, `fileAttachments`, `blockers`, `reviewTypes`, `reviews`, `iterationOverrides`, `activities`, `activityResources`.
@@ -681,12 +681,14 @@ every project-scoped table carries `project_id` and a `UNIQUE (id, project_id)` 
 
 ```ts
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, primaryKey, index, check, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, primaryKey, index, check } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
 
-/** Tracker's three built-in scales; anything else makes point_scale_is_custom true on read. */
+/** Tracker's three built-in scales; anything else makes point_scale_is_custom true on read.
+ *  Linear (`0,1,2,3`) is the scale a new Tracker project starts on
+ *  (corpus `articles/estimating_stories.md:13`). */
 export const BUILT_IN_POINT_SCALES = ["0,1,2,3", "0,1,2,4,8", "0,1,2,3,5,8"] as const;
-export const DEFAULT_POINT_SCALE = "0,1,2,3,5,8";
+export const DEFAULT_POINT_SCALE = "0,1,2,3";
 
 export const projects = sqliteTable(
   "projects",
@@ -749,13 +751,10 @@ export const projectMembers = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.projectId, t.userId] }),
     index("project_members_user").on(t.userId),
-    uniqueIndex("project_members_project_user").on(t.projectId, t.userId),
     check("project_members_role", sql`${t.role} in ('owner','member','viewer')`),
   ],
 );
 ```
-
-`project_members` gains an explicit `UNIQUE (project_id, user_id)` on top of its primary key because SQLite will not accept a composite foreign key that references a primary key it cannot see as a unique index in that column order — `story_owners` and `reviews` both reference it.
 
 - [ ] **Step 2: Create `stories.ts`**
 
@@ -820,7 +819,6 @@ export const stories = sqliteTable(
     check("stories_story_priority", sql`${t.storyPriority} in ('none','p0','p1','p2','p3')`),
     check("stories_list", sql`${t.list} in ('backlog','icebox')`),
     check("stories_estimate_non_negative", sql`${t.estimate} is null or ${t.estimate} >= 0`),
-    check("stories_position_non_negative", sql`${t.position} >= 0`),
   ],
 );
 
@@ -947,7 +945,6 @@ export const epics = sqliteTable(
     uniqueIndex("epics_id_project").on(t.id, t.projectId),
     uniqueIndex("epics_project_label").on(t.projectId, t.labelId),
     uniqueIndex("epics_project_position").on(t.projectId, t.position),
-    check("epics_position_non_negative", sql`${t.position} >= 0`),
     foreignKey({
       columns: [t.labelId, t.projectId],
       foreignColumns: [labels.id, labels.projectId],
@@ -985,7 +982,6 @@ export const tasks = sqliteTable(
   (t) => [
     uniqueIndex("tasks_id_project").on(t.id, t.projectId),
     uniqueIndex("tasks_story_position").on(t.projectId, t.storyId, t.position),
-    check("tasks_position_non_negative", sql`${t.position} >= 0`),
     foreignKey({
       columns: [t.storyId, t.projectId],
       foreignColumns: [stories.id, stories.projectId],
@@ -1004,6 +1000,7 @@ export const comments = sqliteTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     storyId: text("story_id"),
     epicId: text("epic_id"),
+    /** NOT NULL but "" is legal: an attachment-only comment carries no text (core-model §7). */
     text: text("text").notNull(),
     personId: text("person_id")
       .notNull()
@@ -1111,7 +1108,9 @@ export const blockers = sqliteTable(
       columns: [t.blockingStoryId, t.projectId],
       foreignColumns: [stories.id, stories.projectId],
       name: "blockers_blocking_story_fk",
-    }).onDelete("set null"),
+      // No ON DELETE: a composite SET NULL would null project_id with it. The
+      // blockers_unlink_on_story_delete trigger (Step 9) clears the pointer instead.
+    }),
   ],
 );
 
@@ -1133,7 +1132,6 @@ export const reviewTypes = sqliteTable(
     uniqueIndex("review_types_id_project").on(t.id, t.projectId),
     uniqueIndex("review_types_project_name").on(t.projectId, sql`${t.name} COLLATE NOCASE`),
     uniqueIndex("review_types_project_position").on(t.projectId, t.position),
-    check("review_types_position_non_negative", sql`${t.position} >= 0`),
   ],
 );
 
@@ -1334,8 +1332,8 @@ BEGIN
 END;
 --> statement-breakpoint
 CREATE TRIGGER stories_number_pinned
-BEFORE UPDATE OF number ON stories
-WHEN new.number <> old.number
+BEFORE UPDATE OF number, project_id ON stories
+WHEN new.number <> old.number OR new.project_id <> old.project_id
 BEGIN
   SELECT RAISE(ABORT, 'stories.number is pinned after insert');
 END;
@@ -1356,18 +1354,18 @@ END;
 --> statement-breakpoint
 CREATE TRIGGER stories_type_transitions_insert
 BEFORE INSERT ON stories
-WHEN (new.story_type = 'release' AND new.current_state = 'started')
-  OR (new.story_type = 'chore' AND new.current_state = 'finished')
+WHEN (new.story_type = 'release' AND new.current_state IN ('started','delivered','rejected'))
+  OR (new.story_type = 'chore'   AND new.current_state IN ('finished','delivered','rejected'))
 BEGIN
-  SELECT RAISE(ABORT, 'stories: a release has no started state and a chore has no finished state');
+  SELECT RAISE(ABORT, 'stories: a release goes unstarted -> finished -> accepted and a chore unstarted -> started -> accepted');
 END;
 --> statement-breakpoint
 CREATE TRIGGER stories_type_transitions_update
 BEFORE UPDATE OF story_type, current_state ON stories
-WHEN (new.story_type = 'release' AND new.current_state = 'started')
-  OR (new.story_type = 'chore' AND new.current_state = 'finished')
+WHEN (new.story_type = 'release' AND new.current_state IN ('started','delivered','rejected'))
+  OR (new.story_type = 'chore'   AND new.current_state IN ('finished','delivered','rejected'))
 BEGIN
-  SELECT RAISE(ABORT, 'stories: a release has no started state and a chore has no finished state');
+  SELECT RAISE(ABORT, 'stories: a release goes unstarted -> finished -> accepted and a chore unstarted -> started -> accepted');
 END;
 --> statement-breakpoint
 CREATE TRIGGER stories_estimate_gate_insert
@@ -1436,6 +1434,42 @@ BEGIN
   SELECT RAISE(ABORT, 'stories.deadline belongs to release stories only');
 END;
 --> statement-breakpoint
+CREATE TRIGGER stories_release_never_estimated_insert
+BEFORE INSERT ON stories
+WHEN new.story_type = 'release' AND new.estimate IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'stories: a release is never estimated');
+END;
+--> statement-breakpoint
+CREATE TRIGGER stories_release_never_estimated_update
+BEFORE UPDATE OF story_type, estimate ON stories
+WHEN new.story_type = 'release' AND new.estimate IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'stories: a release is never estimated');
+END;
+--> statement-breakpoint
+CREATE TRIGGER projects_bugs_chores_estimation_one_way
+BEFORE UPDATE OF bugs_and_chores_are_estimatable ON projects
+WHEN old.bugs_and_chores_are_estimatable = 1 AND new.bugs_and_chores_are_estimatable = 0
+BEGIN
+  SELECT RAISE(ABORT, 'projects.bugs_and_chores_are_estimatable cannot be turned off again');
+END;
+--> statement-breakpoint
+CREATE TRIGGER projects_automatic_planning_needs_no_planned
+BEFORE UPDATE OF automatic_planning ON projects
+WHEN old.automatic_planning = 0 AND new.automatic_planning = 1
+  AND EXISTS (SELECT 1 FROM stories WHERE project_id = new.id AND current_state = 'planned')
+BEGIN
+  SELECT RAISE(ABORT, 'projects: automatic planning leaves no planned story behind');
+END;
+--> statement-breakpoint
+CREATE TRIGGER blockers_unlink_on_story_delete
+BEFORE DELETE ON stories
+BEGIN
+  UPDATE blockers SET blocking_story_id = NULL, resolved = 1, updated_at = (strftime('%s','now') * 1000)
+   WHERE project_id = old.project_id AND blocking_story_id = old.id;
+END;
+--> statement-breakpoint
 CREATE TRIGGER story_people_drop_on_member_removal
 BEFORE DELETE ON project_members
 BEGIN
@@ -1444,6 +1478,10 @@ BEGIN
   UPDATE reviews SET reviewer_id = NULL WHERE project_id = old.project_id AND reviewer_id = old.user_id;
 END;
 ```
+
+`blockers_unlink_on_story_delete` replaces the `ON DELETE SET NULL` the blocking-story foreign key cannot carry: SQLite would null the whole composite key, `project_id` included. The trigger also flips `resolved`, because a blocker naming a deleted story can no longer become unblocked on its own.
+
+`projects_automatic_planning_needs_no_planned` is the database half of a rule the service enforces first (Task 7 Step 7 rewrites `planned` → `unstarted` before flipping the flag); the trigger exists so a direct write cannot leave a `planned` story under automatic planning, which `stories_planned_needs_manual_planning_*` would then refuse to touch.
 
 `stories_icebox_is_unscheduled_*` is what makes the `list` column honest: `unscheduled` and the Icebox are the same fact in Tracker (core-model §1.2 rule 2), and a service that set one without the other would produce a story the Icebox panel and the Backlog panel both claim.
 
@@ -1489,7 +1527,7 @@ export function seedStory(
     .where(eq(stories.projectId, projectId))
     .get();
   const tail = db
-    .select({ p: sql<number>`coalesce(max(${stories.position}), -1024) + 1024` })
+    .select({ p: sql<number>`coalesce(max(${stories.position}), 0) + 1024` })
     .from(stories)
     .where(and(eq(stories.projectId, projectId), eq(stories.list, list)))
     .get();
@@ -1503,7 +1541,7 @@ export function seedStory(
       currentState: input.currentState ?? (list === "icebox" ? "unscheduled" : "unstarted"),
       estimate: input.estimate ?? null,
       list,
-      position: input.position ?? tail?.p ?? 0,
+      position: input.position ?? tail?.p ?? 1024,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     })
@@ -1549,6 +1587,22 @@ describe("projects", () => {
       /CHECK constraint failed/,
     );
   });
+
+  it("refuses to turn bug and chore estimation back off", () => {
+    run("update projects set bugs_and_chores_are_estimatable = 1 where id = ?", [projectId]);
+    expect(() =>
+      run("update projects set bugs_and_chores_are_estimatable = 0 where id = ?", [projectId]),
+    ).toThrow(/cannot be turned off again/);
+  });
+
+  it("refuses to re-enable automatic planning while a planned story exists", () => {
+    run("update projects set automatic_planning = 0 where id = ?", [projectId]);
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    run("update stories set current_state = 'planned' where id = ?", [id]);
+    expect(() => run("update projects set automatic_planning = 1 where id = ?", [projectId])).toThrow(
+      /leaves no planned story behind/,
+    );
+  });
 });
 
 describe("stories", () => {
@@ -1581,6 +1635,13 @@ describe("stories", () => {
     expect(() => run("update stories set number = 42 where id = ?", [id])).toThrow(/number is pinned/);
   });
 
+  it("refuses to move a story to another project", () => {
+    const id = seedStory(db, projectId);
+    expect(() => run("update stories set project_id = ? where id = ?", [otherProjectId, id])).toThrow(
+      /number is pinned/,
+    );
+  });
+
   it("keeps unscheduled and the icebox in agreement", () => {
     const id = seedStory(db, projectId, { list: "icebox" });
     expect(() => run("update stories set list = 'backlog' where id = ?", [id])).toThrow(
@@ -1591,11 +1652,29 @@ describe("stories", () => {
   it("refuses a started release and a finished chore", () => {
     const release = seedStory(db, projectId, { list: "backlog", storyType: "release", currentState: "unstarted" });
     expect(() => run("update stories set current_state = 'started' where id = ?", [release])).toThrow(
-      /a release has no started state/,
+      /a release goes unstarted -> finished -> accepted/,
     );
     const chore = seedStory(db, projectId, { list: "backlog", storyType: "chore", currentState: "started" });
     expect(() => run("update stories set current_state = 'finished' where id = ?", [chore])).toThrow(
-      /a chore has no finished state/,
+      /a chore unstarted -> started -> accepted/,
+    );
+  });
+
+  it("refuses to deliver a release or a chore", () => {
+    const release = seedStory(db, projectId, { list: "backlog", storyType: "release", currentState: "unstarted" });
+    expect(() => run("update stories set current_state = 'delivered' where id = ?", [release])).toThrow(
+      /a release goes unstarted -> finished -> accepted/,
+    );
+    const chore = seedStory(db, projectId, { list: "backlog", storyType: "chore", currentState: "started" });
+    expect(() => run("update stories set current_state = 'delivered' where id = ?", [chore])).toThrow(
+      /a chore unstarted -> started -> accepted/,
+    );
+  });
+
+  it("refuses to estimate a release", () => {
+    const release = seedStory(db, projectId, { list: "backlog", storyType: "release", currentState: "unstarted" });
+    expect(() => run("update stories set estimate = 2 where id = ?", [release])).toThrow(
+      /a release is never estimated/,
     );
   });
 
@@ -1676,6 +1755,25 @@ describe("cross-project composite keys", () => {
     run("delete from project_members where project_id = ? and user_id = ?", [projectId, member.userId]);
     const left = db.$client.query("select count(*) as n from story_owners").get() as { n: number };
     expect(left.n).toBe(0);
+  });
+});
+
+describe("blockers", () => {
+  it("unlinks and resolves a blocker when the story it names is deleted", () => {
+    const blocked = seedStory(db, projectId);
+    const blocking = seedStory(db, projectId);
+    const blockerId = newId();
+    const reporter = seedUser(db, "blocker-reporter@example.test") as { userId: string };
+    run(
+      "insert into blockers (id, project_id, story_id, blocking_story_id, description, resolved, person_id, created_at, updated_at) values (?,?,?,?,?,?,?,?,?)",
+      [blockerId, projectId, blocked, blocking, "waiting", 0, reporter.userId, Date.now(), Date.now()],
+    );
+    run("delete from stories where id = ?", [blocking]);
+    const row = db.$client
+      .query("select blocking_story_id as b, resolved as r from blockers where id = ?")
+      .get(blockerId) as { b: string | null; r: number };
+    expect(row.b).toBeNull();
+    expect(row.r).toBe(1);
   });
 });
 
@@ -2137,6 +2235,20 @@ import { projectVersion } from "../services/activity";
 
 `routes/events.ts`: include `version` in the serialized event payload (the SSE `data` JSON). Update `test/events-bus.test.ts` and `test/events-sse.test.ts` for the new `publish` arity and payload.
 
+- [ ] **Step 5b: A development backstop for a write that records nothing**
+
+Every write action is supposed to leave an activity row, and every activity row bumps `projects.version`. A service that forgets `recordActivity` is invisible: the SSE event still fires, the client refetches, and only the Activity panel is quietly wrong. Add to the same `withProjectChange` in `events/emit.ts`:
+
+```ts
+  const before = /* projectVersion(tx) read at the top of the callback */;
+  ...
+  if (process.env.NODE_ENV === "development" && version === before) {
+    throw new Error(`${action} completed without recording activity`);
+  }
+```
+
+Development only, on purpose: a production deploy must not turn a missing history row into a failed request. The condition is the version, not the row count, because that is the number the SSE event and `since_version` are built on.
+
 - [ ] **Step 6: Add the activity route**
 
 Create `apps/server/src/routes/activity.ts`:
@@ -2382,7 +2494,7 @@ Add to `apps/server/test/projects.test.ts`:
 describe("project settings", () => {
   it("returns Tracker's settings shape with point_scale_is_custom derived", () => {
     const settings = withProject(db, owner, projectId, "project:read", (tx) => readProject(tx));
-    expect(settings.point_scale).toBe("0,1,2,3,5,8");
+    expect(settings.point_scale).toBe("0,1,2,3");
     expect(settings.point_scale_is_custom).toBe(false);
     expect(settings.iteration_length).toBe(1);
     expect(settings.velocity_averaged_over).toBe(3);
@@ -2391,6 +2503,7 @@ describe("project settings", () => {
   });
 
   it("rewrites estimates to the nearest value when a built-in scale changes", () => {
+    withProject(db, owner, projectId, "project:update", (tx) => updateProject(tx, { point_scale: "0,1,2,3,5,8" }));
     const storyId = seedStory(db, projectId, { list: "backlog", currentState: "unstarted", estimate: 5 });
     withProject(db, owner, projectId, "project:update", (tx) => updateProject(tx, { point_scale: "0,1,2,4,8" }));
     const row = db.$client.query("select estimate from stories where id = ?").get(storyId) as { estimate: number };
@@ -2418,6 +2531,15 @@ describe("project settings", () => {
         updateProject(tx, { bugs_and_chores_are_estimatable: false }),
       ),
     ).toThrow(/bugs_and_chores_estimation_is_one_way/);
+  });
+
+  it("hands planned stories back to the backlog when automatic planning returns", () => {
+    withProject(db, owner, projectId, "project:update", (tx) => updateProject(tx, { automatic_planning: false }));
+    const storyId = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    db.$client.run("update stories set current_state = 'planned' where id = ?", [storyId]);
+    withProject(db, owner, projectId, "project:update", (tx) => updateProject(tx, { automatic_planning: true }));
+    const row = db.$client.query("select current_state as s from stories where id = ?").get(storyId) as { s: string };
+    expect(row.s).toBe("unstarted");
   });
 
   it("refuses to leave a custom scale for a built-in one", () => {
@@ -2515,10 +2637,42 @@ export function updateProject(tx: ProjectTx, patch: ProjectSettingsPatch): Proje
     set.pointScale = patch.point_scale;
   }
   if (patch.time_zone !== undefined) assertKnownTimeZone(patch.time_zone);
+  // Automatic planning has no `planned` state, so the stories holding one are handed back to the
+  // backlog before the flag flips; projects_automatic_planning_needs_no_planned refuses the
+  // reverse order. Each rewrite carries its own story_update_activity.
+  if (patch.automatic_planning === true && !current.automatic_planning) {
+    for (const row of tx.tx
+      .select({ id: stories.id })
+      .from(stories)
+      .where(and(eq(stories.projectId, tx.projectId), eq(stories.currentState, "planned")))
+      .all()) {
+      tx.tx
+        .update(stories)
+        .set({ currentState: "unstarted", updatedAt: Date.now() })
+        .where(and(eq(stories.id, row.id), eq(stories.projectId, tx.projectId)))
+        .run();
+      recordActivity(tx, {
+        kind: "story_update_activity",
+        message: "unscheduled a planned story when automatic planning was turned on",
+        highlight: "edited",
+        changes: [
+          {
+            kind: "story",
+            id: row.id,
+            change_type: "update",
+            original_values: { current_state: "planned" },
+            new_values: { current_state: "unstarted" },
+          },
+        ],
+        primaryResources: [{ kind: "story", id: row.id }],
+      });
+    }
+  }
+  // Only the calendar's origin renumbers iterations. iteration_length is itself an overridable
+  // per-iteration value, so changing the project default must not wipe the overrides.
   const calendarMoved =
     (patch.start_date !== undefined && patch.start_date !== current.start_date) ||
-    (patch.week_start_day !== undefined && patch.week_start_day !== current.week_start_day) ||
-    (patch.iteration_length !== undefined && patch.iteration_length !== current.iteration_length);
+    (patch.week_start_day !== undefined && patch.week_start_day !== current.week_start_day);
   // …copy every remaining field into `set`, and `original`/`next` for the activity payload…
   if (Object.keys(set).length === 0) return current;
   tx.tx.update(projects).set(set as never).where(eq(projects.id, tx.projectId)).run();
@@ -2665,7 +2819,7 @@ MSG
   ```
 - Routes added: `GET|POST /api/projects/:id/stories`, `GET|PUT|DELETE /api/projects/:id/stories/:storyId`. The `PUT` carries both field edits and the move (Task 9 adds `before_id`/`after_id`/`group` handling to the same handler, which is how Tracker's v5 expresses a move).
 
-**The transition table** (core-model §1.2, §1.3). Rows are the current state, cells the states each type may move to. `accepted` is terminal for every type.
+**The transition table** (core-model §1.2, §1.3). Rows are the current state, cells the states each type may move to. `accepted` is *not* terminal: Tracker lets an accepted story be put back to `unstarted`, which is what the cycle-time and burndown articles describe when a story "re-opens" (corpus `articles/analytics_cycle_time.md:59`, `articles/analytics_burndown.md:42`).
 
 | from | feature / bug | chore | release |
 |---|---|---|---|
@@ -2673,10 +2827,12 @@ MSG
 | `unstarted` | `unscheduled`, `planned`, `started` | `unscheduled`, `planned`, `started` | `unscheduled`, `planned`, `finished` |
 | `planned` | `unscheduled`, `unstarted`, `started` | `unscheduled`, `unstarted`, `started` | `unscheduled`, `unstarted`, `finished` |
 | `started` | `unstarted`, `finished` | `unstarted`, `accepted` | — (a release has no `started`) |
-| `finished` | `started`, `delivered` | — (a chore has no `finished`) | `delivered`, `accepted` |
-| `delivered` | `accepted`, `rejected` | — | `accepted`, `rejected` |
-| `rejected` | `started` | `started` | `finished` |
-| `accepted` | — | — | — |
+| `finished` | `started`, `delivered` | — (a chore has no `finished`) | `accepted` |
+| `delivered` | `accepted`, `rejected` | — (a chore is never delivered) | — (a release is never delivered) |
+| `rejected` | `started` | — (a chore is never rejected) | — (a release is never rejected) |
+| `accepted` | `unstarted` | `unstarted` | `unstarted` |
+
+A release and a chore therefore have narrower state sets than the eight: a release lives in `unscheduled`, `unstarted`, `planned`, `finished`, `accepted`; a chore in `unscheduled`, `unstarted`, `planned`, `started`, `accepted`. The `stories_type_transitions_*` triggers (Task 5 Step 9) hold the same line in the database.
 
 - [ ] **Step 1: Write the failing core test**
 
@@ -2688,8 +2844,8 @@ import { estimationGateBlocks, isEstimable, isValidTransition, listForState, sta
 
 describe("statesFor", () => {
   it("drops started for a release and finished for a chore", () => {
-    expect(statesFor("release")).not.toContain("started");
-    expect(statesFor("chore")).not.toContain("finished");
+    expect(statesFor("release")).toEqual(["unscheduled", "unstarted", "planned", "finished", "accepted"]);
+    expect(statesFor("chore")).toEqual(["unscheduled", "unstarted", "planned", "started", "accepted"]);
     expect(statesFor("feature")).toHaveLength(8);
   });
 });
@@ -2710,12 +2866,16 @@ describe("isValidTransition", () => {
     expect(isValidTransition("chore", "started", "finished")).toBe(false);
   });
 
-  it("finishes a release without starting it", () => {
+  it("finishes a release without starting it, and never delivers it", () => {
     expect(isValidTransition("release", "unstarted", "finished")).toBe(true);
     expect(isValidTransition("release", "unstarted", "started")).toBe(false);
+    expect(isValidTransition("release", "finished", "delivered")).toBe(false);
+    expect(isValidTransition("release", "finished", "accepted")).toBe(true);
   });
 
-  it("makes accepted terminal and refuses a jump", () => {
+  it("re-opens an accepted story to unstarted and refuses a jump", () => {
+    expect(isValidTransition("feature", "accepted", "unstarted")).toBe(true);
+    expect(isValidTransition("release", "accepted", "unstarted")).toBe(true);
     expect(isValidTransition("feature", "accepted", "started")).toBe(false);
     expect(isValidTransition("feature", "unstarted", "delivered")).toBe(false);
   });
@@ -2762,7 +2922,8 @@ export type StoryState =
   | "unscheduled" | "unstarted" | "planned" | "started" | "finished" | "delivered" | "accepted" | "rejected";
 export type StoryList = "backlog" | "icebox";
 
-/** Per-type transitions (core-model §1.2 rules 6-8). A release skips started; a chore skips finished. */
+/** Per-type transitions (core-model §1.2 rules 6-8). A release skips started, a chore finished, and
+ *  neither is ever delivered or rejected. `accepted` re-opens to `unstarted` for every type. */
 const TRANSITIONS: Record<StoryType, Partial<Record<StoryState, readonly StoryState[]>>> = {
   feature: {
     unscheduled: ["unstarted", "planned"],
@@ -2772,7 +2933,7 @@ const TRANSITIONS: Record<StoryType, Partial<Record<StoryState, readonly StorySt
     finished: ["started", "delivered"],
     delivered: ["accepted", "rejected"],
     rejected: ["started"],
-    accepted: [],
+    accepted: ["unstarted"],
   },
   bug: {
     unscheduled: ["unstarted", "planned"],
@@ -2782,24 +2943,21 @@ const TRANSITIONS: Record<StoryType, Partial<Record<StoryState, readonly StorySt
     finished: ["started", "delivered"],
     delivered: ["accepted", "rejected"],
     rejected: ["started"],
-    accepted: [],
+    accepted: ["unstarted"],
   },
   chore: {
     unscheduled: ["unstarted", "planned"],
     unstarted: ["unscheduled", "planned", "started"],
     planned: ["unscheduled", "unstarted", "started"],
     started: ["unstarted", "accepted"],
-    rejected: ["started"],
-    accepted: [],
+    accepted: ["unstarted"],
   },
   release: {
     unscheduled: ["unstarted", "planned"],
     unstarted: ["unscheduled", "planned", "finished"],
     planned: ["unscheduled", "unstarted", "finished"],
-    finished: ["delivered", "accepted"],
-    delivered: ["accepted", "rejected"],
-    rejected: ["finished"],
-    accepted: [],
+    finished: ["accepted"],
+    accepted: ["unstarted"],
   },
 };
 
@@ -2873,11 +3031,11 @@ Create `apps/server/test/stories.test.ts` covering, with `withProject(db, owner,
 3. `updateStory` refuses an estimate off the project's scale with `400 points_off_scale`.
 4. `updateStory` refuses an invalid transition with `409 invalid_transition` (`unstarted → delivered`).
 5. Starting an unestimated feature raises `409 estimate_required`; starting an unestimated chore does not.
-6. Accepting sets `accepted_at`; moving back out of `accepted` is refused (terminal).
+6. Accepting sets `accepted_at`; re-opening to `unstarted` clears it, and any other move out of `accepted` is refused with `409 invalid_transition`.
 7. Accepting a story flips `list` to `backlog` and leaves it there — Done is derived from `accepted_at`, nothing moves the row.
 8. Setting `current_state: "unscheduled"` moves the story to the Icebox list and to the end of it.
 9. Every mutation writes exactly one activity row, and the story's own activity (`storyActivity`) finds it.
-10. `deleteStory` removes the row and leaves the activity rows in place (their `activity_resources` entry is cascaded, the `activities` row is not).
+10. `deleteStory` removes the row and leaves the whole history in place: `activity_resources` has no foreign key to `stories`, so neither it nor the `activities` row is cascaded — a reader can still see what happened to the deleted story.
 11. `listStories` filters by `withState` and `withStoryType`.
 
 Each assertion uses the real service, never raw SQL, except when checking a column the service does not return.
@@ -2909,6 +3067,8 @@ Expected: FAIL — `../src/services/stories` does not exist.
 
 Add the matching `matrix-fixtures.ts` entries (a seeded `storyId`, a `{ name: "Matrix" }` body for `PUT`, `{ name: "Matrix story" }` for `POST`) and put `DELETE /api/projects/:id/stories/:storyId` in `DESTRUCTIVE`.
 
+**Standing rule for Tasks 8-16:** every route added in these tasks that uses the `DELETE` verb goes into the `DESTRUCTIVE` set in `matrix-fixtures.ts` at the same time as its `ROUTE_ACTIONS` entry. A `DELETE` route missing from that set silently skips the matrix's re-seed between actors, so a later actor tests against an already-deleted row.
+
 - [ ] **Step 10: Run the suites**
 
 Run: `cd apps/server && bun test test/stories.test.ts test/stories-routes.test.ts test/route-matrix.test.ts`
@@ -2930,9 +3090,9 @@ git add packages/core/src apps/server/src apps/server/test
 git commit -m "$(cat <<'MSG'
 feat(server): stories with Tracker's eight states and per-type transitions
 
-A release has no started state, a chore no finished state, accepted is
-terminal and carries accepted_at, and an estimable story cannot pass
-started without an estimate. The list column follows the state: unscheduled
+A release has no started state, a chore no finished state, neither is ever
+delivered or rejected, accepted carries accepted_at and re-opens to
+unstarted, and an estimable story cannot pass started without an estimate. The list column follows the state: unscheduled
 is exactly the Icebox.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
@@ -2964,9 +3124,9 @@ MSG
   export function placeInList(tx: ProjectTx, storyId: string, list: StoryList, move: MoveRequest): number;
   export function appendToList(tx: ProjectTx, list: StoryList): number;
   ```
-  `placeInList` writes the story's `position` (and nothing else) and returns it. `group` maps to a list: `unscheduled` → `icebox`, `scheduled`/`current` → `backlog`; `current` is additionally refused with `409 manual_planning_required` while `projects.automatic_planning` is on (Assumption 7).
+  `placeInList` computes and returns the position; it writes nothing. The caller folds that number into the single `UPDATE` it was already making, because `stories_icebox_is_unscheduled_update` fires on `UPDATE OF list, current_state` and would RAISE on a half-move written separately. `group` maps to a list: `unscheduled` → `icebox`, `scheduled`/`current` → `backlog`; `current` is additionally refused with `409 manual_planning_required` while `projects.automatic_planning` is on (Assumption 7).
 
-**Why not `reorder`.** The deleted helper renumbered a whole scope from a full id array the client sent. Tracker's Backlog is one list of hundreds of stories that Current is merely the head of, so the client never holds the whole list, and two concurrent drags would each overwrite the other's ordering wholesale. `reorder` stays in `db/tx.ts` for the short lists — tasks, labels, epics, review types.
+**Why not `reorder`.** The deleted helper renumbered a whole scope from a full id array the client sent. Tracker's Backlog is one list of hundreds of stories that Current is merely the head of, so the client never holds the whole list, and two concurrent drags would each overwrite the other's ordering wholesale. `reorder` stays in `db/tx.ts` for the short lists — tasks, epics, review types (labels carry no position).
 
 - [ ] **Step 1: Write the failing ordering test**
 
@@ -2977,8 +3137,8 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { makeTestDb, seedProject, seedStory, seedUser } from "./harness";
 import { withProject } from "../src/db/tx";
-import { POSITION_GAP, placeInList } from "../src/services/ordering";
-import { stories } from "../src/db/schema";
+import { POSITION_GAP, placeInList, type MoveRequest } from "../src/services/ordering";
+import { stories, type StoryList } from "../src/db/schema";
 import type { Db } from "../src/db/client";
 import type { Actor } from "../src/db/tx";
 
@@ -2991,6 +3151,19 @@ beforeEach(() => {
   owner = seedUser(db, "owner@example.test");
   projectId = seedProject(db, owner);
 });
+
+/** placeInList only computes the position; in the service the caller folds it into its own
+ *  UPDATE. These unit tests do the same one-statement write. */
+const place = (storyId: string, list: StoryList, move: MoveRequest) =>
+  withProject(db, owner, projectId, "story:write", (tx) => {
+    const position = placeInList(tx, storyId, list, move);
+    tx.tx
+      .update(stories)
+      .set({ position })
+      .where(and(eq(stories.id, storyId), eq(stories.projectId, projectId)))
+      .run();
+    return position;
+  });
 
 const order = () =>
   db
@@ -3012,7 +3185,7 @@ describe("placeInList", () => {
       .orderBy(stories.position)
       .all()
       .map((r) => r.p);
-    expect(positions).toEqual([0, POSITION_GAP]);
+    expect(positions).toEqual([POSITION_GAP, POSITION_GAP * 2]);
     expect(order()).toEqual([a, b]);
   });
 
@@ -3021,7 +3194,7 @@ describe("placeInList", () => {
     const b = seedStory(db, projectId);
     const c = seedStory(db, projectId);
     const before = db.select({ id: stories.id, p: stories.position }).from(stories).all();
-    withProject(db, owner, projectId, "story:write", (tx) => placeInList(tx, c, "icebox", { after_id: a, before_id: b }));
+    place(c, "icebox", { after_id: a, before_id: b });
     expect(order()).toEqual([a, c, b]);
     const after = new Map(db.select({ id: stories.id, p: stories.position }).from(stories).all().map((r) => [r.id, r.p]));
     for (const row of before) if (row.id !== c) expect(after.get(row.id)).toBe(row.p);
@@ -3030,9 +3203,9 @@ describe("placeInList", () => {
   it("places at the head when only before_id is given, and at the tail when only after_id is", () => {
     const a = seedStory(db, projectId);
     const b = seedStory(db, projectId);
-    withProject(db, owner, projectId, "story:write", (tx) => placeInList(tx, b, "icebox", { before_id: a }));
+    place(b, "icebox", { before_id: a });
     expect(order()).toEqual([b, a]);
-    withProject(db, owner, projectId, "story:write", (tx) => placeInList(tx, b, "icebox", { after_id: a }));
+    place(b, "icebox", { after_id: a });
     expect(order()).toEqual([a, b]);
   });
 
@@ -3040,7 +3213,7 @@ describe("placeInList", () => {
     const a = seedStory(db, projectId, { position: 10 });
     const b = seedStory(db, projectId, { position: 11 });
     const c = seedStory(db, projectId, { position: 12 });
-    withProject(db, owner, projectId, "story:write", (tx) => placeInList(tx, c, "icebox", { after_id: a, before_id: b }));
+    place(c, "icebox", { after_id: a, before_id: b });
     expect(order()).toEqual([a, c, b]);
     const positions = db
       .select({ p: stories.position })
@@ -3049,16 +3222,19 @@ describe("placeInList", () => {
       .orderBy(stories.position)
       .all()
       .map((r) => r.p);
-    expect(positions).toEqual([0, POSITION_GAP, POSITION_GAP * 2]);
+    // After the renumber (a=GAP, b=2*GAP, c=3*GAP) the move itself still lands c between
+    // a and b, so the exact values are [GAP, 1.5*GAP, 2*GAP]; assert the invariants the
+    // service promises rather than that arithmetic.
+    expect(positions).toEqual([POSITION_GAP, POSITION_GAP * 1.5, POSITION_GAP * 2]);
+    expect(new Set(positions).size).toBe(3);
+    expect(positions.every((p) => p > 0)).toBe(true);
   });
 
   it("refuses a neighbour that is in the other list", () => {
     const iceboxStory = seedStory(db, projectId, { list: "icebox" });
     const backlogStory = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
     expect(() =>
-      withProject(db, owner, projectId, "story:write", (tx) =>
-        placeInList(tx, iceboxStory, "icebox", { after_id: backlogStory }),
-      ),
+      place(iceboxStory, "icebox", { after_id: backlogStory }),
     ).toThrow(/neighbour_not_in_list/);
   });
 
@@ -3067,7 +3243,7 @@ describe("placeInList", () => {
     const foreign = seedStory(db, other);
     const mine = seedStory(db, projectId);
     expect(() =>
-      withProject(db, owner, projectId, "story:write", (tx) => placeInList(tx, mine, "icebox", { after_id: foreign })),
+      place(mine, "icebox", { after_id: foreign }),
     ).toThrow(/not_found/);
   });
 
@@ -3076,7 +3252,7 @@ describe("placeInList", () => {
     const b = seedStory(db, projectId);
     const c = seedStory(db, projectId);
     expect(() =>
-      withProject(db, owner, projectId, "story:write", (tx) => placeInList(tx, c, "icebox", { after_id: b, before_id: a })),
+      place(c, "icebox", { after_id: b, before_id: a }),
     ).toThrow(/neighbours_out_of_order/);
   });
 });
@@ -3154,7 +3330,7 @@ function renumber(tx: ProjectTx, list: StoryList): void {
   ids.forEach((id, rank) => {
     tx.tx
       .update(stories)
-      .set({ position: rank * POSITION_GAP })
+      .set({ position: (rank + 1) * POSITION_GAP })
       .where(and(eq(stories.id, id), eq(stories.projectId, tx.projectId)))
       .run();
   });
@@ -3166,20 +3342,23 @@ export function appendToList(tx: ProjectTx, list: StoryList): number {
     .from(stories)
     .where(and(eq(stories.projectId, tx.projectId), eq(stories.list, list)))
     .get();
-  return row?.p === null || row?.p === undefined ? 0 : row.p + POSITION_GAP;
+  // Positions start at POSITION_GAP, never 0, so there is always room to insert a new head.
+  return row?.p === null || row?.p === undefined ? POSITION_GAP : row.p + POSITION_GAP;
 }
 
 /**
  * Tracker's own move vocabulary (core-model §1.8): `after_id` is the predecessor, `before_id`
  * the successor, and the client never sends the whole list. Positions are read *inside* this
  * transaction, so a client working from a stale snapshot still lands next to the neighbours it
- * named rather than overwriting an interleaved move.
+ * named rather than overwriting an interleaved move. It returns the position and writes nothing:
+ * the story's `list`, `current_state` and `position` must move in one UPDATE or the
+ * `stories_icebox_is_unscheduled_update` trigger sees an inconsistent half-move and aborts.
  */
 export function placeInList(tx: ProjectTx, storyId: string, list: StoryList, move: MoveRequest): number {
   const afterId = move.after_id ?? null;
   const beforeId = move.before_id ?? null;
   if (afterId === storyId || beforeId === storyId) throw new HttpError(400, "neighbour_is_self");
-  if (afterId === null && beforeId === null) return write(tx, storyId, appendToList(tx, list), list);
+  if (afterId === null && beforeId === null) return appendToList(tx, list);
 
   let lower = afterId === null ? null : neighbourPosition(tx, list, afterId);
   let upper = beforeId === null ? null : neighbourPosition(tx, list, beforeId);
@@ -3195,24 +3374,19 @@ export function placeInList(tx: ProjectTx, storyId: string, list: StoryList, mov
     position = between(tx, list, lower, upper);
     if (position === null) throw new Error("positions exhausted after renumbering");
   }
-  return write(tx, storyId, position, list);
+  return position;
 }
 
 function between(tx: ProjectTx, list: StoryList, lower: number | null, upper: number | null): number | null {
   if (lower === null && upper === null) return appendToList(tx, list);
-  if (lower === null) return upper! - POSITION_GAP >= 0 ? upper! - POSITION_GAP : upper! > 0 ? Math.floor(upper! / 2) : null;
+  if (lower === null) {
+    if (upper! > POSITION_GAP) return upper! - POSITION_GAP;
+    const head = Math.floor(upper! / 2);
+    return head > 0 ? head : null;
+  }
   if (upper === null) return lower + POSITION_GAP;
   const mid = Math.floor((lower + upper) / 2);
   return mid > lower && mid < upper ? mid : null;
-}
-
-function write(tx: ProjectTx, storyId: string, position: number, list: StoryList): number {
-  tx.tx
-    .update(stories)
-    .set({ position, list })
-    .where(and(eq(stories.id, storyId), eq(stories.projectId, tx.projectId)))
-    .run();
-  return position;
 }
 ```
 
@@ -3235,8 +3409,23 @@ import { openDatabase } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { seedProject, seedStory, seedUser } from "./harness";
 import { withProject } from "../src/db/tx";
-import { placeInList } from "../src/services/ordering";
+import { placeInList, type MoveRequest } from "../src/services/ordering";
 import { stories } from "../src/db/schema";
+import type { Db } from "../src/db/client";
+import type { Actor } from "../src/db/tx";
+
+/** placeInList computes; the caller writes. The service does this inside its own single UPDATE. */
+function moveStory(conn: Db, owner: Actor, projectId: string, storyId: string, move: MoveRequest): number {
+  return withProject(conn, owner, projectId, "story:write", (tx) => {
+    const position = placeInList(tx, storyId, "icebox", move);
+    tx.tx
+      .update(stories)
+      .set({ position })
+      .where(and(eq(stories.id, storyId), eq(stories.projectId, projectId)))
+      .run();
+    return position;
+  });
+}
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -3263,12 +3452,8 @@ describe("concurrent moves", () => {
     // Both callers decided from the same snapshot [a, b, c, d]: one drags d between a and b,
     // the other drags c between a and b. Neither sends positions, only the neighbours it saw.
     const second = openDatabase(path);
-    withProject(writer, owner, projectId, "story:write", (tx) =>
-      placeInList(tx, d, "icebox", { after_id: a, before_id: b }),
-    );
-    withProject(second, owner, projectId, "story:write", (tx) =>
-      placeInList(tx, c, "icebox", { after_id: a, before_id: b }),
-    );
+    moveStory(writer, owner, projectId, d, { after_id: a, before_id: b });
+    moveStory(second, owner, projectId, c, { after_id: a, before_id: b });
 
     const order = writer
       .select({ id: stories.id, position: stories.position })
@@ -3294,13 +3479,11 @@ describe("concurrent moves", () => {
     runMigrations(db);
     const owner = seedUser(db, "owner@example.test");
     const projectId = seedProject(db, owner);
-    const head = seedStory(db, projectId, { position: 0 });
-    const tail = seedStory(db, projectId, { position: 1 });
+    const head = seedStory(db, projectId, { position: 1 });
+    const tail = seedStory(db, projectId, { position: 2 });
     const movers = [2, 3, 4].map((p) => seedStory(db, projectId, { position: p * 1000 }));
     for (const mover of movers) {
-      withProject(db, owner, projectId, "story:write", (tx) =>
-        placeInList(tx, mover, "icebox", { after_id: head, before_id: tail }),
-      );
+      moveStory(db, owner, projectId, mover, { after_id: head, before_id: tail });
     }
     const rows = db
       .select({ id: stories.id, position: stories.position })
@@ -3323,7 +3506,19 @@ Expected: PASS (2 tests). A failure on the first case means `placeInList` read a
 
 - [ ] **Step 7: Wire the move into the story service and route**
 
-In `services/stories.ts`: `createStory` calls `placeInList(tx, id, list, { after_id, before_id })` when either is given and `appendToList` otherwise; `updateStory` calls `placeInList` when the patch carries `group`, `before_id` or `after_id`, resolving the target list as `listForGroup(tx, group) ?? listForState(nextState)`. A move writes `story_move_activity`; a field edit writes `story_update_activity`; a PUT that does both writes one row of each.
+In `services/stories.ts`: `createStory` calls `placeInList(tx, id, list, { after_id, before_id })` when either is given and `appendToList` otherwise, and puts the returned number straight into its `INSERT`.
+
+`updateStory` calls `placeInList` when the patch carries `group`, `before_id` or `after_id`, resolving the target list as `listForGroup(tx, group) ?? listForState(nextState)`, and then writes `{ current_state, list, position }` in **one** `UPDATE`. Splitting them is not an option: `stories_icebox_is_unscheduled_update` fires on `UPDATE OF list, current_state` and aborts the moment one is written without the other.
+
+A `group` given on its own (no `current_state` in the patch) still implies a state, because in Tracker the panel a story sits in *is* part of its state (core-model §1.2 rule 2):
+
+| `group` | resulting `current_state` |
+|---|---|
+| `unscheduled` | `unscheduled` |
+| `scheduled` | `unstarted` when the story was `unscheduled`; otherwise unchanged |
+| `current` | `planned` (manual planning only — `listForGroup` has already raised `409 manual_planning_required` otherwise) |
+
+A move writes `story_move_activity`; a field edit writes `story_update_activity`; a PUT that does both writes one row of each.
 
 In `routes/stories.ts`: add `group`, `before_id` and `after_id` to the `PUT` allowlist (and `before_id`/`after_id` to `POST`), validating `group` against `["scheduled", "unscheduled", "current"]` with `400 group_invalid`.
 
@@ -3461,7 +3656,9 @@ In `services/stories.ts` `updateStory`, after a successful transition into `star
 "POST /api/projects/:id/stories/:storyId/followers/:userId": "follower:write",
 "DELETE /api/projects/:id/stories/:storyId/followers/:userId": "follower:write",
 ```
-The follower fixtures must name the *acting* user so the viewer row passes (`params: { storyId, userId: ctx.selfUserId }` is wrong — the matrix runs as five different actors). Give the follower rows their own fixture whose `userId` is `ctx.ownerUserId`, and cover the viewer's own follow in `story-people.test.ts` instead; the matrix row for a viewer then asserts 200 for *another* user only if the service allows it — it does not, so set the follower rows' fixture `userId` to a seeded **member** and record in `spec/permissions.md` notes that the matrix row for `follower:write`/viewer is exercised through the service test. If that makes the matrix row fail, change the fixture to name the acting viewer by using `ctx.viewerUserId` and asserting 200 across roles; do not weaken the service rule.
+Add `viewerUserId` to `MatrixContext` (the user the matrix runs its viewer row as) and give both follower rows a fixture whose `params` are `{ storyId: ctx.storyId, userId: ctx.viewerUserId }`. That one id works for every actor: the viewer is following itself (200), and a member or an owner may make anyone a follower, the viewer included (200). The `DELETE` row names the same id, and `removeFollower` is idempotent, so it answers 200 whether or not the `POST` row ran first.
+
+The service rule is unchanged — a viewer may act on nobody but itself — and `story-people.test.ts` (Step 1) is what proves the refusal.
 
 - [ ] **Step 6: Run everything and commit**
 
@@ -3608,7 +3805,7 @@ Notes that shape the implementation:
 - Label names are stored as given but matched case-insensitively (`UNIQUE (project_id, name COLLATE NOCASE)`); `attachLabel` does a NOCASE lookup first and inserts only on a miss, so the unique index is a backstop, not the control flow.
 - `createEpic` creates the label when `label_name` is absent, using the epic's name lower-cased; if the named label already backs an epic, `409 label_backs_an_epic`. `deleteLabel` raises the same code rather than letting the `ON DELETE RESTRICT` foreign key surface as a 500.
 - `counts` is one grouped query per project (`GROUP BY story_labels.label_id, stories.current_state`), not a query per label — the Labels panel (step 6) lists every label at once.
-- Epic order is dense and uses `reorder(tx, epics, eq(epics.projectId, tx.projectId), orderedIds)`: the list is short (core-model §4.2 rule 2 says Tracker moves epics with before/after ids, but the storage is our choice, and a whole-list renumber of a dozen rows is cheaper than sparse bookkeeping).
+- Epic order is dense and uses `reorder(tx, epics, eq(epics.projectId, tx.projectId), orderedIds)`: the list is short (a whole-list renumber of a dozen rows is cheaper than sparse bookkeeping). The **API** is still Tracker's (core-model §4.2 rule 2): the move routes take `before_id` / `after_id` only. `moveEpic` reads the current order inside its own transaction, computes the permutation from the named neighbour and hands *that* to `reorder`. An `orderedIds` array is never accepted from a client — it would let a stale tab overwrite an ordering it never saw, which is the same failure Task 9 avoids for stories.
 - Activity: `label_create_activity`, `label_update_activity`, `label_delete_activity`, `epic_create_activity`, `epic_update_activity`, `epic_move_activity`, `epic_delete_activity`. Attaching or detaching a label on a story writes `story_update_activity` with `label_ids` in `original_values`/`new_values` — it is a story edit, not a label edit.
 
 - [ ] **Step 4: Routes, manifest, fixtures, then run and commit**
@@ -3825,7 +4022,29 @@ The upload route parses the multipart body with `await c.req.parseBody()` **befo
 
 Document the new on-disk layout in `apps/server/README.md` under Configuration: `$STORYLANE_DATA_DIR/attachments/<project id>/<attachment id>`.
 
-- [ ] **Step 5: Run everything and commit**
+`comment:update-own` and `comment:delete` cannot be exercised by a single shared fixture: the matrix runs one row as five actors, and "own" means a different comment for each of them. Extend the fixture type in `matrix-fixtures.ts`:
+
+```ts
+export interface MatrixFixture {
+  params?: Record<string, string>;
+  body?: unknown;
+  /** Overrides for the roles whose expected answer depends on who owns the row. */
+  perRole?: Partial<Record<Role, MatrixFixture>>;
+}
+```
+
+The matrix looks up `fixture.perRole?.[role] ?? fixture` when it builds a request. For `PUT` and `DELETE /…/comments/:commentId`, the seeder creates one comment per role, authored by that role's own user, and each `perRole` entry names its author's comment. Owner and member then answer 200 on their own row (and the owner also on anyone's, which the service test covers), and the viewer — who has neither action — still answers 403 from the matrix as before. `DELETE /…/comments/:commentId` goes in `DESTRUCTIVE`.
+
+- [ ] **Step 5: Check the backup path covers the attachments**
+
+Read `apps/server/src/db/backup.ts` and decide which of the two is true:
+
+- it already copies `$STORYLANE_DATA_DIR` wholesale — then nothing changes;
+- it snapshots the SQLite file only — then add one line to `apps/server/README.md` under Backups: "DB backups do not include attachments; back up `$STORYLANE_DATA_DIR/attachments` separately."
+
+Do not extend `backup.ts` here — attachment backup is a deploy-shaped decision, and step 1's job is to stop the gap being silent.
+
+- [ ] **Step 6: Run everything and commit**
 
 Run: `cd apps/server && bun test`
 Expected: PASS, 0 fail.
@@ -3928,7 +4147,7 @@ it("resolves when the referenced story is deleted", () => {
 
 - [ ] **Step 2: Run it, watch it fail, implement**
 
-`referencedStoryId` matches `/#(\d+)/` (the first occurrence), looks the number up **within this project**, and returns null when it misses or names the blocked story itself. `resolveBlockersReferencing` is called from `updateStory` on entry into `accepted` and from `deleteStory`; it sets `resolved = 1` (the FK's `ON DELETE SET NULL` clears the pointer on delete) and writes one `blocker_update_activity` per row it resolved, with the blocked story as a primary resource so the story panel shows it.
+`referencedStoryId` matches `/#(\d+)/` (the first occurrence), looks the number up **within this project**, and returns null when it misses or names the blocked story itself. `resolveBlockersReferencing` is called from `updateStory` on entry into `accepted` and from `deleteStory`; it sets `resolved = 1` and writes one `blocker_update_activity` per row it resolved, with the blocked story as a primary resource so the story panel shows it. On a delete the `blockers_unlink_on_story_delete` trigger (Task 5 Step 9) clears the pointer — the composite foreign key cannot carry `ON DELETE SET NULL` without nulling `project_id` too — and the service still writes its `blocker_update_activity`, so the history records the resolution even though the column was moved by a trigger.
 
 Accepting a story with unresolved blockers, reviews or incomplete tasks is **not** refused — Tracker raises a client-side confirmation instead (core-model §1.2 rule 10). Record that in `spec/data-model.md` (Task 22) so step 3's UI knows the confirmation is its job.
 
@@ -5049,9 +5268,9 @@ In `ARCHITECTURE.md`, above `<!-- hook:end -->` (the marker must survive — `sc
 - Replace the `Behaviour lives in services/` bullet's tail so it no longer names `container flags`.
 - Add:
   - **Iterations are derived, never stored.** Windows come from the project's start date, week start day, length and time zone; only `iteration_overrides` is a row. There is no rollover and no finalize step.
-  - **Story ordering is `before_id` / `after_id`** over two sparse-position lists per project (`services/ordering.ts`). `reorder()` is for short lists only — tasks, labels, epics, review types.
+  - **Story ordering is `before_id` / `after_id`** over two sparse-position lists per project (`services/ordering.ts`). `reorder()` is for short lists only — tasks, epics, review types (labels carry no position) — and the permutation it is given is always computed on the server from the neighbour ids a client named, never taken from the client as an array.
   - **Activity is Tracker-shaped**: one row per action with `kind` / `highlight` / `message` / `changes[]`, written only by `recordActivity`, bumping `projects.version`, which the SSE event carries.
-  - **`iteration_overrides` is the one table keyed `(project_id, number)`** rather than `(id, project_id)`: the iteration number is the identity and the iteration itself is a computation.
+  - **`iteration_overrides` is the one table keyed `(project_id, number)`** rather than `(id, project_id)`: the iteration number is the identity and the iteration itself is a computation. Because it has no `(id, project_id)` pair, **no child table may ever carry a foreign key to it** — a row that needs to point at an override means the table has outgrown the exception and must gain an `id` first.
 
 Update the "Where things are" table below the marker for the new service files.
 
@@ -5124,9 +5343,11 @@ Run after the plan is written, before execution starts. Recorded here so the rev
 
 **2. Placeholder scan.** No "TBD", "implement later" or "add appropriate error handling". Tasks 11–16 and 21 describe their implementations in prose plus exact interfaces rather than reproducing every line — each one's *tests* are concrete, which is what an executor works against, and each one's public surface is fully typed above. The one forward reference in the plan (`readProject`'s `current_iteration_number: 1` placeholder in Task 7, filled in Task 20 Step 4) is named in both places.
 
-**3. Type consistency.** `StoryState` / `StoryType` / `StoryList` are declared twice by design — once in the schema for drizzle-kit, once in `packages/core` for the rules — and Task 8 Step 5 pins them together with a compile-time `Exact<>` assertion. `recordActivity` takes `ActivityEntry` with `kind`/`message`/`highlight`/`changes`/`primaryResources` in every task that calls it. `placeInList(tx, storyId, list, move)` has the same four parameters in Tasks 9, 8 and 11. `POSITION_GAP` is used, not re-declared. Service row types are snake_case (the API shape) while service *functions* are camelCase; the schema columns stay camelCase in Drizzle and snake_case in SQL — consistent with the foundation.
+**3. Type consistency.** `StoryState` / `StoryType` / `StoryList` are declared twice by design — once in the schema for drizzle-kit, once in `packages/core` for the rules — and Task 8 Step 5 pins them together with a compile-time `Exact<>` assertion. `recordActivity` takes `ActivityEntry` with `kind`/`message`/`highlight`/`changes`/`primaryResources` in every task that calls it. `placeInList(tx, storyId, list, move)` has the same four parameters everywhere it appears (Tasks 8 and 9) and everywhere returns a position without writing it — the caller folds it into its own single `UPDATE`. `POSITION_GAP` is declared once in `services/ordering.ts` and imported everywhere else, including the tests. `MatrixContext.viewerUserId` (Task 10) and `MatrixFixture.perRole` (Task 13) are each added once, in the task that first needs them, and used by name afterwards. Service row types are snake_case (the API shape) while service *functions* are camelCase; the schema columns stay camelCase in Drizzle and snake_case in SQL — consistent with the foundation.
 
-**Fixed inline while reviewing:** Task 7's `createProject` needed a `startDate` default or every project creation would hit the new NOT NULL column and its trigger (added to Step 7). Task 5's `project_members` needed an explicit `UNIQUE (project_id, user_id)` for the composite foreign keys in `story_owners` / `story_followers` / `reviews` to resolve (added to Step 1). Task 10's follower matrix fixture cannot name an arbitrary user without contradicting the viewer self-restriction; Step 5 says what to do about it rather than leaving the executor to discover the conflict.
+**Fixed inline while reviewing:** Task 7's `createProject` needed a `startDate` default or every project creation would hit the new NOT NULL column and its trigger (added to Step 7). Task 10's follower matrix fixture cannot name an arbitrary user without contradicting the viewer self-restriction; Step 5 resolves it by seeding the fixture with the viewer's own id, which every role may legally write.
+
+**Fixed after the advisor pass** (approve-with-corrections, 2026-09-16): the four `position >= 0` CHECKs are gone (the two-pass renumber parks rows at negative positions); the blocking-story foreign key lost its `ON DELETE SET NULL`, which would have nulled `project_id` with it, in favour of the `blockers_unlink_on_story_delete` trigger; the default point scale is Linear `0,1,2,3`; a release and a chore are never `delivered` or `rejected`, and `accepted` re-opens to `unstarted`; positions are 1-based multiples of `POSITION_GAP`, never 0; `placeInList` no longer writes, because the icebox/state trigger refuses a split update; `project_members` dropped its redundant `UNIQUE (project_id, user_id)` (the composite primary key already serves as the foreign-key parent); and four guard triggers were added (`stories_number_pinned` covering `project_id`, `projects_bugs_chores_estimation_one_way`, `stories_release_never_estimated_*`, `projects_automatic_planning_needs_no_planned`), each with a test in Task 5 Step 11.
 
 ## Execution handoff
 
