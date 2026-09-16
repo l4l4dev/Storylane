@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
 import { makeTestApp, makeTestDb, seedUser } from "./harness";
 import { createProject } from "../src/services/projects";
-import { activityLogs, projects } from "../src/db/schema";
+import { activities, projects } from "../src/db/schema";
 import type { Db } from "../src/db/client";
 import type { Actor } from "../src/db/tx";
 
@@ -134,6 +134,6 @@ describe("DELETE /api/projects/:id cascades", () => {
     expect(res.status).toBe(204);
 
     expect(db.select().from(projects).where(eq(projects.id, project.id)).all()).toEqual([]);
-    expect(db.select().from(activityLogs).where(eq(activityLogs.projectId, project.id)).all()).toEqual([]);
+    expect(db.select().from(activities).where(eq(activities.projectId, project.id)).all()).toEqual([]);
   });
 });

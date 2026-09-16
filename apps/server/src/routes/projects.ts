@@ -14,7 +14,6 @@ import {
   updateProject,
   type ProjectPatch,
 } from "../services/projects";
-import { POINT_SCALES, type PointScale } from "../db/schema";
 import { DESCRIPTION_MAX, NAME_MAX, assertMaxLength } from "./limits";
 
 const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -37,20 +36,13 @@ function validateProjectPatch(input: Record<string, unknown>): ProjectPatch {
     if (typeof input.description === "string") assertMaxLength(input.description, DESCRIPTION_MAX, "description_too_long");
     patch.description = input.description as string | null;
   }
+  // PROVISIONAL (Task 7 owns the settings routes): the scale is now the stored
+  // comma-separated string; the service validates its shape.
   if (input.pointScale !== undefined) {
-    if (typeof input.pointScale !== "string" || !(POINT_SCALES as readonly string[]).includes(input.pointScale)) {
+    if (typeof input.pointScale !== "string" || input.pointScale.trim().length === 0) {
       throw new HttpError(400, "point_scale_invalid");
     }
-    patch.pointScale = input.pointScale as PointScale;
-  }
-  if (input.customPoints !== undefined) {
-    if (
-      input.customPoints !== null &&
-      (!Array.isArray(input.customPoints) || input.customPoints.some((n) => typeof n !== "number"))
-    ) {
-      throw new HttpError(400, "custom_points_invalid");
-    }
-    patch.customPoints = input.customPoints as number[] | null;
+    patch.pointScale = input.pointScale;
   }
   return patch;
 }

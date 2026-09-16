@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Hono } from "hono";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +7,17 @@ import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
 import { openDatabase, type Db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
-import { projectMembers, projects, users } from "../src/db/schema";
+import {
+  labels,
+  projectMembers,
+  projects,
+  stories,
+  users,
+  type StoryList,
+  type StoryState,
+  type StoryType,
+} from "../src/db/schema";
+import { newId } from "../src/id";
 import { hashPassword } from "../src/auth/password";
 import { actorFromRequest } from "../src/auth/actor";
 import { CREATE_SCOPED_ITEMS } from "./scoped-items";
@@ -40,12 +50,63 @@ export function disableUser(db: Db, actor: Actor): void {
 export function seedProject(db: Db, owner: Actor, others: Array<[Actor, "member" | "viewer"]> = []): string {
   if (owner.kind !== "user") throw new Error("owner must be a user");
   const id = crypto.randomUUID();
-  db.insert(projects).values({ id, name: "P", createdBy: owner.userId, createdAt: Date.now() }).run();
+  db.insert(projects)
+    .values({ id, name: "P", startDate: "2026-09-14", createdBy: owner.userId, createdAt: Date.now() })
+    .run();
   db.insert(projectMembers).values({ projectId: id, userId: owner.userId, role: "owner", joinedAt: Date.now() }).run();
   for (const [a, role] of others) {
     if (a.kind !== "user") continue;
     db.insert(projectMembers).values({ projectId: id, userId: a.userId, role, joinedAt: Date.now() }).run();
   }
+  return id;
+}
+
+/** Seeds one story with the next free number, at the end of its list. */
+export function seedStory(
+  db: Db,
+  projectId: string,
+  input: {
+    name?: string;
+    list?: StoryList;
+    currentState?: StoryState;
+    storyType?: StoryType;
+    estimate?: number | null;
+    position?: number;
+  } = {},
+): string {
+  const id = newId();
+  const list = input.list ?? "icebox";
+  const next = db
+    .select({ n: sql<number>`coalesce(max(${stories.number}), 0) + 1` })
+    .from(stories)
+    .where(eq(stories.projectId, projectId))
+    .get();
+  const tail = db
+    .select({ p: sql<number>`coalesce(max(${stories.position}), 0) + 1024` })
+    .from(stories)
+    .where(and(eq(stories.projectId, projectId), eq(stories.list, list)))
+    .get();
+  db.insert(stories)
+    .values({
+      id,
+      projectId,
+      number: next?.n ?? 1,
+      name: input.name ?? "story",
+      storyType: input.storyType ?? "feature",
+      currentState: input.currentState ?? (list === "icebox" ? "unscheduled" : "unstarted"),
+      estimate: input.estimate ?? null,
+      list,
+      position: input.position ?? tail?.p ?? 1024,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .run();
+  return id;
+}
+
+export function seedLabel(db: Db, projectId: string, name: string): string {
+  const id = newId();
+  db.insert(labels).values({ id, projectId, name, createdAt: Date.now(), updatedAt: Date.now() }).run();
   return id;
 }
 

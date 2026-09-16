@@ -112,7 +112,7 @@ export function inviteRoutes(deps: {
         const result = acceptInvite(deps.db, token, actor);
         // An already-member accept writes nothing, so there is nothing for a subscriber to
         // refetch — publishing would just be a false alarm.
-        if (result.changed) deps.bus.publish(result.projectId);
+        if (result.changed) deps.bus.publish(result.projectId, result.projectVersion);
         return c.json({ projectId: result.projectId, projectName: result.projectName, role: result.role });
       }
       const input = await body(c);
@@ -125,10 +125,10 @@ export function inviteRoutes(deps: {
       // authoritative for the actual race — so a garbage token never burns the KDF.
       if (!previewInvite(deps.db, token)) throw new HttpError(404, "not_found");
       const passwordHash = await hashPassword(password);
-      const { userId, preview } = registerAndAcceptInvite(deps.db, token, { email, displayName, passwordHash });
+      const { userId, preview, projectVersion } = registerAndAcceptInvite(deps.db, token, { email, displayName, passwordHash });
       const { secret, absoluteExpiresAt } = createSession(deps.db, userId);
       setSessionCookie(c, deps.config, secret, absoluteExpiresAt);
-      deps.bus.publish(preview.projectId);
+      deps.bus.publish(preview.projectId, projectVersion);
       return c.json(preview);
     });
 }

@@ -3,6 +3,7 @@ import { makeTestDb, seedUser } from "./harness";
 import { createProject, listProjects, setArchived, updateProject } from "../src/services/projects";
 import { withProject, type Actor } from "../src/db/tx";
 import { HttpError } from "../src/http-error";
+import { BUILT_IN_POINT_SCALES, DEFAULT_POINT_SCALE } from "../src/db/schema";
 import type { Db } from "../src/db/client";
 
 let db: Db;
@@ -37,66 +38,60 @@ describe("listProjects ordering", () => {
 });
 
 describe("updateProject point scale validation", () => {
-  it("accepts a valid custom scale", () => {
+  // PROVISIONAL (Task 7 owns the settings service): point_scale is now the stored
+  // comma-separated ascending list, so "custom" is any list that is not a built-in.
+  it("accepts a custom ascending scale", () => {
     const project = createProject(db, owner, { name: "P" });
     const updated = withProject(db, owner, project.id, "project:update", (tx) =>
-      updateProject(tx, { pointScale: "custom", customPoints: [1, 2, 3] }),
+      updateProject(tx, { pointScale: "0,1,2,3,5,8,13" }),
     );
-    expect(updated.pointScale).toBe("custom");
-    expect(updated.customPoints).toEqual([1, 2, 3]);
+    expect(updated.pointScale).toBe("0,1,2,3,5,8,13");
   });
 
-  it("rejects an empty custom list with 400", () => {
+  it("accepts each built-in scale", () => {
+    const project = createProject(db, owner, { name: "P" });
+    for (const scale of BUILT_IN_POINT_SCALES) {
+      const updated = withProject(db, owner, project.id, "project:update", (tx) =>
+        updateProject(tx, { pointScale: scale }),
+      );
+      expect(updated.pointScale).toBe(scale);
+    }
+  });
+
+  it("defaults a new project to the linear scale", () => {
+    expect(createProject(db, owner, { name: "P" }).pointScale).toBe(DEFAULT_POINT_SCALE);
+  });
+
+  it("rejects an empty scale with 400", () => {
+    const project = createProject(db, owner, { name: "P" });
+    expect(
+      status(() => withProject(db, owner, project.id, "project:update", (tx) => updateProject(tx, { pointScale: "" }))),
+    ).toBe(400);
+  });
+
+  it("rejects an unsorted scale with 400", () => {
     const project = createProject(db, owner, { name: "P" });
     expect(
       status(() =>
-        withProject(db, owner, project.id, "project:update", (tx) =>
-          updateProject(tx, { pointScale: "custom", customPoints: [] }),
-        ),
+        withProject(db, owner, project.id, "project:update", (tx) => updateProject(tx, { pointScale: "0,3,1" })),
       ),
     ).toBe(400);
   });
 
-  it("rejects an unsorted custom list with 400", () => {
+  it("rejects a negative value with 400", () => {
     const project = createProject(db, owner, { name: "P" });
     expect(
       status(() =>
-        withProject(db, owner, project.id, "project:update", (tx) =>
-          updateProject(tx, { pointScale: "custom", customPoints: [3, 1, 2] }),
-        ),
+        withProject(db, owner, project.id, "project:update", (tx) => updateProject(tx, { pointScale: "-1,2" })),
       ),
     ).toBe(400);
   });
 
-  it("rejects a negative value in the custom list with 400", () => {
+  it("rejects a non-numeric value with 400", () => {
     const project = createProject(db, owner, { name: "P" });
     expect(
       status(() =>
-        withProject(db, owner, project.id, "project:update", (tx) =>
-          updateProject(tx, { pointScale: "custom", customPoints: [-1, 2] }),
-        ),
-      ),
-    ).toBe(400);
-  });
-
-  it("rejects a non-integer value in the custom list with 400", () => {
-    const project = createProject(db, owner, { name: "P" });
-    expect(
-      status(() =>
-        withProject(db, owner, project.id, "project:update", (tx) =>
-          updateProject(tx, { pointScale: "custom", customPoints: [1, 2.5] }),
-        ),
-      ),
-    ).toBe(400);
-  });
-
-  it("rejects non-null customPoints under a non-custom scale with 400", () => {
-    const project = createProject(db, owner, { name: "P" });
-    expect(
-      status(() =>
-        withProject(db, owner, project.id, "project:update", (tx) =>
-          updateProject(tx, { pointScale: "fibonacci", customPoints: [1, 2] }),
-        ),
+        withProject(db, owner, project.id, "project:update", (tx) => updateProject(tx, { pointScale: "0,1,two" })),
       ),
     ).toBe(400);
   });
