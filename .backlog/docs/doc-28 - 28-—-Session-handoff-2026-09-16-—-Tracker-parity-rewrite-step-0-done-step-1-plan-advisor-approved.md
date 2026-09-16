@@ -5,7 +5,7 @@ title: >-
   plan advisor-approved
 type: guide
 created_date: '2026-09-16 11:51'
-updated_date: '2026-09-16 12:06'
+updated_date: '2026-09-16 13:14'
 ---
 # Session handoff 2026-09-16 — Tracker-parity rewrite
 
@@ -114,3 +114,20 @@ whether the owner has created the proposed tasks (if not, ask — never create t
 - Corrected first prompt for the next session: start from `main`, create `feat/tracker-step-1a`,
   execute plan Tasks 1–6 for TASK-255 with superpowers:subagent-driven-development, open a PR
   to `main` when the task review chain is clean.
+
+## Update 2026-09-16 (evening) — Step 1a implemented, PR #28 open
+
+- TASK-255 (plan Tasks 1–6) is implemented on `feat/tracker-step-1a` and pushed; **PR #28** →
+  `main`. Final whole-branch review clean after one fix wave; gates green (server 422, core 4,
+  web 36, lint/typecheck). Owner steps: run `/code-review high` on the PR (migrations + authz),
+  react to Codex review comments, merge.
+- SDD ledger with every ruling: `.superpowers/sdd/2026-09-16-tracker-step-1-core-model/progress.md`
+  (git-ignored; keep until TASK-257 is done). Pre-flight scan of the plan: `preflight-scan.md` in the
+  same folder — its Task 7–22 findings are already folded into TASK-256's notes.
+- Plan defects found in execution (fix the plan text when TASK-256 starts): Task 5 cannot be green
+  alone (activity/projects services use removed symbols) — it was combined with Task 6; Task 2 must
+  run after Task 3; Task 9 `between()` needs "smallest existing position > lower"; Task 8 `StoryPatch`
+  needs `group`; `accepted → unstarted` is allowed.
+- Next session first prompt: `backlog task view TASK-256 --plain` (its notes carry the carry-overs),
+  then execute plan Tasks 7–16 with superpowers:subagent-driven-development on a new branch
+  `feat/tracker-step-1b` off `main` **after PR #28 merges**; resume the existing ledger at Task 7.
