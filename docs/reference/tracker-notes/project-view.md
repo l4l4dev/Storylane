@@ -363,8 +363,11 @@ Markdown is supported in titles, descriptions, comments and tasks
 pixel row (e.g. y=273, y=325, y=365, colour `(226,226,219)` against a
 `(243,243,210)` row background), and every structural measurement lands on a
 round number (sidebar 200, gutter 10, panel header 36). **Derived scale = 1.0
-image px per CSS px.** Text renders with normal subpixel-free antialiasing at
-that scale, consistent with an unresampled crop.
+image px per CSS px** — this was the first reading. **Superseded:** once the
+application stylesheet was recovered (see "From CSS (authoritative)" below),
+five independent pairs put the image at ~0.87 CSS px per image px (a ~838 px
+window saved at 728 px). The measured figures below are kept as ink-extent
+evidence only; the CSS table is the source for implementation.
 
 Cross-check: `using_the_sidebar_1/2@1x` show the same sidebar at 300 image px
 wide. Taking the sidebar as 200 CSS px gives **scale 1.5** for that pair; the
@@ -432,7 +435,7 @@ below is **inferred**.
 | Iteration header text | 11–12 px | digit height 8 → 11.1 | density_mode_story_display_options_1 |
 | Story row labels | 10–11 px | asc-to-desc ink 10, low confidence | density_mode_story_display_options_1 |
 | Tab-strip labels (uppercase, letter-spaced) | 11 px (±1) | cap 8 → 11.1 | density_mode_story_display_options_1 |
-| Font family | **unknown** | no application stylesheet in the corpus; no article names a font. Glyph shapes in `row1zoom` show a humanist sans with a double-storey `a`, single-storey `g` and a slanted `t` apex — consistent with several candidates, evidence insufficient to name one | density_mode_story_display_options_1 |
+| Font family | ~~unknown~~ → **`"Open Sans", open-sans, EmojiFontFace, helvetica, arial, sans-serif`** | resolved by the recovered application stylesheet; self-hosted `@font-face` weights 300/400/**600**/700 normal + 400/700 italic. See `css-tokens.md` §1 | — |
 
 Density modes: **Dense** puts labels inline with the title, **Normal** puts them
 on their own line, **Projector** enlarges the type. The Projector sample row is
@@ -442,29 +445,110 @@ the Projector/Dense font sizes are **unmeasurable from corpus**
 
 ---
 
+### From CSS (authoritative)
+
+Since the tables above were written, the real application stylesheet was recovered
+(`docs/reference/tracker/assets/assets.pivotaltracker.com/next/assets/next/*-next.css`,
+git-ignored). Where it speaks, it — not a screenshot — is the source of truth. The
+full token sheet is `css-tokens.md`; the rows here are only those that overlap the
+measured/inferred tables above. Hash suffixes are stripped from selectors.
+
+| Element | CSS value | Selector | Δ vs measured |
+|---|---|---|---|
+| Page/board background | `#212121` | `html, body`; `section.main` | new |
+| Board offset, header collapsed | `top: 35px` | `section.main` | — |
+| Board offset, tab strip shown | `top: 61px` (2024 capture; `80px` in 2025, see below) | `.layouts.expanded_header section.main` | measured 52 — **CSS 61** |
+| Sidebar width, expanded | `width: 230px` | `.Sidebar--expanded` | measured 200 — **CSS 230** |
+| Sidebar width, collapsed | `width: 46px` | `.Sidebar--collapsed`; `aside.sidebar.collapsed .fixed` | measured ~36 — **CSS 46** |
+| Sidebar panel-toggle row | `height: 28px; padding: 9px 0 8px 15px; font-size: 12px` | `aside.sidebar .panel_toggle .panel_name` | measured pitch 33 — **CSS 28** |
+| Sidebar stats strip | `height: 32px; padding: 10px 10px 10px 13px; font-size: 13px` | `aside.sidebar .details` | measured toggle strip 44 |
+| Panel minimum width | `min-width: 375px`, `margin-right: 8px` (gutter) | `.panel` | resolves "unmeasurable" |
+| Board padding | `padding: 12px 4px 12px 12px` | `section.panels .table` | measured gutter 10, gap 11 |
+| Panel header | `border-top: 2px solid` (panel colour), `height: auto`; controls `height: 28px`; title `line-height: 14px; padding-top: 7px; color: #aaa; font-weight: 600; text-transform: uppercase` | `.panel .workspace_header(h3)(.controls)` | measured 36 ≈ 28 + 2 + padding |
+| Iteration header | `height: 20px; line-height: 20px; padding: 1px 2px; font-size: 11px; background: #676E7A` + 1px top and bottom border | `.iteration .preview` | measured 27 — **CSS 24** |
+| Collapsed row, padding | `padding: 4px 8px` | `.StoryPreviewItem__preview` (×3, lazy chunk) | resolves the 1px from `.story.feature .preview` |
+| Collapsed row, base type | `font-size: 12px; line-height: 24px` | `.preview` | confirms the inferred 12px |
+| Collapsed row, title | `margin: 4px 0 2px; line-height: 18px; letter-spacing: 0.1px` | `.StoryPreviewItem__storyName` | — |
+| Collapsed row, label line | `line-height: 14px`; chip `font-size: 10px; font-weight: bold; color: #063` | `.layouts.normal … .post.labels`; `.label.std` | confirms the inferred 10–11px |
+| Collapsed row height, 1-line title + 1 label line | **47** (derived: 4+4 padding + 1 border + 24 title + 14 labels) | — | measured 40–41 — **CSS 47** |
+| Collapsed row height, 2-line title + labels | **65** (derived) | — | measured 56 — **CSS 65** |
+| Collapsed row height, blocked | `min-height: 51px` | `.story.has_blockers_or_blocking header` | measured 51 — **match** |
+| Type icon box | `18px × 18px; margin-right: 2px`; feature art `16px 16px`, bug `18px 15px`, chore `18px 14px` | `.StoryPreviewItem__storyType` | measured ink 14 × 12 |
+| Estimate glyph | `height: 15px; width: 18px` | `.StoryPreviewItem__estimateImage` | measured ink 8 × 1 per bar |
+| State button | `width: 47px`, `line-height: 22px` + 1px border top/bottom = **24px tall**; `font-size: 11px; font-weight: 600; border-radius: 3px`; `restart` `width: 66px` | `.state.button` | measured 21 × 45 — **CSS 24 × 47** |
+| State button spacing | `margin: 0 0 0 4px` | `.preview .button.state` | measured gap 1 |
+| Selection checkbox | `24px × 24px` hit area, `margin-left: 8px` | `.preview .selector`; `.StoryPreviewItem__selector` | measured ink 12 × 12 |
+| Expanded-story right rail | `width: 288px` (`400px` in Projector) | `.info_box`, `.info_box_wrapper .state_box` | resolves "unmeasurable" |
+| Expanded-story field label | `font-size: 11px; font-weight: 600; line-height: 16px; text-transform: uppercase; margin: 14px 0 8px` | `.model section.edit h4` | new |
+| Story flyover | `width: 425px` | `.flyover.story_flyover` | new |
+| Panel width (Auto / Fixed) | still **not in CSS** — only `min-width: 375px`; the Fixed slider writes an inline width | `.panel` | unchanged |
+
+**The measured table is systematically ~13% small.** Five independent pairs give
+the same ratio — sidebar 200/230 = 0.870, board offset 52/61 = 0.852, 1-line row
+40–41/47 = 0.87, 2-line row 56/65 = 0.862, state-button height 21/24 = 0.875 —
+which is what a 728-px-wide crop of an ~838-px-wide window produces (728/838 =
+0.869). The §6 preamble's "derived scale = 1.0" is therefore wrong: the
+`density_mode_story_display_options_1` capture is downscaled like the others, and
+the 1px separator survived as one saturated pixel row because it sat on a
+high-contrast boundary. **Use the CSS values, not the measured ones**, wherever
+both exist; keep the measured table only for ink extents the CSS does not give
+(glyph sizes, cap heights).
+
+---
+
 ## 7. Unknowns
 
-Not settled by any article or screenshot in the corpus:
+Resolved by the recovered application stylesheet (see `css-tokens.md`):
 
-- **Hover states** — row hover, panel-header hover, state-button hover,
-  sidebar-row hover. No capture shows one.
-- **Drag states** — drag ghost, drop indicator line, the "cannot drop here"
-  affordance for the velocity cap and the started-story rule.
-- **Keyboard focus** — the focus ring drawn by `Tab`, and how the "moving" state
-  from `Space` is rendered on a row.
-- **Empty states** — no screenshot shows an empty Icebox, Backlog, Current, Done,
-  My Work or Blocked panel, and no article describes their copy.
-- **Narrow / small-viewport behaviour** — whether panels stack, the sidebar
-  auto-collapses, or the header wraps. Nothing documented.
-- Panel minimum and maximum width, and the range of the Fixed-mode slider.
-- How an estimate above 3 points renders in the collapsed row's bar-stack glyph.
+- ~~**Hover states**~~ — every one is in the CSS. Row `.story.feature .preview:hover`
+  `#e6e6e6` (accepted `#c6d9b7`, unscheduled `#d1e0ed`, release `#306494`); panel-header
+  icons `.panel .bright_icons:hover { opacity: 1 }`; state buttons one step darker per
+  `.state.button.<action>:hover`; sidebar `aside.sidebar li.item:hover .panel_name
+  { color: rgba(138,199,255,.5) }`; labels, checkbox and point buttons share a
+  `rgba(74,74,74,.16)` wash.
+- ~~**Drag states**~~ — `.ghost { opacity: .5 }`, `.multighost { background: black;
+  color: white; padding: 4px }`, dragged row `.preview.dragging { background-color:
+  #ff9 }`, drop line `.panel .item .preview.drop_hover:before { background-color: #666;
+  height: 2px }` (`#333` over an iteration header, `black` over a list cap), epic drop
+  overlay `.panel.epics .item.epic .preview.drop_hover.dragging_story:after`. No
+  "cannot drop here" rule exists — refusal is not styled.
+- ~~**Keyboard focus**~~ — one ring everywhere: `border: 2px solid #0046E0; outline:
+  none` with `padding: 2px 6px 3px` compensation (`.panel:focus`, `.story.unstarted
+  .preview:focus`, `.iteration .preview:focus`, `.epic .preview:focus`). The `Space`
+  moving state is `.preview.keyboard-moving { margin: 4px 8px; opacity: .80 }`.
+- ~~**Empty states**~~ — styled, and one string is in the CSS:
+  `.panel .empty_message { color: #FFF; font-size: 14px }` over `#484F56` with a
+  per-panel SVG (`.backlog` / `.icebox` / `.epics`); `.panel .empty_current_iteration_placeholder`
+  `#D0CAC5` with a 66px header; `.panel.search .empty_list_message` `#EBE9E3`;
+  `section.panels .table.no_panels_visible:before { content: 'There are no panels open' }`.
+  The per-panel copy is still not recoverable (it is in the JS, not the CSS).
+- ~~**Narrow / small-viewport behaviour**~~ — there are **no** project-view
+  breakpoints. The only `@media` over the board chrome is `screen and (max-width:
+  973px)`, which truncates the header's project name and profile dropdown. Panels keep
+  `min-width: 375px` and `section.panels { overflow-x: auto }` scrolls horizontally.
+- ~~Panel minimum width~~ — `.panel { min-width: 375px }`. The maximum and the
+  Fixed-slider range are still unknown (written inline by JS).
+- ~~Whether unestimated story titles render italic~~ — yes:
+  `.story.feature.estimate_-1 .preview .name { font-style: italic }` (and `.priority`).
+- ~~Transition/animation timings~~ — the project view has almost none. The only
+  transitions in the recovered CSS are `section.edit .controls .bubble { transition:
+  opacity 150ms ease-in-out }` and the activity timestamp's `transition: opacity 100ms`.
+  Rows, panels and state buttons change instantly.
+
+Still not settled by any article, screenshot or stylesheet in the corpus:
+
+- The top header's own height, background and tab-strip typography — its base rules
+  live in a stylesheet that was never archived. Only its offset is known
+  (`section.main { top: 35px }`, `61px` with the tab strip).
+- The per-panel empty-state copy (Icebox, Backlog, Current, Done, My Work, Blocked).
+- Panel maximum width and the range of the Fixed-mode slider.
+- How an estimate above 3 points renders in the collapsed row's bar-stack glyph
+  (the CSS enumerates `.estimate_1/2/3` for linear, `1/2/3/5/8` for fibonacci,
+  `1/2/4/8` for powers-of-2, and `-1` for none — nothing above those).
 - The exact point-button set in the 2024 vintage (the older capture shows
   `0 1 2 3 4 +`; the project's point scale is configurable).
-- Whether unestimated story titles really render italic (observed once, in
-  `managing_the_icebox_1`, unstated anywhere).
 - Panel scroll behaviour at the boundaries: whether the panel header and iteration
   headers stick while the story list scrolls.
-- Transition/animation timings anywhere.
 
 ---
 
@@ -490,6 +574,11 @@ working_with_tasks.
 `tagging_stories_with_labels_2@1x`, `understanding_velocity_1@1x`,
 `using_story_panels_1@1x`…`using_story_panels_6@1x`, `using_the_sidebar_1@1x`,
 `using_the_sidebar_2@1x`, `work_with_a_single_story_2@1x`, `working_with_stories_1@1x`.
+
+**Stylesheet** (recovered 2026-09-16, git-ignored):
+`docs/reference/tracker/assets/assets.pivotaltracker.com/next/assets/next/89c0107749ba17e86dd4-next.css`
+and its lazy chunk `1.89c0107749ba17e86dd4-next.css`, plus the 2024-10-09 pair
+`eb3075d364e01fb6e5cc*`. Token sheet: `css-tokens.md`.
 
 **Measurement tool**: `scripts/tracker-corpus/measure.py`
 (`rows` / `cols` / `runs` / `glyph` / `size`; `--scale` converts image px to CSS px
