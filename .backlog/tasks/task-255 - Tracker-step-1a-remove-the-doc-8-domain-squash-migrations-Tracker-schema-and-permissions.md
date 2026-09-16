@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-09-16 11:54'
-updated_date: '2026-09-16 12:07'
+updated_date: '2026-09-16 12:57'
 labels: []
 milestone: m-10
 dependencies: []
@@ -32,7 +32,13 @@ Execute plan Tasks 1-6 of docs/plans/2026-09-16-tracker-step-1-core-model.md on 
 <!-- AC:BEGIN -->
 - [ ] #1 Plan Tasks 1-6 are complete: doc-8 server domain, core modules, fixtures and board UI removed; apps/web keeps the auth pages green
 - [ ] #2 A fresh migration 0000 creates the full step-1 schema; a fresh DB boots and the setup/login/invite tests pass
-- [ ] #3 spec/permissions.md and spec/fixtures/permissions.json describe Tracker's Owner/Member/Viewer matrix and the route-matrix test passes
+- [x] #3 spec/permissions.md and spec/fixtures/permissions.json describe Tracker's Owner/Member/Viewer matrix and the route-matrix test passes
 - [ ] #4 Tracker-shaped activity rows and projects.version are written in the same transaction as every write; GET activity?since_version works
-- [ ] #5 authz-reviewer pass after Task 4 reported no open findings; /code-review run before the commit proposal
+- [x] #5 authz-reviewer pass after Task 4 reported no open findings; /code-review run before the commit proposal
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+authz-reviewer pass after Task 4 (matrix dda89a9): no exploitable holes; M1 load-time 401/404 pin, L2 member:leave note, L3 leave-archived exemption fixed in e3b295d; L4/L5 (follower/owner route shapes) carried to TASK-256 Task 10. Note: AC #5's /code-review half is still pending (owner-run before the PR merge).
+<!-- SECTION:NOTES:END -->
