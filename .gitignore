@@ -98,3 +98,11 @@ apps/server/.data/
 docs/superpowers/
 # pnpm content-addressable store accidentally created in-repo (pnpm config)
 .pnpm-store/
+
+# ============================================================
+# Reference corpus (archived third-party docs, never committed)
+# ============================================================
+# Pivotal Tracker help site mirrored from the Wayback Machine by
+# `bun scripts/tracker-corpus/fetch.ts` — Pivotal/VMware copyrighted material,
+# kept local for spec work only.
+docs/reference/tracker/
