@@ -3,10 +3,11 @@ id: TASK-255
 title: >-
   Tracker step 1a: remove the doc-8 domain, squash migrations, Tracker schema
   and permissions
-status: To Do
+status: In Progress
 assignee:
   - '@claude-opus-5'
 created_date: '2026-09-16 11:54'
+updated_date: '2026-09-16 12:07'
 labels: []
 milestone: m-10
 dependencies: []
