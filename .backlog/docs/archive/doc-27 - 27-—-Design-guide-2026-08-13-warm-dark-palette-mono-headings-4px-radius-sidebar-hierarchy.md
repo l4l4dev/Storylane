@@ -5,7 +5,7 @@ title: >-
   sidebar hierarchy
 type: specification
 created_date: '2026-08-13 09:16'
-updated_date: '2026-08-13 13:40'
+updated_date: '2026-09-16 10:43'
 ---
 # Design Guide 2026-08-13 — warm dark palette, mono headings, 4px radius, sidebar hierarchy
 

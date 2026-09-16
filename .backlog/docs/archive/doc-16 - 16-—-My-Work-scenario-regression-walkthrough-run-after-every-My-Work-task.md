@@ -3,7 +3,7 @@ id: doc-16
 title: 16 — My Work scenario regression walkthrough (run after every My Work task)
 type: guide
 created_date: '2026-07-22 11:26'
-updated_date: '2026-07-22 11:26'
+updated_date: '2026-09-16 10:43'
 ---
 # My Work scenario regression walkthrough
 

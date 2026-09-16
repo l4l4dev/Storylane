@@ -5,7 +5,7 @@ title: >-
   2026-07-21
 type: specification
 created_date: '2026-07-21 07:56'
-updated_date: '2026-07-22 09:04'
+updated_date: '2026-09-16 10:43'
 ---
 Follow-up to doc-11 (My Work / personal-tasks rework). Two independent threads
 from dogfooding feedback: (A) restructure My Work's sections into a daily-

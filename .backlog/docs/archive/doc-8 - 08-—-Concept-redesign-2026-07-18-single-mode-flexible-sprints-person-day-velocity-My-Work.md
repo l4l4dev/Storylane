@@ -5,7 +5,7 @@ title: >-
   velocity, My Work
 type: specification
 created_date: '2026-07-18 02:52'
-updated_date: '2026-07-22 09:03'
+updated_date: '2026-09-16 10:43'
 ---
 # Concept Redesign 2026-07-18 — single mode, flexible sprints, person-day velocity, My Work
 

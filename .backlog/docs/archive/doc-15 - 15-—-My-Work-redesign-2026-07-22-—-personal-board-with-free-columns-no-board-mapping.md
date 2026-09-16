@@ -5,7 +5,7 @@ title: >-
   mapping
 type: specification
 created_date: '2026-07-22 08:42'
-updated_date: '2026-07-22 09:03'
+updated_date: '2026-09-16 10:43'
 ---
 # My Work redesign — personal board with free columns, no board mapping
 

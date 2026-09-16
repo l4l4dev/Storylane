@@ -5,7 +5,7 @@ title: >-
   without zone change
 type: specification
 created_date: '2026-07-24 18:07'
-updated_date: '2026-07-24 18:08'
+updated_date: '2026-09-16 10:43'
 ---
 # 20 — Epic UX rework 2026-07-25: Epics band, explicit epic creation, attach without zone change
 

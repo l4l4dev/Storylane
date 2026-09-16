@@ -3,7 +3,7 @@ id: doc-18
 title: 18 — Epic/Story unification & Split Studio design 2026-07-24
 type: specification
 created_date: '2026-07-24 03:59'
-updated_date: '2026-07-24 04:20'
+updated_date: '2026-09-16 10:43'
 ---
 # 18 — Epic/Story unification & Split Studio (design of record, 2026-07-24)
 

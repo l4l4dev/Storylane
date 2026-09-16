@@ -5,7 +5,7 @@ title: >-
   sync, navigation cleanup
 type: specification
 created_date: '2026-07-21 12:07'
-updated_date: '2026-07-22 09:03'
+updated_date: '2026-09-16 10:43'
 ---
 # My Work Kanban rework — own status model, project state sync, navigation cleanup
 
