@@ -4,8 +4,10 @@ Fable-era advisor handoff (written 2026-07-18 for the Opus successor).
 
 Verdicts whose task has shipped live in `archive/` — they are not indexed here. Read one only if a change reopens that task's design.
 
-- [Review sharp edges](review-sharp-edges.md) — traps to check first: rollover/finalize-once, advisory lock, RLS pitfalls, position invariant, IME guard, decision-1
-- [doc-8 locked decisions](doc8-locked-decisions.md) — 2026-07-18 concept redesign: each decision's WHY; do not relitigate (Icebox=NULL, immutable category, capacity snapshot, ratio of sums, ...)
+- [Tracker-parity rewrite (2026-09-16)](project-tracker-parity-rewrite.md) — CURRENT direction: faithful Pivotal Tracker copy; supersedes doc-8 and the rollover danger zones; verdict + required corrections
+- [core-model note gaps](learnings-core-model-note-gaps.md) — corpus facts the 2026-09-16 note/plan missed (linear default scale, accepted reversible, release/chore state sets); grep the corpus before accepting an "assumption"
+- [Review sharp edges](review-sharp-edges.md) — traps to check first (rollover/finalize items are doc-8-era; see tracker-parity memory), RLS pitfalls, position invariant, IME guard
+- [doc-8 locked decisions](doc8-locked-decisions.md) — HISTORICAL (superseded 2026-09-16 by the Tracker-parity rewrite); read only to understand old spec text
 - [Owner review preferences](owner-review-preferences.md) — usability first (rework cost not a constraint), Pivotal parity unless spec records divergence, findings hold merge, public repo
 - [Review checklists](review-checklists.md) — run for (a) migration diffs and (b) board/concurrency changes before any verdict
 - [Approved parity divergences](approved-parity-divergences.md) — TASK-80 Estimate popover & doc-8 board-level state controls are deliberate; don't re-flag
@@ -25,5 +27,5 @@ Verdicts whose task has shipped live in `archive/` — they are not indexed here
 - [Streaming shell + Suspense announce-once mechanics](learnings-streaming-shell-announce-once.md) — TASK-233 pattern approved; SSR live regions don't announce initial content, dup polite announcement on client nav is acceptable; fallback must reuse the route skeleton
 - [Token aliasing kills the state layer](learnings-token-aliasing-kills-state-layer.md) — palette diffs: check accent/muted/secondary vs card/popover delta (hover, keyboard focus), not just text contrast
 - [Spec Kit adoption boundaries](project-speckit-adoption.md) — 2026-08-13 approved: specs/NNN = design doc (no duplicate doc-N), implement/taskstoissues deleted, constitution = pointer file; don't relitigate
-- [Self-host rewrite (2026-09)](project-self-host-rewrite.md) — rewrite/phase-1 branch, design doc path, temporary divergences accepted 2026-09-07 (Icebox column, card estimate control)
+- [Self-host rewrite (2026-09)](project-self-host-rewrite.md) — foundation kept (Hono/SQLite/ProjectTx); the phase-1 board UI and its accepted divergences were discarded 2026-09-16
 - [Optimistic state must outlive refetch](learnings-optimistic-state-must-outlive-refetch.md) — clearing pending before reload resolves makes a successful drop snap back; check the success path too
