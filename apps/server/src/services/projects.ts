@@ -148,7 +148,7 @@ export function readProject(tx: ProjectTx): ProjectDetail {
 function assertValidPointScale(pointScale: string): void {
   if ((BUILT_IN_POINT_SCALES as readonly string[]).includes(pointScale)) return;
   const parts = pointScale.split(",");
-  if (parts.length === 0 || parts.some((p) => p.trim() === "")) throw new HttpError(400, "point_scale_invalid");
+  if (parts.length === 0 || parts.some((p) => !/^\d+(\.\d+)?$/.test(p))) throw new HttpError(400, "point_scale_invalid");
   const values = parts.map((p) => Number(p));
   if (values.some((n) => !Number.isFinite(n) || n < 0)) throw new HttpError(400, "point_scale_invalid");
   if (values.some((n, i) => i > 0 && n <= values[i - 1]!)) throw new HttpError(400, "point_scale_invalid");

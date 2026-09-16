@@ -209,6 +209,7 @@ export function storyActivity(tx: ProjectTx, storyId: string, opts: { limit?: nu
         eq(activityResources.resourceId, storyId),
       ),
     )
+    .groupBy(activities.id)
     .orderBy(desc(activities.projectVersion))
     .limit(Math.min(Math.max(opts.limit ?? 100, 1), 500))
     .all()

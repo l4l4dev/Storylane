@@ -95,4 +95,22 @@ describe("updateProject point scale validation", () => {
       ),
     ).toBe(400);
   });
+
+  it("rejects a value with a space with 400", () => {
+    const project = createProject(db, owner, { name: "P" });
+    expect(
+      status(() =>
+        withProject(db, owner, project.id, "project:update", (tx) => updateProject(tx, { pointScale: "1, 2" })),
+      ),
+    ).toBe(400);
+  });
+
+  it("rejects exponential notation with 400", () => {
+    const project = createProject(db, owner, { name: "P" });
+    expect(
+      status(() =>
+        withProject(db, owner, project.id, "project:update", (tx) => updateProject(tx, { pointScale: "1e3,2" })),
+      ),
+    ).toBe(400);
+  });
 });

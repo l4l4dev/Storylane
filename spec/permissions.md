@@ -67,6 +67,7 @@ bookkeeping (`member:read` is 200 for viewers and must not carry it).
 - **Last owner.** The sole owner can never be demoted or removed:
   `member:change-role` and `member:remove` answer `409 last_owner`.
   `member:leave` is `403` for any owner instead — transfer ownership first.
+  `member:leave` is the actor removing their own membership.
 - **Archived project.** With `projects.archived_at` set, `:read` actions are
   unaffected and every other action answers `409 project_archived` for every
   role, except `project:archive` (un-archive) and `project:delete`, which stay

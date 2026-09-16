@@ -69,6 +69,19 @@ describe("recordActivity", () => {
     expect(rows[0]!.message).toBe("Owner edited one");
   });
 
+  it("returns an activity once even when the same story is both primary and secondary", () => {
+    const storyId = seedStory(db, projectId);
+    withProject(db, owner, projectId, "story:write", (tx) => {
+      recordActivity(tx, {
+        ...entry("both"),
+        primaryResources: [{ kind: "story", id: storyId }],
+        secondaryResources: [{ kind: "story", id: storyId }],
+      });
+    });
+    const rows = withProject(db, owner, projectId, "activity:read", (tx) => storyActivity(tx, storyId));
+    expect(rows).toHaveLength(1);
+  });
+
   it("refuses a kind outside the enum", () => {
     expect(() =>
       withProject(db, owner, projectId, "story:write", (tx) =>
@@ -143,5 +156,24 @@ describe("GET /api/projects/:id/activity", () => {
     const rows = (await res.json()) as ActivityRow[];
     expect(rows.map((r) => r.project_version)).toEqual([2]);
     expect(rows[0]!.message).toBe("Owner edited two");
+  });
+
+  it("400s an empty or zero limit", async () => {
+    const app = makeTestApp(db).app;
+    const empty = await app.request(`${ORIGIN}/api/projects/${projectId}/activity?limit=`, { headers: as(owner) });
+    expect(empty.status).toBe(400);
+    expect(await empty.json()).toEqual({ error: "limit_invalid" });
+    const zero = await app.request(`${ORIGIN}/api/projects/${projectId}/activity?limit=0`, { headers: as(owner) });
+    expect(zero.status).toBe(400);
+    expect(await zero.json()).toEqual({ error: "limit_invalid" });
+  });
+
+  it("400s an empty since_version", async () => {
+    const app = makeTestApp(db).app;
+    const res = await app.request(`${ORIGIN}/api/projects/${projectId}/activity?since_version=`, {
+      headers: as(owner),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "since_version_invalid" });
   });
 });
