@@ -13,25 +13,11 @@ import {
   setArchived,
   updateProject,
   type ProjectPatch,
-  type ProjectTemplate,
 } from "../services/projects";
-import { createState, deleteState, listStates, reorderStates, updateState, type StatePatch } from "../services/states";
-import { POINT_SCALES, STATE_CATEGORIES, type PointScale, type StateCategory } from "../db/schema";
-import { ACTION_LABEL_MAX, DESCRIPTION_MAX, NAME_MAX, assertMaxLength } from "./limits";
+import { POINT_SCALES, type PointScale } from "../db/schema";
+import { DESCRIPTION_MAX, NAME_MAX, assertMaxLength } from "./limits";
 
 const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-
-function requireCategory(value: unknown): StateCategory {
-  if (typeof value !== "string" || !(STATE_CATEGORIES as readonly string[]).includes(value)) {
-    throw new HttpError(400, "category_invalid");
-  }
-  return value as StateCategory;
-}
-
-function requireIdList(value: unknown): string[] {
-  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) throw new HttpError(400, "ordered_ids_invalid");
-  return value as string[];
-}
 
 /**
  * Shapes and bounds the PATCH body; every check throws HttpError so it can run inside the
@@ -69,27 +55,6 @@ function validateProjectPatch(input: Record<string, unknown>): ProjectPatch {
   return patch;
 }
 
-/** Same precedence rule as validateProjectPatch: called inside the withProject callback. */
-function validateStatePatch(input: Record<string, unknown>): StatePatch {
-  const patch: StatePatch = {};
-  if (input.name !== undefined) {
-    if (typeof input.name !== "string" || input.name.length === 0) throw new HttpError(400, "name_required");
-    assertMaxLength(input.name, NAME_MAX, "name_too_long");
-    patch.name = input.name;
-  }
-  if (input.actionLabel !== undefined) {
-    if (input.actionLabel !== null && typeof input.actionLabel !== "string") {
-      throw new HttpError(400, "action_label_invalid");
-    }
-    if (typeof input.actionLabel === "string") assertMaxLength(input.actionLabel, ACTION_LABEL_MAX, "action_label_too_long");
-    patch.actionLabel = input.actionLabel as string | null;
-  }
-  // A category is only ever accepted so updateState's own immutability check (409, not 400)
-  // can fire on a genuine mismatch — the route does not decide whether a change is allowed.
-  if (input.category !== undefined) patch.category = requireCategory(input.category);
-  return patch;
-}
-
 export function projectRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Context) => Actor }) {
   const { db, actorOf } = deps;
   return new Hono()
@@ -103,10 +68,9 @@ export function projectRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Contex
       const actor = actorOf(c);
       if (actor.kind !== "user") throw new HttpError(401, "unauthenticated");
       const input = await body(c);
-      const template = input.template === "minimal" ? ("minimal" as ProjectTemplate) : ("classic" as ProjectTemplate);
       if (typeof input.name !== "string") throw new HttpError(400, "name_required");
       assertMaxLength(input.name, NAME_MAX, "name_too_long");
-      return c.json(createProject(db, actor, { name: input.name, template }), 201);
+      return c.json(createProject(db, actor, { name: input.name }), 201);
     })
     .get("/api/projects/:id", (c) =>
       c.json(withProject(db, actorOf(c), c.req.param("id"), "project:read", (tx) => readProject(tx))),
@@ -128,45 +92,5 @@ export function projectRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Contex
     )
     .post("/api/projects/:id/unarchive", (c) =>
       c.json(withProjectChange(deps, actorOf(c), c.req.param("id"), "project:archive", (tx) => setArchived(tx, false))),
-    )
-    .get("/api/projects/:id/states", (c) =>
-      c.json(withProject(db, actorOf(c), c.req.param("id"), "state:read", (tx) => listStates(tx))),
-    )
-    .post("/api/projects/:id/states", async (c) => {
-      const input = await body(c);
-      return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "state:write", (tx) => {
-          if (typeof input.name !== "string" || input.name.length === 0) throw new HttpError(400, "name_required");
-          assertMaxLength(input.name, NAME_MAX, "name_too_long");
-          const category = requireCategory(input.category);
-          if (input.actionLabel !== undefined && input.actionLabel !== null && typeof input.actionLabel !== "string") {
-            throw new HttpError(400, "action_label_invalid");
-          }
-          const actionLabel = (input.actionLabel as string | null | undefined) ?? null;
-          if (actionLabel !== null) assertMaxLength(actionLabel, ACTION_LABEL_MAX, "action_label_too_long");
-          return createState(tx, { name: input.name, category, actionLabel });
-        }),
-        201,
-      );
-    })
-    .post("/api/projects/:id/states/reorder", async (c) => {
-      const input = await body(c);
-      return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "state:write", (tx) =>
-          reorderStates(tx, requireIdList(input.orderedIds)),
-        ),
-      );
-    })
-    .patch("/api/projects/:id/states/:stateId", async (c) => {
-      const input = await body(c);
-      return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "state:write", (tx) =>
-          updateState(tx, c.req.param("stateId"), validateStatePatch(input)),
-        ),
-      );
-    })
-    .delete("/api/projects/:id/states/:stateId", (c) => {
-      withProjectChange(deps, actorOf(c), c.req.param("id"), "state:delete", (tx) => deleteState(tx, c.req.param("stateId")));
-      return c.body(null, 204);
-    });
+    );
 }

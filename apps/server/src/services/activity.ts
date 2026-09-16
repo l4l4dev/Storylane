@@ -10,15 +10,6 @@ export const ACTIVITY_ACTIONS = [
   "member.invited",
   "member.invite_revoked",
   "member.joined",
-  "state.created",
-  "state.updated",
-  "state.reordered",
-  "state.deleted",
-  "story.created",
-  "story.updated",
-  "story.state_changed",
-  "story.moved",
-  "story.deleted",
 ] as const;
 
 export type ActivityAction = (typeof ACTIVITY_ACTIONS)[number];

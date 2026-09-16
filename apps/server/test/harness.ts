@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Hono } from "hono";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,16 +7,7 @@ import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
 import { openDatabase, type Db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
-import {
-  projectMembers,
-  projects,
-  projectStates,
-  stories,
-  users,
-  type StateCategory,
-  type StoryType,
-} from "../src/db/schema";
-import { newId } from "../src/id";
+import { projectMembers, projects, users } from "../src/db/schema";
 import { hashPassword } from "../src/auth/password";
 import { actorFromRequest } from "../src/auth/actor";
 import { CREATE_SCOPED_ITEMS } from "./scoped-items";
@@ -103,63 +94,6 @@ export function makeTestApp(
   });
   extra?.(app);
   return { app, lines, bus };
-}
-
-export function seedState(
-  db: Db,
-  projectId: string,
-  input: { name: string; category: StateCategory; position: number; actionLabel?: string | null },
-): string {
-  const id = newId();
-  db.insert(projectStates)
-    .values({
-      id,
-      projectId,
-      name: input.name,
-      category: input.category,
-      actionLabel: input.actionLabel ?? null,
-      position: input.position,
-      createdAt: Date.now(),
-    })
-    .run();
-  return id;
-}
-
-/** Seeds one story with the next free number; `stateId: undefined` means Icebox. */
-export function seedStory(
-  db: Db,
-  projectId: string,
-  input: {
-    title?: string;
-    stateId?: string | null;
-    position?: number;
-    points?: number | null;
-    storyType?: StoryType;
-  } = {},
-): string {
-  const id = newId();
-  const next = db
-    .select({ n: sql<number>`coalesce(max(${stories.number}), 0) + 1` })
-    .from(stories)
-    .where(sql`${stories.projectId} = ${projectId}`)
-    .get();
-  const createdBy = db.$client.query("select id from users limit 1").get() as { id: string };
-  db.insert(stories)
-    .values({
-      id,
-      projectId,
-      number: next?.n ?? 1,
-      title: input.title ?? "story",
-      storyType: input.storyType ?? "feature",
-      stateId: input.stateId ?? null,
-      position: input.position ?? 0,
-      points: input.points ?? null,
-      createdBy: createdBy.id,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    })
-    .run();
-  return id;
 }
 
 /** Cheap argon2id parameters: these tests assert behaviour, not cost. */

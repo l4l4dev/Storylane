@@ -6,7 +6,6 @@ import type { MemberRole } from "../authz/permissions";
 import { HttpError } from "../http-error";
 import { newId } from "../id";
 import { bootstrapScope, recordActivity } from "./activity";
-import { seedTemplateStates, type ProjectTemplate } from "./states";
 
 export interface ProjectDetail {
   id: string;
@@ -32,8 +31,6 @@ export interface ProjectPatch {
   customPoints?: number[] | null;
 }
 
-export type { ProjectTemplate };
-
 /**
  * Not project-scoped: there is no project to authorize against yet, so this opens its own
  * immediate transaction and writes its activity rows through bootstrapScope. Any signed-in
@@ -42,11 +39,7 @@ export type { ProjectTemplate };
  * Same rule as revokeUserSessions/changePassword: bun:sqlite has no savepoints here, so call
  * this at the top level, never inside a withProject callback.
  */
-export function createProject(
-  db: Db,
-  actor: Actor,
-  input: { name: string; template?: ProjectTemplate },
-): ProjectDetail {
+export function createProject(db: Db, actor: Actor, input: { name: string }): ProjectDetail {
   if (actor.kind !== "user") throw new HttpError(401, "unauthenticated");
   if (input.name.trim().length === 0) throw new HttpError(400, "name_required");
   assertNoOpenTransaction("createProject");
@@ -56,9 +49,7 @@ export function createProject(
     (tx) => {
       tx.insert(projects).values({ id, name: input.name.trim(), createdBy: actor.userId, createdAt: now }).run();
       tx.insert(projectMembers).values({ projectId: id, userId: actor.userId, role: "owner", joinedAt: now }).run();
-      const scope = bootstrapScope(tx, id, actor);
-      recordActivity(scope, { action: "project.created", payload: { name: input.name.trim() } });
-      seedTemplateStates(scope, input.template ?? "classic");
+      recordActivity(bootstrapScope(tx, id, actor), { action: "project.created", payload: { name: input.name.trim() } });
       return {
         id,
         name: input.name.trim(),
@@ -168,6 +159,6 @@ export function setArchived(tx: ProjectTx, archived: boolean): ProjectDetail {
 }
 
 export function deleteProject(tx: ProjectTx): void {
-  // Members, states, stories and activity rows all cascade from projects.id.
+  // Members and activity rows all cascade from projects.id.
   tx.tx.delete(projects).where(eq(projects.id, tx.projectId)).run();
 }
