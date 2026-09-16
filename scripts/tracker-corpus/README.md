@@ -26,6 +26,7 @@ Everything lands under `docs/reference/tracker/` (git-ignored):
 | `api/<slug>.{md,html}` | Same, for pages under `/help/api`. |
 | `images/<filename>` | Every image an article references, `@2x` preferred when the page offers both. |
 | `assets/` | Archived CSS/JS of the Tracker application, plus `assets/README.md` summarising font families, font sizes and line heights per stylesheet. |
+| `assets/extracted/` | CSS pulled out of the webpack bundles by `python3 scripts/tracker-corpus/extract-css.py docs/reference/tracker/assets`, plus `COVERAGE.md` (class name → screen). The application's own stylesheet `assets.pivotaltracker.com/next/assets/next/<hash>-next.css` is plain CSS and is kept as fetched. |
 | `fetch-log.json` | Per-URL result (`ok` / `skipped` / `not-found` / `failed`) so gaps stay visible. |
 
 ## How it works
@@ -44,6 +45,10 @@ Everything lands under `docs/reference/tracker/` (git-ignored):
   `assets/README.md` says the asset sweep was degraded. Re-run later to fill the gap.
 - Politeness: at most 3 concurrent requests, ~200 ms spacing, exponential backoff on 429/5xx.
 - Idempotent: an existing file is left alone unless `--force` is passed.
+
+## Measuring screenshots
+
+`python3 scripts/tracker-corpus/measure.py <image> rows|cols|runs|glyph|size [--scale N]` reports row pitch and element sizes from a corpus screenshot; see the docstring at the top of the script.
 
 ## Caveat — copyright
 

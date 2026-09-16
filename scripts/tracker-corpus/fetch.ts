@@ -677,6 +677,10 @@ async function huntAssets(): Promise<{ hits: AssetHit[]; cdxWorked: boolean; not
   const cdxQueries: Array<[string, string]> = [
     ['app assets css', `url=${HOST}/assets/*&collapse=urlkey&fl=original,timestamp,statuscode,mimetype&filter=statuscode:200&filter=mimetype:text/css&from=2018&to=2024&limit=400`],
     ['app assets js', `url=${HOST}/assets/*&collapse=urlkey&fl=original,timestamp,statuscode,mimetype&filter=statuscode:200&filter=mimetype:.*javascript&from=2018&to=2024&limit=400`],
+    // The application's real stylesheet lives on the assets host, not under /assets/ — the
+    // domain-wide CSS query is what surfaces `next/assets/next/<hash>-next.css` (2017-2025).
+    ['app stylesheet (assets host)', `url=assets.pivotaltracker.com/*&collapse=urlkey&fl=original,timestamp,statuscode,mimetype&filter=statuscode:200&filter=mimetype:text/css&from=2017&to=2025&limit=300`],
+    ['app webpack bundles', `url=assets.pivotaltracker.com/webpack/*&collapse=urlkey&fl=original,timestamp,statuscode&filter=statuscode:200&from=2018&to=2025&limit=300`],
     ['app routes /n/', `url=${HOST}/n/*&collapse=urlkey&fl=original,timestamp,statuscode&filter=statuscode:200&from=2018&to=2024&limit=100`],
     ['app routes /projects/', `url=${HOST}/projects/*&collapse=urlkey&fl=original,timestamp,statuscode&filter=statuscode:200&from=2018&to=2024&limit=100`],
   ];
