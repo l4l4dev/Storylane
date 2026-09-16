@@ -1,6 +1,6 @@
 ---
 id: m-11
-title: "Self-host 3: Periphery"
+title: "Tracker parity 2: panels and periphery"
 ---
 
 ## Description

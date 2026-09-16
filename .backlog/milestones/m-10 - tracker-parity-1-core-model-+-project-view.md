@@ -1,6 +1,6 @@
 ---
 id: m-10
-title: "Self-host 2: Tracker core"
+title: "Tracker parity 1: core model + project view"
 ---
 
 ## Description
