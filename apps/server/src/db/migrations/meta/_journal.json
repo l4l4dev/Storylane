@@ -5,36 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1788627757651,
-      "tag": "0000_fair_captain_stacy",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1788629823448,
-      "tag": "0001_modern_blob",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1788753020419,
-      "tag": "0002_messy_miek",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1788754114659,
-      "tag": "0003_abnormal_rattler",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1788755154518,
-      "tag": "0004_thin_kabuki",
+      "when": 1789562302609,
+      "tag": "0000_loud_avengers",
       "breakpoints": true
     }
   ]

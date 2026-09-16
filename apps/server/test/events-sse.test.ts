@@ -82,10 +82,10 @@ describe("GET /api/projects/:id/events", () => {
     const theirs = await app.request(`${ORIGIN}/api/projects/${otherProjectId}/events`, { headers: as(owner) });
     expect(bus.subscriberCount()).toBe(2);
 
-    await app.request(`${ORIGIN}/api/projects/${projectId}/stories`, {
-      method: "POST",
+    await app.request(`${ORIGIN}/api/projects/${projectId}`, {
+      method: "PATCH",
       headers: json(owner),
-      body: JSON.stringify({ title: "Ship it" }),
+      body: JSON.stringify({ name: "Ship it" }),
     });
 
     const frames = await collectFrames(mine, 300);
@@ -93,15 +93,18 @@ describe("GET /api/projects/:id/events", () => {
     expect(changed).toHaveLength(1);
     expect(changed[0]).toContain(projectId);
     expect(changed[0]).not.toContain(otherProjectId);
+    // The version the change produced: a client may fetch activity?since_version= from here
+    // instead of refetching the whole project. createProject already recorded version 1.
+    expect(changed[0]).toContain('"version":2');
     await theirs.body!.cancel();
   });
 
-  it("publishes nothing on a 400: missing required body field never reaches withProjectChange's publish call", async () => {
+  it("publishes nothing on a 400: an invalid body never reaches withProjectChange's publish call", async () => {
     const res = await app.request(`${ORIGIN}/api/projects/${projectId}/events`, { headers: as(owner) });
-    const invalid = await app.request(`${ORIGIN}/api/projects/${projectId}/stories`, {
-      method: "POST",
+    const invalid = await app.request(`${ORIGIN}/api/projects/${projectId}`, {
+      method: "PATCH",
       headers: json(owner),
-      body: JSON.stringify({}),
+      body: JSON.stringify({ pointScale: "bogus" }),
     });
     expect(invalid.status).toBe(400);
     const frames = await collectFrames(res, 200);

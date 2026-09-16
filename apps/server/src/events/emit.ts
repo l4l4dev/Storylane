@@ -2,6 +2,7 @@ import type { Db } from "../db/client";
 import type { Action } from "../authz/permissions";
 import { withProject, type Actor, type NotPromise, type ProjectTx } from "../db/tx";
 import type { EventBus } from "./bus";
+import { projectVersion } from "../services/activity";
 
 export interface ChangeDeps {
   db: Db;
@@ -24,12 +25,24 @@ export function withProjectChange<T>(
   // they are always equal, but publish should be structurally bound to what authorization
   // actually granted, not to the caller's own copy of the id.
   let authorizedId!: string;
+  let version = 0;
   const result = withProject(deps.db, actor, projectId, action, (tx) => {
     authorizedId = tx.projectId;
-    return fn(tx);
+    // Development only, on purpose: in production a missing history row must not turn into a
+    // failed request, and the `before` read is skipped so a write never pays a SELECT for an
+    // assertion that cannot fire. The condition is the version, not a row count, because that
+    // is the number the SSE event and since_version are built on.
+    const inDevelopment = process.env.NODE_ENV === "development";
+    const before = inDevelopment ? projectVersion(tx) : 0;
+    const out = fn(tx);
+    version = projectVersion(tx);
+    if (inDevelopment && version === before) {
+      throw new Error(`${action} completed without recording activity`);
+    }
+    return out;
   });
   // A throw from fn (or from authorization itself) propagates out of withProject before this
   // line, so a rolled-back change never publishes.
-  deps.bus.publish(authorizedId);
+  deps.bus.publish(authorizedId, version);
   return result;
 }

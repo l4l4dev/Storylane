@@ -35,7 +35,7 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
   const row = (project: ProjectSummary) => (
     <li key={project.id} className="border-b" style={{ borderColor: "var(--line)" }}>
       {/* A full row is the hit target, not just the text (principle 7). */}
-      <Link href={`/projects/${project.id}/board`} className="flex items-center justify-between px-2 py-2 hover:bg-[var(--surface-2)]">
+      <Link href={`/projects/${project.id}`} className="flex items-center justify-between px-2 py-2 hover:bg-[var(--surface-2)]">
         <span>{project.name}</span>
         <span className="mono text-xs" style={{ color: "var(--ink-muted)" }}>{project.role}</span>
       </Link>

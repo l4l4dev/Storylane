@@ -6,13 +6,13 @@ import { buttonClass } from "./Field";
 
 /**
  * The signed-in shell's top bar: a way back to the project list, the current project's name
- * when on its board, and sign-out. Fetches the project name itself (a small, separate request
- * from BoardPage's own project fetch) so it works from any route without threading state through
- * the router.
+ * when on its project page, and sign-out. Fetches the project name itself (a small, separate
+ * request from the project page's own project fetch) so it works from any route without
+ * threading state through the router.
  */
 export function Header({ onSignedOut }: { onSignedOut: () => void }) {
-  const [onBoard, params] = useRoute("/projects/:id/board");
-  const project = useResource<{ name: string }>(onBoard ? `/api/projects/${params!.id}` : null);
+  const [onProject, params] = useRoute("/projects/:id");
+  const project = useResource<{ name: string }>(onProject ? `/api/projects/${params!.id}` : null);
   const [error, setError] = useState<string | null>(null);
 
   async function signOut() {
@@ -33,7 +33,7 @@ export function Header({ onSignedOut }: { onSignedOut: () => void }) {
         <Link href="/" className="font-medium hover:underline">
           Projects
         </Link>
-        {onBoard && project.data && <span style={{ color: "var(--ink-muted)" }}>{project.data.name}</span>}
+        {onProject && project.data && <span style={{ color: "var(--ink-muted)" }}>{project.data.name}</span>}
       </div>
       <div className="flex items-center gap-2">
         {error && (
