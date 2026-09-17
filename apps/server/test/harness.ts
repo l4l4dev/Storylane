@@ -9,6 +9,7 @@ import { openDatabase, type Db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import type { AttachmentStore } from "../src/attachments/store";
 import {
+  blockers,
   comments,
   epics,
   fileAttachments,
@@ -153,6 +154,26 @@ export function seedTask(db: Db, projectId: string, storyId: string, description
       description,
       complete: false,
       position: next?.n ?? 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .run();
+  return id;
+}
+
+/** Seeds a blocker row directly, bypassing #n resolution — free text is enough for the matrix. */
+export function seedBlocker(db: Db, projectId: string, storyId: string, author: Actor, description = "seeded blocker"): string {
+  if (author.kind !== "user") throw new Error("author must be a user");
+  const id = newId();
+  db.insert(blockers)
+    .values({
+      id,
+      projectId,
+      storyId,
+      blockingStoryId: null,
+      description,
+      resolved: false,
+      personId: author.userId,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     })

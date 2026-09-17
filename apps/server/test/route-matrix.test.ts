@@ -11,6 +11,7 @@ import {
   makeTestApp,
   makeTestDb,
   seedAttachment,
+  seedBlocker,
   seedComment,
   seedEpic,
   seedLabel,
@@ -47,6 +48,7 @@ function seedFullProject() {
   const labelId = seedLabel(db, id, "matrix label");
   const epicId = seedEpic(db, id, "Matrix epic seed");
   const taskId = seedTask(db, id, storyId, "Matrix task seed");
+  const blockerId = seedBlocker(db, id, storyId, ownerA, "Matrix blocker seed");
   const authors = { viewer: viewerA, member: memberA, owner: ownerA };
   const commentIds = {} as Record<AuthorRole, string>;
   const attachmentIds = {} as Record<AuthorRole, string>;
@@ -54,7 +56,7 @@ function seedFullProject() {
     commentIds[role] = seedComment(db, id, storyId, author);
     attachmentIds[role] = seedAttachment(db, store, id, commentIds[role], author);
   }
-  return { id, inviteId: seededInvite.invite.id, storyId, labelId, epicId, taskId, commentIds, attachmentIds };
+  return { id, inviteId: seededInvite.invite.id, storyId, labelId, epicId, taskId, blockerId, commentIds, attachmentIds };
 }
 
 const seeded = seedFullProject();
@@ -69,6 +71,7 @@ const fixturesFor = (t: ReturnType<typeof seedFullProject>): Record<string, Matr
     labelId: t.labelId,
     epicId: t.epicId,
     taskId: t.taskId,
+    blockerId: t.blockerId,
     commentIds: t.commentIds,
     attachmentIds: t.attachmentIds,
   });
@@ -97,6 +100,7 @@ const DESTRUCTIVE = new Set([
   "DELETE /api/projects/:id/stories/:storyId/labels/:labelId",
   "DELETE /api/projects/:id/epics/:epicId",
   "DELETE /api/projects/:id/stories/:storyId/tasks/:taskId",
+  "DELETE /api/projects/:id/stories/:storyId/blockers/:blockerId",
   "DELETE /api/projects/:id/stories/:storyId/comments/:commentId",
   "DELETE /api/projects/:id/attachments/:attachmentId",
   // POST creates a label/epic by name; run twice against the shared project (member then

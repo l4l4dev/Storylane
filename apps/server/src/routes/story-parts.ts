@@ -18,6 +18,7 @@ import {
   type FileAttachmentRow,
 } from "../services/comments";
 import { newId } from "../id";
+import { createBlocker, deleteBlocker, listBlockers, updateBlocker } from "../services/blockers";
 import { createTask, deleteTask, listTasks, updateTask } from "../services/tasks";
 import { DESCRIPTION_MAX, FILENAME_MAX, assertMaxLength } from "./limits";
 
@@ -114,6 +115,22 @@ function optionalPosition(value: unknown): number | undefined {
 /** taskId belongs to the project but not to :storyId — a 404, same as any other foreign resource. */
 function assertTaskOnStory(rows: { id: string }[], taskId: string): void {
   if (!rows.some((r) => r.id === taskId)) throw new HttpError(404, "not_found");
+}
+
+const BLOCKER_CREATE_KEYS = new Set(["description"]);
+const BLOCKER_PATCH_KEYS = new Set(["description", "resolved"]);
+
+function requireBlockerDescription(input: Record<string, unknown>): string {
+  if (typeof input.description !== "string") throw new HttpError(400, "description_required");
+  const trimmed = input.description.trim();
+  if (trimmed.length === 0) throw new HttpError(400, "description_required");
+  assertMaxLength(input.description, DESCRIPTION_MAX, "description_too_long");
+  return input.description;
+}
+
+/** blockerId belongs to the project but not to :storyId — a 404, same as any other foreign resource. */
+function assertBlockerOnStory(rows: { id: string }[], blockerId: string): void {
+  if (!rows.some((r) => r.id === blockerId)) throw new HttpError(404, "not_found");
 }
 
 export function removeQuietly(log: Logger, store: AttachmentStore, storagePaths: string[]): void {
@@ -274,6 +291,47 @@ export function storyPartRoutes(deps: {
         const tasks = listTasks(tx, c.req.param("storyId"));
         assertTaskOnStory(tasks, c.req.param("taskId"));
         deleteTask(tx, c.req.param("taskId"));
+      });
+      return c.body(null, 204);
+    })
+    .get("/api/projects/:id/stories/:storyId/blockers", (c) =>
+      c.json(
+        withProject(db, actorOf(c), c.req.param("id"), "story:read", (tx) => listBlockers(tx, c.req.param("storyId"))),
+      ),
+    )
+    .post("/api/projects/:id/stories/:storyId/blockers", async (c) => {
+      const input = await body(c);
+      rejectUnknownKeys(input, BLOCKER_CREATE_KEYS);
+      const description = requireBlockerDescription(input);
+      return c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "blocker:write", (tx) =>
+          createBlocker(tx, c.req.param("storyId"), description),
+        ),
+        201,
+      );
+    })
+    .put("/api/projects/:id/stories/:storyId/blockers/:blockerId", async (c) => {
+      const input = await body(c);
+      rejectUnknownKeys(input, BLOCKER_PATCH_KEYS);
+      const patch: { description?: string; resolved?: boolean } = {};
+      if (input.description !== undefined) patch.description = requireBlockerDescription(input);
+      if (input.resolved !== undefined) {
+        if (typeof input.resolved !== "boolean") throw new HttpError(400, "resolved_invalid");
+        patch.resolved = input.resolved;
+      }
+      return c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "blocker:write", (tx) => {
+          const blockers = listBlockers(tx, c.req.param("storyId"));
+          assertBlockerOnStory(blockers, c.req.param("blockerId"));
+          return updateBlocker(tx, c.req.param("blockerId"), patch);
+        }),
+      );
+    })
+    .delete("/api/projects/:id/stories/:storyId/blockers/:blockerId", (c) => {
+      withProjectChange(deps, actorOf(c), c.req.param("id"), "blocker:write", (tx) => {
+        const blockers = listBlockers(tx, c.req.param("storyId"));
+        assertBlockerOnStory(blockers, c.req.param("blockerId"));
+        deleteBlocker(tx, c.req.param("blockerId"));
       });
       return c.body(null, 204);
     });

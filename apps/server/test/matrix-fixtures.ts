@@ -40,6 +40,8 @@ export interface MatrixContext {
   epicId: string;
   /** A seeded task on ctx.storyId, for the task matrix rows. */
   taskId: string;
+  /** A seeded blocker on ctx.storyId, for the blocker matrix rows. */
+  blockerId: string;
   /** One comment on ctx.storyId per authoring role, written by that role's own user. */
   commentIds: Record<AuthorRole, string>;
   /** One attachment per authoring role, uploaded by that role's user onto its own comment. */
@@ -113,5 +115,12 @@ export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture
     "DELETE /api/projects/:id/attachments/:attachmentId": ownRow(ctx.attachmentIds, (attachmentId) => ({
       params: { attachmentId },
     })),
+    "GET /api/projects/:id/stories/:storyId/blockers": { params: { storyId: ctx.storyId } },
+    "POST /api/projects/:id/stories/:storyId/blockers": { params: { storyId: ctx.storyId }, body: { description: "Matrix blocker" } },
+    "PUT /api/projects/:id/stories/:storyId/blockers/:blockerId": {
+      params: { storyId: ctx.storyId, blockerId: ctx.blockerId },
+      body: { description: "Matrix blocker edited" },
+    },
+    "DELETE /api/projects/:id/stories/:storyId/blockers/:blockerId": { params: { storyId: ctx.storyId, blockerId: ctx.blockerId } },
   };
 }

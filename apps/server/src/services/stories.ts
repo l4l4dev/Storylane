@@ -5,6 +5,7 @@ import { loadInProject, type ProjectTx } from "../db/tx";
 import { HttpError } from "../http-error";
 import { newId } from "../id";
 import { recordActivity } from "./activity";
+import { resolveBlockersReferencing } from "./blockers";
 import { labelIds } from "./labels";
 import { appendToList, listForGroup, placeInList } from "./ordering";
 import { readProject } from "./projects";
@@ -363,6 +364,9 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
   if (!fieldsChanged && !moved) return readOne(tx, storyId);
   set.updatedAt = Date.now();
   tx.tx.update(stories).set(set as never).where(and(eq(stories.id, storyId), eq(stories.projectId, tx.projectId))).run();
+  // Only on entry into accepted, not every edit of an already-accepted story: set.currentState
+  // is written exactly when this update transitions state (see targetState above).
+  if (set.currentState === "accepted") resolveBlockersReferencing(tx, storyId);
   if (fieldsChanged) {
     recordActivity(tx, {
       kind: "story_update_activity",
@@ -395,6 +399,10 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
 
 export function deleteStory(tx: ProjectTx, storyId: string): void {
   const current = loadInProject(tx, stories, storyId);
+  // Before the DELETE: blockers_unlink_on_story_delete (a BEFORE DELETE trigger) nulls the
+  // pointer itself, so after the DELETE this service could no longer find the rows to record
+  // their blocker_update_activity.
+  resolveBlockersReferencing(tx, storyId);
   tx.tx.delete(stories).where(and(eq(stories.id, storyId), eq(stories.projectId, tx.projectId))).run();
   recordActivity(tx, {
     kind: "story_delete_activity",
