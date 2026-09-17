@@ -25,6 +25,10 @@ export interface MatrixContext {
   memberUserId: string;
   /** A seeded story in the seeded project, for the story matrix rows. */
   storyId: string;
+  /** A seeded label backing no epic, for the label matrix rows (deleting it must not 409). */
+  labelId: string;
+  /** A seeded epic (with its own label) in the seeded project, for the epic matrix rows. */
+  epicId: string;
 }
 
 export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture> {
@@ -50,5 +54,14 @@ export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture
     "DELETE /api/projects/:id/stories/:storyId/follow": { params: { storyId: ctx.storyId } },
     "POST /api/projects/:id/stories/:storyId/followers/:userId": { params: { storyId: ctx.storyId, userId: ctx.memberUserId }, body: {} },
     "DELETE /api/projects/:id/stories/:storyId/followers/:userId": { params: { storyId: ctx.storyId, userId: ctx.memberUserId } },
+    "POST /api/projects/:id/labels": { body: { name: "Matrix new label" } },
+    "PUT /api/projects/:id/labels/:labelId": { params: { labelId: ctx.labelId }, body: { name: "Matrix renamed" } },
+    "DELETE /api/projects/:id/labels/:labelId": { params: { labelId: ctx.labelId } },
+    "POST /api/projects/:id/stories/:storyId/labels": { params: { storyId: ctx.storyId }, body: { name: "matrix-story-label" } },
+    "DELETE /api/projects/:id/stories/:storyId/labels/:labelId": { params: { storyId: ctx.storyId, labelId: ctx.labelId } },
+    "GET /api/projects/:id/epics": {},
+    "POST /api/projects/:id/epics": { body: { name: "Matrix epic" } },
+    "PUT /api/projects/:id/epics/:epicId": { params: { epicId: ctx.epicId }, body: { name: "Matrix epic renamed" } },
+    "DELETE /api/projects/:id/epics/:epicId": { params: { epicId: ctx.epicId } },
   };
 }

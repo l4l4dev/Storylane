@@ -5,6 +5,7 @@ import { loadInProject, type ProjectTx } from "../db/tx";
 import { HttpError } from "../http-error";
 import { newId } from "../id";
 import { recordActivity } from "./activity";
+import { labelIds } from "./labels";
 import { appendToList, listForGroup, placeInList } from "./ordering";
 import { readProject } from "./projects";
 import { addOwner, ensureFollowing, followerIds, ownerIds } from "./story-people";
@@ -74,7 +75,6 @@ const COLUMNS = {
   updated_at: stories.updatedAt,
 };
 
-/** Labels land in a later task; this task's rows always report an empty label set. */
 function toRow(
   tx: ProjectTx,
   row: (typeof COLUMNS extends infer C ? { [K in keyof C]: unknown } : never) & { id: string },
@@ -82,7 +82,7 @@ function toRow(
   return {
     ...(row as Omit<StoryRow, "owner_ids" | "label_ids" | "follower_ids">),
     owner_ids: ownerIds(tx, row.id),
-    label_ids: [],
+    label_ids: labelIds(tx, row.id),
     follower_ids: followerIds(tx, row.id),
   };
 }

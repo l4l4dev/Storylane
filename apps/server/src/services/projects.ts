@@ -1,6 +1,6 @@
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { DEFAULT_POINT_SCALE, iterationOverrides, projectMembers, projects, stories } from "../db/schema";
+import { DEFAULT_POINT_SCALE, epics, iterationOverrides, projectMembers, projects, stories } from "../db/schema";
 import { isCustomPointScale, nearestOnScale, parsePointScale } from "@storylane/core";
 import { assertNoOpenTransaction, type Actor, type ProjectTx } from "../db/tx";
 import type { MemberRole } from "../authz/permissions";
@@ -407,6 +407,10 @@ export function setArchived(tx: ProjectTx, archived: boolean): ProjectSettings {
 }
 
 export function deleteProject(tx: ProjectTx): void {
-  // Members and activity rows all cascade from projects.id.
+  // Members and activity rows all cascade from projects.id. epics.label_id -> labels.id is
+  // ON DELETE RESTRICT (schema/labels.ts): SQLite does not order cascades across sibling
+  // tables, so a cascade that reaches labels before epics would trip that RESTRICT even though
+  // both rows are leaving in the same delete. Drop epics explicitly first to sidestep it.
+  tx.tx.delete(epics).where(eq(epics.projectId, tx.projectId)).run();
   tx.tx.delete(projects).where(eq(projects.id, tx.projectId)).run();
 }

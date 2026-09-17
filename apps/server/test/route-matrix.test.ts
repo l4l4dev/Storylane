@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
-import { makeTestApp, makeTestDb, seedProject, seedStory, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedEpic, seedLabel, seedProject, seedStory, seedUser } from "./harness";
 import { ROUTE_ACTIONS } from "../src/authz/route-manifest";
 import { ALL_ACTIONS, expected, ROLES, type Action, type Role } from "../src/authz/permissions";
 import { withProject, type Actor } from "../src/db/tx";
@@ -25,7 +25,10 @@ function seedFullProject() {
   ]);
   const seededInvite = withProject(db, ownerA, id, "member:invite", (tx) => mintInvite(tx, { role: "member" }));
   const storyId = seedStory(db, id);
-  return { id, inviteId: seededInvite.invite.id, storyId };
+  // labelId backs no epic, so DELETE .../labels/:labelId never sees a 409 label_backs_an_epic.
+  const labelId = seedLabel(db, id, "matrix label");
+  const epicId = seedEpic(db, id, "Matrix epic seed");
+  return { id, inviteId: seededInvite.invite.id, storyId, labelId, epicId };
 }
 
 const seeded = seedFullProject();
@@ -37,6 +40,8 @@ const fixturesFor = (t: ReturnType<typeof seedFullProject>): Record<string, Matr
     userId: (ownerA as { userId: string }).userId,
     memberUserId: (memberA as { userId: string }).userId,
     storyId: t.storyId,
+    labelId: t.labelId,
+    epicId: t.epicId,
   });
 const FIXTURES = fixturesFor(seeded);
 const actors: Record<Role, Actor> = {
@@ -59,6 +64,13 @@ const DESTRUCTIVE = new Set([
   "DELETE /api/projects/:id/stories/:storyId/owners/:userId",
   "DELETE /api/projects/:id/stories/:storyId/follow",
   "DELETE /api/projects/:id/stories/:storyId/followers/:userId",
+  "DELETE /api/projects/:id/labels/:labelId",
+  "DELETE /api/projects/:id/stories/:storyId/labels/:labelId",
+  "DELETE /api/projects/:id/epics/:epicId",
+  // POST creates a label/epic by name; run twice against the shared project (member then
+  // owner rows both expecting 200) the second call would 409 on the name it already took.
+  "POST /api/projects/:id/labels",
+  "POST /api/projects/:id/epics",
   // Not a DELETE, but the owner row permanently demotes ctx.memberUserId to "viewer" in the
   // shared project — any later matrix row that relies on that actor still being "member"
   // (e.g. story:write) would otherwise see the wrong role.

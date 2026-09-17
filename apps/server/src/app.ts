@@ -11,6 +11,7 @@ import { projectRoutes } from "./routes/projects";
 import { eventRoutes } from "./routes/events";
 import { activityRoutes } from "./routes/activity";
 import { storyRoutes } from "./routes/stories";
+import { labelRoutes } from "./routes/labels";
 import { failClosed } from "./authz/middleware";
 import { EventBus } from "./events/bus";
 import { authRoutes } from "./routes/auth";
@@ -131,6 +132,7 @@ export function createApp(deps: AppDeps): Hono {
   app.route("/", projectRoutes({ db: deps.db, bus, log: deps.log, actorOf }));
   app.route("/", activityRoutes({ db: deps.db, actorOf }));
   app.route("/", storyRoutes({ db: deps.db, bus, log: deps.log, actorOf }));
+  app.route("/", labelRoutes({ db: deps.db, bus, log: deps.log, actorOf }));
   app.route(
     "/",
     inviteRoutes({

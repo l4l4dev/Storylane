@@ -8,6 +8,7 @@ import { createLogger } from "../src/log";
 import { openDatabase, type Db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import {
+  epics,
   labels,
   projectMembers,
   projects,
@@ -107,6 +108,29 @@ export function seedStory(
 export function seedLabel(db: Db, projectId: string, name: string): string {
   const id = newId();
   db.insert(labels).values({ id, projectId, name, createdAt: Date.now(), updatedAt: Date.now() }).run();
+  return id;
+}
+
+/** Seeds an epic backed by its own fresh label (`${name} epic label`), never `name` itself. */
+export function seedEpic(db: Db, projectId: string, name: string): string {
+  const labelId = seedLabel(db, projectId, `${name} epic label`);
+  const next = db
+    .select({ n: sql<number>`coalesce(max(${epics.position}), -1) + 1` })
+    .from(epics)
+    .where(eq(epics.projectId, projectId))
+    .get();
+  const id = newId();
+  db.insert(epics)
+    .values({
+      id,
+      projectId,
+      name,
+      labelId,
+      position: next?.n ?? 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .run();
   return id;
 }
 
