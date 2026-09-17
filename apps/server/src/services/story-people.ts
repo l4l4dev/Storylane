@@ -7,7 +7,7 @@ import { recordActivity } from "./activity";
 const FK_FAILED_MESSAGE = "FOREIGN KEY constraint failed";
 
 /** bun:sqlite sets `.code` on a constraint violation; the message check is a fallback only. */
-function isForeignKeyViolation(err: unknown): boolean {
+export function isForeignKeyViolation(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   if ((err as { code?: string }).code === "SQLITE_CONSTRAINT_FOREIGNKEY") return true;
   return err.message.includes(FK_FAILED_MESSAGE);

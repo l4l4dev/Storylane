@@ -16,6 +16,7 @@ import {
   type ProjectSettingsPatch,
 } from "../services/projects";
 import { changeRole, leaveProject, listMemberships, removeMember } from "../services/memberships";
+import { createReviewType, listReviewTypes, updateReviewType } from "../services/reviews";
 import type { MemberRole } from "../authz/permissions";
 import type { AttachmentStore } from "../attachments/store";
 import { DESCRIPTION_MAX, NAME_MAX, assertMaxLength } from "./limits";
@@ -175,5 +176,37 @@ export function projectRoutes(deps: {
         removeMember(tx, c.req.param("userId")),
       );
       return c.body(null, 204);
+    })
+    .get("/api/projects/:id/review_types", (c) =>
+      c.json(withProject(db, actorOf(c), c.req.param("id"), "story:read", (tx) => listReviewTypes(tx))),
+    )
+    .post("/api/projects/:id/review_types", async (c) => {
+      const input = await body(c);
+      if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
+      assertMaxLength(input.name, NAME_MAX, "name_too_long");
+      return c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "review-type:write", (tx) =>
+          createReviewType(tx, input.name as string),
+        ),
+        201,
+      );
+    })
+    .put("/api/projects/:id/review_types/:reviewTypeId", async (c) => {
+      const input = await body(c);
+      const patch: { name?: string; hidden?: boolean } = {};
+      if (input.name !== undefined) {
+        if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
+        assertMaxLength(input.name, NAME_MAX, "name_too_long");
+        patch.name = input.name;
+      }
+      if (input.hidden !== undefined) {
+        if (typeof input.hidden !== "boolean") throw new HttpError(400, "invalid_body");
+        patch.hidden = input.hidden;
+      }
+      return c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "review-type:write", (tx) =>
+          updateReviewType(tx, c.req.param("reviewTypeId"), patch),
+        ),
+      );
     });
 }

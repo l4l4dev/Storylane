@@ -1,12 +1,13 @@
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { DEFAULT_POINT_SCALE, epics, iterationOverrides, projectMembers, projects, stories } from "../db/schema";
+import { DEFAULT_POINT_SCALE, epics, iterationOverrides, projectMembers, projects, reviews, stories } from "../db/schema";
 import { isCustomPointScale, nearestOnScale, parsePointScale } from "@storylane/core";
 import { assertNoOpenTransaction, type Actor, type ProjectTx } from "../db/tx";
 import type { MemberRole } from "../authz/permissions";
 import { HttpError } from "../http-error";
 import { newId } from "../id";
 import { bootstrapScope, recordActivity } from "./activity";
+import { seedReviewTypes } from "./reviews";
 
 const DEFAULT_WEEK_START_DAY = 1;
 
@@ -123,6 +124,7 @@ export function createProject(
         })
         .run();
       tx.insert(projectMembers).values({ projectId: id, userId: actor.userId, role: "owner", joinedAt: now }).run();
+      seedReviewTypes(bootstrapScope(tx, id, actor));
       recordActivity(bootstrapScope(tx, id, actor), {
         kind: "project_update_activity",
         message: `added the project ${name}`,
@@ -410,7 +412,9 @@ export function deleteProject(tx: ProjectTx): void {
   // Members and activity rows all cascade from projects.id. epics.label_id -> labels.id is
   // ON DELETE RESTRICT (schema/labels.ts): SQLite does not order cascades across sibling
   // tables, so a cascade that reaches labels before epics would trip that RESTRICT even though
-  // both rows are leaving in the same delete. Drop epics explicitly first to sidestep it.
+  // both rows are leaving in the same delete. Drop epics explicitly first to sidestep it. The
+  // same reasoning applies to reviews.review_type_id -> review_types.id, also RESTRICT.
   tx.tx.delete(epics).where(eq(epics.projectId, tx.projectId)).run();
+  tx.tx.delete(reviews).where(eq(reviews.projectId, tx.projectId)).run();
   tx.tx.delete(projects).where(eq(projects.id, tx.projectId)).run();
 }

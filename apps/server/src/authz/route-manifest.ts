@@ -71,4 +71,11 @@ export const ROUTE_ACTIONS: Record<`${Method} ${string}`, RouteRule> = {
   "POST /api/projects/:id/stories/:storyId/blockers": "blocker:write",
   "PUT /api/projects/:id/stories/:storyId/blockers/:blockerId": "blocker:write",
   "DELETE /api/projects/:id/stories/:storyId/blockers/:blockerId": "blocker:write",
+  "GET /api/projects/:id/review_types": "story:read",
+  "POST /api/projects/:id/review_types": "review-type:write",
+  "PUT /api/projects/:id/review_types/:reviewTypeId": "review-type:write",
+  "GET /api/projects/:id/stories/:storyId/reviews": "story:read",
+  "POST /api/projects/:id/stories/:storyId/reviews": "review:write",
+  "PUT /api/projects/:id/stories/:storyId/reviews/:reviewId": "review:write",
+  "DELETE /api/projects/:id/stories/:storyId/reviews/:reviewId": "review:write",
 };

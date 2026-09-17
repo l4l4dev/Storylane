@@ -20,6 +20,8 @@ import {
 import { newId } from "../id";
 import { createBlocker, deleteBlocker, listBlockers, updateBlocker } from "../services/blockers";
 import { createTask, deleteTask, listTasks, updateTask } from "../services/tasks";
+import { createReview, deleteReview, listReviews, updateReview } from "../services/reviews";
+import { REVIEW_STATUSES, type ReviewStatus } from "../db/schema";
 import { DESCRIPTION_MAX, FILENAME_MAX, assertMaxLength } from "./limits";
 
 const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -131,6 +133,35 @@ function requireBlockerDescription(input: Record<string, unknown>): string {
 /** blockerId belongs to the project but not to :storyId — a 404, same as any other foreign resource. */
 function assertBlockerOnStory(rows: { id: string }[], blockerId: string): void {
   if (!rows.some((r) => r.id === blockerId)) throw new HttpError(404, "not_found");
+}
+
+const REVIEW_CREATE_KEYS = new Set(["review_type_id", "reviewer_id", "status"]);
+const REVIEW_PATCH_KEYS = new Set(["reviewer_id", "status"]);
+
+function requireReviewTypeId(input: Record<string, unknown>): string {
+  if (typeof input.review_type_id !== "string" || input.review_type_id.length === 0) {
+    throw new HttpError(400, "review_type_id_required");
+  }
+  return input.review_type_id;
+}
+
+function optionalReviewerId(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value !== null && typeof value !== "string") throw new HttpError(400, "reviewer_id_invalid");
+  return value;
+}
+
+function optionalReviewStatus(value: unknown): ReviewStatus | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !(REVIEW_STATUSES as readonly string[]).includes(value)) {
+    throw new HttpError(400, "review_status_invalid");
+  }
+  return value as ReviewStatus;
+}
+
+/** reviewId belongs to the project but not to :storyId — a 404, same as any other foreign resource. */
+function assertReviewOnStory(rows: { id: string }[], reviewId: string): void {
+  if (!rows.some((r) => r.id === reviewId)) throw new HttpError(404, "not_found");
 }
 
 export function removeQuietly(log: Logger, store: AttachmentStore, storagePaths: string[]): void {
@@ -332,6 +363,52 @@ export function storyPartRoutes(deps: {
         const blockers = listBlockers(tx, c.req.param("storyId"));
         assertBlockerOnStory(blockers, c.req.param("blockerId"));
         deleteBlocker(tx, c.req.param("blockerId"));
+      });
+      return c.body(null, 204);
+    })
+    .get("/api/projects/:id/stories/:storyId/reviews", (c) =>
+      c.json(
+        withProject(db, actorOf(c), c.req.param("id"), "story:read", (tx) => listReviews(tx, c.req.param("storyId"))),
+      ),
+    )
+    .post("/api/projects/:id/stories/:storyId/reviews", async (c) => {
+      const input = await body(c);
+      rejectUnknownKeys(input, REVIEW_CREATE_KEYS);
+      const reviewTypeId = requireReviewTypeId(input);
+      const reviewerId = optionalReviewerId(input.reviewer_id);
+      const status = optionalReviewStatus(input.status);
+      return c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "review:write", (tx) =>
+          createReview(tx, c.req.param("storyId"), {
+            review_type_id: reviewTypeId,
+            ...(reviewerId !== undefined ? { reviewer_id: reviewerId } : {}),
+            ...(status !== undefined ? { status } : {}),
+          }),
+        ),
+        201,
+      );
+    })
+    .put("/api/projects/:id/stories/:storyId/reviews/:reviewId", async (c) => {
+      const input = await body(c);
+      rejectUnknownKeys(input, REVIEW_PATCH_KEYS);
+      const reviewerId = optionalReviewerId(input.reviewer_id);
+      const status = optionalReviewStatus(input.status);
+      const patch: { reviewer_id?: string | null; status?: ReviewStatus } = {};
+      if (reviewerId !== undefined) patch.reviewer_id = reviewerId;
+      if (status !== undefined) patch.status = status;
+      return c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "review:write", (tx) => {
+          const reviews = listReviews(tx, c.req.param("storyId"));
+          assertReviewOnStory(reviews, c.req.param("reviewId"));
+          return updateReview(tx, c.req.param("reviewId"), patch);
+        }),
+      );
+    })
+    .delete("/api/projects/:id/stories/:storyId/reviews/:reviewId", (c) => {
+      withProjectChange(deps, actorOf(c), c.req.param("id"), "review:write", (tx) => {
+        const reviews = listReviews(tx, c.req.param("storyId"));
+        assertReviewOnStory(reviews, c.req.param("reviewId"));
+        deleteReview(tx, c.req.param("reviewId"));
       });
       return c.body(null, 204);
     });

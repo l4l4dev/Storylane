@@ -16,9 +16,12 @@ import {
   labels,
   projectMembers,
   projects,
+  reviews,
+  reviewTypes,
   stories,
   tasks,
   users,
+  type ReviewStatus,
   type StoryList,
   type StoryState,
   type StoryType,
@@ -182,6 +185,43 @@ export function seedBlocker(db: Db, projectId: string, storyId: string, author: 
 }
 
 /** Seeds a comment row directly, bypassing the role checks, so a viewer can own one for the matrix. */
+/** Seeds a review type row directly (not one of the four built-ins); seedProject does not seed those. */
+export function seedReviewType(db: Db, projectId: string, name = "Matrix review type seed"): string {
+  const next = db
+    .select({ n: sql<number>`coalesce(max(${reviewTypes.position}), -1) + 1` })
+    .from(reviewTypes)
+    .where(eq(reviewTypes.projectId, projectId))
+    .get();
+  const id = newId();
+  db.insert(reviewTypes)
+    .values({ id, projectId, name, hidden: false, position: next?.n ?? 0, createdAt: Date.now(), updatedAt: Date.now() })
+    .run();
+  return id;
+}
+
+export function seedReview(
+  db: Db,
+  projectId: string,
+  storyId: string,
+  reviewTypeId: string,
+  input: { reviewerId?: string | null; status?: ReviewStatus } = {},
+): string {
+  const id = newId();
+  db.insert(reviews)
+    .values({
+      id,
+      projectId,
+      storyId,
+      reviewTypeId,
+      reviewerId: input.reviewerId ?? null,
+      status: input.status ?? "unstarted",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .run();
+  return id;
+}
+
 export function seedComment(db: Db, projectId: string, storyId: string, author: Actor, text = "seeded comment"): string {
   if (author.kind !== "user") throw new Error("author must be a user");
   const id = newId();

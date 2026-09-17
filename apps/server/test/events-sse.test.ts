@@ -94,8 +94,9 @@ describe("GET /api/projects/:id/events", () => {
     expect(changed[0]).toContain(projectId);
     expect(changed[0]).not.toContain(otherProjectId);
     // The version the change produced: a client may fetch activity?since_version= from here
-    // instead of refetching the whole project. createProject already recorded version 1.
-    expect(changed[0]).toContain('"version":2');
+    // instead of refetching the whole project. createProject already recorded version 2 (the
+    // seeded review types, then the project itself).
+    expect(changed[0]).toContain('"version":3');
     await theirs.body!.cancel();
   });
 

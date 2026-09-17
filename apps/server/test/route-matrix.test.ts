@@ -16,6 +16,8 @@ import {
   seedEpic,
   seedLabel,
   seedProject,
+  seedReview,
+  seedReviewType,
   seedStory,
   seedTask,
   seedUser,
@@ -49,6 +51,8 @@ function seedFullProject() {
   const epicId = seedEpic(db, id, "Matrix epic seed");
   const taskId = seedTask(db, id, storyId, "Matrix task seed");
   const blockerId = seedBlocker(db, id, storyId, ownerA, "Matrix blocker seed");
+  const reviewTypeId = seedReviewType(db, id);
+  const reviewId = seedReview(db, id, storyId, reviewTypeId);
   const authors = { viewer: viewerA, member: memberA, owner: ownerA };
   const commentIds = {} as Record<AuthorRole, string>;
   const attachmentIds = {} as Record<AuthorRole, string>;
@@ -56,7 +60,19 @@ function seedFullProject() {
     commentIds[role] = seedComment(db, id, storyId, author);
     attachmentIds[role] = seedAttachment(db, store, id, commentIds[role], author);
   }
-  return { id, inviteId: seededInvite.invite.id, storyId, labelId, epicId, taskId, blockerId, commentIds, attachmentIds };
+  return {
+    id,
+    inviteId: seededInvite.invite.id,
+    storyId,
+    labelId,
+    epicId,
+    taskId,
+    blockerId,
+    reviewTypeId,
+    reviewId,
+    commentIds,
+    attachmentIds,
+  };
 }
 
 const seeded = seedFullProject();
@@ -72,6 +88,9 @@ const fixturesFor = (t: ReturnType<typeof seedFullProject>): Record<string, Matr
     epicId: t.epicId,
     taskId: t.taskId,
     blockerId: t.blockerId,
+    reviewTypeId: t.reviewTypeId,
+    reviewId: t.reviewId,
+    ownerUserId: (ownerA as { userId: string }).userId,
     commentIds: t.commentIds,
     attachmentIds: t.attachmentIds,
   });
@@ -103,6 +122,10 @@ const DESTRUCTIVE = new Set([
   "DELETE /api/projects/:id/stories/:storyId/blockers/:blockerId",
   "DELETE /api/projects/:id/stories/:storyId/comments/:commentId",
   "DELETE /api/projects/:id/attachments/:attachmentId",
+  "DELETE /api/projects/:id/stories/:storyId/reviews/:reviewId",
+  // The owner row hides ctx.reviewTypeId, which would otherwise make every later
+  // review:write POST fixture (using the same type) answer 409 review_type_hidden.
+  "PUT /api/projects/:id/review_types/:reviewTypeId",
   // POST creates a label/epic by name; run twice against the shared project (member then
   // owner rows both expecting 200) the second call would 409 on the name it already took.
   "POST /api/projects/:id/labels",

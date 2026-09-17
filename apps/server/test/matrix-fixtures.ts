@@ -42,6 +42,13 @@ export interface MatrixContext {
   taskId: string;
   /** A seeded blocker on ctx.storyId, for the blocker matrix rows. */
   blockerId: string;
+  /** A seeded (non-built-in) review type in the seeded project, for the review-type matrix rows. */
+  reviewTypeId: string;
+  /** A seeded review on ctx.storyId, for the review matrix rows. */
+  reviewId: string;
+  /** The owner's own user id, so a POST review fixture can name a reviewer that never collides
+   * with ctx.reviewId (seeded with a null reviewer_id). */
+  ownerUserId: string;
   /** One comment on ctx.storyId per authoring role, written by that role's own user. */
   commentIds: Record<AuthorRole, string>;
   /** One attachment per authoring role, uploaded by that role's user onto its own comment. */
@@ -122,5 +129,26 @@ export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture
       body: { description: "Matrix blocker edited" },
     },
     "DELETE /api/projects/:id/stories/:storyId/blockers/:blockerId": { params: { storyId: ctx.storyId, blockerId: ctx.blockerId } },
+    "GET /api/projects/:id/review_types": {},
+    // review-type:write only ever answers 200 for the owner row (member/viewer are both 403), so
+    // a fixed name never collides with itself across roles.
+    "POST /api/projects/:id/review_types": { body: { name: "Matrix review type" } },
+    "PUT /api/projects/:id/review_types/:reviewTypeId": { params: { reviewTypeId: ctx.reviewTypeId }, body: { hidden: true } },
+    "GET /api/projects/:id/stories/:storyId/reviews": { params: { storyId: ctx.storyId } },
+    // review:write answers 200 for both member and owner, so the (story, type, reviewer) triple
+    // must differ per role or the second row's insert would 409 on the first's.
+    "POST /api/projects/:id/stories/:storyId/reviews": {
+      params: { storyId: ctx.storyId },
+      body: { review_type_id: ctx.reviewTypeId, reviewer_id: ctx.memberUserId },
+      perRole: {
+        member: { params: { storyId: ctx.storyId }, body: { review_type_id: ctx.reviewTypeId, reviewer_id: ctx.memberUserId } },
+        owner: { params: { storyId: ctx.storyId }, body: { review_type_id: ctx.reviewTypeId, reviewer_id: ctx.ownerUserId } },
+      },
+    },
+    "PUT /api/projects/:id/stories/:storyId/reviews/:reviewId": {
+      params: { storyId: ctx.storyId, reviewId: ctx.reviewId },
+      body: { status: "in_review" },
+    },
+    "DELETE /api/projects/:id/stories/:storyId/reviews/:reviewId": { params: { storyId: ctx.storyId, reviewId: ctx.reviewId } },
   };
 }
