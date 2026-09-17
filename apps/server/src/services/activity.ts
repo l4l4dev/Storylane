@@ -16,6 +16,8 @@ export const ACTIVITY_KINDS = [
   "follower_create_activity", "follower_delete_activity",
   "iteration_update_activity", "project_update_activity",
   "project_membership_create_activity", "project_membership_update_activity", "project_membership_delete_activity",
+  // Tracker has no invitation resource; these two are Storylane-only, for the invite lifecycle.
+  "project_invite_create_activity", "project_invite_delete_activity",
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 

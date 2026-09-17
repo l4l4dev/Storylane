@@ -21,6 +21,8 @@ export interface MatrixContext {
   inviteId: string;
   /** Any seeded user id, for the admin route's own matrix row and its anonymous/non-admin sweep rows. */
   userId: string;
+  /** A seeded member who is not the sole owner, so the membership matrix rows never hit 409 last_owner. */
+  memberUserId: string;
 }
 
 export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture> {
@@ -30,8 +32,11 @@ export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture
     "DELETE /api/projects/:id/invites/:inviteId": { params: { inviteId: ctx.inviteId } },
     "POST /api/admin/users/:userId/reset-link": { params: { userId: ctx.userId }, body: {} },
     "POST /api/me/password": { body: { currentPassword: "x", newPassword: "y" } },
-    "PATCH /api/projects/:id": { body: { name: "renamed by the matrix" } },
+    "PUT /api/projects/:id": { body: { name: "renamed by the matrix" } },
     "POST /api/projects/:id/archive": { body: {} },
     "POST /api/projects/:id/unarchive": { body: {} },
+    "PUT /api/projects/:id/memberships/:userId": { params: { userId: ctx.memberUserId }, body: { role: "viewer" } },
+    "DELETE /api/projects/:id/memberships/:userId": { params: { userId: ctx.memberUserId } },
+    "DELETE /api/projects/:id/memberships/me": { body: {} },
   };
 }

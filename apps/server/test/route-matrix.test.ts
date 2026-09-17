@@ -30,7 +30,12 @@ function seedFullProject() {
 const seeded = seedFullProject();
 const projectId = seeded.id;
 const fixturesFor = (t: ReturnType<typeof seedFullProject>): Record<string, MatrixFixture> =>
-  matrixFixtures({ projectId: t.id, inviteId: t.inviteId, userId: (ownerA as { userId: string }).userId });
+  matrixFixtures({
+    projectId: t.id,
+    inviteId: t.inviteId,
+    userId: (ownerA as { userId: string }).userId,
+    memberUserId: (memberA as { userId: string }).userId,
+  });
 const FIXTURES = fixturesFor(seeded);
 const actors: Record<Role, Actor> = {
   anonymous: { kind: "anonymous" },
@@ -44,7 +49,11 @@ const actors: Record<Role, Actor> = {
 // iterates roles in a fixed order (anonymous, non-member, viewer, member, owner) — the owner
 // row runs last, so an earlier role never sees a deleted project/state. Give each destructive
 // key its own fresh project per role so the shared one stays live for the rest of the matrix.
-const DESTRUCTIVE = new Set(["DELETE /api/projects/:id"]);
+const DESTRUCTIVE = new Set([
+  "DELETE /api/projects/:id",
+  "DELETE /api/projects/:id/memberships/:userId",
+  "DELETE /api/projects/:id/memberships/me",
+]);
 
 // Only these exact middleware registrations (app.use(path, …) in app.ts) are exempt — an
 // explicit allowlist, not a heuristic, so a real route registered with app.all(...) still

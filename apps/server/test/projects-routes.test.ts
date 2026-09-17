@@ -73,7 +73,7 @@ describe("archive and unarchive", () => {
     expect(read.status).toBe(200);
 
     const write = await app.request(`${ORIGIN}/api/projects/${project.id}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: jsonAs(owner),
       body: JSON.stringify({ name: "Blocked" }),
     });
@@ -87,7 +87,7 @@ describe("archive and unarchive", () => {
     });
     expect(reopen.status).toBe(200);
     const writeAgain = await app.request(`${ORIGIN}/api/projects/${project.id}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: jsonAs(owner),
       body: JSON.stringify({ name: "Reopened" }),
     });
@@ -95,23 +95,23 @@ describe("archive and unarchive", () => {
   });
 });
 
-describe("PATCH /api/projects/:id validation", () => {
+describe("PUT /api/projects/:id validation", () => {
   it("400s a non-string name instead of 500ing", async () => {
     const project = createProject(db, owner, { name: "P" });
     const res = await app.request(`${ORIGIN}/api/projects/${project.id}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: jsonAs(owner),
       body: JSON.stringify({ name: 1 }),
     });
     expect(res.status).toBe(400);
   });
 
-  it("400s an invalid pointScale instead of hitting the DB trigger", async () => {
+  it("400s an invalid point_scale instead of hitting the DB trigger", async () => {
     const project = createProject(db, owner, { name: "P" });
     const res = await app.request(`${ORIGIN}/api/projects/${project.id}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: jsonAs(owner),
-      body: JSON.stringify({ pointScale: "bogus" }),
+      body: JSON.stringify({ point_scale: "bogus" }),
     });
     expect(res.status).toBe(400);
   });

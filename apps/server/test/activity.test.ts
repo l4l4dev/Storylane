@@ -104,7 +104,7 @@ describe("activity payloads", () => {
   it("records a project update with snake_case column names, not Drizzle's property names", () => {
     const project = createProject(db, owner, { name: "P" });
     withProject(db, owner, project.id, "project:update", (tx) =>
-      updateProject(tx, { name: "Renamed", description: "d", pointScale: "0,1,2,4,8" }),
+      updateProject(tx, { name: "Renamed", description: "d", point_scale: "0,1,2,4,8" }),
     );
     const rows = withProject(db, owner, project.id, "activity:read", (tx) => listActivity(tx, {}));
     const update = rows.at(-1)!;

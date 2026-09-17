@@ -12,18 +12,27 @@ import {
   readProject,
   setArchived,
   updateProject,
-  type ProjectPatch,
+  type ProjectSettingsPatch,
 } from "../services/projects";
+import { changeRole, leaveProject, listMemberships, removeMember } from "../services/memberships";
+import type { MemberRole } from "../authz/permissions";
 import { DESCRIPTION_MAX, NAME_MAX, assertMaxLength } from "./limits";
 
 const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
+const ROLES: readonly MemberRole[] = ["owner", "member", "viewer"];
+
+function requireRole(value: unknown): MemberRole {
+  if (typeof value !== "string" || !ROLES.includes(value as MemberRole)) throw new HttpError(400, "role_invalid");
+  return value as MemberRole;
+}
+
 /**
- * Shapes and bounds the PATCH body; every check throws HttpError so it can run inside the
+ * Shapes and bounds the PUT body; every check throws HttpError so it can run inside the
  * withProject callback (auth precedence over body validation — spec/permissions.md).
  */
-function validateProjectPatch(input: Record<string, unknown>): ProjectPatch {
-  const patch: ProjectPatch = {};
+function validateProjectSettingsPatch(input: Record<string, unknown>): ProjectSettingsPatch {
+  const patch: ProjectSettingsPatch = {};
   if (input.name !== undefined) {
     if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
     assertMaxLength(input.name, NAME_MAX, "name_too_long");
@@ -36,13 +45,57 @@ function validateProjectPatch(input: Record<string, unknown>): ProjectPatch {
     if (typeof input.description === "string") assertMaxLength(input.description, DESCRIPTION_MAX, "description_too_long");
     patch.description = input.description as string | null;
   }
-  // PROVISIONAL (Task 7 owns the settings routes): the scale is now the stored
-  // comma-separated string; the service validates its shape.
-  if (input.pointScale !== undefined) {
-    if (typeof input.pointScale !== "string" || input.pointScale.trim().length === 0) {
+  if (input.point_scale !== undefined) {
+    if (typeof input.point_scale !== "string" || input.point_scale.trim().length === 0) {
       throw new HttpError(400, "point_scale_invalid");
     }
-    patch.pointScale = input.pointScale;
+    patch.point_scale = input.point_scale;
+  }
+  if (input.bugs_and_chores_are_estimatable !== undefined) {
+    if (typeof input.bugs_and_chores_are_estimatable !== "boolean") throw new HttpError(400, "invalid_body");
+    patch.bugs_and_chores_are_estimatable = input.bugs_and_chores_are_estimatable;
+  }
+  if (input.iteration_length !== undefined) {
+    if (typeof input.iteration_length !== "number") throw new HttpError(400, "iteration_length_invalid");
+    patch.iteration_length = input.iteration_length;
+  }
+  if (input.week_start_day !== undefined) {
+    if (typeof input.week_start_day !== "number") throw new HttpError(400, "week_start_day_invalid");
+    patch.week_start_day = input.week_start_day;
+  }
+  if (input.start_date !== undefined) {
+    if (typeof input.start_date !== "string") throw new HttpError(400, "start_date_invalid");
+    patch.start_date = input.start_date;
+  }
+  if (input.time_zone !== undefined) {
+    if (typeof input.time_zone !== "string") throw new HttpError(400, "time_zone_invalid");
+    patch.time_zone = input.time_zone;
+  }
+  if (input.velocity_averaged_over !== undefined) {
+    if (typeof input.velocity_averaged_over !== "number") throw new HttpError(400, "velocity_averaged_over_invalid");
+    patch.velocity_averaged_over = input.velocity_averaged_over;
+  }
+  if (input.initial_velocity !== undefined) {
+    if (typeof input.initial_velocity !== "number") throw new HttpError(400, "initial_velocity_invalid");
+    patch.initial_velocity = input.initial_velocity;
+  }
+  if (input.number_of_done_iterations_to_show !== undefined) {
+    if (typeof input.number_of_done_iterations_to_show !== "number") {
+      throw new HttpError(400, "number_of_done_iterations_to_show_invalid");
+    }
+    patch.number_of_done_iterations_to_show = input.number_of_done_iterations_to_show;
+  }
+  if (input.automatic_planning !== undefined) {
+    if (typeof input.automatic_planning !== "boolean") throw new HttpError(400, "invalid_body");
+    patch.automatic_planning = input.automatic_planning;
+  }
+  if (input.enable_tasks !== undefined) {
+    if (typeof input.enable_tasks !== "boolean") throw new HttpError(400, "invalid_body");
+    patch.enable_tasks = input.enable_tasks;
+  }
+  if (input.show_story_priority !== undefined) {
+    if (typeof input.show_story_priority !== "boolean") throw new HttpError(400, "invalid_body");
+    patch.show_story_priority = input.show_story_priority;
   }
   return patch;
 }
@@ -67,11 +120,11 @@ export function projectRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Contex
     .get("/api/projects/:id", (c) =>
       c.json(withProject(db, actorOf(c), c.req.param("id"), "project:read", (tx) => readProject(tx))),
     )
-    .patch("/api/projects/:id", async (c) => {
+    .put("/api/projects/:id", async (c) => {
       const input = await body(c);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "project:update", (tx) =>
-          updateProject(tx, validateProjectPatch(input)),
+          updateProject(tx, validateProjectSettingsPatch(input)),
         ),
       );
     })
@@ -84,5 +137,26 @@ export function projectRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Contex
     )
     .post("/api/projects/:id/unarchive", (c) =>
       c.json(withProjectChange(deps, actorOf(c), c.req.param("id"), "project:archive", (tx) => setArchived(tx, false))),
-    );
+    )
+    .get("/api/projects/:id/memberships", (c) =>
+      c.json(withProject(db, actorOf(c), c.req.param("id"), "member:read", (tx) => listMemberships(tx))),
+    )
+    .put("/api/projects/:id/memberships/:userId", async (c) => {
+      const input = await body(c);
+      return c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "member:change-role", (tx) =>
+          changeRole(tx, c.req.param("userId"), requireRole(input.role)),
+        ),
+      );
+    })
+    .delete("/api/projects/:id/memberships/me", (c) => {
+      withProjectChange(deps, actorOf(c), c.req.param("id"), "member:leave", (tx) => leaveProject(tx));
+      return c.body(null, 204);
+    })
+    .delete("/api/projects/:id/memberships/:userId", (c) => {
+      withProjectChange(deps, actorOf(c), c.req.param("id"), "member:remove", (tx) =>
+        removeMember(tx, c.req.param("userId")),
+      );
+      return c.body(null, 204);
+    });
 }

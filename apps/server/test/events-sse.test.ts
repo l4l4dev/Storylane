@@ -83,7 +83,7 @@ describe("GET /api/projects/:id/events", () => {
     expect(bus.subscriberCount()).toBe(2);
 
     await app.request(`${ORIGIN}/api/projects/${projectId}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: json(owner),
       body: JSON.stringify({ name: "Ship it" }),
     });
@@ -102,9 +102,9 @@ describe("GET /api/projects/:id/events", () => {
   it("publishes nothing on a 400: an invalid body never reaches withProjectChange's publish call", async () => {
     const res = await app.request(`${ORIGIN}/api/projects/${projectId}/events`, { headers: as(owner) });
     const invalid = await app.request(`${ORIGIN}/api/projects/${projectId}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: json(owner),
-      body: JSON.stringify({ pointScale: "bogus" }),
+      body: JSON.stringify({ point_scale: "bogus" }),
     });
     expect(invalid.status).toBe(400);
     const frames = await collectFrames(res, 200);
@@ -123,7 +123,7 @@ describe("GET /api/projects/:id/events", () => {
 
     const res = await app.request(`${ORIGIN}/api/projects/${projectId}/events`, { headers: as(owner) });
     const conflicted = await app.request(`${ORIGIN}/api/projects/${projectId}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: json(owner),
       body: JSON.stringify({ name: "nope" }),
     });
