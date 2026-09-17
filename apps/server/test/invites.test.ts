@@ -413,3 +413,18 @@ describe("activity kinds", () => {
     expect(joined.kind).toBe("project_membership_create_activity");
   });
 });
+
+describe("invite routes body parsing", () => {
+  it("answers 400 invalid_body for a malformed mint body, while an absent body stays a role error", async () => {
+    const bad = await app.request(`${ORIGIN}/api/projects/${projectId}/invites`, {
+      method: "POST",
+      headers: jsonAs(owner),
+      body: "{\"role\":",
+    });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "invalid_body" });
+    const absent = await app.request(`${ORIGIN}/api/projects/${projectId}/invites`, { method: "POST", headers: jsonAs(owner) });
+    expect(absent.status).toBe(400);
+    expect(await absent.json()).toEqual({ error: "role_invalid" });
+  });
+});

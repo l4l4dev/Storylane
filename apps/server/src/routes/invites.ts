@@ -30,7 +30,19 @@ const INVITE_ROLES: readonly InviteRole[] = ["member", "viewer"];
 /** C0 controls, DEL, and C1 controls — none of these belong in an email or a display name. */
 const HAS_CONTROL_CHARS = /[\x00-\x1f\x7f-\x9f]/;
 
-const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+// A malformed body carries nothing about the project, so this 400 may answer before 404/403.
+const body = async (c: Context): Promise<Record<string, unknown>> => {
+  const text = await c.req.text();
+  if (text.trim() === "") return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "invalid_body");
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new HttpError(400, "invalid_body");
+  return parsed as Record<string, unknown>;
+};
 
 function requireInviteRole(value: unknown): InviteRole {
   if (typeof value !== "string" || !INVITE_ROLES.includes(value as InviteRole)) throw new HttpError(400, "role_invalid");

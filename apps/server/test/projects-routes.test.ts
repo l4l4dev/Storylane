@@ -151,3 +151,58 @@ describe("POST /api/projects/:id/review_types authorization precedence", () => {
     expect(res.status).toBe(403);
   });
 });
+
+async function putJson(path: string, actor: Actor, payload: string | Record<string, unknown>) {
+  const res = await app.request(`${ORIGIN}${path}`, {
+    method: path.endsWith("review_types") ? "POST" : "PUT",
+    headers: jsonAs(actor),
+    body: typeof payload === "string" ? payload : JSON.stringify(payload),
+  });
+  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+}
+
+describe("PUT /api/projects/:id settings bounds", () => {
+  const cases: Array<[Record<string, unknown>, string]> = [
+    [{ iteration_length: 1.5 }, "iteration_length_invalid"],
+    [{ week_start_day: 0.5 }, "week_start_day_invalid"],
+    [{ velocity_averaged_over: 2.5 }, "velocity_averaged_over_invalid"],
+    [{ number_of_done_iterations_to_show: 3.7 }, "number_of_done_iterations_to_show_invalid"],
+    [{ initial_velocity: 2.2 }, "initial_velocity_invalid"],
+    [{ start_date: "hello" }, "start_date_invalid"],
+    [{ start_date: "2026-13-45" }, "start_date_invalid"],
+    [{ start_date: "2026-02-30" }, "start_date_invalid"],
+  ];
+  for (const [patch, code] of cases) {
+    it(`answers 400 ${code} for ${JSON.stringify(patch)} and stores nothing`, async () => {
+      const project = createProject(db, owner, { name: "P" });
+      const before = db.select().from(projects).where(eq(projects.id, project.id)).get();
+      expect(await putJson(`/api/projects/${project.id}`, owner, patch)).toEqual({ status: 400, body: { error: code } });
+      expect(db.select().from(projects).where(eq(projects.id, project.id)).get()).toEqual(before);
+    });
+  }
+
+  it("answers 400 invalid_body for malformed JSON", async () => {
+    const project = createProject(db, owner, { name: "P" });
+    expect(await putJson(`/api/projects/${project.id}`, owner, "{\"name\":")).toEqual({
+      status: 400,
+      body: { error: "invalid_body" },
+    });
+  });
+});
+
+describe("review type names are trimmed", () => {
+  it("stores a trimmed name on create and rename, and refuses a blank one", async () => {
+    const project = createProject(db, owner, { name: "P" });
+    const created = await putJson(`/api/projects/${project.id}/review_types`, owner, { name: "  Legal sign-off  " });
+    expect(created.status).toBe(201);
+    expect(created.body.name).toBe("Legal sign-off");
+    expect(await putJson(`/api/projects/${project.id}/review_types`, owner, { name: "   " })).toEqual({
+      status: 400,
+      body: { error: "name_required" },
+    });
+    const renamed = await putJson(`/api/projects/${project.id}/review_types/${created.body.id as string}`, owner, {
+      name: " Legal ",
+    });
+    expect(renamed.body.name).toBe("Legal");
+  });
+});

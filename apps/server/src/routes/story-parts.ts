@@ -24,7 +24,19 @@ import { createReview, deleteReview, listReviews, updateReview } from "../servic
 import { REVIEW_STATUSES, type ReviewStatus } from "../db/schema";
 import { DESCRIPTION_MAX, FILENAME_MAX, assertMaxLength } from "./limits";
 
-const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+// A malformed body carries nothing about the project, so this 400 may answer before 404/403.
+const body = async (c: Context): Promise<Record<string, unknown>> => {
+  const text = await c.req.text();
+  if (text.trim() === "") return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "invalid_body");
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new HttpError(400, "invalid_body");
+  return parsed as Record<string, unknown>;
+};
 
 function rejectUnknownKeys(input: Record<string, unknown>, allowed: ReadonlySet<string>): void {
   for (const key of Object.keys(input)) {
@@ -294,6 +306,8 @@ export function storyPartRoutes(deps: {
       const input = await body(c);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "task:write", (tx) => {
+          const tasks = listTasks(tx, c.req.param("storyId"));
+          assertTaskOnStory(tasks, c.req.param("taskId"));
           rejectUnknownKeys(input, TASK_PATCH_KEYS);
           const patch: { description?: string; complete?: boolean; position?: number } = {};
           if (input.description !== undefined) patch.description = requireDescription(input);
@@ -303,8 +317,6 @@ export function storyPartRoutes(deps: {
           }
           const position = optionalPosition(input.position);
           if (position !== undefined) patch.position = position;
-          const tasks = listTasks(tx, c.req.param("storyId"));
-          assertTaskOnStory(tasks, c.req.param("taskId"));
           return updateTask(tx, c.req.param("taskId"), patch);
         }),
       );
@@ -337,6 +349,8 @@ export function storyPartRoutes(deps: {
       const input = await body(c);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "blocker:write", (tx) => {
+          const blockers = listBlockers(tx, c.req.param("storyId"));
+          assertBlockerOnStory(blockers, c.req.param("blockerId"));
           rejectUnknownKeys(input, BLOCKER_PATCH_KEYS);
           const patch: { description?: string; resolved?: boolean } = {};
           if (input.description !== undefined) patch.description = requireDescription(input);
@@ -344,8 +358,6 @@ export function storyPartRoutes(deps: {
             if (typeof input.resolved !== "boolean") throw new HttpError(400, "resolved_invalid");
             patch.resolved = input.resolved;
           }
-          const blockers = listBlockers(tx, c.req.param("storyId"));
-          assertBlockerOnStory(blockers, c.req.param("blockerId"));
           return updateBlocker(tx, c.req.param("blockerId"), patch);
         }),
       );
@@ -384,14 +396,14 @@ export function storyPartRoutes(deps: {
       const input = await body(c);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "review:write", (tx) => {
+          const reviews = listReviews(tx, c.req.param("storyId"));
+          assertReviewOnStory(reviews, c.req.param("reviewId"));
           rejectUnknownKeys(input, REVIEW_PATCH_KEYS);
           const reviewerId = optionalReviewerId(input.reviewer_id);
           const status = optionalReviewStatus(input.status);
           const patch: { reviewer_id?: string | null; status?: ReviewStatus } = {};
           if (reviewerId !== undefined) patch.reviewer_id = reviewerId;
           if (status !== undefined) patch.status = status;
-          const reviews = listReviews(tx, c.req.param("storyId"));
-          assertReviewOnStory(reviews, c.req.param("reviewId"));
           return updateReview(tx, c.req.param("reviewId"), patch);
         }),
       );

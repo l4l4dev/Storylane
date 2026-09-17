@@ -68,6 +68,8 @@ bookkeeping (`member:read` is 200 for viewers and must not carry it).
   `member:change-role` and `member:remove` answer `409 last_owner`.
   `member:leave` is `403` for any owner instead — transfer ownership first.
   `member:leave` is the actor removing their own membership.
+  `member:remove` naming the actor's own id answers `403 forbidden`, so an owner
+  cannot bypass the `member:leave` rule.
 - **Archived project.** With `projects.archived_at` set, `:read` actions are
   unaffected and every other action answers `409 project_archived` for every
   role, except `project:archive` (un-archive) and `project:delete`, which stay

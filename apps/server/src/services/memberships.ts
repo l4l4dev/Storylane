@@ -81,7 +81,7 @@ function ownerCount(tx: ProjectTx): number {
   return row?.n ?? 0;
 }
 
-function loadRole(tx: ProjectTx, userId: string): MemberRole {
+export function loadRole(tx: ProjectTx, userId: string): MemberRole {
   const row = tx.tx
     .select({ role: projectMembers.role })
     .from(projectMembers)
@@ -119,8 +119,10 @@ export function changeRole(tx: ProjectTx, userId: string, role: MemberRole): Mem
   return toRow(selectMembership(tx, userId)!);
 }
 
+/** Owners leave by transferring ownership and then member:leave, never by removing themselves. */
 export function removeMember(tx: ProjectTx, userId: string): void {
   const currentRole = loadRole(tx, userId);
+  if (tx.actor.kind === "user" && tx.actor.userId === userId) throw new HttpError(403, "forbidden");
   if (currentRole === "owner" && ownerCount(tx) <= 1) throw new HttpError(409, "last_owner");
   tx.tx
     .delete(projectMembers)

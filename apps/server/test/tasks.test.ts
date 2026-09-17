@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { createTask, deleteTask, listTasks, updateTask } from "../src/services/tasks";
 import { withProject } from "../src/db/tx";
-import { makeTestApp, makeTestDb, seedProject, seedStory, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedBlocker, seedProject, seedReview, seedReviewType, seedStory, seedTask, seedUser } from "./harness";
 
 function setup() {
   const db = makeTestDb();
@@ -166,5 +166,43 @@ describe("task routes", () => {
       headers,
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("story-part PUT resolves the child before validating the body", () => {
+  const headersOf = (actor: unknown) => ({ "content-type": "application/json", "x-test-actor": JSON.stringify(actor) });
+
+  it("answers 404 for a task, blocker or review on another story even with an unknown field", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const here = seedStory(db, projectId);
+    const there = seedStory(db, projectId);
+    const children = {
+      tasks: seedTask(db, projectId, there, "elsewhere"),
+      blockers: seedBlocker(db, projectId, there, owner),
+      reviews: seedReview(db, projectId, there, seedReviewType(db, projectId)),
+    };
+    for (const [part, childId] of Object.entries(children)) {
+      const res = await app.request(`/api/projects/${projectId}/stories/${here}/${part}/${childId}`, {
+        method: "PUT",
+        headers: headersOf(owner),
+        body: JSON.stringify({ bogus: 1 }),
+      });
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: "not_found" });
+    }
+  });
+
+  it("answers 400 invalid_body for malformed JSON", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const storyId = seedStory(db, projectId);
+    const res = await app.request(`/api/projects/${projectId}/stories/${storyId}/tasks`, {
+      method: "POST",
+      headers: headersOf(owner),
+      body: "not json",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
   });
 });

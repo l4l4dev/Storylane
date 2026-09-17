@@ -15,19 +15,38 @@ import {
   updateProject,
   type ProjectSettingsPatch,
 } from "../services/projects";
-import { changeRole, leaveProject, listMemberships, removeMember } from "../services/memberships";
+import { changeRole, leaveProject, listMemberships, loadRole, removeMember } from "../services/memberships";
 import { createReviewType, listReviewTypes, updateReviewType } from "../services/reviews";
 import type { MemberRole } from "../authz/permissions";
 import type { AttachmentStore } from "../attachments/store";
 import { DESCRIPTION_MAX, NAME_MAX, assertMaxLength } from "./limits";
 
-const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+// A malformed body carries nothing about the project, so this 400 may answer before 404/403.
+const body = async (c: Context): Promise<Record<string, unknown>> => {
+  const text = await c.req.text();
+  if (text.trim() === "") return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "invalid_body");
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new HttpError(400, "invalid_body");
+  return parsed as Record<string, unknown>;
+};
 
 const ROLES: readonly MemberRole[] = ["owner", "member", "viewer"];
 
 function requireRole(value: unknown): MemberRole {
   if (typeof value !== "string" || !ROLES.includes(value as MemberRole)) throw new HttpError(400, "role_invalid");
   return value as MemberRole;
+}
+
+function isCalendarDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
 }
 
 /**
@@ -59,34 +78,34 @@ function validateProjectSettingsPatch(input: Record<string, unknown>): ProjectSe
     patch.bugs_and_chores_are_estimatable = input.bugs_and_chores_are_estimatable;
   }
   if (input.iteration_length !== undefined) {
-    if (typeof input.iteration_length !== "number") throw new HttpError(400, "iteration_length_invalid");
-    patch.iteration_length = input.iteration_length;
+    if (!Number.isInteger(input.iteration_length)) throw new HttpError(400, "iteration_length_invalid");
+    patch.iteration_length = input.iteration_length as number;
   }
   if (input.week_start_day !== undefined) {
-    if (typeof input.week_start_day !== "number") throw new HttpError(400, "week_start_day_invalid");
-    patch.week_start_day = input.week_start_day;
+    if (!Number.isInteger(input.week_start_day)) throw new HttpError(400, "week_start_day_invalid");
+    patch.week_start_day = input.week_start_day as number;
   }
   if (input.start_date !== undefined) {
-    if (typeof input.start_date !== "string") throw new HttpError(400, "start_date_invalid");
-    patch.start_date = input.start_date;
+    if (!isCalendarDate(input.start_date)) throw new HttpError(400, "start_date_invalid");
+    patch.start_date = input.start_date as string;
   }
   if (input.time_zone !== undefined) {
     if (typeof input.time_zone !== "string") throw new HttpError(400, "time_zone_invalid");
     patch.time_zone = input.time_zone;
   }
   if (input.velocity_averaged_over !== undefined) {
-    if (typeof input.velocity_averaged_over !== "number") throw new HttpError(400, "velocity_averaged_over_invalid");
-    patch.velocity_averaged_over = input.velocity_averaged_over;
+    if (!Number.isInteger(input.velocity_averaged_over)) throw new HttpError(400, "velocity_averaged_over_invalid");
+    patch.velocity_averaged_over = input.velocity_averaged_over as number;
   }
   if (input.initial_velocity !== undefined) {
-    if (typeof input.initial_velocity !== "number") throw new HttpError(400, "initial_velocity_invalid");
-    patch.initial_velocity = input.initial_velocity;
+    if (!Number.isInteger(input.initial_velocity)) throw new HttpError(400, "initial_velocity_invalid");
+    patch.initial_velocity = input.initial_velocity as number;
   }
   if (input.number_of_done_iterations_to_show !== undefined) {
-    if (typeof input.number_of_done_iterations_to_show !== "number") {
+    if (!Number.isInteger(input.number_of_done_iterations_to_show)) {
       throw new HttpError(400, "number_of_done_iterations_to_show_invalid");
     }
-    patch.number_of_done_iterations_to_show = input.number_of_done_iterations_to_show;
+    patch.number_of_done_iterations_to_show = input.number_of_done_iterations_to_show as number;
   }
   if (input.automatic_planning !== undefined) {
     if (typeof input.automatic_planning !== "boolean") throw new HttpError(400, "invalid_body");
@@ -162,9 +181,10 @@ export function projectRoutes(deps: {
     .put("/api/projects/:id/memberships/:userId", async (c) => {
       const input = await body(c);
       return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "member:change-role", (tx) =>
-          changeRole(tx, c.req.param("userId"), requireRole(input.role)),
-        ),
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "member:change-role", (tx) => {
+          loadRole(tx, c.req.param("userId"));
+          return changeRole(tx, c.req.param("userId"), requireRole(input.role));
+        }),
       );
     })
     .delete("/api/projects/:id/memberships/me", (c) => {
@@ -184,9 +204,10 @@ export function projectRoutes(deps: {
       const input = await body(c);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "review-type:write", (tx) => {
-          if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
-          assertMaxLength(input.name, NAME_MAX, "name_too_long");
-          return createReviewType(tx, input.name);
+          const name = typeof input.name === "string" ? input.name.trim() : "";
+          if (name.length === 0) throw new HttpError(400, "name_required");
+          assertMaxLength(name, NAME_MAX, "name_too_long");
+          return createReviewType(tx, name);
         }),
         201,
       );
@@ -197,9 +218,10 @@ export function projectRoutes(deps: {
         withProjectChange(deps, actorOf(c), c.req.param("id"), "review-type:write", (tx) => {
           const patch: { name?: string; hidden?: boolean } = {};
           if (input.name !== undefined) {
-            if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
-            assertMaxLength(input.name, NAME_MAX, "name_too_long");
-            patch.name = input.name;
+            const name = typeof input.name === "string" ? input.name.trim() : "";
+            if (name.length === 0) throw new HttpError(400, "name_required");
+            assertMaxLength(name, NAME_MAX, "name_too_long");
+            patch.name = name;
           }
           if (input.hidden !== undefined) {
             if (typeof input.hidden !== "boolean") throw new HttpError(400, "invalid_body");
