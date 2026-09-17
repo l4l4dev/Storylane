@@ -23,6 +23,8 @@ export interface MatrixContext {
   userId: string;
   /** A seeded member who is not the sole owner, so the membership matrix rows never hit 409 last_owner. */
   memberUserId: string;
+  /** A seeded story in the seeded project, for the story matrix rows. */
+  storyId: string;
 }
 
 export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture> {
@@ -38,5 +40,9 @@ export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture
     "PUT /api/projects/:id/memberships/:userId": { params: { userId: ctx.memberUserId }, body: { role: "viewer" } },
     "DELETE /api/projects/:id/memberships/:userId": { params: { userId: ctx.memberUserId } },
     "DELETE /api/projects/:id/memberships/me": { body: {} },
+    "POST /api/projects/:id/stories": { body: { name: "Matrix story" } },
+    "GET /api/projects/:id/stories/:storyId": { params: { storyId: ctx.storyId } },
+    "PUT /api/projects/:id/stories/:storyId": { params: { storyId: ctx.storyId }, body: { name: "Matrix" } },
+    "DELETE /api/projects/:id/stories/:storyId": { params: { storyId: ctx.storyId } },
   };
 }

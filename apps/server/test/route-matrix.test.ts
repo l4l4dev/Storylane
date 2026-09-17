@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
-import { makeTestApp, makeTestDb, seedProject, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedProject, seedStory, seedUser } from "./harness";
 import { ROUTE_ACTIONS } from "../src/authz/route-manifest";
 import { ALL_ACTIONS, expected, ROLES, type Action, type Role } from "../src/authz/permissions";
 import { withProject, type Actor } from "../src/db/tx";
@@ -24,7 +24,8 @@ function seedFullProject() {
     [viewerA, "viewer"],
   ]);
   const seededInvite = withProject(db, ownerA, id, "member:invite", (tx) => mintInvite(tx, { role: "member" }));
-  return { id, inviteId: seededInvite.invite.id };
+  const storyId = seedStory(db, id);
+  return { id, inviteId: seededInvite.invite.id, storyId };
 }
 
 const seeded = seedFullProject();
@@ -35,6 +36,7 @@ const fixturesFor = (t: ReturnType<typeof seedFullProject>): Record<string, Matr
     inviteId: t.inviteId,
     userId: (ownerA as { userId: string }).userId,
     memberUserId: (memberA as { userId: string }).userId,
+    storyId: t.storyId,
   });
 const FIXTURES = fixturesFor(seeded);
 const actors: Record<Role, Actor> = {
@@ -53,6 +55,11 @@ const DESTRUCTIVE = new Set([
   "DELETE /api/projects/:id",
   "DELETE /api/projects/:id/memberships/:userId",
   "DELETE /api/projects/:id/memberships/me",
+  "DELETE /api/projects/:id/stories/:storyId",
+  // Not a DELETE, but the owner row permanently demotes ctx.memberUserId to "viewer" in the
+  // shared project — any later matrix row that relies on that actor still being "member"
+  // (e.g. story:write) would otherwise see the wrong role.
+  "PUT /api/projects/:id/memberships/:userId",
 ]);
 
 // Only these exact middleware registrations (app.use(path, …) in app.ts) are exempt — an

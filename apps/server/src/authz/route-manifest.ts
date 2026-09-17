@@ -33,4 +33,9 @@ export const ROUTE_ACTIONS: Record<`${Method} ${string}`, RouteRule> = {
   "POST /api/auth/reset/:token": "public",
   "GET /api/projects/:id/events": "project:read",
   "GET /api/projects/:id/activity": "activity:read",
+  "GET /api/projects/:id/stories": "story:read",
+  "POST /api/projects/:id/stories": "story:write",
+  "GET /api/projects/:id/stories/:storyId": "story:read",
+  "PUT /api/projects/:id/stories/:storyId": "story:write",
+  "DELETE /api/projects/:id/stories/:storyId": "story:delete",
 };
