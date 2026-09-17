@@ -167,10 +167,17 @@ describe("permission matrix over project routes", () => {
         // csrfGuard rejects any unsafe request that is not application/json, so every non-GET
         // row must carry the header or the matrix would assert 403 instead of the real answer.
         if (method !== "GET") headers["content-type"] = "application/json";
+        const raw = fixture.rawBody;
+        if (raw) {
+          Object.assign(headers, raw.headers, {
+            "content-type": raw.contentType,
+            "content-length": String(new TextEncoder().encode(raw.bytes).byteLength),
+          });
+        }
         const res = await app.request(url, {
           method,
           headers,
-          ...(fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
+          ...(raw ? { body: raw.bytes } : fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
         });
         if (fixture.stream) await res.body?.cancel();
         const want = expected(rule, role);

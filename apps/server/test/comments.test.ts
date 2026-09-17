@@ -61,6 +61,14 @@ describe("comments", () => {
     expect(ids).toEqual([uid(alice)]);
   });
 
+  it("ignores sentence punctuation after a mention", () => {
+    const { db, owner, alice, carol, projectId } = setup();
+    const ids = withProject(db, owner, projectId, "story:read", (tx) =>
+      mentionedUserIds(tx, "thanks @alice. and @carol.smith_ too, @- @."),
+    );
+    expect(ids).toEqual([uid(alice), uid(carol)]);
+  });
+
   it("leaves an ambiguous mention unresolved", () => {
     const { db, owner, projectId } = setup();
     const twin = seedUser(db, "alice@other.example.test");

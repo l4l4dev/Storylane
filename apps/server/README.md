@@ -34,6 +34,12 @@ value exits with code 2 and a JSON error line on stderr/stdout.
 Comment attachments are stored on disk at
 `$STORYLANE_DATA_DIR/attachments/<project id>/<attachment id>`; their metadata is in SQLite.
 
+An upload is `POST /api/projects/:id/stories/:storyId/comments/:commentId/attachments` with the
+raw file as the body, `Content-Type: application/octet-stream`, a `Content-Length` of at most
+25 MiB, the percent-encoded filename in `X-Filename` and the file's media type in
+`X-Content-Type`. Only the comment's author may attach. This is the one route where the CSRF
+guard accepts a non-JSON body.
+
 ## Backups
 
 DB backups do not include attachments; back up `$STORYLANE_DATA_DIR/attachments` separately.

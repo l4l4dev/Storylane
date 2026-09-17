@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createAttachmentStore } from "../src/attachments/store";
+import { ATTACHMENT_MAX_BYTES, createAttachmentStore } from "../src/attachments/store";
 import { contentDisposition, safeContentType } from "../src/routes/story-parts";
 import type { Actor } from "../src/db/tx";
 import {
@@ -209,10 +209,138 @@ describe("comment and attachment routes", () => {
   });
 });
 
+describe("upload route", () => {
+  function upload(
+    app: ReturnType<typeof makeTestApp>["app"],
+    actor: Actor,
+    path: string,
+    bytes: string,
+    headers: Record<string, string> = {},
+  ) {
+    return app.request(path, {
+      method: "POST",
+      headers: {
+        "x-test-actor": JSON.stringify(actor),
+        "content-type": "application/octet-stream",
+        "content-length": String(new TextEncoder().encode(bytes).byteLength),
+        ...headers,
+      },
+      body: bytes,
+    });
+  }
+
+  function attachmentFiles(dataDir: string, projectId: string): string[] {
+    const dir = join(dataDir, "attachments", projectId);
+    return existsSync(dir) ? readdirSync(dir) : [];
+  }
+
+  it("stores the bytes and round-trips them through the download", async () => {
+    const { dataDir, db, app, member, projectId, storyId, as } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    const res = await upload(
+      app,
+      member,
+      `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`,
+      "hello bytes",
+      { "x-filename": encodeURIComponent("  レポート.txt "), "x-content-type": "text/plain; charset=utf-8" },
+    );
+    expect(res.status).toBe(201);
+    const row = (await res.json()) as { id: string; filename: string; content_type: string; size: number; download_url: string };
+    expect(row).toMatchObject({ filename: "レポート.txt", content_type: "text/plain", size: 11 });
+    expect(attachmentFiles(dataDir, projectId)).toEqual([row.id]);
+    const download = await app.request(row.download_url, as(member));
+    expect(download.status).toBe(200);
+    expect(await download.text()).toBe("hello bytes");
+    const list = (await (await app.request(`/api/projects/${projectId}/stories/${storyId}/comments`, as(member))).json()) as {
+      file_attachments: { id: string }[];
+    }[];
+    expect(list[0]!.file_attachments.map((f) => f.id)).toEqual([row.id]);
+  });
+
+  it("defaults an empty filename and an implausible type", async () => {
+    const { db, app, member, projectId, storyId } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    const res = await upload(
+      app,
+      member,
+      `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`,
+      "x",
+      { "x-filename": "%20", "x-content-type": "nonsense" },
+    );
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ filename: "file", content_type: "application/octet-stream" });
+  });
+
+  it("refuses an oversized Content-Length with 413 before reading the body", async () => {
+    const { dataDir, db, app, member, projectId, storyId } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    const res = await upload(
+      app,
+      member,
+      `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`,
+      "small",
+      { "content-length": String(ATTACHMENT_MAX_BYTES + 1) },
+    );
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "attachment_too_large" });
+    expect(attachmentFiles(dataDir, projectId)).toEqual([]);
+  });
+
+  it("refuses an empty body with 400", async () => {
+    const { db, app, member, projectId, storyId } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    const res = await upload(app, member, `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`, "");
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "file_required" });
+  });
+
+  it("refuses a malformed X-Filename with 400", async () => {
+    const { db, app, member, projectId, storyId } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    const res = await upload(
+      app,
+      member,
+      `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`,
+      "x",
+      { "x-filename": "%E3%8" },
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "filename_invalid" });
+  });
+
+  it("refuses a member attaching to someone else's comment and leaves no bytes", async () => {
+    const { dataDir, db, app, owner, member, projectId, storyId } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, owner);
+    const res = await upload(app, member, `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`, "x");
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "not_comment_author" });
+    expect(attachmentFiles(dataDir, projectId)).toEqual([]);
+  });
+
+  it("rolls back a comment on another story and removes the bytes it wrote", async () => {
+    const { dataDir, db, app, member, projectId, storyId } = routeSetup();
+    const otherStory = seedStory(db, projectId);
+    const commentId = seedComment(db, projectId, otherStory, member);
+    const res = await upload(app, member, `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`, "x");
+    expect(res.status).toBe(404);
+    expect(attachmentFiles(dataDir, projectId)).toEqual([]);
+  });
+
+  it("writes no bytes for a non-member", async () => {
+    const { dataDir, db, app, member, projectId, storyId } = routeSetup();
+    const outsider = seedUser(db, "outsider@example.test");
+    const commentId = seedComment(db, projectId, storyId, member);
+    const res = await upload(app, outsider, `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`, "x");
+    expect(res.status).toBe(404);
+    expect(existsSync(join(dataDir, "attachments"))).toBe(false);
+  });
+});
+
 describe("download headers", () => {
   it("falls back to octet-stream for an implausible content type", () => {
     expect(safeContentType("")).toBe("application/octet-stream");
-    expect(safeContentType("text/html; charset=utf-8")).toBe("application/octet-stream");
+    expect(safeContentType("Text/HTML; charset=utf-8")).toBe("text/html");
+    expect(safeContentType("text/html\r\nX-Evil: 1")).toBe("application/octet-stream");
     expect(safeContentType("image/png")).toBe("image/png");
   });
 

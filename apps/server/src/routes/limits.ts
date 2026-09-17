@@ -8,6 +8,7 @@ import { HttpError } from "../http-error";
  */
 export const NAME_MAX = 120;
 export const DESCRIPTION_MAX = 2000;
+export const FILENAME_MAX = 255;
 
 export function assertMaxLength(value: string, max: number, code: string): void {
   if (value.length > max) throw new HttpError(400, code);

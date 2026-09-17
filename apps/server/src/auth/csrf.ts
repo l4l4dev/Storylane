@@ -6,6 +6,18 @@ import { lastForwarded } from "./forwarded";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
+/** The comment-attachment upload route, and nothing else, may send its file as raw bytes. */
+const OCTET_STREAM_UPLOAD_PATH = /^\/api\/projects\/[^/]+\/stories\/[^/]+\/comments\/[^/]+\/attachments$/;
+
+function mediaType(c: Context): string {
+  return (c.req.header("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
+function acceptedContentType(c: Context): boolean {
+  const type = mediaType(c);
+  if (type.startsWith("application/json")) return true;
+  return type === "application/octet-stream" && c.req.method === "POST" && OCTET_STREAM_UPLOAD_PATH.test(c.req.path);
+}
 
 /**
  * With STORYLANE_BASE_URL set, that is the only accepted origin. Without it the instance is
@@ -31,7 +43,11 @@ export function instanceOrigins(c: Context, config: Config): string[] {
  * a cross-site forced login would otherwise plant the attacker's session in the victim's
  * browser. Two independent checks:
  *
- *  - `application/json` for all of them, which a no-cors form POST cannot send;
+ *  - `application/json` for all of them, which a no-cors form POST cannot send. The one
+ *    exception is `application/octet-stream` on POST to the comment-attachment upload path:
+ *    it is not a CORS-simple type either, so a cross-site page cannot send it without a
+ *    preflight this server never answers. `multipart/form-data` stays refused because a plain
+ *    `<form>` can send it;
  *  - a matching `Origin` whenever the request carries one, and — when a session cookie is
  *    present — a same-origin `Sec-Fetch-Site` if it does not.
  *
@@ -42,10 +58,7 @@ export function instanceOrigins(c: Context, config: Config): string[] {
 export function csrfGuard(config: Config): MiddlewareHandler {
   return async (c, next) => {
     if (SAFE_METHODS.has(c.req.method)) return next();
-    const contentType = c.req.header("content-type") ?? "";
-    if (!contentType.split(";")[0]?.trim().toLowerCase().startsWith("application/json")) {
-      throw new HttpError(403, "csrf_check_failed");
-    }
+    if (!acceptedContentType(c)) throw new HttpError(403, "csrf_check_failed");
     const origin = c.req.header("origin");
     if (origin !== undefined) {
       if (!instanceOrigins(c, config).includes(origin)) throw new HttpError(403, "csrf_check_failed");

@@ -10,6 +10,8 @@ function appWith(env: Record<string, string> = {}) {
   const app = new Hono();
   app.use("/api/*", csrfGuard(config));
   app.post("/api/thing", (c) => c.json({ ok: true }));
+  app.post("/api/projects/:id/stories/:storyId/comments/:commentId/attachments", (c) => c.json({ ok: true }));
+  app.post("/api/projects/:id/stories/:storyId/comments", (c) => c.json({ ok: true }));
   app.get("/api/thing", (c) => c.json({ ok: true }));
   app.onError((err, c) => {
     if (err instanceof HttpError) return c.json({ error: err.code }, err.status as 400);
@@ -180,5 +182,63 @@ describe("csrfGuard", () => {
       body: "{}",
     });
     expect(bad.status).toBe(403);
+  });
+
+  describe("octet-stream upload allowance", () => {
+    const origin = "http://tracker.example.test";
+    const upload = `${origin}/api/projects/p/stories/s/comments/c/attachments`;
+    const octet = { "content-type": "application/octet-stream" };
+
+    it("accepts octet-stream on the upload path with a matching Origin", async () => {
+      const res = await appWith().request(upload, {
+        method: "POST",
+        headers: { ...withCookie, ...octet, origin },
+        body: "bytes",
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("rejects octet-stream on the upload path with a foreign Origin", async () => {
+      const res = await appWith().request(upload, {
+        method: "POST",
+        headers: { ...withCookie, ...octet, origin: "http://evil.example.test" },
+        body: "bytes",
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("rejects octet-stream with a cookie but neither Origin nor Sec-Fetch-Site", async () => {
+      const res = await appWith().request(upload, { method: "POST", headers: { ...withCookie, ...octet }, body: "b" });
+      expect(res.status).toBe(403);
+    });
+
+    it("rejects octet-stream on any other path", async () => {
+      for (const path of ["/api/projects/p/stories/s/comments", "/api/thing", "/api/projects/p/stories/s/comments/c/attachments/x"]) {
+        const res = await appWith().request(`${origin}${path}`, {
+          method: "POST",
+          headers: { ...withCookie, ...octet, origin },
+          body: "bytes",
+        });
+        expect(res.status).toBe(403);
+      }
+    });
+
+    it("rejects octet-stream on the upload path with a method other than POST", async () => {
+      const res = await appWith().request(upload, {
+        method: "PUT",
+        headers: { ...withCookie, ...octet, origin },
+        body: "bytes",
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("rejects multipart/form-data on the upload path", async () => {
+      const res = await appWith().request(upload, {
+        method: "POST",
+        headers: { ...withCookie, "content-type": "multipart/form-data; boundary=x", origin },
+        body: "--x--",
+      });
+      expect(res.status).toBe(403);
+    });
   });
 });

@@ -9,6 +9,8 @@ export interface MatrixFixture {
   params?: Record<string, string>;
   /** JSON body for non-GET routes. */
   body?: unknown;
+  /** Raw (non-JSON) request body, sent with its own content type and extra headers. */
+  rawBody?: { contentType: string; headers?: Record<string, string>; bytes: string };
   /** Server-sent-events route: cancel the body once the status is known. */
   stream?: boolean;
   /** Overrides for the roles whose expected answer depends on who owns the row. */
@@ -98,6 +100,14 @@ export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture
     })),
     "DELETE /api/projects/:id/stories/:storyId/comments/:commentId": ownRow(ctx.commentIds, (commentId) => ({
       params: { storyId: ctx.storyId, commentId },
+    })),
+    "POST /api/projects/:id/stories/:storyId/comments/:commentId/attachments": ownRow(ctx.commentIds, (commentId) => ({
+      params: { storyId: ctx.storyId, commentId },
+      rawBody: {
+        contentType: "application/octet-stream",
+        headers: { "x-filename": "matrix.txt", "x-content-type": "text/plain" },
+        bytes: "matrix bytes",
+      },
     })),
     "GET /api/projects/:id/attachments/:attachmentId": { params: { attachmentId: ctx.attachmentIds.owner } },
     "DELETE /api/projects/:id/attachments/:attachmentId": ownRow(ctx.attachmentIds, (attachmentId) => ({

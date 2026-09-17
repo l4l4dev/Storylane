@@ -292,7 +292,9 @@ const MENTION = /@([\p{L}\p{N}._+-]+)/gu;
 
 /** @mention -> user ids, resolved against this project's members only. */
 export function mentionedUserIds(tx: ProjectTx, text: string): string[] {
-  const tokens = new Set([...text.matchAll(MENTION)].map((m) => m[1]!.toLowerCase()));
+  // Sentence punctuation after a mention ("thanks @alice.") is not part of the name.
+  const tokens = new Set([...text.matchAll(MENTION)].map((m) => m[1]!.replace(/[._-]+$/, "").toLowerCase()));
+  tokens.delete("");
   if (tokens.size === 0) return [];
   const byLocalPart = new Map<string, string[]>();
   const members = tx.tx
