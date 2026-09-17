@@ -260,6 +260,7 @@ const CURRENT_PANEL_STATES: readonly StoryState[] = ["planned", "started", "fini
 function groupAgreesWithState(group: NonNullable<StoryPatch["group"]>, state: StoryState): boolean {
   const groupList = group === "unscheduled" ? "icebox" : "backlog";
   if (groupList !== listForState(state)) return false;
+  if (group === "scheduled" && state === "planned") return false;
   return group !== "current" || CURRENT_PANEL_STATES.includes(state);
 }
 

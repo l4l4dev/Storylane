@@ -366,6 +366,23 @@ describe("PUT /stories with both group and current_state", () => {
     expect(res).toEqual({ status: 409, body: { error: "manual_planning_required" } });
   });
 
+  it("answers 400 group_state_mismatch for scheduled with planned", async () => {
+    const { db, projectId, app, headers } = setup();
+    manualPlanning(db, projectId);
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { group: "scheduled", current_state: "planned" });
+    expect(res).toEqual({ status: 400, body: { error: "group_state_mismatch" } });
+  });
+
+  it("unplans a planned story sent scheduled with unstarted", async () => {
+    const { db, projectId, app, headers } = setup();
+    manualPlanning(db, projectId);
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "planned" });
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { group: "scheduled", current_state: "unstarted" });
+    expect(res.status).toBe(200);
+    expect(res.body.current_state).toBe("unstarted");
+  });
+
   it("applies an agreeing group and state", async () => {
     const { db, projectId, app, headers } = setup();
     const id = seedStory(db, projectId);
