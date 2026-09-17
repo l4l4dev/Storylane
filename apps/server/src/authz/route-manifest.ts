@@ -60,4 +60,10 @@ export const ROUTE_ACTIONS: Record<`${Method} ${string}`, RouteRule> = {
   "POST /api/projects/:id/stories/:storyId/tasks": "task:write",
   "PUT /api/projects/:id/stories/:storyId/tasks/:taskId": "task:write",
   "DELETE /api/projects/:id/stories/:storyId/tasks/:taskId": "task:write",
+  "GET /api/projects/:id/stories/:storyId/comments": "story:read",
+  "POST /api/projects/:id/stories/:storyId/comments": "comment:create",
+  "PUT /api/projects/:id/stories/:storyId/comments/:commentId": "comment:update-own",
+  "DELETE /api/projects/:id/stories/:storyId/comments/:commentId": "comment:delete",
+  "GET /api/projects/:id/attachments/:attachmentId": "story:read",
+  "DELETE /api/projects/:id/attachments/:attachmentId": "attachment:delete",
 };

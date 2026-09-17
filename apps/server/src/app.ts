@@ -13,6 +13,7 @@ import { activityRoutes } from "./routes/activity";
 import { storyRoutes } from "./routes/stories";
 import { labelRoutes } from "./routes/labels";
 import { storyPartRoutes } from "./routes/story-parts";
+import { createAttachmentStore } from "./attachments/store";
 import { failClosed } from "./authz/middleware";
 import { EventBus } from "./events/bus";
 import { authRoutes } from "./routes/auth";
@@ -93,6 +94,7 @@ function defaultActorOf(testActorHeader: boolean): (c: Context) => Actor {
 export function createApp(deps: AppDeps): Hono {
   const actorOf = deps.actorOf ?? defaultActorOf(deps.testActorHeader === true);
   const bus = deps.bus ?? new EventBus();
+  const store = createAttachmentStore(deps.config.dataDir);
   const app = new Hono();
   app.use(requestLogger(deps.log));
   app.use(responseHeaders());
@@ -130,11 +132,11 @@ export function createApp(deps: AppDeps): Hono {
       ...(deps.adminLimiter ? { limiter: deps.adminLimiter } : {}),
     }),
   );
-  app.route("/", projectRoutes({ db: deps.db, bus, log: deps.log, actorOf }));
+  app.route("/", projectRoutes({ db: deps.db, bus, log: deps.log, actorOf, store }));
   app.route("/", activityRoutes({ db: deps.db, actorOf }));
-  app.route("/", storyRoutes({ db: deps.db, bus, log: deps.log, actorOf }));
+  app.route("/", storyRoutes({ db: deps.db, bus, log: deps.log, actorOf, store }));
   app.route("/", labelRoutes({ db: deps.db, bus, log: deps.log, actorOf }));
-  app.route("/", storyPartRoutes({ db: deps.db, bus, log: deps.log, actorOf }));
+  app.route("/", storyPartRoutes({ db: deps.db, bus, log: deps.log, actorOf, store }));
   app.route(
     "/",
     inviteRoutes({

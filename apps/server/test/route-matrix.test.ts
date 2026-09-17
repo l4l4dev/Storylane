@@ -1,18 +1,34 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createAttachmentStore } from "../src/attachments/store";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
-import { makeTestApp, makeTestDb, seedEpic, seedLabel, seedProject, seedStory, seedTask, seedUser } from "./harness";
+import {
+  makeTestApp,
+  makeTestDb,
+  seedAttachment,
+  seedComment,
+  seedEpic, seedLabel,   seedProject,
+  seedStory,
+  seedTask,
+  seedUser,
+} from "./harness";
 import { ROUTE_ACTIONS } from "../src/authz/route-manifest";
 import { ALL_ACTIONS, expected, ROLES, type Action, type Role } from "../src/authz/permissions";
 import { withProject, type Actor } from "../src/db/tx";
 import { projects } from "../src/db/schema";
-import { matrixFixtures, type MatrixFixture } from "./matrix-fixtures";
+import { matrixFixtures, type AuthorRole, type MatrixFixture } from "./matrix-fixtures";
 import { mintInvite } from "../src/services/invites";
 
 const db = makeTestDb();
-const { app } = makeTestApp(db);
+const dataDir = mkdtempSync(join(tmpdir(), "sl-matrix-"));
+afterAll(() => rmSync(dataDir, { recursive: true, force: true }));
+const store = createAttachmentStore(dataDir);
+const { app } = makeTestApp(db, undefined, { dataDir });
 const ownerA = seedUser(db, "o@example.test");
 const memberA = seedUser(db, "m@example.test");
 const viewerA = seedUser(db, "v@example.test");
@@ -29,7 +45,14 @@ function seedFullProject() {
   const labelId = seedLabel(db, id, "matrix label");
   const epicId = seedEpic(db, id, "Matrix epic seed");
   const taskId = seedTask(db, id, storyId, "Matrix task seed");
-  return { id, inviteId: seededInvite.invite.id, storyId, labelId, epicId, taskId };
+  const authors = { viewer: viewerA, member: memberA, owner: ownerA };
+  const commentIds = {} as Record<AuthorRole, string>;
+  const attachmentIds = {} as Record<AuthorRole, string>;
+  for (const [role, author] of Object.entries(authors) as [AuthorRole, Actor][]) {
+    commentIds[role] = seedComment(db, id, storyId, author);
+    attachmentIds[role] = seedAttachment(db, store, id, commentIds[role], author);
+  }
+  return { id, inviteId: seededInvite.invite.id, storyId, labelId, epicId, taskId, commentIds, attachmentIds };
 }
 
 const seeded = seedFullProject();
@@ -44,6 +67,8 @@ const fixturesFor = (t: ReturnType<typeof seedFullProject>): Record<string, Matr
     labelId: t.labelId,
     epicId: t.epicId,
     taskId: t.taskId,
+    commentIds: t.commentIds,
+    attachmentIds: t.attachmentIds,
   });
 const FIXTURES = fixturesFor(seeded);
 const actors: Record<Role, Actor> = {
@@ -70,6 +95,8 @@ const DESTRUCTIVE = new Set([
   "DELETE /api/projects/:id/stories/:storyId/labels/:labelId",
   "DELETE /api/projects/:id/epics/:epicId",
   "DELETE /api/projects/:id/stories/:storyId/tasks/:taskId",
+  "DELETE /api/projects/:id/stories/:storyId/comments/:commentId",
+  "DELETE /api/projects/:id/attachments/:attachmentId",
   // POST creates a label/epic by name; run twice against the shared project (member then
   // owner rows both expecting 200) the second call would 409 on the name it already took.
   "POST /api/projects/:id/labels",
@@ -130,7 +157,8 @@ describe("permission matrix over project routes", () => {
         // Each destructive role gets its own project/state so an earlier role's delete
         // never leaves a later role authorizing against an already-gone row.
         const target = DESTRUCTIVE.has(key) ? seedFullProject() : seeded;
-        const fixture = DESTRUCTIVE.has(key) ? fixturesFor(target)[key] ?? {} : FIXTURES[key] ?? {};
+        const shared = DESTRUCTIVE.has(key) ? fixturesFor(target)[key] ?? {} : FIXTURES[key] ?? {};
+        const fixture = shared.perRole?.[role] ?? shared;
         let url = path.replace(":id", target.id);
         for (const [name, value] of Object.entries(fixture.params ?? {})) url = url.replace(`:${name}`, value);
         expect(url).not.toContain("/:"); // a param with no fixture would make every row meaningless

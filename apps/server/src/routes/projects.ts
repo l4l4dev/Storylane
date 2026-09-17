@@ -17,6 +17,7 @@ import {
 } from "../services/projects";
 import { changeRole, leaveProject, listMemberships, removeMember } from "../services/memberships";
 import type { MemberRole } from "../authz/permissions";
+import type { AttachmentStore } from "../attachments/store";
 import { DESCRIPTION_MAX, NAME_MAX, assertMaxLength } from "./limits";
 
 const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -101,7 +102,13 @@ function validateProjectSettingsPatch(input: Record<string, unknown>): ProjectSe
   return patch;
 }
 
-export function projectRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf: (c: Context) => Actor }) {
+export function projectRoutes(deps: {
+  db: Db;
+  bus: EventBus;
+  log: Logger;
+  actorOf: (c: Context) => Actor;
+  store: AttachmentStore;
+}) {
   const { db, actorOf } = deps;
   return new Hono()
     .get("/api/projects", (c) => c.json(listProjects(db, actorOf(c))))
@@ -130,7 +137,16 @@ export function projectRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorO
       );
     })
     .delete("/api/projects/:id", (c) => {
-      withProjectChange(deps, actorOf(c), c.req.param("id"), "project:delete", (tx) => deleteProject(tx));
+      const projectId = withProjectChange(deps, actorOf(c), c.req.param("id"), "project:delete", (tx) => {
+        deleteProject(tx);
+        return tx.projectId;
+      });
+      try {
+        deps.store.removeProject(projectId);
+      } catch (err) {
+        // The rows are already gone; failing the request now would only hide a committed delete.
+        deps.log.warn("project attachment bytes not removed", { projectId, message: (err as Error).message });
+      }
       return c.body(null, 204);
     })
     .post("/api/projects/:id/archive", (c) =>

@@ -6,6 +6,8 @@ import { withProjectChange } from "../events/emit";
 import type { EventBus } from "../events/bus";
 import type { Logger } from "../log";
 import { HttpError } from "../http-error";
+import type { AttachmentStore } from "../attachments/store";
+import { createComment, deleteComment, detachFile, listComments, readAttachment, updateComment } from "../services/comments";
 import { createTask, deleteTask, listTasks, updateTask } from "../services/tasks";
 import { DESCRIPTION_MAX, assertMaxLength } from "./limits";
 
@@ -15,6 +17,40 @@ function rejectUnknownKeys(input: Record<string, unknown>, allowed: ReadonlySet<
   for (const key of Object.keys(input)) {
     if (!allowed.has(key)) throw new HttpError(400, "invalid_body", `unknown field ${key}`);
   }
+}
+
+const COMMENT_KEYS = new Set(["text"]);
+const COMMENT_TEXT_MAX = 20000;
+
+/** "" is legal: an attachment-only comment carries no text. */
+function requireText(input: Record<string, unknown>): string {
+  if (typeof input.text !== "string") throw new HttpError(400, "text_required");
+  assertMaxLength(input.text, COMMENT_TEXT_MAX, "text_too_long");
+  return input.text;
+}
+
+function commentOnStory<T extends { id: string }>(rows: T[], commentId: string): T {
+  const row = rows.find((r) => r.id === commentId);
+  if (!row) throw new HttpError(404, "not_found");
+  return row;
+}
+
+const PLAUSIBLE_MEDIA_TYPE = /^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$/;
+
+export function safeContentType(recorded: string): string {
+  return PLAUSIBLE_MEDIA_TYPE.test(recorded) ? recorded : "application/octet-stream";
+}
+
+/**
+ * Always `attachment`, never `inline`: an uploaded HTML file must not execute on the app's origin.
+ * The ASCII fallback drops anything that could end the quoted string or the header line.
+ */
+export function contentDisposition(filename: string): string {
+  const ascii = filename
+    .replace(/["\\\u0000-\u001f\u007f]/g, "")
+    .replace(/[^\u0020-\u007e]/g, "_");
+  const encoded = encodeURIComponent(filename).replace(/[!'()*]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${ascii === "" ? "file" : ascii}"; filename*=UTF-8''${encoded}`;
 }
 
 const TASK_CREATE_KEYS = new Set(["description", "position"]);
@@ -39,9 +75,81 @@ function assertTaskOnStory(rows: { id: string }[], taskId: string): void {
   if (!rows.some((r) => r.id === taskId)) throw new HttpError(404, "not_found");
 }
 
-export function storyPartRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf: (c: Context) => Actor }) {
-  const { db, actorOf } = deps;
+export function removeQuietly(log: Logger, store: AttachmentStore, storagePaths: string[]): void {
+  for (const storagePath of storagePaths) {
+    try {
+      store.remove(storagePath);
+    } catch (err) {
+      // The rows are already gone; failing the request now would only hide a committed delete.
+      log.warn("attachment bytes not removed", { storagePath, message: (err as Error).message });
+    }
+  }
+}
+
+export function storyPartRoutes(deps: {
+  db: Db;
+  bus: EventBus;
+  log: Logger;
+  actorOf: (c: Context) => Actor;
+  store: AttachmentStore;
+}) {
+  const { db, actorOf, store, log } = deps;
   return new Hono()
+    .get("/api/projects/:id/stories/:storyId/comments", (c) =>
+      c.json(
+        withProject(db, actorOf(c), c.req.param("id"), "story:read", (tx) =>
+          listComments(tx, { storyId: c.req.param("storyId") }),
+        ),
+      ),
+    )
+    .post("/api/projects/:id/stories/:storyId/comments", async (c) => {
+      const input = await body(c);
+      return c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "comment:create", (tx) => {
+          rejectUnknownKeys(input, COMMENT_KEYS);
+          return createComment(tx, { storyId: c.req.param("storyId") }, requireText(input));
+        }),
+        201,
+      );
+    })
+    .put("/api/projects/:id/stories/:storyId/comments/:commentId", async (c) => {
+      const input = await body(c);
+      return c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "comment:update-own", (tx) => {
+          const row = commentOnStory(listComments(tx, { storyId: c.req.param("storyId") }), c.req.param("commentId"));
+          // Mirrors updateComment's author check so a stranger's malformed body still answers 403, not 400.
+          if (tx.actor.kind !== "user" || row.person_id !== tx.actor.userId) throw new HttpError(403, "not_comment_author");
+          rejectUnknownKeys(input, COMMENT_KEYS);
+          return updateComment(tx, c.req.param("commentId"), requireText(input));
+        }),
+      );
+    })
+    .delete("/api/projects/:id/stories/:storyId/comments/:commentId", (c) => {
+      const { storagePaths } = withProjectChange(deps, actorOf(c), c.req.param("id"), "comment:delete", (tx) => {
+        commentOnStory(listComments(tx, { storyId: c.req.param("storyId") }), c.req.param("commentId"));
+        return deleteComment(tx, c.req.param("commentId"));
+      });
+      removeQuietly(log, store, storagePaths);
+      return c.body(null, 204);
+    })
+    .get("/api/projects/:id/attachments/:attachmentId", (c) => {
+      const row = withProject(db, actorOf(c), c.req.param("id"), "story:read", (tx) =>
+        readAttachment(tx, c.req.param("attachmentId")),
+      );
+      const bytes = store.read(row.storage_path);
+      return c.body(bytes, 200, {
+        "Content-Type": safeContentType(row.content_type),
+        "Content-Disposition": contentDisposition(row.filename),
+        "Content-Length": String(bytes.byteLength),
+      });
+    })
+    .delete("/api/projects/:id/attachments/:attachmentId", (c) => {
+      const { storagePath } = withProjectChange(deps, actorOf(c), c.req.param("id"), "attachment:delete", (tx) =>
+        detachFile(tx, c.req.param("attachmentId")),
+      );
+      removeQuietly(log, store, [storagePath]);
+      return c.body(null, 204);
+    })
     .get("/api/projects/:id/stories/:storyId/tasks", (c) =>
       c.json(
         withProject(db, actorOf(c), c.req.param("id"), "story:read", (tx) => listTasks(tx, c.req.param("storyId"))),

@@ -31,6 +31,13 @@ value exits with code 2 and a JSON error line on stderr/stdout.
 | `STORYLANE_TRUST_PROXY`  | `false` | `"true"` or `"false"`                    |
 | `STORYLANE_GIT_SHA`      | `dev`   | Commit baked into the image at build time (`Dockerfile`'s `GIT_SHA` build arg); not meant for an operator to set |
 
+Comment attachments are stored on disk at
+`$STORYLANE_DATA_DIR/attachments/<project id>/<attachment id>`; their metadata is in SQLite.
+
+## Backups
+
+DB backups do not include attachments; back up `$STORYLANE_DATA_DIR/attachments` separately.
+
 ## Docker
 
 Build context is the repo root:

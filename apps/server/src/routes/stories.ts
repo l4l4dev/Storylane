@@ -9,6 +9,9 @@ import { HttpError } from "../http-error";
 import { STORY_PRIORITIES, STORY_STATES, STORY_TYPES, type StoryPriority, type StoryState, type StoryType } from "../db/schema";
 import { createStory, deleteStory, listStories, readStory, updateStory, type StoryInput, type StoryPatch } from "../services/stories";
 import { addFollower, addOwner, removeFollower, removeOwner } from "../services/story-people";
+import type { AttachmentStore } from "../attachments/store";
+import { storyAttachmentPaths } from "../services/comments";
+import { removeQuietly } from "./story-parts";
 import { DESCRIPTION_MAX, NAME_MAX, assertMaxLength } from "./limits";
 
 /** Authorization already guarantees a user actor by the time a callback runs inside it. */
@@ -145,7 +148,13 @@ function validateStoryPatch(input: Record<string, unknown>): StoryPatch {
   return patch;
 }
 
-export function storyRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf: (c: Context) => Actor }) {
+export function storyRoutes(deps: {
+  db: Db;
+  bus: EventBus;
+  log: Logger;
+  actorOf: (c: Context) => Actor;
+  store: AttachmentStore;
+}) {
   const { db, actorOf } = deps;
   return new Hono()
     .get("/api/projects/:id/stories", (c) =>
@@ -172,9 +181,12 @@ export function storyRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf:
       );
     })
     .delete("/api/projects/:id/stories/:storyId", (c) => {
-      withProjectChange(deps, actorOf(c), c.req.param("id"), "story:delete", (tx) =>
-        deleteStory(tx, c.req.param("storyId")),
-      );
+      const storagePaths = withProjectChange(deps, actorOf(c), c.req.param("id"), "story:delete", (tx) => {
+        const paths = storyAttachmentPaths(tx, c.req.param("storyId"));
+        deleteStory(tx, c.req.param("storyId"));
+        return paths;
+      });
+      removeQuietly(deps.log, deps.store, storagePaths);
       return c.body(null, 204);
     })
     .post("/api/projects/:id/stories/:storyId/owners/:userId", (c) =>
