@@ -81,7 +81,9 @@ bookkeeping (`member:read` is 200 for viewers and must not carry it).
   member deleting someone else's comment gets `403` from the service.
 - **Own follow.** `follower:write` is `200` for a viewer only for the
   viewer's own follow row; adding or removing somebody else's follow is
-  refused to a viewer by the service.
+  refused to a viewer by the service. Story owners are managed under
+  `story:write` instead — adding or removing an owner is a story edit, not a
+  follower action, so a viewer never reaches that route at all.
 - **Iteration override.** `iteration:override` is member-level by
   assumption: Tracker sets iteration length and team strength from the
   iteration header in the Current panel, which members use, not from the

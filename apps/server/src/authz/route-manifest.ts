@@ -38,4 +38,12 @@ export const ROUTE_ACTIONS: Record<`${Method} ${string}`, RouteRule> = {
   "GET /api/projects/:id/stories/:storyId": "story:read",
   "PUT /api/projects/:id/stories/:storyId": "story:write",
   "DELETE /api/projects/:id/stories/:storyId": "story:delete",
+  "POST /api/projects/:id/stories/:storyId/owners/:userId": "story:write",
+  "DELETE /api/projects/:id/stories/:storyId/owners/:userId": "story:write",
+  // Body-less: the actor follows/unfollows the story itself. The matrix grants a viewer this
+  // write; naming another user goes through the /followers/:userId routes below instead.
+  "POST /api/projects/:id/stories/:storyId/follow": "follower:write",
+  "DELETE /api/projects/:id/stories/:storyId/follow": "follower:write",
+  "POST /api/projects/:id/stories/:storyId/followers/:userId": "story:write",
+  "DELETE /api/projects/:id/stories/:storyId/followers/:userId": "story:write",
 };

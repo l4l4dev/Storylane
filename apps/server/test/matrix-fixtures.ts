@@ -44,5 +44,11 @@ export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture
     "GET /api/projects/:id/stories/:storyId": { params: { storyId: ctx.storyId } },
     "PUT /api/projects/:id/stories/:storyId": { params: { storyId: ctx.storyId }, body: { name: "Matrix" } },
     "DELETE /api/projects/:id/stories/:storyId": { params: { storyId: ctx.storyId } },
+    "POST /api/projects/:id/stories/:storyId/owners/:userId": { params: { storyId: ctx.storyId, userId: ctx.memberUserId }, body: {} },
+    "DELETE /api/projects/:id/stories/:storyId/owners/:userId": { params: { storyId: ctx.storyId, userId: ctx.memberUserId } },
+    "POST /api/projects/:id/stories/:storyId/follow": { params: { storyId: ctx.storyId }, body: {} },
+    "DELETE /api/projects/:id/stories/:storyId/follow": { params: { storyId: ctx.storyId } },
+    "POST /api/projects/:id/stories/:storyId/followers/:userId": { params: { storyId: ctx.storyId, userId: ctx.memberUserId }, body: {} },
+    "DELETE /api/projects/:id/stories/:storyId/followers/:userId": { params: { storyId: ctx.storyId, userId: ctx.memberUserId } },
   };
 }

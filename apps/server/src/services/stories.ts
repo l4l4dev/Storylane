@@ -7,6 +7,7 @@ import { newId } from "../id";
 import { recordActivity } from "./activity";
 import { appendToList, listForGroup, placeInList } from "./ordering";
 import { readProject } from "./projects";
+import { addOwner, ensureFollowing, followerIds, ownerIds } from "./story-people";
 
 export interface StoryRow {
   id: string;
@@ -73,9 +74,17 @@ const COLUMNS = {
   updated_at: stories.updatedAt,
 };
 
-/** Owners/labels/followers land in later tasks; this task's rows always report empty sets. */
-function toRow(row: typeof COLUMNS extends infer C ? { [K in keyof C]: unknown } : never): StoryRow {
-  return { ...(row as Omit<StoryRow, "owner_ids" | "label_ids" | "follower_ids">), owner_ids: [], label_ids: [], follower_ids: [] };
+/** Labels land in a later task; this task's rows always report an empty label set. */
+function toRow(
+  tx: ProjectTx,
+  row: (typeof COLUMNS extends infer C ? { [K in keyof C]: unknown } : never) & { id: string },
+): StoryRow {
+  return {
+    ...(row as Omit<StoryRow, "owner_ids" | "label_ids" | "follower_ids">),
+    owner_ids: ownerIds(tx, row.id),
+    label_ids: [],
+    follower_ids: followerIds(tx, row.id),
+  };
 }
 
 function readOne(tx: ProjectTx, storyId: string): StoryRow {
@@ -85,7 +94,7 @@ function readOne(tx: ProjectTx, storyId: string): StoryRow {
     .where(and(eq(stories.id, storyId), eq(stories.projectId, tx.projectId)))
     .get();
   if (!row) throw new HttpError(404, "not_found");
-  return toRow(row);
+  return toRow(tx, row);
 }
 
 export function readStory(tx: ProjectTx, storyId: string): StoryRow {
@@ -105,7 +114,7 @@ export function listStories(tx: ProjectTx, filter: StoryFilter = {}): StoryRow[]
     .limit(limit)
     .offset(filter.offset ?? 0)
     .all();
-  return rows.map(toRow);
+  return rows.map((row) => toRow(tx, row));
 }
 
 function requesterId(tx: ProjectTx): string | null {
@@ -169,6 +178,8 @@ export function createStory(tx: ProjectTx, input: StoryInput): StoryRow {
     changes: [{ kind: "story", id, number: nextNumber?.n ?? 1, change_type: "create", new_values: { name } }],
     primaryResources: [{ kind: "story", id }],
   });
+  const requester = requesterId(tx);
+  if (requester) ensureFollowing(tx, id, requester);
   return readOne(tx, id);
 }
 
@@ -303,6 +314,20 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
     }
 
     ({ message, highlight } = transitionCopy(targetState));
+
+    if (targetState === "started") {
+      // core-model §1.2 rule 6: starting a story makes the clicker an owner. Folded into this
+      // same story_update_activity rather than addOwner's own, so the PUT still writes exactly one.
+      const actor = requesterId(tx);
+      if (actor) {
+        const before = ownerIds(tx, storyId);
+        const after = addOwner(tx, storyId, actor, { recordActivity: false });
+        if (after.length !== before.length) {
+          original.owner_ids = before;
+          next.owner_ids = after;
+        }
+      }
+    }
   }
 
   // list, current_state and position travel in the one UPDATE below: the

@@ -1,13 +1,20 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db/client";
-import { withProject, type Actor } from "../db/tx";
+import { withProject, type Actor, type ProjectTx } from "../db/tx";
 import { withProjectChange } from "../events/emit";
 import type { EventBus } from "../events/bus";
 import { HttpError } from "../http-error";
 import { STORY_PRIORITIES, STORY_STATES, STORY_TYPES, type StoryPriority, type StoryState, type StoryType } from "../db/schema";
 import { createStory, deleteStory, listStories, readStory, updateStory, type StoryInput, type StoryPatch } from "../services/stories";
+import { addFollower, addOwner, removeFollower, removeOwner } from "../services/story-people";
 import { DESCRIPTION_MAX, NAME_MAX, assertMaxLength } from "./limits";
+
+/** Authorization already guarantees a user actor by the time a callback runs inside it. */
+function actorUserId(tx: ProjectTx): string {
+  if (tx.actor.kind !== "user") throw new HttpError(401, "unauthenticated");
+  return tx.actor.userId;
+}
 
 const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
@@ -168,5 +175,53 @@ export function storyRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Context)
         deleteStory(tx, c.req.param("storyId")),
       );
       return c.body(null, 204);
-    });
+    })
+    .post("/api/projects/:id/stories/:storyId/owners/:userId", (c) =>
+      c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "story:write", (tx) => {
+          addOwner(tx, c.req.param("storyId"), c.req.param("userId"));
+          return readStory(tx, c.req.param("storyId"));
+        }),
+      ),
+    )
+    .delete("/api/projects/:id/stories/:storyId/owners/:userId", (c) =>
+      c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "story:write", (tx) => {
+          removeOwner(tx, c.req.param("storyId"), c.req.param("userId"));
+          return readStory(tx, c.req.param("storyId"));
+        }),
+      ),
+    )
+    .post("/api/projects/:id/stories/:storyId/follow", (c) =>
+      c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "follower:write", (tx) => {
+          addFollower(tx, c.req.param("storyId"), actorUserId(tx));
+          return readStory(tx, c.req.param("storyId"));
+        }),
+      ),
+    )
+    .delete("/api/projects/:id/stories/:storyId/follow", (c) =>
+      c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "follower:write", (tx) => {
+          removeFollower(tx, c.req.param("storyId"), actorUserId(tx));
+          return readStory(tx, c.req.param("storyId"));
+        }),
+      ),
+    )
+    .post("/api/projects/:id/stories/:storyId/followers/:userId", (c) =>
+      c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "story:write", (tx) => {
+          addFollower(tx, c.req.param("storyId"), c.req.param("userId"));
+          return readStory(tx, c.req.param("storyId"));
+        }),
+      ),
+    )
+    .delete("/api/projects/:id/stories/:storyId/followers/:userId", (c) =>
+      c.json(
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "story:write", (tx) => {
+          removeFollower(tx, c.req.param("storyId"), c.req.param("userId"));
+          return readStory(tx, c.req.param("storyId"));
+        }),
+      ),
+    );
 }

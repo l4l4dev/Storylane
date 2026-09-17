@@ -56,6 +56,9 @@ const DESTRUCTIVE = new Set([
   "DELETE /api/projects/:id/memberships/:userId",
   "DELETE /api/projects/:id/memberships/me",
   "DELETE /api/projects/:id/stories/:storyId",
+  "DELETE /api/projects/:id/stories/:storyId/owners/:userId",
+  "DELETE /api/projects/:id/stories/:storyId/follow",
+  "DELETE /api/projects/:id/stories/:storyId/followers/:userId",
   // Not a DELETE, but the owner row permanently demotes ctx.memberUserId to "viewer" in the
   // shared project — any later matrix row that relies on that actor still being "member"
   // (e.g. story:write) would otherwise see the wrong role.
