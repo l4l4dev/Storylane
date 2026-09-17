@@ -70,4 +70,49 @@ describe("story routes", () => {
     expect(res.status).toBe(409);
     expect((await res.json()) as { error: string }).toEqual({ error: "invalid_transition" });
   });
+  it("reorders through the PUT route and answers with the new position", async () => {
+    const { db, projectId, app, headers } = setup();
+    const a = seedStory(db, projectId);
+    const b = seedStory(db, projectId);
+    const c = seedStory(db, projectId);
+    const res = await app.request(`/api/projects/${projectId}/stories/${c}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ after_id: a, before_id: b }),
+    });
+    expect(res.status).toBe(200);
+    const moved = (await res.json()) as { position: number };
+    expect(moved.position).toBe(1536);
+    const listed = (await (await app.request(`/api/projects/${projectId}/stories`, { headers })).json()) as Array<{
+      id: string;
+    }>;
+    expect(listed.map((s) => s.id)).toEqual([a, c, b]);
+  });
+
+  it("returns 409 manual_planning_required for group: current while planning is automatic", async () => {
+    const { db, projectId, app, headers } = setup();
+    const storyId = seedStory(db, projectId);
+    const res = await app.request(`/api/projects/${projectId}/stories/${storyId}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ group: "current" }),
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()) as { error: string }).toEqual({ error: "manual_planning_required" });
+  });
+
+  it("moves a story out of the icebox when only group is sent", async () => {
+    const { db, projectId, app, headers } = setup();
+    const storyId = seedStory(db, projectId);
+    const res = await app.request(`/api/projects/${projectId}/stories/${storyId}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ group: "scheduled" }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { list: string; current_state: string }).toMatchObject({
+      list: "backlog",
+      current_state: "unstarted",
+    });
+  });
 });

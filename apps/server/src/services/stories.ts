@@ -5,6 +5,7 @@ import { loadInProject, type ProjectTx } from "../db/tx";
 import { HttpError } from "../http-error";
 import { newId } from "../id";
 import { recordActivity } from "./activity";
+import { appendToList, listForGroup, placeInList } from "./ordering";
 import { readProject } from "./projects";
 
 export interface StoryRow {
@@ -50,7 +51,7 @@ export interface StoryInput {
 
 export type StoryPatch = Partial<Omit<StoryInput, "name">> & {
   name?: string;
-  /** Task 9 wires the actual move; this task's updateStory carries and ignores it. */
+  /** The panel the story is dropped into; in Tracker that is part of its state, not a view. */
   group?: "unscheduled" | "scheduled" | "current";
 };
 
@@ -111,16 +112,6 @@ function requesterId(tx: ProjectTx): string | null {
   return tx.actor.kind === "user" ? tx.actor.userId : null;
 }
 
-/** MAX(position) + 1024 within the list. Task 9's placeInList replaces this and honours before_id/after_id. */
-function tailPosition(tx: ProjectTx, list: StoryList): number {
-  const row = tx.tx
-    .select({ p: sql<number>`coalesce(max(${stories.position}), 0) + 1024` })
-    .from(stories)
-    .where(and(eq(stories.projectId, tx.projectId), eq(stories.list, list)))
-    .get();
-  return row?.p ?? 1024;
-}
-
 export function createStory(tx: ProjectTx, input: StoryInput): StoryRow {
   const name = input.name.trim();
   if (name.length === 0) throw new HttpError(400, "name_required");
@@ -162,7 +153,10 @@ export function createStory(tx: ProjectTx, input: StoryInput): StoryRow {
       deadline: input.deadline ?? null,
       storyPriority: input.story_priority ?? "none",
       list,
-      position: tailPosition(tx, list),
+      position:
+        input.before_id === undefined && input.after_id === undefined
+          ? appendToList(tx, list)
+          : placeInList(tx, id, list, { before_id: input.before_id ?? null, after_id: input.after_id ?? null }),
       requestedById: requesterId(tx),
       createdAt: now,
       updatedAt: now,
@@ -200,8 +194,23 @@ function transitionCopy(to: StoryState): { highlight: string; message: string } 
   }
 }
 
+/**
+ * The panel a story is dropped into is part of its state (core-model §1.2 rule 2), so a `group`
+ * sent on its own still implies one. An explicit `current_state` in the same patch wins.
+ */
+function stateForGroup(group: StoryPatch["group"], from: StoryState): StoryState | undefined {
+  if (group === undefined) return undefined;
+  if (group === "unscheduled") return "unscheduled";
+  if (group === "current") return "planned";
+  return from === "unscheduled" ? "unstarted" : from;
+}
+
 export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): StoryRow {
   const current = loadInProject(tx, stories, storyId);
+  // Resolved first: a group the planning mode forbids answers 409 ahead of any 400 and before
+  // anything (including a renumber) is written.
+  const groupList = listForGroup(tx, patch.group);
+  const moveRequested = patch.group !== undefined || patch.before_id !== undefined || patch.after_id !== undefined;
   const set: Record<string, unknown> = {};
   const original: Record<string, unknown> = {};
   const next: Record<string, unknown> = {};
@@ -266,53 +275,81 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
     next.estimate = patch.estimate;
   }
 
-  if (patch.current_state !== undefined && patch.current_state !== current.currentState) {
+  const targetState = patch.current_state ?? stateForGroup(patch.group, current.currentState);
+  if (targetState !== undefined && targetState !== current.currentState) {
     const project = readProject(tx);
-    if (!isValidTransition(storyType, current.currentState, patch.current_state)) {
+    if (!isValidTransition(storyType, current.currentState, targetState)) {
       throw new HttpError(409, "invalid_transition");
     }
     if (
       estimationGateBlocks({
         storyType,
         estimate: targetEstimate,
-        targetState: patch.current_state,
+        targetState,
         bugsAndChoresAreEstimatable: project.bugs_and_chores_are_estimatable,
       })
     ) {
       throw new HttpError(409, "estimate_required");
     }
-    set.currentState = patch.current_state;
+    set.currentState = targetState;
     original.current_state = current.currentState;
-    next.current_state = patch.current_state;
+    next.current_state = targetState;
 
-    const acceptedAt = patch.current_state === "accepted" ? Date.now() : null;
+    const acceptedAt = targetState === "accepted" ? Date.now() : null;
     if (acceptedAt !== current.acceptedAt) {
       set.acceptedAt = acceptedAt;
       original.accepted_at = current.acceptedAt;
       next.accepted_at = acceptedAt;
     }
 
-    const targetList = listForState(patch.current_state);
-    if (targetList !== current.list) {
-      set.list = targetList;
-      set.position = tailPosition(tx, targetList);
-      original.list = current.list;
-      next.list = targetList;
-    }
-
-    ({ message, highlight } = transitionCopy(patch.current_state));
+    ({ message, highlight } = transitionCopy(targetState));
   }
 
-  if (Object.keys(set).length === 0) return readOne(tx, storyId);
+  // list, current_state and position travel in the one UPDATE below: the
+  // stories_icebox_is_unscheduled_update trigger aborts on a half-written move.
+  const targetList = groupList ?? listForState(targetState ?? current.currentState);
+  if (targetList !== current.list) {
+    set.list = targetList;
+    original.list = current.list;
+    next.list = targetList;
+  }
+  const fieldsChanged = Object.keys(next).length > 0;
+  if (moveRequested) {
+    set.position = placeInList(tx, storyId, targetList, { before_id: patch.before_id ?? null, after_id: patch.after_id ?? null });
+  } else if (targetList !== current.list) {
+    set.position = appendToList(tx, targetList);
+  }
+
+  if (!fieldsChanged && !moveRequested) return readOne(tx, storyId);
   set.updatedAt = Date.now();
   tx.tx.update(stories).set(set as never).where(and(eq(stories.id, storyId), eq(stories.projectId, tx.projectId))).run();
-  recordActivity(tx, {
-    kind: "story_update_activity",
-    message,
-    highlight,
-    changes: [{ kind: "story", id: storyId, number: current.number, change_type: "update", original_values: original, new_values: next }],
-    primaryResources: [{ kind: "story", id: storyId }],
-  });
+  if (fieldsChanged) {
+    recordActivity(tx, {
+      kind: "story_update_activity",
+      message,
+      highlight,
+      changes: [{ kind: "story", id: storyId, number: current.number, change_type: "update", original_values: original, new_values: next }],
+      primaryResources: [{ kind: "story", id: storyId }],
+    });
+  }
+  if (moveRequested) {
+    recordActivity(tx, {
+      kind: "story_move_activity",
+      message: "moved this story",
+      highlight: "moved",
+      changes: [
+        {
+          kind: "story",
+          id: storyId,
+          number: current.number,
+          change_type: "update",
+          original_values: { position: current.position },
+          new_values: { position: set.position },
+        },
+      ],
+      primaryResources: [{ kind: "story", id: storyId }],
+    });
+  }
   return readOne(tx, storyId);
 }
 
