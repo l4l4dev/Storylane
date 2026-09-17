@@ -232,6 +232,20 @@ describe("csrfGuard", () => {
       expect(res.status).toBe(403);
     });
 
+    it("rejects text/plain and a missing content type on the upload path", async () => {
+      // A Uint8Array body, because a string body would make Request add text/plain on its own.
+      for (const headers of [{ "content-type": "text/plain" }, {}]) {
+        const req = new Request(upload, {
+          method: "POST",
+          headers: { ...withCookie, ...headers, origin },
+          body: new TextEncoder().encode("bytes"),
+        });
+        expect(req.headers.get("content-type")).toBe("content-type" in headers ? "text/plain" : null);
+        const res = await appWith().request(req);
+        expect(res.status).toBe(403);
+      }
+    });
+
     it("rejects multipart/form-data on the upload path", async () => {
       const res = await appWith().request(upload, {
         method: "POST",

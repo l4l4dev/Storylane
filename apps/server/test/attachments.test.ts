@@ -3,7 +3,9 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ATTACHMENT_MAX_BYTES, createAttachmentStore } from "../src/attachments/store";
-import { contentDisposition, safeContentType } from "../src/routes/story-parts";
+import { contentDisposition, safeContentType, servedContentType } from "../src/routes/story-parts";
+import { projects } from "../src/db/schema";
+import { eq } from "drizzle-orm";
 import type { Actor } from "../src/db/tx";
 import {
   makeTestApp,
@@ -13,6 +15,7 @@ import {
   seedProject,
   seedStory,
   seedUser,
+  disableUser,
 } from "./harness";
 
 describe("attachment store", () => {
@@ -114,7 +117,17 @@ describe("comment and attachment routes", () => {
     expect(await res.json()).toEqual({ error: "not_comment_author" });
   });
 
-  it("downloads as an attachment with the recorded content type", async () => {
+  it("downloads a passive type as itself, sandboxed", async () => {
+    const { db, store, app, member, projectId, storyId, as } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    const id = seedAttachment(db, store, projectId, commentId, member, { contentType: "image/png", bytes: "png" });
+    const res = await app.request(`/api/projects/${projectId}/attachments/${id}`, as(member));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
+  });
+
+  it("serves active content as opaque bytes", async () => {
     const { db, store, app, member, projectId, storyId, as } = routeSetup();
     const commentId = seedComment(db, projectId, storyId, member);
     const id = seedAttachment(db, store, projectId, commentId, member, {
@@ -124,7 +137,8 @@ describe("comment and attachment routes", () => {
     });
     const res = await app.request(`/api/projects/${projectId}/attachments/${id}`, as(member));
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("text/html");
+    expect(res.headers.get("content-type")).toBe("application/octet-stream");
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
     expect(res.headers.get("content-disposition")).toStartWith("attachment;");
     expect(await res.text()).toBe("<script>alert(1)</script>");
   });
@@ -144,6 +158,56 @@ describe("comment and attachment routes", () => {
     expect(header).toContain("evil%22.html%0D%0ASet-Cookie");
     expect(res.headers.get("set-cookie")).toBeNull();
     expect(res.headers.get("content-type")).toBe("application/octet-stream");
+  });
+
+  it("answers 404 and logs the id when the bytes are missing", async () => {
+    const { dataDir, db, store, app, lines, member, projectId, storyId, as } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    const id = seedAttachment(db, store, projectId, commentId, member);
+    rmSync(join(dataDir, "attachments", projectId, id));
+    const res = await app.request(`/api/projects/${projectId}/attachments/${id}`, as(member));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    const warning = lines.find((l) => l.includes("attachment bytes missing"));
+    expect(warning).toContain(id);
+    expect(warning).not.toContain(dataDir);
+  });
+
+  it("answers 404 for an attachment of another project", async () => {
+    const { db, store, app, owner, member, projectId, as } = routeSetup();
+    const other = seedProject(db, owner);
+    const otherStory = seedStory(db, other);
+    const id = seedAttachment(db, store, other, seedComment(db, other, otherStory, owner), owner);
+    const res = await app.request(`/api/projects/${projectId}/attachments/${id}`, as(member));
+    expect(res.status).toBe(404);
+  });
+
+  it("lets an owner delete another user's comment, but not a member", async () => {
+    const { db, app, owner, member, projectId, storyId, as } = routeSetup();
+    const byOwner = seedComment(db, projectId, storyId, owner);
+    const byMember = seedComment(db, projectId, storyId, member);
+    const base = `/api/projects/${projectId}/stories/${storyId}/comments`;
+    const refused = await app.request(`${base}/${byOwner}`, as(member, "DELETE"));
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toEqual({ error: "forbidden" });
+    expect((await app.request(`${base}/${byMember}`, as(owner, "DELETE"))).status).toBe(204);
+  });
+
+  it("lets an owner detach another uploader's attachment", async () => {
+    const { db, store, app, owner, member, projectId, storyId, as } = routeSetup();
+    const id = seedAttachment(db, store, projectId, seedComment(db, projectId, storyId, member), member);
+    const res = await app.request(`/api/projects/${projectId}/attachments/${id}`, as(owner, "DELETE"));
+    expect(res.status).toBe(204);
+  });
+
+  it("refuses a comment on an archived project with 409", async () => {
+    const { db, app, member, projectId, storyId, as } = routeSetup();
+    db.update(projects).set({ archivedAt: Date.now() }).where(eq(projects.id, projectId)).run();
+    const res = await app.request(
+      `/api/projects/${projectId}/stories/${storyId}/comments`,
+      as(member, "POST", { text: "late" }),
+    );
+    expect(res.status).toBe(409);
   });
 
   it("deletes an attachment's bytes after the row", async () => {
@@ -294,6 +358,75 @@ describe("upload route", () => {
     expect(await res.json()).toEqual({ error: "file_required" });
   });
 
+  it("caps the filename at 255 characters", async () => {
+    const { db, app, member, projectId, storyId } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    const path = `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`;
+    const ok = await upload(app, member, path, "x", { "x-filename": "a".repeat(255) });
+    expect(ok.status).toBe(201);
+    const long = await upload(app, member, path, "x", { "x-filename": "a".repeat(256) });
+    expect(long.status).toBe(400);
+    expect(await long.json()).toEqual({ error: "filename_too_long" });
+  });
+
+  it("refuses a body whose length differs from Content-Length, in both directions", async () => {
+    const { db, app, member, projectId, storyId } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    const path = `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`;
+    for (const declared of ["2", "1"]) {
+      const res = await upload(app, member, path, declared === "2" ? "x" : "xy", { "content-length": declared });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "file_length_mismatch" });
+    }
+  });
+
+  it("answers 404 to a non-member before validating the filename or reading the body", async () => {
+    const { db, app, member, projectId, storyId } = routeSetup();
+    const outsider = seedUser(db, "outsider@example.test");
+    const commentId = seedComment(db, projectId, storyId, member);
+    const path = `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`;
+    const longName = await upload(app, outsider, path, "x", { "x-filename": "a".repeat(256) });
+    expect(longName.status).toBe(404);
+    const lying = await upload(app, outsider, path, "x", { "content-length": "2" });
+    expect(lying.status).toBe(404);
+  });
+
+  it("answers 401 to a disabled user", async () => {
+    const { db, app, member, projectId, storyId } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    disableUser(db, member);
+    const res = await upload(app, member, `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`, "x", {
+      "x-filename": "a".repeat(256),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("answers 409 on an archived project without creating its attachment directory", async () => {
+    const { dataDir, db, app, member, projectId, storyId } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    db.update(projects).set({ archivedAt: Date.now() }).where(eq(projects.id, projectId)).run();
+    const res = await upload(app, member, `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`, "x");
+    expect(res.status).toBe(409);
+    expect(existsSync(join(dataDir, "attachments", projectId))).toBe(false);
+  });
+
+  it("stores an uploaded HTML type as given but downloads it as opaque bytes", async () => {
+    const { db, app, member, projectId, storyId, as } = routeSetup();
+    const commentId = seedComment(db, projectId, storyId, member);
+    const res = await upload(
+      app,
+      member,
+      `/api/projects/${projectId}/stories/${storyId}/comments/${commentId}/attachments`,
+      "<script>alert(1)</script>",
+      { "x-filename": "page.html", "x-content-type": "text/html" },
+    );
+    const row = (await res.json()) as { content_type: string; download_url: string };
+    expect(row.content_type).toBe("text/html");
+    const download = await app.request(row.download_url, as(member));
+    expect(download.headers.get("content-type")).toBe("application/octet-stream");
+    expect(download.headers.get("content-security-policy")).toBe("sandbox");
+  });
+
   it("refuses a malformed X-Filename with 400", async () => {
     const { db, app, member, projectId, storyId } = routeSetup();
     const commentId = seedComment(db, projectId, storyId, member);
@@ -342,6 +475,16 @@ describe("download headers", () => {
     expect(safeContentType("Text/HTML; charset=utf-8")).toBe("text/html");
     expect(safeContentType("text/html\r\nX-Evil: 1")).toBe("application/octet-stream");
     expect(safeContentType("image/png")).toBe("image/png");
+  });
+
+  it("serves only passive types as themselves", () => {
+    for (const t of ["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain"]) {
+      expect(servedContentType(t)).toBe(t);
+    }
+    expect(servedContentType("text/plain; charset=utf-8")).toBe("text/plain");
+    for (const t of ["text/html", "image/svg+xml", "application/javascript", "text/xml"]) {
+      expect(servedContentType(t)).toBe("application/octet-stream");
+    }
   });
 
   it("replaces non-ASCII in the fallback and percent-encodes the original", () => {

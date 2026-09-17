@@ -15,6 +15,7 @@ import {
   listComments,
   readAttachment,
   updateComment,
+  type FileAttachmentRow,
 } from "../services/comments";
 import { newId } from "../id";
 import { createTask, deleteTask, listTasks, updateTask } from "../services/tasks";
@@ -50,6 +51,14 @@ const PLAUSIBLE_MEDIA_TYPE = /^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*\/[A-Za-z0-9][A-Z
 export function safeContentType(recorded: string | undefined): string {
   const essence = (recorded ?? "").split(";")[0]!.trim().toLowerCase();
   return PLAUSIBLE_MEDIA_TYPE.test(essence) ? essence : "application/octet-stream";
+}
+
+/** Types a browser renders passively; anything else (HTML, SVG, scripts) is served as opaque bytes. */
+const PASSIVE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain"]);
+
+export function servedContentType(recorded: string): string {
+  const essence = safeContentType(recorded);
+  return PASSIVE_TYPES.has(essence) ? essence : "application/octet-stream";
 }
 
 function uploadFilename(header: string | undefined): string {
@@ -170,45 +179,49 @@ export function storyPartRoutes(deps: {
       // Size is checked before membership, so a non-member's oversized upload answers 413 rather
       // than 404; the limit is the same for every project and says nothing about this one.
       const declared = declaredUploadLength(c.req.header("content-length"));
+      // Authorized before the body is buffered, and the directory is named by the project id the
+      // database resolved rather than the URL's.
+      const projectId = withProject(db, actor, c.req.param("id"), "attachment:write", (tx) => tx.projectId);
       const bytes = await c.req.arrayBuffer();
-      if (bytes.byteLength === 0) throw new HttpError(400, "file_required");
-      if (bytes.byteLength > ATTACHMENT_MAX_BYTES || bytes.byteLength > declared) {
-        throw new HttpError(413, "attachment_too_large");
-      }
+      if (bytes.byteLength > ATTACHMENT_MAX_BYTES) throw new HttpError(413, "attachment_too_large");
       if (bytes.byteLength !== declared) throw new HttpError(400, "file_length_mismatch");
       const filename = uploadFilename(c.req.header("x-filename"));
       const contentType = safeContentType(c.req.header("x-content-type"));
-      // The storage path must not come from the URL: authorize first so the directory is named by
-      // the project id the database resolved, and a caller with no access writes no bytes at all.
-      const projectId = withProject(db, actor, c.req.param("id"), "attachment:write", (tx) => tx.projectId);
       const id = newId();
+      let row: FileAttachmentRow;
       const storagePath = store.put(projectId, id, bytes);
       try {
-        return c.json(
-          withProjectChange(deps, actor, projectId, "attachment:write", (tx) => {
-            commentOnStory(listComments(tx, { storyId: c.req.param("storyId") }), c.req.param("commentId"));
-            return attachFile(tx, c.req.param("commentId"), {
-              id,
-              filename,
-              contentType,
-              size: bytes.byteLength,
-              storagePath,
-            });
-          }),
-          201,
-        );
+        row = withProjectChange(deps, actor, projectId, "attachment:write", (tx) => {
+          commentOnStory(listComments(tx, { storyId: c.req.param("storyId") }), c.req.param("commentId"));
+          return attachFile(tx, c.req.param("commentId"), {
+            id,
+            filename,
+            contentType,
+            size: bytes.byteLength,
+            storagePath,
+          });
+        });
       } catch (err) {
         removeQuietly(log, store, [storagePath]);
         throw err;
       }
+      return c.json(row, 201);
     })
     .get("/api/projects/:id/attachments/:attachmentId", (c) => {
       const row = withProject(db, actorOf(c), c.req.param("id"), "story:read", (tx) =>
         readAttachment(tx, c.req.param("attachmentId")),
       );
-      const bytes = store.read(row.storage_path);
+      let bytes: Uint8Array<ArrayBuffer>;
+      try {
+        bytes = store.read(row.storage_path);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+        log.warn("attachment bytes missing", { attachmentId: row.id });
+        throw new HttpError(404, "not_found");
+      }
       return c.body(bytes, 200, {
-        "Content-Type": safeContentType(row.content_type),
+        "Content-Type": servedContentType(row.content_type),
+        "Content-Security-Policy": "sandbox",
         "Content-Disposition": contentDisposition(row.filename),
         "Content-Length": String(bytes.byteLength),
       });

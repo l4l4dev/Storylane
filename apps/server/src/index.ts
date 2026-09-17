@@ -8,6 +8,7 @@ import pkg from "../package.json";
 import { loadConfig, ConfigError, type Config } from "./config";
 import { createLogger, type Logger } from "./log";
 import { createApp } from "./app";
+import { ATTACHMENT_MAX_BYTES } from "./attachments/store";
 import { openDatabase } from "./db/client";
 import { backupThenMigrate } from "./db/migrate";
 import { vacuumInto } from "./db/backup";
@@ -89,6 +90,8 @@ export function startServer(config: Config, opts: StartServerOptions = {}): Http
     // Bun's default is 10s, below SSE_HEARTBEAT_MS: a quiet stream would be closed between
     // heartbeats and the client would lose every event during the reconnect. 0 disables it.
     idleTimeout: 0,
+    // Headroom over the attachment cap so an at-limit upload reaches the route's own 413/400 checks.
+    maxRequestBodySize: ATTACHMENT_MAX_BYTES + 1024 * 1024,
     fetch: app.fetch,
   });
   serverLog.info("listening", { port: server.port, data_dir: config.dataDir, version: pkg.version, git_sha: config.gitSha });
