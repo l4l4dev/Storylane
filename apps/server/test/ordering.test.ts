@@ -65,13 +65,29 @@ describe("placeInList", () => {
     for (const row of before) if (row.id !== c) expect(after.get(row.id)).toBe(row.p);
   });
 
-  it("places at the head when only before_id is given, and at the tail when only after_id is", () => {
+  it("places at the head when only before_id is given, and after the named story when only after_id is", () => {
     const a = seedStory(db, projectId);
     const b = seedStory(db, projectId);
     place(b, "icebox", { before_id: a });
     expect(order()).toEqual([b, a]);
     place(b, "icebox", { after_id: a });
     expect(order()).toEqual([a, b]);
+  });
+
+  it("lands directly after a named predecessor that is not the tail", () => {
+    const a = seedStory(db, projectId);
+    const b = seedStory(db, projectId);
+    const c = seedStory(db, projectId);
+    const d = seedStory(db, projectId);
+    // The seam is bounded by whatever currently follows a, not by the tail of the list.
+    place(d, "icebox", { after_id: a });
+    expect(order()).toEqual([a, d, b, c]);
+  });
+
+  it("refuses a neighbour that is the story itself", () => {
+    const a = seedStory(db, projectId);
+    expect(() => place(a, "icebox", { after_id: a })).toThrow(/neighbour_is_self/);
+    expect(() => place(a, "icebox", { before_id: a })).toThrow(/neighbour_is_self/);
   });
 
   it("renumbers the list only when the gap between neighbours runs out", () => {

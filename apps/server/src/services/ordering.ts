@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, lt, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
 import { projects, stories, type StoryList } from "../db/schema";
 import { HttpError } from "../http-error";
 import type { ProjectTx } from "../db/tx";
@@ -135,6 +135,40 @@ function seam(
   return { lower: closestPosition(tx, list, storyId, "below", upper), upper };
 }
 
+/** Current is the head of the backlog: everything already pulled into an iteration. */
+const CURRENT_STATES = ["planned", "started", "finished", "delivered", "rejected", "accepted"] as const;
+
+/**
+ * Where an unpositioned drop into Current lands: after the last story already in Current, not at
+ * the end of the whole backlog, because Current is that list's head and not its tail.
+ */
+function currentSeam(
+  tx: ProjectTx,
+  list: StoryList,
+  storyId: string,
+): { lower: number | null; upper: number | null } {
+  const last = tx.tx
+    .select({ p: sql<number | null>`max(${stories.position})` })
+    .from(stories)
+    .where(
+      and(
+        eq(stories.projectId, tx.projectId),
+        eq(stories.list, list),
+        ne(stories.id, storyId),
+        inArray(stories.currentState, CURRENT_STATES),
+      ),
+    )
+    .get();
+  const lower = last?.p ?? null;
+  if (lower !== null) return { lower, upper: closestPosition(tx, list, storyId, "above", lower) };
+  const head = tx.tx
+    .select({ p: sql<number | null>`min(${stories.position})` })
+    .from(stories)
+    .where(and(eq(stories.projectId, tx.projectId), eq(stories.list, list), ne(stories.id, storyId)))
+    .get();
+  return { lower: null, upper: head?.p ?? null };
+}
+
 /**
  * Tracker's own move vocabulary (core-model §1.8): `after_id` is the predecessor, `before_id`
  * the successor, and the client never sends the whole list. Positions are read *inside* this
@@ -147,7 +181,8 @@ export function placeInList(tx: ProjectTx, storyId: string, list: StoryList, mov
   const afterId = move.after_id ?? null;
   const beforeId = move.before_id ?? null;
   if (afterId === storyId || beforeId === storyId) throw new HttpError(400, "neighbour_is_self");
-  if (afterId === null && beforeId === null) return appendToList(tx, list);
+  const unpositioned = afterId === null && beforeId === null;
+  if (unpositioned && move.group !== "current") return appendToList(tx, list);
 
   if (afterId !== null && beforeId !== null) {
     if (neighbourPosition(tx, list, afterId) >= neighbourPosition(tx, list, beforeId)) {
@@ -155,13 +190,15 @@ export function placeInList(tx: ProjectTx, storyId: string, list: StoryList, mov
     }
   }
 
-  let bounds = seam(tx, list, storyId, afterId, beforeId);
+  const resolve = () =>
+    unpositioned ? currentSeam(tx, list, storyId) : seam(tx, list, storyId, afterId, beforeId);
+  let bounds = resolve();
   let position = between(bounds.lower, bounds.upper);
   if (position === null) {
     // The seam is full. Renumbering is the exception, not the write path: it touches the whole
     // list, and it happens inside this same transaction so no reader sees half a renumbering.
     renumber(tx, list);
-    bounds = seam(tx, list, storyId, afterId, beforeId);
+    bounds = resolve();
     position = between(bounds.lower, bounds.upper);
     if (position === null) throw new Error("positions exhausted after renumbering");
   }

@@ -314,13 +314,28 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
     next.list = targetList;
   }
   const fieldsChanged = Object.keys(next).length > 0;
+  let moved = false;
+  let positionBefore = current.position;
   if (moveRequested) {
-    set.position = placeInList(tx, storyId, targetList, { before_id: patch.before_id ?? null, after_id: patch.after_id ?? null });
+    set.position = placeInList(tx, storyId, targetList, {
+      before_id: patch.before_id ?? null,
+      after_id: patch.after_id ?? null,
+      ...(patch.group === undefined ? {} : { group: patch.group }),
+    });
+    // Read back rather than compare with `current`: placeInList may have renumbered the list,
+    // which leaves the loaded row's position stale.
+    const stored = tx.tx
+      .select({ p: stories.position })
+      .from(stories)
+      .where(and(eq(stories.id, storyId), eq(stories.projectId, tx.projectId)))
+      .get();
+    positionBefore = stored?.p ?? current.position;
+    moved = set.position !== positionBefore || targetList !== current.list;
   } else if (targetList !== current.list) {
     set.position = appendToList(tx, targetList);
   }
 
-  if (!fieldsChanged && !moveRequested) return readOne(tx, storyId);
+  if (!fieldsChanged && !moved) return readOne(tx, storyId);
   set.updatedAt = Date.now();
   tx.tx.update(stories).set(set as never).where(and(eq(stories.id, storyId), eq(stories.projectId, tx.projectId))).run();
   if (fieldsChanged) {
@@ -332,7 +347,7 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
       primaryResources: [{ kind: "story", id: storyId }],
     });
   }
-  if (moveRequested) {
+  if (moved) {
     recordActivity(tx, {
       kind: "story_move_activity",
       message: "moved this story",
@@ -343,7 +358,7 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
           id: storyId,
           number: current.number,
           change_type: "update",
-          original_values: { position: current.position },
+          original_values: { position: positionBefore },
           new_values: { position: set.position },
         },
       ],

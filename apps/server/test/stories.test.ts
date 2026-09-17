@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { eq } from "drizzle-orm";
+import { projects } from "../src/db/schema";
 import { listActivity, storyActivity } from "../src/services/activity";
 import { createStory, deleteStory, listStories, readStory, updateStory } from "../src/services/stories";
 import { withProject } from "../src/db/tx";
@@ -207,5 +209,68 @@ describe("listStories", () => {
     const chores = withProject(db, owner, projectId, "story:read", (tx) => listStories(tx, { withStoryType: ["chore"] }));
     expect(chores).toHaveLength(1);
     expect(chores[0]!.story_type).toBe("chore");
+  });
+});
+
+/** Current only exists as a hand-placed panel while planning is manual (Assumption 7). */
+function useManualPlanning(db: ReturnType<typeof makeTestDb>, projectId: string): void {
+  db.update(projects).set({ automaticPlanning: false }).where(eq(projects.id, projectId)).run();
+}
+
+describe("updateStory moves", () => {
+  it("drops a story into Current after the last story already there", () => {
+    const { db, owner, projectId } = setup();
+    useManualPlanning(db, projectId);
+    const planned = seedStory(db, projectId, { list: "backlog", currentState: "planned" });
+    const u1 = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const u2 = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const x = seedStory(db, projectId);
+    const moved = withProject(db, owner, projectId, "story:write", (tx) => updateStory(tx, x, { group: "current" }));
+    expect(moved.current_state).toBe("planned");
+    const rows = withProject(db, owner, projectId, "story:read", (tx) => listStories(tx));
+    const backlog = rows.filter((r) => r.list === "backlog").sort((a, b) => a.position - b.position);
+    expect(backlog.map((r) => r.id)).toEqual([planned, x, u1, u2]);
+  });
+
+  it("drops a story into an empty Current at the head of the backlog", () => {
+    const { db, owner, projectId } = setup();
+    useManualPlanning(db, projectId);
+    const u1 = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const u2 = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const x = seedStory(db, projectId);
+    withProject(db, owner, projectId, "story:write", (tx) => updateStory(tx, x, { group: "current" }));
+    const rows = withProject(db, owner, projectId, "story:read", (tx) => listStories(tx));
+    const backlog = rows.filter((r) => r.list === "backlog").sort((a, b) => a.position - b.position);
+    expect(backlog.map((r) => r.id)).toEqual([x, u1, u2]);
+  });
+
+  it("writes one update activity and one move activity for a patch that edits and moves", () => {
+    const { db, owner, projectId } = setup();
+    const a = seedStory(db, projectId);
+    const b = seedStory(db, projectId);
+    const c = seedStory(db, projectId);
+    withProject(db, owner, projectId, "story:write", (tx) =>
+      updateStory(tx, c, { name: "Edited and moved", after_id: a, before_id: b }),
+    );
+    const kinds = withProject(db, owner, projectId, "story:read", (tx) => storyActivity(tx, c)).map((a2) => a2.kind);
+    expect(kinds.filter((k) => k === "story_update_activity")).toHaveLength(1);
+    expect(kinds.filter((k) => k === "story_move_activity")).toHaveLength(1);
+  });
+
+  it("writes no move activity when the drop resolves to where the story already is", () => {
+    const { db, owner, projectId } = setup();
+    const a = seedStory(db, projectId);
+    const b = seedStory(db, projectId);
+    withProject(db, owner, projectId, "story:write", (tx) => updateStory(tx, b, { after_id: a }));
+    const kinds = withProject(db, owner, projectId, "story:read", (tx) => storyActivity(tx, b)).map((a2) => a2.kind);
+    expect(kinds.filter((k) => k === "story_move_activity")).toHaveLength(0);
+  });
+
+  it("refuses group: unscheduled on a started story", () => {
+    const { db, owner, projectId } = setup();
+    const storyId = seedStory(db, projectId, { list: "backlog", currentState: "started", estimate: 1 });
+    expect(() =>
+      withProject(db, owner, projectId, "story:write", (tx) => updateStory(tx, storyId, { group: "unscheduled" })),
+    ).toThrow(expect.objectContaining({ status: 409, code: "invalid_transition" }));
   });
 });
