@@ -34,4 +34,17 @@ describe("story owner/follower routes", () => {
     const body = (await res.json()) as { follower_ids: string[] };
     expect(body.follower_ids).toContain((viewer as { userId: string }).userId);
   });
+
+  it("refuses to follow on an archived project", async () => {
+    const { owner, projectId, storyId, app } = setup();
+    const headers = { "x-test-actor": JSON.stringify(owner), "content-type": "application/json" };
+    await app.request(`/api/projects/${projectId}/archive`, { method: "POST", headers, body: "{}" });
+    const res = await app.request(`/api/projects/${projectId}/stories/${storyId}/follow`, {
+      method: "POST",
+      headers,
+      body: "{}",
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "project_archived" });
+  });
 });
