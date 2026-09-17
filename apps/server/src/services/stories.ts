@@ -159,6 +159,7 @@ export function createStory(tx: ProjectTx, input: StoryInput): StoryRow {
     throw new HttpError(409, "estimate_required");
   }
   if (input.estimate !== undefined && input.estimate !== null) {
+    if (storyType === "release") throw new HttpError(400, "estimate_not_allowed");
     let scale: number[];
     try {
       scale = parsePointScale(project.point_scale);
@@ -248,8 +249,18 @@ function transitionCopy(to: StoryState): { highlight: string; message: string } 
 function stateForGroup(group: StoryPatch["group"], from: StoryState): StoryState | undefined {
   if (group === undefined) return undefined;
   if (group === "unscheduled") return "unscheduled";
-  if (group === "current") return "planned";
-  return from === "unscheduled" ? "unstarted" : from;
+  if (group === "current") return from === "unscheduled" || from === "unstarted" ? "planned" : from;
+  // A planned story outside Current contradicts the manual-planning Current panel
+  // (docs/reference/tracker/articles/advanced_search.md).
+  return from === "unscheduled" || from === "planned" ? "unstarted" : from;
+}
+
+const CURRENT_PANEL_STATES: readonly StoryState[] = ["planned", "started", "finished", "delivered", "rejected", "accepted"];
+
+function groupAgreesWithState(group: NonNullable<StoryPatch["group"]>, state: StoryState): boolean {
+  const groupList = group === "unscheduled" ? "icebox" : "backlog";
+  if (groupList !== listForState(state)) return false;
+  return group !== "current" || CURRENT_PANEL_STATES.includes(state);
 }
 
 export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): StoryRow {
@@ -257,6 +268,12 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
   // Resolved first: a group the planning mode forbids answers 409 ahead of any 400 and before
   // anything (including a renumber) is written.
   const groupList = listForGroup(tx, patch.group);
+  if (patch.current_state === "planned" && readProject(tx).automatic_planning) {
+    throw new HttpError(409, "manual_planning_required");
+  }
+  if (patch.group !== undefined && patch.current_state !== undefined && !groupAgreesWithState(patch.group, patch.current_state)) {
+    throw new HttpError(400, "group_state_mismatch");
+  }
   const moveRequested = patch.group !== undefined || patch.before_id !== undefined || patch.after_id !== undefined;
   const set: Record<string, unknown> = {};
   const original: Record<string, unknown> = {};
@@ -293,8 +310,8 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
   // Validate against the *effective* type (patch.story_type, if given), not the pre-patch one —
   // a same-request `{ story_type: "release", deadline }` must not be rejected for the old type.
   if (patch.deadline !== undefined) {
+    if (patch.deadline !== null && storyType !== "release") throw new HttpError(400, "deadline_release_only");
     if (patch.deadline !== current.deadline) {
-      if (patch.deadline !== null && storyType !== "release") throw new HttpError(400, "deadline_release_only");
       set.deadline = patch.deadline;
       original.deadline = current.deadline;
       next.deadline = patch.deadline;
@@ -307,7 +324,17 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
     next.deadline = null;
   }
 
-  const targetEstimate = patch.estimate !== undefined ? patch.estimate : current.estimate;
+  if (patch.estimate !== undefined && patch.estimate !== null && storyType === "release") {
+    throw new HttpError(400, "estimate_not_allowed");
+  }
+  let targetEstimate = patch.estimate !== undefined ? patch.estimate : current.estimate;
+  if (patch.estimate === undefined && storyType === "release" && current.estimate !== null) {
+    // Same reasoning as the deadline above: stories_release_never_estimated_update refuses the type change otherwise.
+    targetEstimate = null;
+    set.estimate = null;
+    original.estimate = current.estimate;
+    next.estimate = null;
+  }
   if (patch.estimate !== undefined && patch.estimate !== current.estimate) {
     const project = readProject(tx);
     let scale: number[];
@@ -393,14 +420,15 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
   const fieldsChanged = Object.keys(next).length > 0;
   let moved = false;
   let positionBefore = current.position;
-  // A group naming the list the story already sits in, with no neighbour and no state change, is
-  // a client echoing the field back: re-placing it would drop the story to the end of its list.
+  // A group naming the list the story already sits in, with no neighbour, keeps its position:
+  // re-placing it would drop the story to the end of its list. Only an entry into Current is
+  // placed, because Current is the head of the backlog rather than its tail.
   const groupEcho =
     patch.group !== undefined &&
     patch.before_id === undefined &&
     patch.after_id === undefined &&
-    !stateChanges &&
-    targetList === current.list;
+    targetList === current.list &&
+    (!stateChanges || patch.group !== "current");
   if (moveRequested && !groupEcho) {
     set.position = placeInList(tx, storyId, targetList, {
       before_id: patch.before_id ?? null,

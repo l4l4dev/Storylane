@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
-import { activities, storyLabels } from "../src/db/schema";
+import { activities, projects, stories, storyLabels } from "../src/db/schema";
 import { makeTestApp, makeTestDb, seedLabel, seedProject, seedStory, seedUser } from "./harness";
 
 function setup() {
@@ -271,5 +271,159 @@ describe("story routes body parsing", () => {
       status: 400,
       body: { error: "invalid_body" },
     });
+  });
+});
+
+function manualPlanning(db: ReturnType<typeof makeTestDb>, projectId: string): void {
+  db.update(projects).set({ automaticPlanning: false }).where(eq(projects.id, projectId)).run();
+}
+
+function lastActivity(db: ReturnType<typeof makeTestDb>, projectId: string) {
+  const rows = db.select().from(activities).where(eq(activities.projectId, projectId)).all();
+  return { kinds: rows.map((r) => r.kind), last: rows.at(-1) };
+}
+
+describe("story triggers are answered by the service, never by a 500", () => {
+  it("clears the estimate when an estimated feature becomes a release, in the one update activity", async () => {
+    const { db, projectId, app, headers } = setup();
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted", estimate: 2 });
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { story_type: "release" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ story_type: "release", estimate: null });
+    const { kinds, last } = lastActivity(db, projectId);
+    expect(kinds).toEqual(["story_update_activity"]);
+    const change = JSON.parse(last!.changes as unknown as string)[0];
+    expect(change.original_values).toEqual({ story_type: "feature", estimate: 2 });
+    expect(change.new_values).toEqual({ story_type: "release", estimate: null });
+  });
+
+  it("answers 400 estimate_not_allowed for an estimate on an existing release", async () => {
+    const { db, projectId, app, headers } = setup();
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted", storyType: "release" });
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { estimate: 1 });
+    expect(res).toEqual({ status: 400, body: { error: "estimate_not_allowed" } });
+  });
+
+  it("answers 400 estimate_not_allowed for a type change to release that also sends an estimate", async () => {
+    const { db, projectId, app, headers } = setup();
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted", estimate: 2 });
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { story_type: "release", estimate: 2 });
+    expect(res).toEqual({ status: 400, body: { error: "estimate_not_allowed" } });
+  });
+
+  it("answers 400 estimate_not_allowed for a release created with an estimate", async () => {
+    const { projectId, app, headers } = setup();
+    const res = await send(app, `/api/projects/${projectId}/stories`, "POST", headers, { name: "r", story_type: "release", estimate: 2 });
+    expect(res).toEqual({ status: 400, body: { error: "estimate_not_allowed" } });
+  });
+
+  it("answers 409 manual_planning_required for current_state planned under automatic planning", async () => {
+    const { db, projectId, app, headers } = setup();
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { current_state: "planned" });
+    expect(res).toEqual({ status: 409, body: { error: "manual_planning_required" } });
+  });
+
+  it("answers 400 deadline_release_only for a release turned feature that resends its deadline", async () => {
+    const { db, projectId, app, headers } = setup();
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted", storyType: "release" });
+    db.update(stories).set({ deadline: 1_800_000_000_000 }).where(eq(stories.id, id)).run();
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, {
+      story_type: "feature",
+      deadline: 1_800_000_000_000,
+    });
+    expect(res).toEqual({ status: 400, body: { error: "deadline_release_only" } });
+  });
+});
+
+describe("PUT /stories with both group and current_state", () => {
+  it("answers 400 group_state_mismatch for scheduled with unscheduled", async () => {
+    const { db, projectId, app, headers } = setup();
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { group: "scheduled", current_state: "unscheduled" });
+    expect(res).toEqual({ status: 400, body: { error: "group_state_mismatch" } });
+  });
+
+  it("answers 400 group_state_mismatch for unscheduled with unstarted", async () => {
+    const { db, projectId, app, headers } = setup();
+    const id = seedStory(db, projectId);
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { group: "unscheduled", current_state: "unstarted" });
+    expect(res).toEqual({ status: 400, body: { error: "group_state_mismatch" } });
+  });
+
+  it("answers 400 group_state_mismatch for current with a state outside Current", async () => {
+    const { db, projectId, app, headers } = setup();
+    manualPlanning(db, projectId);
+    const id = seedStory(db, projectId);
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { group: "current", current_state: "unstarted" });
+    expect(res).toEqual({ status: 400, body: { error: "group_state_mismatch" } });
+  });
+
+  it("answers 409 manual_planning_required ahead of a mismatch", async () => {
+    const { db, projectId, app, headers } = setup();
+    const id = seedStory(db, projectId);
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { group: "current", current_state: "unstarted" });
+    expect(res).toEqual({ status: 409, body: { error: "manual_planning_required" } });
+  });
+
+  it("applies an agreeing group and state", async () => {
+    const { db, projectId, app, headers } = setup();
+    const id = seedStory(db, projectId);
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { group: "scheduled", current_state: "unstarted" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ list: "backlog", current_state: "unstarted" });
+  });
+});
+
+describe("PUT /stories group maps to Tracker panel states", () => {
+  it("reorders a started story inside Current without touching its state", async () => {
+    const { db, projectId, app, headers } = setup();
+    manualPlanning(db, projectId);
+    const started = seedStory(db, projectId, { list: "backlog", currentState: "started", estimate: 1 });
+    const planned = seedStory(db, projectId, { list: "backlog", currentState: "planned" });
+    const before = db.select({ p: stories.position }).from(stories).where(eq(stories.id, started)).get()!.p;
+    const res = await send(app, `/api/projects/${projectId}/stories/${started}`, "PUT", headers, { group: "current", after_id: planned });
+    expect(res.status).toBe(200);
+    expect(res.body.current_state).toBe("started");
+    expect(res.body.position).not.toBe(before);
+    const listed = await send(app, `/api/projects/${projectId}/stories`, "GET", headers);
+    expect((listed.body as unknown as { id: string }[]).map((s) => s.id)).toEqual([planned, started]);
+  });
+
+  it("unplans a planned story dropped after a backlog story", async () => {
+    const { db, projectId, app, headers } = setup();
+    manualPlanning(db, projectId);
+    const planned = seedStory(db, projectId, { list: "backlog", currentState: "planned" });
+    const u1 = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const u2 = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const res = await send(app, `/api/projects/${projectId}/stories/${planned}`, "PUT", headers, { group: "scheduled", after_id: u1 });
+    expect(res.status).toBe(200);
+    expect(res.body.current_state).toBe("unstarted");
+    const listed = await send(app, `/api/projects/${projectId}/stories`, "GET", headers);
+    expect((listed.body as unknown as { id: string }[]).map((s) => s.id)).toEqual([u1, planned, u2]);
+  });
+
+  it("unplans a planned story in place when no neighbour is given", async () => {
+    const { db, projectId, app, headers } = setup();
+    manualPlanning(db, projectId);
+    const planned = seedStory(db, projectId, { list: "backlog", currentState: "planned" });
+    seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const before = db.select({ p: stories.position }).from(stories).where(eq(stories.id, planned)).get()!.p;
+    const res = await send(app, `/api/projects/${projectId}/stories/${planned}`, "PUT", headers, { group: "scheduled" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ current_state: "unstarted", list: "backlog", position: before });
+    const { kinds, last } = lastActivity(db, projectId);
+    expect(kinds).toEqual(["story_update_activity"]);
+    expect(JSON.parse(last!.changes as unknown as string)[0].new_values).toEqual({ current_state: "unstarted" });
+  });
+
+  it("treats scheduled on an unstarted backlog story as a no-op", async () => {
+    const { db, projectId, app, headers } = setup();
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const before = db.select({ p: stories.position }).from(stories).where(eq(stories.id, id)).get()!.p;
+    const res = await send(app, `/api/projects/${projectId}/stories/${id}`, "PUT", headers, { group: "scheduled" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ current_state: "unstarted", position: before });
+    expect(lastActivity(db, projectId).kinds).toEqual([]);
   });
 });
