@@ -185,3 +185,31 @@ describe("label names from the client", () => {
     expect(await res.json()).toEqual({ error: "invalid_body" });
   });
 });
+
+describe("label routes answer 404 before body validation", () => {
+  const headersOf = (actor: unknown) => ({ "content-type": "application/json", "x-test-actor": JSON.stringify(actor) });
+
+  it("answers 404 for an unknown label with an unknown key", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const res = await app.request(`/api/projects/${projectId}/labels/00000000-0000-0000-0000-000000000000`, {
+      method: "PUT",
+      headers: headersOf(owner),
+      body: JSON.stringify({ bogus: 1 }),
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+
+  it("answers 404 for an unknown story with a blank label name", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const res = await app.request(`/api/projects/${projectId}/stories/00000000-0000-0000-0000-000000000000/labels`, {
+      method: "POST",
+      headers: headersOf(owner),
+      body: JSON.stringify({ name: " " }),
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+});

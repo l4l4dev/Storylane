@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Db } from "../db/client";
-import { withProject, type Actor } from "../db/tx";
+import { epics, labels, stories } from "../db/schema";
+import { loadInProject, withProject, type Actor } from "../db/tx";
 import { withProjectChange } from "../events/emit";
 import type { EventBus } from "../events/bus";
 import type { Logger } from "../log";
@@ -87,6 +88,7 @@ export function labelRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf:
       const input = await body(c);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "label:write", (tx) => {
+          loadInProject(tx, labels, c.req.param("labelId"));
           rejectUnknownKeys(input, LABEL_PATCH_KEYS);
           return renameLabel(tx, c.req.param("labelId"), requireName(input));
         }),
@@ -102,6 +104,7 @@ export function labelRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf:
       const input = await body(c);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "label:write", (tx) => {
+          loadInProject(tx, stories, c.req.param("storyId"));
           rejectUnknownKeys(input, STORY_LABEL_KEYS);
           attachLabel(tx, c.req.param("storyId"), requireName(input));
           return readStory(tx, c.req.param("storyId"));
@@ -144,6 +147,7 @@ export function labelRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf:
       const input = await body(c);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "epic:write", (tx) => {
+          loadInProject(tx, epics, c.req.param("epicId"));
           // before_id/after_id share this route with name/description so a single PUT can both
           // rename and move; splitting the two on separate URLs would cost the SPA a round trip.
           rejectUnknownKeys(input, new Set([...EPIC_PATCH_KEYS, ...EPIC_MOVE_KEYS]));

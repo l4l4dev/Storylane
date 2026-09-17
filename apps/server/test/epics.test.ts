@@ -164,3 +164,17 @@ describe("epic PUT and names", () => {
     expect(withProject(db, owner, projectId, "story:read", (tx) => listActivity(tx, {}))).toEqual([]);
   });
 });
+
+describe("epic PUT answers 404 before body validation", () => {
+  it("answers 404 for an unknown epic with a blank name", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const res = await app.request(`/api/projects/${projectId}/epics/00000000-0000-0000-0000-000000000000`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-test-actor": JSON.stringify(owner) },
+      body: JSON.stringify({ name: " " }),
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+});

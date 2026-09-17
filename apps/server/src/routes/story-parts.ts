@@ -210,7 +210,7 @@ export function storyPartRoutes(deps: {
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "comment:update-own", (tx) => {
           const row = commentOnStory(listComments(tx, { storyId: c.req.param("storyId") }), c.req.param("commentId"));
-          // Mirrors updateComment's author check so a stranger's malformed body still answers 403, not 400.
+          // Mirrors updateComment's author check so a stranger's well-formed JSON with a bad shape answers 403, not 400.
           if (tx.actor.kind !== "user" || row.person_id !== tx.actor.userId) throw new HttpError(403, "not_comment_author");
           rejectUnknownKeys(input, COMMENT_KEYS);
           return updateComment(tx, c.req.param("commentId"), requireText(input));

@@ -65,11 +65,12 @@ bookkeeping (`member:read` is 200 for viewers and must not carry it).
 ### Invariants the matrix cannot express
 
 - **Last owner.** The sole owner can never be demoted or removed:
-  `member:change-role` and `member:remove` answer `409 last_owner`.
-  `member:leave` is `403` for any owner instead — transfer ownership first.
-  `member:leave` is the actor removing their own membership.
+  `member:change-role` demoting the sole owner answers `409 last_owner`.
+  Removing yourself is `403`: `member:leave` is `403` for any owner, and
   `member:remove` naming the actor's own id answers `403 forbidden`, so an owner
-  cannot bypass the `member:leave` rule.
+  transfers ownership first and then leaves. `member:leave` is the actor removing
+  their own membership. Removing another owner implies at least two owners, so
+  `member:remove` never reaches `409 last_owner` through the API.
 - **Archived project.** With `projects.archived_at` set, `:read` actions are
   unaffected and every other action answers `409 project_archived` for every
   role, except `project:archive` (un-archive) and `project:delete`, which stay
