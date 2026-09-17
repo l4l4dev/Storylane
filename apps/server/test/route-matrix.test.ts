@@ -118,6 +118,7 @@ const DESTRUCTIVE = new Set([
   "DELETE /api/projects/:id/labels/:labelId",
   "DELETE /api/projects/:id/stories/:storyId/labels/:labelId",
   "DELETE /api/projects/:id/epics/:epicId",
+  "DELETE /api/projects/:id/iteration_overrides/:number",
   "DELETE /api/projects/:id/stories/:storyId/tasks/:taskId",
   "DELETE /api/projects/:id/stories/:storyId/blockers/:blockerId",
   "DELETE /api/projects/:id/stories/:storyId/comments/:commentId",
