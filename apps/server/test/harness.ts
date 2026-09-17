@@ -56,6 +56,12 @@ export function disableUser(db: Db, actor: Actor): void {
   db.update(users).set({ disabledAt: Date.now() }).where(eq(users.id, actor.userId)).run();
 }
 
+/** Adds an already-seeded user to an already-seeded project, for tests that need a member after the fact. */
+export function seedMembership(db: Db, projectId: string, actor: Actor, role: "owner" | "member" | "viewer"): void {
+  if (actor.kind !== "user") throw new Error("actor must be a user");
+  db.insert(projectMembers).values({ projectId, userId: actor.userId, role, joinedAt: Date.now() }).run();
+}
+
 export function seedProject(db: Db, owner: Actor, others: Array<[Actor, "member" | "viewer"]> = []): string {
   if (owner.kind !== "user") throw new Error("owner must be a user");
   const id = crypto.randomUUID();

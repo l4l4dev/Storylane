@@ -58,21 +58,21 @@ export function labelRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf:
     )
     .post("/api/projects/:id/labels", async (c) => {
       const input = await body(c);
-      rejectUnknownKeys(input, LABEL_CREATE_KEYS);
-      const name = requireName(input);
       return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "label:write", (tx) => createLabel(tx, name)),
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "label:write", (tx) => {
+          rejectUnknownKeys(input, LABEL_CREATE_KEYS);
+          return createLabel(tx, requireName(input));
+        }),
         201,
       );
     })
     .put("/api/projects/:id/labels/:labelId", async (c) => {
       const input = await body(c);
-      rejectUnknownKeys(input, LABEL_PATCH_KEYS);
-      const name = requireName(input);
       return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "label:write", (tx) =>
-          renameLabel(tx, c.req.param("labelId"), name),
-        ),
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "label:write", (tx) => {
+          rejectUnknownKeys(input, LABEL_PATCH_KEYS);
+          return renameLabel(tx, c.req.param("labelId"), requireName(input));
+        }),
       );
     })
     .delete("/api/projects/:id/labels/:labelId", (c) => {
@@ -83,11 +83,10 @@ export function labelRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf:
     })
     .post("/api/projects/:id/stories/:storyId/labels", async (c) => {
       const input = await body(c);
-      rejectUnknownKeys(input, STORY_LABEL_KEYS);
-      const name = requireName(input);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "label:write", (tx) => {
-          attachLabel(tx, c.req.param("storyId"), name);
+          rejectUnknownKeys(input, STORY_LABEL_KEYS);
+          attachLabel(tx, c.req.param("storyId"), requireName(input));
           return readStory(tx, c.req.param("storyId"));
         }),
         201,
@@ -106,51 +105,47 @@ export function labelRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf:
     )
     .post("/api/projects/:id/epics", async (c) => {
       const input = await body(c);
-      rejectUnknownKeys(input, EPIC_CREATE_KEYS);
-      const name = requireName(input);
-      const description = optionalNullableString(input.description, "description_invalid");
-      if (description) assertMaxLength(description, DESCRIPTION_MAX, "description_too_long");
-      const labelName = optionalNullableString(input.label_name, "label_name_invalid");
-      if (labelName !== undefined && labelName !== null) assertMaxLength(labelName, NAME_MAX, "label_name_too_long");
       return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "epic:write", (tx) =>
-          createEpic(tx, {
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "epic:write", (tx) => {
+          rejectUnknownKeys(input, EPIC_CREATE_KEYS);
+          const name = requireName(input);
+          const description = optionalNullableString(input.description, "description_invalid");
+          if (description) assertMaxLength(description, DESCRIPTION_MAX, "description_too_long");
+          const labelName = optionalNullableString(input.label_name, "label_name_invalid");
+          if (labelName !== undefined && labelName !== null) assertMaxLength(labelName, NAME_MAX, "label_name_too_long");
+          return createEpic(tx, {
             name,
             ...(description !== undefined ? { description } : {}),
             ...(labelName ? { label_name: labelName } : {}),
-          }),
-        ),
+          });
+        }),
         201,
       );
     })
     .put("/api/projects/:id/epics/:epicId", async (c) => {
       const input = await body(c);
-      // before_id/after_id share this route with name/description so a single PUT can both
-      // rename and move; splitting the two on separate URLs would cost the SPA a round trip.
-      rejectUnknownKeys(input, new Set([...EPIC_PATCH_KEYS, ...EPIC_MOVE_KEYS]));
-      const beforeId = optionalNullableString(input.before_id, "before_id_invalid");
-      const afterId = optionalNullableString(input.after_id, "after_id_invalid");
-      if (beforeId !== undefined || afterId !== undefined) {
-        const move: { before_id?: string | null; after_id?: string | null } = {};
-        if (beforeId !== undefined) move.before_id = beforeId;
-        if (afterId !== undefined) move.after_id = afterId;
-        return c.json(
-          withProjectChange(deps, actorOf(c), c.req.param("id"), "epic:write", (tx) =>
-            moveEpic(tx, c.req.param("epicId"), move),
-          ),
-        );
-      }
-      const patch: { name?: string; description?: string | null } = {};
-      if (input.name !== undefined) patch.name = requireName(input);
-      const description = optionalNullableString(input.description, "description_invalid");
-      if (description !== undefined) {
-        if (description !== null) assertMaxLength(description, DESCRIPTION_MAX, "description_too_long");
-        patch.description = description;
-      }
       return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "epic:write", (tx) =>
-          updateEpic(tx, c.req.param("epicId"), patch),
-        ),
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "epic:write", (tx) => {
+          // before_id/after_id share this route with name/description so a single PUT can both
+          // rename and move; splitting the two on separate URLs would cost the SPA a round trip.
+          rejectUnknownKeys(input, new Set([...EPIC_PATCH_KEYS, ...EPIC_MOVE_KEYS]));
+          const beforeId = optionalNullableString(input.before_id, "before_id_invalid");
+          const afterId = optionalNullableString(input.after_id, "after_id_invalid");
+          if (beforeId !== undefined || afterId !== undefined) {
+            const move: { before_id?: string | null; after_id?: string | null } = {};
+            if (beforeId !== undefined) move.before_id = beforeId;
+            if (afterId !== undefined) move.after_id = afterId;
+            return moveEpic(tx, c.req.param("epicId"), move);
+          }
+          const patch: { name?: string; description?: string | null } = {};
+          if (input.name !== undefined) patch.name = requireName(input);
+          const description = optionalNullableString(input.description, "description_invalid");
+          if (description !== undefined) {
+            if (description !== null) assertMaxLength(description, DESCRIPTION_MAX, "description_too_long");
+            patch.description = description;
+          }
+          return updateEpic(tx, c.req.param("epicId"), patch);
+        }),
       );
     })
     .delete("/api/projects/:id/epics/:epicId", (c) => {

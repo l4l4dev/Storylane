@@ -139,6 +139,21 @@ describe("task routes", () => {
     expect(res.status).toBe(403);
   });
 
+  it("answers 403 (not 400) for a viewer's POST with an empty description — authorization runs before body validation", async () => {
+    const { db, owner } = setup();
+    const viewer = seedUser(db, "viewer@example.test");
+    const withViewerProjectId = seedProject(db, owner, [[viewer, "viewer"]]);
+    const { app } = makeTestApp(db);
+    const storyId = seedStory(db, withViewerProjectId);
+    const headers = { "content-type": "application/json", "x-test-actor": JSON.stringify(viewer) };
+    const res = await app.request(`/api/projects/${withViewerProjectId}/stories/${storyId}/tasks`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ description: "" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
   it("404s a taskId that belongs to a different story", async () => {
     const { db, owner, projectId } = setup();
     const { app } = makeTestApp(db);

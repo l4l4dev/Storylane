@@ -182,31 +182,31 @@ export function projectRoutes(deps: {
     )
     .post("/api/projects/:id/review_types", async (c) => {
       const input = await body(c);
-      if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
-      assertMaxLength(input.name, NAME_MAX, "name_too_long");
       return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "review-type:write", (tx) =>
-          createReviewType(tx, input.name as string),
-        ),
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "review-type:write", (tx) => {
+          if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
+          assertMaxLength(input.name, NAME_MAX, "name_too_long");
+          return createReviewType(tx, input.name);
+        }),
         201,
       );
     })
     .put("/api/projects/:id/review_types/:reviewTypeId", async (c) => {
       const input = await body(c);
-      const patch: { name?: string; hidden?: boolean } = {};
-      if (input.name !== undefined) {
-        if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
-        assertMaxLength(input.name, NAME_MAX, "name_too_long");
-        patch.name = input.name;
-      }
-      if (input.hidden !== undefined) {
-        if (typeof input.hidden !== "boolean") throw new HttpError(400, "invalid_body");
-        patch.hidden = input.hidden;
-      }
       return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "review-type:write", (tx) =>
-          updateReviewType(tx, c.req.param("reviewTypeId"), patch),
-        ),
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "review-type:write", (tx) => {
+          const patch: { name?: string; hidden?: boolean } = {};
+          if (input.name !== undefined) {
+            if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
+            assertMaxLength(input.name, NAME_MAX, "name_too_long");
+            patch.name = input.name;
+          }
+          if (input.hidden !== undefined) {
+            if (typeof input.hidden !== "boolean") throw new HttpError(400, "invalid_body");
+            patch.hidden = input.hidden;
+          }
+          return updateReviewType(tx, c.req.param("reviewTypeId"), patch);
+        }),
       );
     });
 }

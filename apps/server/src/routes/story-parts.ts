@@ -122,14 +122,6 @@ function assertTaskOnStory(rows: { id: string }[], taskId: string): void {
 const BLOCKER_CREATE_KEYS = new Set(["description"]);
 const BLOCKER_PATCH_KEYS = new Set(["description", "resolved"]);
 
-function requireBlockerDescription(input: Record<string, unknown>): string {
-  if (typeof input.description !== "string") throw new HttpError(400, "description_required");
-  const trimmed = input.description.trim();
-  if (trimmed.length === 0) throw new HttpError(400, "description_required");
-  assertMaxLength(input.description, DESCRIPTION_MAX, "description_too_long");
-  return input.description;
-}
-
 /** blockerId belongs to the project but not to :storyId — a 404, same as any other foreign resource. */
 function assertBlockerOnStory(rows: { id: string }[], blockerId: string): void {
   if (!rows.some((r) => r.id === blockerId)) throw new HttpError(404, "not_found");
@@ -288,29 +280,29 @@ export function storyPartRoutes(deps: {
     )
     .post("/api/projects/:id/stories/:storyId/tasks", async (c) => {
       const input = await body(c);
-      rejectUnknownKeys(input, TASK_CREATE_KEYS);
-      const description = requireDescription(input);
-      const position = optionalPosition(input.position);
       return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "task:write", (tx) =>
-          createTask(tx, c.req.param("storyId"), { description, ...(position !== undefined ? { position } : {}) }),
-        ),
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "task:write", (tx) => {
+          rejectUnknownKeys(input, TASK_CREATE_KEYS);
+          const description = requireDescription(input);
+          const position = optionalPosition(input.position);
+          return createTask(tx, c.req.param("storyId"), { description, ...(position !== undefined ? { position } : {}) });
+        }),
         201,
       );
     })
     .put("/api/projects/:id/stories/:storyId/tasks/:taskId", async (c) => {
       const input = await body(c);
-      rejectUnknownKeys(input, TASK_PATCH_KEYS);
-      const patch: { description?: string; complete?: boolean; position?: number } = {};
-      if (input.description !== undefined) patch.description = requireDescription(input);
-      if (input.complete !== undefined) {
-        if (typeof input.complete !== "boolean") throw new HttpError(400, "complete_invalid");
-        patch.complete = input.complete;
-      }
-      const position = optionalPosition(input.position);
-      if (position !== undefined) patch.position = position;
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "task:write", (tx) => {
+          rejectUnknownKeys(input, TASK_PATCH_KEYS);
+          const patch: { description?: string; complete?: boolean; position?: number } = {};
+          if (input.description !== undefined) patch.description = requireDescription(input);
+          if (input.complete !== undefined) {
+            if (typeof input.complete !== "boolean") throw new HttpError(400, "complete_invalid");
+            patch.complete = input.complete;
+          }
+          const position = optionalPosition(input.position);
+          if (position !== undefined) patch.position = position;
           const tasks = listTasks(tx, c.req.param("storyId"));
           assertTaskOnStory(tasks, c.req.param("taskId"));
           return updateTask(tx, c.req.param("taskId"), patch);
@@ -332,26 +324,26 @@ export function storyPartRoutes(deps: {
     )
     .post("/api/projects/:id/stories/:storyId/blockers", async (c) => {
       const input = await body(c);
-      rejectUnknownKeys(input, BLOCKER_CREATE_KEYS);
-      const description = requireBlockerDescription(input);
       return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "blocker:write", (tx) =>
-          createBlocker(tx, c.req.param("storyId"), description),
-        ),
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "blocker:write", (tx) => {
+          rejectUnknownKeys(input, BLOCKER_CREATE_KEYS);
+          const description = requireDescription(input);
+          return createBlocker(tx, c.req.param("storyId"), description);
+        }),
         201,
       );
     })
     .put("/api/projects/:id/stories/:storyId/blockers/:blockerId", async (c) => {
       const input = await body(c);
-      rejectUnknownKeys(input, BLOCKER_PATCH_KEYS);
-      const patch: { description?: string; resolved?: boolean } = {};
-      if (input.description !== undefined) patch.description = requireBlockerDescription(input);
-      if (input.resolved !== undefined) {
-        if (typeof input.resolved !== "boolean") throw new HttpError(400, "resolved_invalid");
-        patch.resolved = input.resolved;
-      }
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "blocker:write", (tx) => {
+          rejectUnknownKeys(input, BLOCKER_PATCH_KEYS);
+          const patch: { description?: string; resolved?: boolean } = {};
+          if (input.description !== undefined) patch.description = requireDescription(input);
+          if (input.resolved !== undefined) {
+            if (typeof input.resolved !== "boolean") throw new HttpError(400, "resolved_invalid");
+            patch.resolved = input.resolved;
+          }
           const blockers = listBlockers(tx, c.req.param("storyId"));
           assertBlockerOnStory(blockers, c.req.param("blockerId"));
           return updateBlocker(tx, c.req.param("blockerId"), patch);
@@ -373,31 +365,31 @@ export function storyPartRoutes(deps: {
     )
     .post("/api/projects/:id/stories/:storyId/reviews", async (c) => {
       const input = await body(c);
-      rejectUnknownKeys(input, REVIEW_CREATE_KEYS);
-      const reviewTypeId = requireReviewTypeId(input);
-      const reviewerId = optionalReviewerId(input.reviewer_id);
-      const status = optionalReviewStatus(input.status);
       return c.json(
-        withProjectChange(deps, actorOf(c), c.req.param("id"), "review:write", (tx) =>
-          createReview(tx, c.req.param("storyId"), {
+        withProjectChange(deps, actorOf(c), c.req.param("id"), "review:write", (tx) => {
+          rejectUnknownKeys(input, REVIEW_CREATE_KEYS);
+          const reviewTypeId = requireReviewTypeId(input);
+          const reviewerId = optionalReviewerId(input.reviewer_id);
+          const status = optionalReviewStatus(input.status);
+          return createReview(tx, c.req.param("storyId"), {
             review_type_id: reviewTypeId,
             ...(reviewerId !== undefined ? { reviewer_id: reviewerId } : {}),
             ...(status !== undefined ? { status } : {}),
-          }),
-        ),
+          });
+        }),
         201,
       );
     })
     .put("/api/projects/:id/stories/:storyId/reviews/:reviewId", async (c) => {
       const input = await body(c);
-      rejectUnknownKeys(input, REVIEW_PATCH_KEYS);
-      const reviewerId = optionalReviewerId(input.reviewer_id);
-      const status = optionalReviewStatus(input.status);
-      const patch: { reviewer_id?: string | null; status?: ReviewStatus } = {};
-      if (reviewerId !== undefined) patch.reviewer_id = reviewerId;
-      if (status !== undefined) patch.status = status;
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "review:write", (tx) => {
+          rejectUnknownKeys(input, REVIEW_PATCH_KEYS);
+          const reviewerId = optionalReviewerId(input.reviewer_id);
+          const status = optionalReviewStatus(input.status);
+          const patch: { reviewer_id?: string | null; status?: ReviewStatus } = {};
+          if (reviewerId !== undefined) patch.reviewer_id = reviewerId;
+          if (status !== undefined) patch.status = status;
           const reviews = listReviews(tx, c.req.param("storyId"));
           assertReviewOnStory(reviews, c.req.param("reviewId"));
           return updateReview(tx, c.req.param("reviewId"), patch);

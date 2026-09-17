@@ -16,7 +16,7 @@ import { removeMember } from "../src/services/memberships";
 import { reviews } from "../src/db/schema";
 import { withProject } from "../src/db/tx";
 import { HttpError } from "../src/http-error";
-import { makeTestDb, seedProject, seedStory, seedUser } from "./harness";
+import { makeTestDb, seedMembership, seedProject, seedStory, seedUser } from "./harness";
 
 function expectHttpError(fn: () => unknown, status: number, code: string): void {
   try {
@@ -151,6 +151,22 @@ describe("createReview", () => {
     );
   });
 
+  it("answers 409 review_exists before 400 review_status_invalid (401 → 404 → 409 → 403 → 400)", () => {
+    const { db, owner, projectId } = setup();
+    const storyId = seedStory(db, projectId);
+    const types = withProject(db, owner, projectId, "story:read", (tx) => listReviewTypes(tx));
+    const codeType = types.find((t) => t.name === "Code")!;
+    withProject(db, owner, projectId, "review:write", (tx) => createReview(tx, storyId, { review_type_id: codeType.id }));
+    expectHttpError(
+      () =>
+        withProject(db, owner, projectId, "review:write", (tx) =>
+          createReview(tx, storyId, { review_type_id: codeType.id, status: "bogus" as never }),
+        ),
+      409,
+      "review_exists",
+    );
+  });
+
   it("refuses the same (story, type, reviewer) triple twice", () => {
     const { db, owner, projectId } = setup();
     const storyId = seedStory(db, projectId);
@@ -208,9 +224,7 @@ describe("updateReview", () => {
   it("changing reviewer_id into an existing triple is 409 review_exists", () => {
     const { db, owner, projectId } = setup();
     const member = seedUser(db, "member@example.test");
-    db.$client
-      .query("insert into project_members (project_id, user_id, role, joined_at) values (?, ?, 'member', ?)")
-      .run(projectId, (member as { userId: string }).userId, Date.now());
+    seedMembership(db, projectId, member, "member");
     const storyId = seedStory(db, projectId);
     const types = withProject(db, owner, projectId, "story:read", (tx) => listReviewTypes(tx));
     const codeType = types.find((t) => t.name === "Code")!;
@@ -258,9 +272,7 @@ describe("member removal (story_people_drop_on_member_removal trigger)", () => {
   it("survives the review with reviewer_id set to null, not by removing the row", () => {
     const { db, owner, projectId } = setup();
     const member = seedUser(db, "member2@example.test");
-    db.$client
-      .query("insert into project_members (project_id, user_id, role, joined_at) values (?, ?, 'member', ?)")
-      .run(projectId, (member as { userId: string }).userId, Date.now());
+    seedMembership(db, projectId, member, "member");
     const storyId = seedStory(db, projectId);
     const types = withProject(db, owner, projectId, "story:read", (tx) => listReviewTypes(tx));
     const codeType = types.find((t) => t.name === "Code")!;

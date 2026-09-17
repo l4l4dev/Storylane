@@ -98,4 +98,18 @@ describe("label and story-label routes", () => {
     expect(res.status).toBe(409);
     expect((await res.json()) as { error: string }).toEqual({ error: "label_backs_an_epic" });
   });
+
+  it("answers 404 (not 400) for a non-member's PUT with an over-long name — authorization runs before body validation", async () => {
+    const { db, owner, projectId } = setup();
+    const outsider = seedUser(db, "outsider@example.test");
+    const { app } = makeTestApp(db);
+    const labelId = withProject(db, owner, projectId, "label:write", (tx) => attachLabel(tx, seedStory(db, projectId), "ux"))[0]!;
+    const headers = { "content-type": "application/json", "x-test-actor": JSON.stringify(outsider) };
+    const res = await app.request(`/api/projects/${projectId}/labels/${labelId}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ name: "x".repeat(200) }),
+    });
+    expect(res.status).toBe(404);
+  });
 });

@@ -3,7 +3,7 @@ import { createBlocker, deleteBlocker, listBlockers, updateBlocker } from "../sr
 import { deleteStory, updateStory } from "../src/services/stories";
 import { storyActivity } from "../src/services/activity";
 import { withProject } from "../src/db/tx";
-import { makeTestDb, seedProject, seedStory, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedProject, seedStory, seedUser } from "./harness";
 
 function setup() {
   const db = makeTestDb();
@@ -149,5 +149,22 @@ describe("createBlocker / listBlockers / updateBlocker / deleteBlocker", () => {
     withProject(db, owner, projectId, "blocker:write", (tx) => deleteBlocker(tx, blocker.id));
     const after = withProject(db, owner, projectId, "story:read", (tx) => listBlockers(tx, blocked));
     expect(after).toHaveLength(0);
+  });
+});
+
+describe("blocker routes", () => {
+  it("answers 403 (not 400) for a viewer's POST with an empty description — authorization runs before body validation", async () => {
+    const { db, owner } = setup();
+    const viewer = seedUser(db, "viewer@example.test");
+    const withViewerProjectId = seedProject(db, owner, [[viewer, "viewer"]]);
+    const { app } = makeTestApp(db);
+    const storyId = seedStory(db, withViewerProjectId);
+    const headers = { "content-type": "application/json", "x-test-actor": JSON.stringify(viewer) };
+    const res = await app.request(`/api/projects/${withViewerProjectId}/stories/${storyId}/blockers`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ description: "" }),
+    });
+    expect(res.status).toBe(403);
   });
 });

@@ -194,8 +194,8 @@ export function createReview(
   if (type.hidden) throw new HttpError(409, "review_type_hidden");
   const reviewerId = input.reviewer_id ?? null;
   const status = input.status ?? "unstarted";
-  assertValidStatus(status);
   if (duplicateReview(tx, storyId, input.review_type_id, reviewerId)) throw new HttpError(409, "review_exists");
+  assertValidStatus(status);
   const now = Date.now();
   const id = newId();
   try {

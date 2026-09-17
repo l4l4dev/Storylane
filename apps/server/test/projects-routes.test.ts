@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
-import { makeTestApp, makeTestDb, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedMembership, seedUser } from "./harness";
 import { createProject } from "../src/services/projects";
 import { activities, projects } from "../src/db/schema";
 import type { Db } from "../src/db/client";
@@ -135,5 +135,19 @@ describe("DELETE /api/projects/:id cascades", () => {
 
     expect(db.select().from(projects).where(eq(projects.id, project.id)).all()).toEqual([]);
     expect(db.select().from(activities).where(eq(activities.projectId, project.id)).all()).toEqual([]);
+  });
+});
+
+describe("POST /api/projects/:id/review_types authorization precedence", () => {
+  it("answers 403 (not 400) for a member's POST with an empty name — authorization runs before body validation", async () => {
+    const project = createProject(db, owner, { name: "P" });
+    const member = seedUser(db, "member@example.test");
+    seedMembership(db, project.id, member, "member");
+    const res = await app.request(`${ORIGIN}/api/projects/${project.id}/review_types`, {
+      method: "POST",
+      headers: jsonAs(member),
+      body: JSON.stringify({ name: "" }),
+    });
+    expect(res.status).toBe(403);
   });
 });
