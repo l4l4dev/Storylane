@@ -344,7 +344,7 @@ export function updateProject(tx: ProjectTx, patch: ProjectSettingsPatch): Proje
       .all()) {
       tx.tx
         .update(stories)
-        .set({ currentState: "unstarted" })
+        .set({ currentState: "unstarted", updatedAt: Date.now() })
         .where(and(eq(stories.id, row.id), eq(stories.projectId, tx.projectId)))
         .run();
       recordActivity(tx, {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { BUILT_IN_POINT_SCALES } from "@storylane/core";
 import { makeTestDb, seedStory, seedUser } from "./harness";
 import { createProject, listProjects, readProject, setArchived, updateProject } from "../src/services/projects";
@@ -113,6 +113,38 @@ describe("updateProject point scale validation", () => {
         withProject(db, owner, project.id, "project:update", (tx) => updateProject(tx, { point_scale: "1e3,2" })),
       ),
     ).toBe(400);
+  });
+});
+
+describe("createProject start_date defaults to the most recent week start in the project's zone", () => {
+  // Monday 2026-09-14 02:00 UTC: still Monday in UTC, but 2026-09-13 (Sunday) in
+  // America/Los_Angeles, so the two zones must land on different Mondays.
+  const MONDAY_02_00_UTC = Date.UTC(2026, 8, 14, 2, 0, 0);
+
+  afterEach(() => {
+    (Date.now as unknown as { mockRestore?: () => void }).mockRestore?.();
+  });
+
+  it("uses today's date in UTC when no zone is given", () => {
+    spyOn(Date, "now").mockReturnValue(MONDAY_02_00_UTC);
+    const project = createProject(db, owner, { name: "P" });
+    expect(project.start_date).toBe("2026-09-14");
+    expect(project.time_zone).toBe("UTC");
+  });
+
+  it("uses the most recent Monday in a zone that is a day behind UTC", () => {
+    spyOn(Date, "now").mockReturnValue(MONDAY_02_00_UTC);
+    const project = createProject(db, owner, { name: "P", timeZone: "America/Los_Angeles" });
+    // Local date is Sunday 2026-09-13, so the most recent Monday on or before it is 2026-09-07.
+    expect(project.start_date).toBe("2026-09-07");
+    expect(project.time_zone).toBe("America/Los_Angeles");
+  });
+
+  it("always produces a start_date that satisfies the week-start trigger", () => {
+    spyOn(Date, "now").mockReturnValue(MONDAY_02_00_UTC);
+    // Would throw (trigger ABORT) if start_date's weekday ever disagreed with week_start_day=1.
+    expect(() => createProject(db, owner, { name: "P", timeZone: "Pacific/Kiritimati" })).not.toThrow();
+    expect(() => createProject(db, owner, { name: "Q", timeZone: "Pacific/Pago_Pago" })).not.toThrow();
   });
 });
 
