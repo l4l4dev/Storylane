@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { attachLabel, createEpic, listEpics, listLabels, moveEpic } from "../src/services/labels";
+import { listActivity } from "../src/services/activity";
 import { updateStory } from "../src/services/stories";
 import { withProject } from "../src/db/tx";
 import { makeTestApp, makeTestDb, seedProject, seedStory, seedUser } from "./harness";
@@ -50,6 +51,28 @@ describe("createEpic / moveEpic", () => {
     const order = withProject(db, owner, projectId, "epic:write", (tx) => moveEpic(tx, b.id, { before_id: a.id }));
     expect(order.map((e) => e.name)).toEqual(["B", "A"]);
     expect(order.map((e) => e.position)).toEqual([0, 1]);
+  });
+
+  it("writes no epic_move_activity when moveEpic is a no-op", () => {
+    const { db, owner, projectId } = setup();
+    const only = withProject(db, owner, projectId, "epic:write", (tx) => createEpic(tx, { name: "Solo" }));
+    withProject(db, owner, projectId, "epic:write", (tx) => moveEpic(tx, only.id, { after_id: null }));
+    withProject(db, owner, projectId, "epic:write", (tx) => moveEpic(tx, only.id, {}));
+    const moves = withProject(db, owner, projectId, "story:read", (tx) =>
+      listActivity(tx, {}).filter((a) => a.kind === "epic_move_activity"),
+    );
+    expect(moves).toHaveLength(0);
+  });
+
+  it("writes exactly one epic_move_activity for a real move", () => {
+    const { db, owner, projectId } = setup();
+    const a = withProject(db, owner, projectId, "epic:write", (tx) => createEpic(tx, { name: "A" }));
+    const b = withProject(db, owner, projectId, "epic:write", (tx) => createEpic(tx, { name: "B" }));
+    withProject(db, owner, projectId, "epic:write", (tx) => moveEpic(tx, b.id, { before_id: a.id }));
+    const moves = withProject(db, owner, projectId, "story:read", (tx) =>
+      listActivity(tx, {}).filter((a) => a.kind === "epic_move_activity"),
+    );
+    expect(moves).toHaveLength(1);
   });
 });
 

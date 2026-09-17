@@ -362,7 +362,8 @@ export function moveEpic(tx: ProjectTx, epicId: string, move: { before_id?: stri
     .where(eq(epics.projectId, tx.projectId))
     .orderBy(epics.position)
     .all();
-  const without = rows.map((r) => r.id).filter((id) => id !== epicId);
+  const before = rows.map((r) => r.id);
+  const without = before.filter((id) => id !== epicId);
   let insertAt = without.length;
   if (move.before_id) {
     const idx = without.indexOf(move.before_id);
@@ -374,14 +375,19 @@ export function moveEpic(tx: ProjectTx, epicId: string, move: { before_id?: stri
     insertAt = idx + 1;
   }
   without.splice(insertAt, 0, epicId);
-  reorder(tx, epics, eq(epics.projectId, tx.projectId), without);
-  recordActivity(tx, {
-    kind: "epic_move_activity",
-    message: "moved this epic",
-    highlight: "moved",
-    changes: [{ kind: "epic", id: epicId, change_type: "update" }],
-    primaryResources: [{ kind: "epic", id: epicId }],
-  });
+  // Same not-a-no-op discipline as attachLabel/detachLabel/renameLabel/updateEpic: naming a
+  // neighbour the epic is already next to (or moving a single epic at all) must not write
+  // reorder() or an activity row.
+  if (without.some((id, i) => id !== before[i])) {
+    reorder(tx, epics, eq(epics.projectId, tx.projectId), without);
+    recordActivity(tx, {
+      kind: "epic_move_activity",
+      message: "moved this epic",
+      highlight: "moved",
+      changes: [{ kind: "epic", id: epicId, change_type: "update" }],
+      primaryResources: [{ kind: "epic", id: epicId }],
+    });
+  }
   return listEpics(tx);
 }
 
