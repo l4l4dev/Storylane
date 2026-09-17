@@ -13,6 +13,7 @@ import {
   projectMembers,
   projects,
   stories,
+  tasks,
   users,
   type StoryList,
   type StoryState,
@@ -126,6 +127,28 @@ export function seedEpic(db: Db, projectId: string, name: string): string {
       projectId,
       name,
       labelId,
+      position: next?.n ?? 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .run();
+  return id;
+}
+
+export function seedTask(db: Db, projectId: string, storyId: string, description: string): string {
+  const next = db
+    .select({ n: sql<number>`coalesce(max(${tasks.position}), -1) + 1` })
+    .from(tasks)
+    .where(and(eq(tasks.projectId, projectId), eq(tasks.storyId, storyId)))
+    .get();
+  const id = newId();
+  db.insert(tasks)
+    .values({
+      id,
+      projectId,
+      storyId,
+      description,
+      complete: false,
       position: next?.n ?? 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),

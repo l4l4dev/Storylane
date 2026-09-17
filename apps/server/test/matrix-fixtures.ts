@@ -29,6 +29,8 @@ export interface MatrixContext {
   labelId: string;
   /** A seeded epic (with its own label) in the seeded project, for the epic matrix rows. */
   epicId: string;
+  /** A seeded task on ctx.storyId, for the task matrix rows. */
+  taskId: string;
 }
 
 export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture> {
@@ -63,5 +65,12 @@ export function matrixFixtures(ctx: MatrixContext): Record<string, MatrixFixture
     "POST /api/projects/:id/epics": { body: { name: "Matrix epic" } },
     "PUT /api/projects/:id/epics/:epicId": { params: { epicId: ctx.epicId }, body: { name: "Matrix epic renamed" } },
     "DELETE /api/projects/:id/epics/:epicId": { params: { epicId: ctx.epicId } },
+    "GET /api/projects/:id/stories/:storyId/tasks": { params: { storyId: ctx.storyId } },
+    "POST /api/projects/:id/stories/:storyId/tasks": { params: { storyId: ctx.storyId }, body: { description: "Matrix task" } },
+    "PUT /api/projects/:id/stories/:storyId/tasks/:taskId": {
+      params: { storyId: ctx.storyId, taskId: ctx.taskId },
+      body: { description: "Matrix task renamed" },
+    },
+    "DELETE /api/projects/:id/stories/:storyId/tasks/:taskId": { params: { storyId: ctx.storyId, taskId: ctx.taskId } },
   };
 }

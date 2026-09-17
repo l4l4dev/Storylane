@@ -56,4 +56,8 @@ export const ROUTE_ACTIONS: Record<`${Method} ${string}`, RouteRule> = {
   "POST /api/projects/:id/epics": "epic:write",
   "PUT /api/projects/:id/epics/:epicId": "epic:write",
   "DELETE /api/projects/:id/epics/:epicId": "epic:delete",
+  "GET /api/projects/:id/stories/:storyId/tasks": "story:read",
+  "POST /api/projects/:id/stories/:storyId/tasks": "task:write",
+  "PUT /api/projects/:id/stories/:storyId/tasks/:taskId": "task:write",
+  "DELETE /api/projects/:id/stories/:storyId/tasks/:taskId": "task:write",
 };

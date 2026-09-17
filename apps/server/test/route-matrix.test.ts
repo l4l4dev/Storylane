@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
-import { makeTestApp, makeTestDb, seedEpic, seedLabel, seedProject, seedStory, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedEpic, seedLabel, seedProject, seedStory, seedTask, seedUser } from "./harness";
 import { ROUTE_ACTIONS } from "../src/authz/route-manifest";
 import { ALL_ACTIONS, expected, ROLES, type Action, type Role } from "../src/authz/permissions";
 import { withProject, type Actor } from "../src/db/tx";
@@ -28,7 +28,8 @@ function seedFullProject() {
   // labelId backs no epic, so DELETE .../labels/:labelId never sees a 409 label_backs_an_epic.
   const labelId = seedLabel(db, id, "matrix label");
   const epicId = seedEpic(db, id, "Matrix epic seed");
-  return { id, inviteId: seededInvite.invite.id, storyId, labelId, epicId };
+  const taskId = seedTask(db, id, storyId, "Matrix task seed");
+  return { id, inviteId: seededInvite.invite.id, storyId, labelId, epicId, taskId };
 }
 
 const seeded = seedFullProject();
@@ -42,6 +43,7 @@ const fixturesFor = (t: ReturnType<typeof seedFullProject>): Record<string, Matr
     storyId: t.storyId,
     labelId: t.labelId,
     epicId: t.epicId,
+    taskId: t.taskId,
   });
 const FIXTURES = fixturesFor(seeded);
 const actors: Record<Role, Actor> = {
@@ -67,6 +69,7 @@ const DESTRUCTIVE = new Set([
   "DELETE /api/projects/:id/labels/:labelId",
   "DELETE /api/projects/:id/stories/:storyId/labels/:labelId",
   "DELETE /api/projects/:id/epics/:epicId",
+  "DELETE /api/projects/:id/stories/:storyId/tasks/:taskId",
   // POST creates a label/epic by name; run twice against the shared project (member then
   // owner rows both expecting 200) the second call would 409 on the name it already took.
   "POST /api/projects/:id/labels",
