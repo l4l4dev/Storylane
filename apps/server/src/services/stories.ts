@@ -227,14 +227,30 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
     original.story_priority = current.storyPriority;
     next.story_priority = patch.story_priority;
   }
-  if (patch.deadline !== undefined && patch.deadline !== current.deadline) {
-    if (patch.deadline !== null && current.storyType !== "release") throw new HttpError(400, "deadline_release_only");
-    set.deadline = patch.deadline;
-    original.deadline = current.deadline;
-    next.deadline = patch.deadline;
+  const storyType = patch.story_type ?? current.storyType;
+  if (patch.story_type !== undefined && patch.story_type !== current.storyType) {
+    set.storyType = patch.story_type;
+    original.story_type = current.storyType;
+    next.story_type = patch.story_type;
   }
 
-  const storyType = patch.story_type ?? current.storyType;
+  // Validate against the *effective* type (patch.story_type, if given), not the pre-patch one —
+  // a same-request `{ story_type: "release", deadline }` must not be rejected for the old type.
+  if (patch.deadline !== undefined) {
+    if (patch.deadline !== current.deadline) {
+      if (patch.deadline !== null && storyType !== "release") throw new HttpError(400, "deadline_release_only");
+      set.deadline = patch.deadline;
+      original.deadline = current.deadline;
+      next.deadline = patch.deadline;
+    }
+  } else if (storyType !== "release" && current.deadline !== null) {
+    // Moving a release to another type: Tracker only shows the deadline field on releases, so
+    // the trigger (stories_deadline_release_only_update) would otherwise reject the type change.
+    set.deadline = null;
+    original.deadline = current.deadline;
+    next.deadline = null;
+  }
+
   const targetEstimate = patch.estimate !== undefined ? patch.estimate : current.estimate;
   if (patch.estimate !== undefined && patch.estimate !== current.estimate) {
     const project = readProject(tx);
@@ -248,11 +264,6 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
     set.estimate = patch.estimate;
     original.estimate = current.estimate;
     next.estimate = patch.estimate;
-  }
-  if (patch.story_type !== undefined && patch.story_type !== current.storyType) {
-    set.storyType = patch.story_type;
-    original.story_type = current.storyType;
-    next.story_type = patch.story_type;
   }
 
   if (patch.current_state !== undefined && patch.current_state !== current.currentState) {

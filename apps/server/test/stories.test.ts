@@ -30,6 +30,15 @@ describe("createStory", () => {
     );
     expect(story.list).toBe("backlog");
   });
+
+  it("refuses a deadline on a non-release", () => {
+    const { db, owner, projectId } = setup();
+    expect(() =>
+      withProject(db, owner, projectId, "story:write", (tx) =>
+        createStory(tx, { name: "Feature with deadline", story_type: "feature", deadline: Date.now() }),
+      ),
+    ).toThrow(expect.objectContaining({ status: 400, code: "deadline_release_only" }));
+  });
 });
 
 describe("updateStory", () => {
@@ -112,6 +121,59 @@ describe("updateStory", () => {
     expect(activity).toHaveLength(2);
     expect(activity[0]!.kind).toBe("story_update_activity");
     expect(activity[1]!.kind).toBe("story_create_activity");
+  });
+
+  it("allows setting story_type and deadline together in one PUT", () => {
+    const { db, owner, projectId } = setup();
+    const id = seedStory(db, projectId, { storyType: "feature" });
+    const deadline = Date.now();
+    const updated = withProject(db, owner, projectId, "story:write", (tx) =>
+      updateStory(tx, id, { story_type: "release", deadline }),
+    );
+    expect(updated.story_type).toBe("release");
+    expect(updated.deadline).toBe(deadline);
+  });
+
+  it("clears the deadline automatically when a release is changed to another type", () => {
+    const { db, owner, projectId } = setup();
+    const deadline = Date.now();
+    const id = seedStory(db, projectId, { storyType: "release" });
+    withProject(db, owner, projectId, "story:write", (tx) => updateStory(tx, id, { deadline }));
+    const updated = withProject(db, owner, projectId, "story:write", (tx) =>
+      updateStory(tx, id, { story_type: "feature" }),
+    );
+    expect(updated.story_type).toBe("feature");
+    expect(updated.deadline).toBeNull();
+  });
+
+  it("refuses a deadline that requires the pre-patch type to be release", () => {
+    const { db, owner, projectId } = setup();
+    const id = seedStory(db, projectId, { storyType: "feature" });
+    expect(() =>
+      withProject(db, owner, projectId, "story:write", (tx) => updateStory(tx, id, { deadline: Date.now() })),
+    ).toThrow(expect.objectContaining({ status: 400, code: "deadline_release_only" }));
+  });
+
+  it("404s on an unknown story id", () => {
+    const { db, owner, projectId } = setup();
+    expect(() =>
+      withProject(db, owner, projectId, "story:read", (tx) => readStory(tx, "no-such-story")),
+    ).toThrow(expect.objectContaining({ status: 404, code: "not_found" }));
+    expect(() =>
+      withProject(db, owner, projectId, "story:write", (tx) => updateStory(tx, "no-such-story", { name: "x" })),
+    ).toThrow(expect.objectContaining({ status: 404, code: "not_found" }));
+  });
+
+  it("404s on a story from another project", () => {
+    const { db, owner, projectId } = setup();
+    const otherProjectId = seedProject(db, owner);
+    const foreignId = seedStory(db, otherProjectId);
+    expect(() =>
+      withProject(db, owner, projectId, "story:read", (tx) => readStory(tx, foreignId)),
+    ).toThrow(expect.objectContaining({ status: 404, code: "not_found" }));
+    expect(() =>
+      withProject(db, owner, projectId, "story:write", (tx) => updateStory(tx, foreignId, { name: "x" })),
+    ).toThrow(expect.objectContaining({ status: 404, code: "not_found" }));
   });
 });
 
