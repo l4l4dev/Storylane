@@ -4,6 +4,7 @@ import type { Db } from "../db/client";
 import { withProject, type Actor, type ProjectTx } from "../db/tx";
 import { withProjectChange } from "../events/emit";
 import type { EventBus } from "../events/bus";
+import type { Logger } from "../log";
 import { HttpError } from "../http-error";
 import { STORY_PRIORITIES, STORY_STATES, STORY_TYPES, type StoryPriority, type StoryState, type StoryType } from "../db/schema";
 import { createStory, deleteStory, listStories, readStory, updateStory, type StoryInput, type StoryPatch } from "../services/stories";
@@ -144,7 +145,7 @@ function validateStoryPatch(input: Record<string, unknown>): StoryPatch {
   return patch;
 }
 
-export function storyRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Context) => Actor }) {
+export function storyRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf: (c: Context) => Actor }) {
   const { db, actorOf } = deps;
   return new Hono()
     .get("/api/projects/:id/stories", (c) =>

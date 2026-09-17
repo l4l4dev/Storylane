@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import type { Config } from "../config";
 import type { Db } from "../db/client";
 import type { EventBus } from "../events/bus";
+import type { Logger } from "../log";
 import { withProject, type Actor } from "../db/tx";
 import { withProjectChange } from "../events/emit";
 import { HttpError } from "../http-error";
@@ -63,6 +64,7 @@ function normalizeDisplayName(raw: string): string {
 export function inviteRoutes(deps: {
   db: Db;
   bus: EventBus;
+  log: Logger;
   config: Config;
   actorOf: (c: Context) => Actor;
   limiter?: RateLimiter;

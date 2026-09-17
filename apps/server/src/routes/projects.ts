@@ -4,6 +4,7 @@ import type { Db } from "../db/client";
 import { withProject, type Actor } from "../db/tx";
 import { withProjectChange } from "../events/emit";
 import type { EventBus } from "../events/bus";
+import type { Logger } from "../log";
 import { HttpError } from "../http-error";
 import {
   createProject,
@@ -100,7 +101,7 @@ function validateProjectSettingsPatch(input: Record<string, unknown>): ProjectSe
   return patch;
 }
 
-export function projectRoutes(deps: { db: Db; bus: EventBus; actorOf: (c: Context) => Actor }) {
+export function projectRoutes(deps: { db: Db; bus: EventBus; log: Logger; actorOf: (c: Context) => Actor }) {
   const { db, actorOf } = deps;
   return new Hono()
     .get("/api/projects", (c) => c.json(listProjects(db, actorOf(c))))

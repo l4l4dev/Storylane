@@ -128,18 +128,26 @@ export function createApp(deps: AppDeps): Hono {
       ...(deps.adminLimiter ? { limiter: deps.adminLimiter } : {}),
     }),
   );
-  app.route("/", projectRoutes({ db: deps.db, bus, actorOf }));
+  app.route("/", projectRoutes({ db: deps.db, bus, log: deps.log, actorOf }));
   app.route("/", activityRoutes({ db: deps.db, actorOf }));
-  app.route("/", storyRoutes({ db: deps.db, bus, actorOf }));
+  app.route("/", storyRoutes({ db: deps.db, bus, log: deps.log, actorOf }));
   app.route(
     "/",
-    inviteRoutes({ db: deps.db, bus, config: deps.config, actorOf, ...(deps.inviteLimiter ? { limiter: deps.inviteLimiter } : {}) }),
+    inviteRoutes({
+      db: deps.db,
+      bus,
+      log: deps.log,
+      config: deps.config,
+      actorOf,
+      ...(deps.inviteLimiter ? { limiter: deps.inviteLimiter } : {}),
+    }),
   );
   app.route(
     "/",
     eventRoutes({
       db: deps.db,
       bus,
+      log: deps.log,
       actorOf,
       ...(deps.heartbeatMs === undefined ? {} : { heartbeatMs: deps.heartbeatMs }),
       ...(deps.maxStreamsPerUser === undefined ? {} : { maxStreamsPerUser: deps.maxStreamsPerUser }),
