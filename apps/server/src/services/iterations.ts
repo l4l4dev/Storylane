@@ -120,7 +120,7 @@ export function deleteIterationOverride(tx: ProjectTx, number: number): void {
       {
         kind: "iteration_override",
         id: tx.projectId,
-        change_type: "update",
+        change_type: "delete",
         original_values: { number, length: before.length ?? DEFAULT_LENGTH, team_strength: before.teamStrength },
         new_values: { number, length: DEFAULT_LENGTH, team_strength: 1 },
       },

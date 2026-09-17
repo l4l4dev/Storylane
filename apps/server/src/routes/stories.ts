@@ -7,7 +7,7 @@ import type { EventBus } from "../events/bus";
 import type { Logger } from "../log";
 import { HttpError } from "../http-error";
 import { STORY_PRIORITIES, STORY_STATES, STORY_TYPES, type StoryPriority, type StoryState, type StoryType } from "../db/schema";
-import { createStory, deleteStory, listStories, readStory, updateStory, type StoryInput, type StoryPatch } from "../services/stories";
+import { createStory, deleteStory, listStories, readStory, updateStory, type StoryFilter, type StoryInput, type StoryPatch } from "../services/stories";
 import { addFollower, addOwner, removeFollower, removeOwner } from "../services/story-people";
 import type { AttachmentStore } from "../attachments/store";
 import { storyAttachmentPaths } from "../services/comments";
@@ -20,7 +20,19 @@ function actorUserId(tx: ProjectTx): string {
   return tx.actor.userId;
 }
 
-const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+// A malformed body carries nothing about the project, so this 400 may answer before 404/403.
+const body = async (c: Context): Promise<Record<string, unknown>> => {
+  const text = await c.req.text();
+  if (text.trim() === "") return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "invalid_body");
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new HttpError(400, "invalid_body");
+  return parsed as Record<string, unknown>;
+};
 
 function optionalStoryType(value: unknown): StoryType | undefined {
   if (value === undefined) return undefined;
@@ -148,6 +160,24 @@ function validateStoryPatch(input: Record<string, unknown>): StoryPatch {
   return patch;
 }
 
+function optionalQueryInteger(value: string | undefined, min: number, max: number, code: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!/^\d+$/.test(value)) throw new HttpError(400, code);
+  const n = Number(value);
+  if (n < min || n > max) throw new HttpError(400, code);
+  return n;
+}
+
+function validateStoryFilter(query: Record<string, string>): StoryFilter {
+  const filter: StoryFilter = {};
+  const limit = optionalQueryInteger(query.limit, 1, 500, "limit_invalid");
+  if (limit !== undefined) filter.limit = limit;
+  const offset = optionalQueryInteger(query.offset, 0, Number.MAX_SAFE_INTEGER, "offset_invalid");
+  if (offset !== undefined) filter.offset = offset;
+  if (query.with_label !== undefined) filter.withLabel = query.with_label;
+  return filter;
+}
+
 export function storyRoutes(deps: {
   db: Db;
   bus: EventBus;
@@ -158,7 +188,11 @@ export function storyRoutes(deps: {
   const { db, actorOf } = deps;
   return new Hono()
     .get("/api/projects/:id/stories", (c) =>
-      c.json(withProject(db, actorOf(c), c.req.param("id"), "story:read", (tx) => listStories(tx))),
+      c.json(
+        withProject(db, actorOf(c), c.req.param("id"), "story:read", (tx) =>
+          listStories(tx, validateStoryFilter(c.req.query())),
+        ),
+      ),
     )
     .post("/api/projects/:id/stories", async (c) => {
       const input = await body(c);

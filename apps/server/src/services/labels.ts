@@ -119,23 +119,22 @@ export function renameLabel(tx: ProjectTx, labelId: string, name: string): Label
   const before = loadInProject(tx, labels, labelId);
   const dup = findLabelByNameCI(tx, name);
   if (dup && dup.id !== labelId) throw new HttpError(409, "label_name_taken");
+  if (before.name === name) return toLabelRow(before, countsByLabel(tx));
   const now = Date.now();
   tx.tx
     .update(labels)
     .set({ name, updatedAt: now })
     .where(and(eq(labels.id, labelId), eq(labels.projectId, tx.projectId)))
     .run();
-  if (before.name !== name) {
-    recordActivity(tx, {
-      kind: "label_update_activity",
-      message: `renamed the "${before.name}" label to "${name}"`,
-      highlight: "renamed",
-      changes: [
-        { kind: "label", id: labelId, change_type: "update", original_values: { name: before.name }, new_values: { name } },
-      ],
-      primaryResources: [{ kind: "label", id: labelId }],
-    });
-  }
+  recordActivity(tx, {
+    kind: "label_update_activity",
+    message: `renamed the "${before.name}" label to "${name}"`,
+    highlight: "renamed",
+    changes: [
+      { kind: "label", id: labelId, change_type: "update", original_values: { name: before.name }, new_values: { name } },
+    ],
+    primaryResources: [{ kind: "label", id: labelId }],
+  });
   const row = { ...before, name, updatedAt: now };
   return toLabelRow(row, countsByLabel(tx));
 }
@@ -319,14 +318,6 @@ export function createEpic(tx: ProjectTx, input: { name: string; description?: s
 
 export function updateEpic(tx: ProjectTx, epicId: string, patch: { name?: string; description?: string | null }): EpicRow {
   const before = loadInProject(tx, epics, epicId);
-  const now = Date.now();
-  const name = patch.name ?? before.name;
-  const description = patch.description === undefined ? before.description : patch.description;
-  tx.tx
-    .update(epics)
-    .set({ name, description, updatedAt: now })
-    .where(and(eq(epics.id, epicId), eq(epics.projectId, tx.projectId)))
-    .run();
   const originalValues: Record<string, unknown> = {};
   const newValues: Record<string, unknown> = {};
   if (patch.name !== undefined && patch.name !== before.name) {
@@ -338,6 +329,15 @@ export function updateEpic(tx: ProjectTx, epicId: string, patch: { name?: string
     newValues.description = patch.description;
   }
   if (Object.keys(newValues).length > 0) {
+    tx.tx
+      .update(epics)
+      .set({
+        name: patch.name ?? before.name,
+        description: patch.description === undefined ? before.description : patch.description,
+        updatedAt: Date.now(),
+      })
+      .where(and(eq(epics.id, epicId), eq(epics.projectId, tx.projectId)))
+      .run();
     recordActivity(tx, {
       kind: "epic_update_activity",
       message: "edited this epic",

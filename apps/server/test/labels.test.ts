@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { attachLabel, createEpic, deleteLabel, listLabels } from "../src/services/labels";
+import { eq } from "drizzle-orm";
+import { activities, labels as labelsTable, projects } from "../src/db/schema";
+import { attachLabel, createEpic, deleteLabel, listLabels, renameLabel } from "../src/services/labels";
 import { withProject } from "../src/db/tx";
-import { makeTestApp, makeTestDb, seedProject, seedStory, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedLabel, seedProject, seedStory, seedUser } from "./harness";
 
 function setup() {
   const db = makeTestDb();
@@ -111,5 +113,75 @@ describe("label and story-label routes", () => {
       body: JSON.stringify({ name: "x".repeat(200) }),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("label names from the client", () => {
+  const headersOf = (actor: unknown) => ({ "content-type": "application/json", "x-test-actor": JSON.stringify(actor) });
+
+  it("answers 400 name_required for an empty or blank name on create and attach", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const storyId = seedStory(db, projectId);
+    for (const name of ["", "   "]) {
+      for (const path of [`/api/projects/${projectId}/labels`, `/api/projects/${projectId}/stories/${storyId}/labels`]) {
+        const res = await app.request(path, { method: "POST", headers: headersOf(owner), body: JSON.stringify({ name }) });
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: "name_required" });
+      }
+    }
+    expect(withProject(db, owner, projectId, "story:read", (tx) => listLabels(tx))).toEqual([]);
+  });
+
+  it("stores the trimmed name, so \"Foo \" then \"foo\" resolve to one label", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const a = seedStory(db, projectId);
+    const b = seedStory(db, projectId);
+    for (const [storyId, name] of [
+      [a, "Foo "],
+      [b, "foo"],
+    ] as const) {
+      const res = await app.request(`/api/projects/${projectId}/stories/${storyId}/labels`, {
+        method: "POST",
+        headers: headersOf(owner),
+        body: JSON.stringify({ name }),
+      });
+      expect(res.status).toBe(201);
+    }
+    const labels = withProject(db, owner, projectId, "story:read", (tx) => listLabels(tx));
+    expect(labels.map((l) => l.name)).toEqual(["Foo"]);
+  });
+
+  it("answers 400 name_required for a blank rename", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const labelId = seedLabel(db, projectId, "ux");
+    const res = await app.request(`/api/projects/${projectId}/labels/${labelId}`, {
+      method: "PUT",
+      headers: headersOf(owner),
+      body: JSON.stringify({ name: "  " }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "name_required" });
+  });
+
+  it("writes nothing when a rename repeats the current name", () => {
+    const { db, owner, projectId } = setup();
+    const labelId = seedLabel(db, projectId, "ux");
+    const before = db.select().from(labelsTable).where(eq(labelsTable.id, labelId)).get()!;
+    const versionBefore = db.select().from(projects).where(eq(projects.id, projectId)).get()!.version;
+    withProject(db, owner, projectId, "label:write", (tx) => renameLabel(tx, labelId, "ux"));
+    expect(db.select().from(labelsTable).where(eq(labelsTable.id, labelId)).get()!.updatedAt).toBe(before.updatedAt);
+    expect(db.select().from(projects).where(eq(projects.id, projectId)).get()!.version).toBe(versionBefore);
+    expect(db.select().from(activities).where(eq(activities.projectId, projectId)).all()).toEqual([]);
+  });
+
+  it("answers 400 invalid_body for malformed JSON", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const res = await app.request(`/api/projects/${projectId}/labels`, { method: "POST", headers: headersOf(owner), body: "{" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
   });
 });

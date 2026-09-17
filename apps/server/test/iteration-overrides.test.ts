@@ -122,6 +122,7 @@ describe("putIterationOverride / listIterationOverrides / deleteIterationOverrid
     const last = rows[rows.length - 1]!;
     expect(last.kind).toBe("iteration_update_activity");
     expect(last.changes[0]!.kind).toBe("iteration_override");
+    expect(last.changes[0]!.change_type).toBe("delete");
     expect(last.changes[0]!.original_values).toEqual({ number: 12, length: 5, team_strength: 3 });
     expect(last.changes[0]!.new_values).toEqual({ number: 12, length: "default", team_strength: 1 });
     expect(withProject(db, owner, projectId, "iteration:read", (tx) => listIterationOverrides(tx))).toHaveLength(0);
@@ -211,5 +212,19 @@ describe("iteration override routes", () => {
       headers: { "content-type": "application/json", "x-test-actor": JSON.stringify(owner) },
     });
     expect(res.status).toBe(204);
+  });
+});
+
+describe("iteration override routes body parsing", () => {
+  it("answers 400 invalid_body for malformed JSON", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const res = await app.request(`/api/projects/${projectId}/iteration_overrides/2`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-test-actor": JSON.stringify(owner) },
+      body: "{length: 2}",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
   });
 });

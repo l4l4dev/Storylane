@@ -1,6 +1,13 @@
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
-import { isValidTransition, listForState, parsePointScale, isAllowedEstimate, estimationGateBlocks } from "@storylane/core";
-import { stories, type StoryList, type StoryPriority, type StoryState, type StoryType } from "../db/schema";
+import {
+  estimationGateBlocks,
+  isAllowedEstimate,
+  isValidTransition,
+  listForState,
+  parsePointScale,
+  statesFor,
+} from "@storylane/core";
+import { labels, stories, storyLabels, type StoryList, type StoryPriority, type StoryState, type StoryType } from "../db/schema";
 import { loadInProject, type ProjectTx } from "../db/tx";
 import { HttpError } from "../http-error";
 import { newId } from "../id";
@@ -106,17 +113,28 @@ export function listStories(tx: ProjectTx, filter: StoryFilter = {}): StoryRow[]
   const conditions: SQL[] = [eq(stories.projectId, tx.projectId)];
   if (filter.withState?.length) conditions.push(inArray(stories.currentState, filter.withState));
   if (filter.withStoryType?.length) conditions.push(inArray(stories.storyType, filter.withStoryType));
-  const limit = Math.min(Math.max(filter.limit ?? 500, 1), 500);
-  const rows = tx.tx
-    .select(COLUMNS)
-    .from(stories)
-    .where(and(...conditions))
-    .orderBy(stories.list, stories.position)
-    .limit(limit)
-    .offset(filter.offset ?? 0)
-    .all();
+  if (filter.withLabel !== undefined) {
+    loadInProject(tx, labels, filter.withLabel);
+    conditions.push(
+      inArray(
+        stories.id,
+        tx.tx
+          .select({ id: storyLabels.storyId })
+          .from(storyLabels)
+          .where(and(eq(storyLabels.projectId, tx.projectId), eq(storyLabels.labelId, filter.withLabel))),
+      ),
+    );
+  }
+  const query = tx.tx.select(COLUMNS).from(stories).where(and(...conditions)).orderBy(stories.list, stories.position);
+  // SQLite accepts OFFSET only after a LIMIT, so an offset alone takes an unbounded one.
+  const rows =
+    filter.limit === undefined && filter.offset === undefined
+      ? query.all()
+      : query.limit(filter.limit ?? Number.MAX_SAFE_INTEGER).offset(filter.offset ?? 0).all();
   return rows.map((row) => toRow(tx, row));
 }
+
+const STARTED_OR_LATER: readonly StoryState[] = ["started", "finished", "delivered", "accepted", "rejected"];
 
 function requesterId(tx: ProjectTx): string | null {
   return tx.actor.kind === "user" ? tx.actor.userId : null;
@@ -128,6 +146,18 @@ export function createStory(tx: ProjectTx, input: StoryInput): StoryRow {
   const storyType = input.story_type ?? "feature";
   const currentState = input.current_state ?? "unscheduled";
   const project = readProject(tx);
+  if (!statesFor(storyType).includes(currentState)) throw new HttpError(409, "invalid_transition");
+  if (currentState === "planned" && project.automatic_planning) throw new HttpError(409, "manual_planning_required");
+  if (
+    estimationGateBlocks({
+      storyType,
+      estimate: input.estimate ?? null,
+      targetState: currentState,
+      bugsAndChoresAreEstimatable: project.bugs_and_chores_are_estimatable,
+    })
+  ) {
+    throw new HttpError(409, "estimate_required");
+  }
   if (input.estimate !== undefined && input.estimate !== null) {
     let scale: number[];
     try {
@@ -172,14 +202,19 @@ export function createStory(tx: ProjectTx, input: StoryInput): StoryRow {
       updatedAt: now,
     })
     .run();
+  const createdValues: Record<string, unknown> = { name };
+  const requester = requesterId(tx);
+  // Same owner-on-start rule as updateStory, folded into the one create activity.
+  if (requester && STARTED_OR_LATER.includes(currentState)) {
+    createdValues.owner_ids = addOwner(tx, id, requester, { recordActivity: false });
+  }
   recordActivity(tx, {
     kind: "story_create_activity",
     message: "added this story",
     highlight: "added",
-    changes: [{ kind: "story", id, number: nextNumber?.n ?? 1, change_type: "create", new_values: { name } }],
+    changes: [{ kind: "story", id, number: nextNumber?.n ?? 1, change_type: "create", new_values: createdValues }],
     primaryResources: [{ kind: "story", id }],
   });
-  const requester = requesterId(tx);
   if (requester) ensureFollowing(tx, id, requester);
   return readOne(tx, id);
 }
@@ -288,7 +323,23 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
   }
 
   const targetState = patch.current_state ?? stateForGroup(patch.group, current.currentState);
-  if (targetState !== undefined && targetState !== current.currentState) {
+  const stateChanges = targetState !== undefined && targetState !== current.currentState;
+  if (!stateChanges && (set.storyType !== undefined || set.estimate !== undefined)) {
+    // The unchanged state must still hold for the new type and estimate, or the row CHECKs abort.
+    const project = readProject(tx);
+    if (!statesFor(storyType).includes(current.currentState)) throw new HttpError(409, "invalid_transition");
+    if (
+      estimationGateBlocks({
+        storyType,
+        estimate: targetEstimate,
+        targetState: current.currentState,
+        bugsAndChoresAreEstimatable: project.bugs_and_chores_are_estimatable,
+      })
+    ) {
+      throw new HttpError(409, "estimate_required");
+    }
+  }
+  if (targetState !== undefined && stateChanges) {
     const project = readProject(tx);
     if (!isValidTransition(storyType, current.currentState, targetState)) {
       throw new HttpError(409, "invalid_transition");
@@ -342,7 +393,15 @@ export function updateStory(tx: ProjectTx, storyId: string, patch: StoryPatch): 
   const fieldsChanged = Object.keys(next).length > 0;
   let moved = false;
   let positionBefore = current.position;
-  if (moveRequested) {
+  // A group naming the list the story already sits in, with no neighbour and no state change, is
+  // a client echoing the field back: re-placing it would drop the story to the end of its list.
+  const groupEcho =
+    patch.group !== undefined &&
+    patch.before_id === undefined &&
+    patch.after_id === undefined &&
+    !stateChanges &&
+    targetList === current.list;
+  if (moveRequested && !groupEcho) {
     set.position = placeInList(tx, storyId, targetList, {
       before_id: patch.before_id ?? null,
       after_id: patch.after_id ?? null,

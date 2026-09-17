@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { attachLabel, createEpic, listEpics, listLabels, moveEpic } from "../src/services/labels";
+import { eq } from "drizzle-orm";
+import { epics } from "../src/db/schema";
+import { attachLabel, createEpic, listEpics, listLabels, moveEpic, updateEpic } from "../src/services/labels";
 import { listActivity } from "../src/services/activity";
 import { updateStory } from "../src/services/stories";
 import { withProject } from "../src/db/tx";
-import { makeTestApp, makeTestDb, seedProject, seedStory, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedEpic, seedProject, seedStory, seedUser } from "./harness";
 
 function setup() {
   const db = makeTestDb();
@@ -102,5 +104,63 @@ describe("epic routes", () => {
     expect(move.status).toBe(200);
     const order = (await move.json()) as { name: string }[];
     expect(order.map((e) => e.name)).toEqual(["B", "A"]);
+  });
+});
+
+describe("epic PUT and names", () => {
+  const headersOf = (actor: unknown) => ({ "content-type": "application/json", "x-test-actor": JSON.stringify(actor) });
+
+  it("applies name and description together with a move, and returns the renamed order", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    const e1 = seedEpic(db, projectId, "E1");
+    const e2 = seedEpic(db, projectId, "E2");
+    const res = await app.request(`/api/projects/${projectId}/epics/${e2}`, {
+      method: "PUT",
+      headers: headersOf(owner),
+      body: JSON.stringify({ name: "Renamed", description: "moved up", before_id: e1 }),
+    });
+    expect(res.status).toBe(200);
+    const order = (await res.json()) as { id: string; name: string; description: string | null }[];
+    expect(order.map((e) => [e.id, e.name])).toEqual([
+      [e2, "Renamed"],
+      [e1, "E1"],
+    ]);
+    expect(order[0]!.description).toBe("moved up");
+    const kinds = withProject(db, owner, projectId, "story:read", (tx) => listActivity(tx, {})).map((a) => a.kind);
+    expect(kinds.sort()).toEqual(["epic_move_activity", "epic_update_activity"]);
+  });
+
+  it("answers 400 name_required for a blank epic name or label_name, and trims both", async () => {
+    const { db, owner, projectId } = setup();
+    const { app } = makeTestApp(db);
+    for (const payload of [{ name: "" }, { name: "   " }, { name: "Ok", label_name: "  " }]) {
+      const res = await app.request(`/api/projects/${projectId}/epics`, {
+        method: "POST",
+        headers: headersOf(owner),
+        body: JSON.stringify(payload),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "name_required" });
+    }
+    const res = await app.request(`/api/projects/${projectId}/epics`, {
+      method: "POST",
+      headers: headersOf(owner),
+      body: JSON.stringify({ name: " Billing ", label_name: " billing " }),
+    });
+    expect(res.status).toBe(201);
+    const epic = (await res.json()) as { name: string; label_id: string };
+    expect(epic.name).toBe("Billing");
+    const label = withProject(db, owner, projectId, "story:read", (tx) => listLabels(tx)).find((l) => l.id === epic.label_id);
+    expect(label?.name).toBe("billing");
+  });
+
+  it("writes nothing when an epic update repeats the current values", () => {
+    const { db, owner, projectId } = setup();
+    const epicId = seedEpic(db, projectId, "Same");
+    const before = db.select().from(epics).where(eq(epics.id, epicId)).get()!;
+    withProject(db, owner, projectId, "epic:write", (tx) => updateEpic(tx, epicId, { name: "Same", description: null }));
+    expect(db.select().from(epics).where(eq(epics.id, epicId)).get()!.updatedAt).toBe(before.updatedAt);
+    expect(withProject(db, owner, projectId, "story:read", (tx) => listActivity(tx, {}))).toEqual([]);
   });
 });

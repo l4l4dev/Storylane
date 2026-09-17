@@ -8,7 +8,19 @@ import type { Logger } from "../log";
 import { HttpError } from "../http-error";
 import { deleteIterationOverride, listIterationOverrides, putIterationOverride } from "../services/iterations";
 
-const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+// A malformed body carries nothing about the project, so this 400 may answer before 404/403.
+const body = async (c: Context): Promise<Record<string, unknown>> => {
+  const text = await c.req.text();
+  if (text.trim() === "") return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "invalid_body");
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new HttpError(400, "invalid_body");
+  return parsed as Record<string, unknown>;
+};
 
 const OVERRIDE_KEYS = new Set(["length", "team_strength"]);
 
