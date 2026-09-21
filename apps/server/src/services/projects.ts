@@ -125,7 +125,7 @@ export function createProject(
         .run();
       tx.insert(projectMembers).values({ projectId: id, userId: actor.userId, role: "owner", joinedAt: now }).run();
       seedReviewTypes(bootstrapScope(tx, id, actor));
-      recordActivity(bootstrapScope(tx, id, actor), {
+      const created = recordActivity(bootstrapScope(tx, id, actor), {
         kind: "project_update_activity",
         message: `added the project ${name}`,
         highlight: "created",
@@ -151,7 +151,9 @@ export function createProject(
         automatic_planning: true,
         enable_tasks: true,
         show_story_priority: false,
-        version: 0,
+        // Bootstrap already recorded the seeded review types, so the stored version is past 0;
+        // a client using this as its first cursor must not disagree with the next read.
+        version: created.projectVersion,
         current_iteration_number: 1,
       };
     },

@@ -49,11 +49,29 @@ function isCalendarDate(value: unknown): value is string {
   return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
 }
 
+/** An unrecognized key is a caller mistake, not a field to drop. */
+function rejectUnknownKeys(input: Record<string, unknown>, allowed: ReadonlySet<string>): void {
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) throw new HttpError(400, "invalid_body", `unknown field ${key}`);
+  }
+}
+
+const SETTINGS_KEYS = new Set([
+  "name", "description", "point_scale", "bugs_and_chores_are_estimatable", "iteration_length", "week_start_day",
+  "start_date", "time_zone", "velocity_averaged_over", "initial_velocity", "number_of_done_iterations_to_show",
+  "automatic_planning", "enable_tasks", "show_story_priority",
+]);
+const PROJECT_CREATE_KEYS = new Set(["name"]);
+const MEMBERSHIP_KEYS = new Set(["role"]);
+const REVIEW_TYPE_CREATE_KEYS = new Set(["name"]);
+const REVIEW_TYPE_PATCH_KEYS = new Set(["name", "hidden"]);
+
 /**
  * Shapes and bounds the PUT body; every check throws HttpError so it can run inside the
  * withProject callback (auth precedence over body validation — spec/permissions.md).
  */
 function validateProjectSettingsPatch(input: Record<string, unknown>): ProjectSettingsPatch {
+  rejectUnknownKeys(input, SETTINGS_KEYS);
   const patch: ProjectSettingsPatch = {};
   if (input.name !== undefined) {
     if (typeof input.name !== "string" || input.name.trim().length === 0) throw new HttpError(400, "name_required");
@@ -141,6 +159,7 @@ export function projectRoutes(deps: {
       const actor = actorOf(c);
       if (actor.kind !== "user") throw new HttpError(401, "unauthenticated");
       const input = await body(c);
+      rejectUnknownKeys(input, PROJECT_CREATE_KEYS);
       if (typeof input.name !== "string") throw new HttpError(400, "name_required");
       assertMaxLength(input.name, NAME_MAX, "name_too_long");
       return c.json(createProject(db, actor, { name: input.name }), 201);
@@ -183,6 +202,7 @@ export function projectRoutes(deps: {
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "member:change-role", (tx) => {
           loadRole(tx, c.req.param("userId"));
+          rejectUnknownKeys(input, MEMBERSHIP_KEYS);
           return changeRole(tx, c.req.param("userId"), requireRole(input.role));
         }),
       );
@@ -204,6 +224,7 @@ export function projectRoutes(deps: {
       const input = await body(c);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "review-type:write", (tx) => {
+          rejectUnknownKeys(input, REVIEW_TYPE_CREATE_KEYS);
           const name = typeof input.name === "string" ? input.name.trim() : "";
           if (name.length === 0) throw new HttpError(400, "name_required");
           assertMaxLength(name, NAME_MAX, "name_too_long");
@@ -216,6 +237,7 @@ export function projectRoutes(deps: {
       const input = await body(c);
       return c.json(
         withProjectChange(deps, actorOf(c), c.req.param("id"), "review-type:write", (tx) => {
+          rejectUnknownKeys(input, REVIEW_TYPE_PATCH_KEYS);
           const patch: { name?: string; hidden?: boolean } = {};
           if (input.name !== undefined) {
             const name = typeof input.name === "string" ? input.name.trim() : "";

@@ -188,6 +188,60 @@ describe("PUT /api/projects/:id settings bounds", () => {
       body: { error: "invalid_body" },
     });
   });
+
+  it("answers 400 for an unknown settings key alone", async () => {
+    const project = createProject(db, owner, { name: "P" });
+    const res = await putJson(`/api/projects/${project.id}`, owner, { automatic_planing: false });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_body");
+  });
+
+  it("answers 400 for an unknown key mixed with valid settings and stores nothing", async () => {
+    const project = createProject(db, owner, { name: "P" });
+    const before = db.select().from(projects).where(eq(projects.id, project.id)).get();
+    const res = await putJson(`/api/projects/${project.id}`, owner, { name: "Renamed", automatic_planing: false });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_body");
+    expect(db.select().from(projects).where(eq(projects.id, project.id)).get()).toEqual(before);
+  });
+});
+
+describe("unknown keys are refused by every project body", () => {
+  it("answers 400 for POST /api/projects, the memberships PUT and both review_type writes", async () => {
+    const created = await app.request(`${ORIGIN}/api/projects`, {
+      method: "POST",
+      headers: jsonAs(owner),
+      body: JSON.stringify({ name: "P", bogus: 1 }),
+    });
+    expect(created.status).toBe(400);
+
+    const project = createProject(db, owner, { name: "P" });
+    const member = seedUser(db, "member@example.test");
+    seedMembership(db, project.id, member, "member");
+    const memberId = (member as { userId: string }).userId;
+    expect(await putJson(`/api/projects/${project.id}/memberships/${memberId}`, owner, { role: "viewer", bogus: 1 })).toEqual({
+      status: 400,
+      body: { error: "invalid_body" },
+    });
+
+    const reviewType = await putJson(`/api/projects/${project.id}/review_types`, owner, { name: "Legal", bogus: 1 });
+    expect(reviewType.status).toBe(400);
+  });
+});
+
+describe("POST /api/projects returns a usable version cursor", () => {
+  it("answers with the same version an immediate GET reports", async () => {
+    const res = await app.request(`${ORIGIN}/api/projects`, {
+      method: "POST",
+      headers: jsonAs(owner),
+      body: JSON.stringify({ name: "Cursor" }),
+    });
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as { id: string; version: number };
+    expect(created.version).toBeGreaterThan(0);
+    const read = await app.request(`${ORIGIN}/api/projects/${created.id}`, { headers: as(owner) });
+    expect(((await read.json()) as { version: number }).version).toBe(created.version);
+  });
 });
 
 describe("review type names are trimmed", () => {
