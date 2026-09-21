@@ -217,8 +217,10 @@ describe("project settings", () => {
       "insert into iteration_overrides (project_id, number, length, team_strength, created_at, updated_at) values (?,?,?,?,?,?)",
       [projectId, 2, 2, 1, Date.now(), Date.now()],
     );
+    // A fixed past Monday, not today's: a seeded project already starts on the current week
+    // start, and a patch equal to the stored value is a no-op that moves no calendar.
     withProject(db, owner, projectId, "project:update", (tx) =>
-      updateProject(tx, { start_date: "2026-09-21" }),
+      updateProject(tx, { start_date: "2020-01-06" }),
     );
     const left = db.$client.query("select count(*) as n from iteration_overrides").get() as { n: number };
     expect(left.n).toBe(0);
