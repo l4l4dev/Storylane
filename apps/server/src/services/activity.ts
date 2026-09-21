@@ -110,8 +110,13 @@ const KNOWN = new Set<string>(ACTIVITY_KINDS);
 
 /** Reads the counter the last recordActivity produced; the SSE event carries it. */
 export function projectVersion(scope: ActivityScope): number {
+  return projectVersionIfPresent(scope) ?? 0;
+}
+
+/** undefined, not 0, when the row is gone — a deleted project has no version left to read. */
+export function projectVersionIfPresent(scope: ActivityScope): number | undefined {
   const row = scope.tx.select({ v: projects.version }).from(projects).where(eq(projects.id, scope.projectId)).get();
-  return row?.v ?? 0;
+  return row?.v;
 }
 
 /**

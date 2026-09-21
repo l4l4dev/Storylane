@@ -100,6 +100,27 @@ describe("GET /api/projects/:id/events", () => {
     await theirs.body!.cancel();
   });
 
+  it("publishes a version past the last one seen when the project is deleted", async () => {
+    const res = await app.request(`${ORIGIN}/api/projects/${projectId}/events`, { headers: as(owner) });
+
+    await app.request(`${ORIGIN}/api/projects/${projectId}`, {
+      method: "PUT",
+      headers: json(owner),
+      body: JSON.stringify({ name: "Ship it" }),
+    });
+    const deleted = await app.request(`${ORIGIN}/api/projects/${projectId}`, { method: "DELETE", headers: json(owner) });
+    expect(deleted.status).toBe(204);
+
+    const frames = await collectFrames(res, 300);
+    const versions = frames
+      .filter((f) => f.includes("project.changed"))
+      .map((f) => Number(/"version":(\d+)/.exec(f)![1]));
+    expect(versions).toHaveLength(2);
+    // The deleted project has no row left to bump, so the event still has to outrank the
+    // version the rename published, or a monotonic cursor discards the deletion.
+    expect(versions[1]).toBeGreaterThan(versions[0]!);
+  });
+
   it("publishes nothing on a 400: an invalid body never reaches withProjectChange's publish call", async () => {
     const res = await app.request(`${ORIGIN}/api/projects/${projectId}/events`, { headers: as(owner) });
     const invalid = await app.request(`${ORIGIN}/api/projects/${projectId}`, {
