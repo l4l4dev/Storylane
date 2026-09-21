@@ -68,8 +68,9 @@ export const comments = sqliteTable(
 );
 
 /**
- * Metadata only. The bytes live at $STORYLANE_DATA_DIR/attachments/<storage_path>; the column
- * holds a path relative to that directory so the data dir can move.
+ * Metadata only. The bytes live at $STORYLANE_DATA_DIR/<storage_path>
+ * (`attachments/<project id>/<attachment id>`); the column holds a path relative to the data dir
+ * so the data dir can move.
  */
 export const fileAttachments = sqliteTable(
   "file_attachments",

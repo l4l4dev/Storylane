@@ -2,6 +2,14 @@ import { scopedItems } from "./scoped-items";
 import { loadInProject, withProject, withTwoProjects, ProjectTx, type Actor } from "../src/db/tx";
 import type { Db } from "../src/db/client";
 import { type BootstrapScope } from "../src/services/activity";
+import type { StoryState as DbStoryState, StoryType as DbStoryType, StoryList as DbStoryList } from "../src/db/schema";
+import type { StoryState as CoreStoryState, StoryType as CoreStoryType, StoryList as CoreStoryList } from "@storylane/core";
+
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+// A value of type `never` cannot be produced, so a drift between the two declarations fails tsc.
+export const storyStatesAgree: Exact<DbStoryState, CoreStoryState> = true;
+export const storyTypesAgree: Exact<DbStoryType, CoreStoryType> = true;
+export const storyListsAgree: Exact<DbStoryList, CoreStoryList> = true;
 
 declare const db: Db;
 declare const tx: ProjectTx;

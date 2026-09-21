@@ -60,7 +60,7 @@ describe("migrations", () => {
       expect(tables).toContain(name);
     }
     const journal = (db.$client.query("select count(*) as n from __drizzle_migrations").get() as { n: number }).n;
-    expect(journal).toBe(1);
+    expect(journal).toBe(2);
     db.$client.close();
   });
   it("skips the backup for :memory:", () => {

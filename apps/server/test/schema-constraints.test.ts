@@ -72,6 +72,23 @@ describe("projects", () => {
     ).not.toThrow();
   });
 
+  it("rejects a start date that is not a calendar date", () => {
+    for (const value of ["bogus", "2026-9-4", "2026-02-30", ""]) {
+      expect(() => run("update projects set start_date = ? where id = ?", [value, projectId])).toThrow(
+        /start_date must be a YYYY-MM-DD calendar date/,
+      );
+    }
+  });
+
+  it("rejects a malformed start date on insert", () => {
+    const userId = (owner as { userId: string }).userId;
+    expect(() =>
+      run("insert into projects (id, name, start_date, created_by, created_at) values (?,?,?,?,?)", [
+        newId(), "P", "2026-9-4", userId, Date.now(),
+      ]),
+    ).toThrow(/start_date must be a YYYY-MM-DD calendar date/);
+  });
+
   it("rejects an iteration length outside 1-4", () => {
     expect(() => run("update projects set iteration_length = 5 where id = ?", [projectId])).toThrow(
       /CHECK constraint failed/,

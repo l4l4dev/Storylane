@@ -36,11 +36,11 @@
   },
   "adminActions": ["user:list", "user:create", "user:deactivate", "user:reset-link", "instance:settings"],
   "notes": {
-    "last-owner": "member:change-role / member:remove return 409 last_owner for the sole owner; member:leave is 403 for any owner -- transfer ownership first. member:leave is the actor removing their own membership.",
+    "last-owner": "member:change-role returns 409 last_owner when demoting the sole owner. Removing yourself is 403: member:leave is 403 for any owner and member:remove naming the actor's own id answers 403 forbidden -- transfer ownership first, then leave. member:leave is the actor removing their own membership. Removing another owner implies at least two owners, so member:remove never reaches 409 last_owner through the API.",
     "archived": "When projects.archived_at is set, :read actions are unaffected and every other action returns 409 project_archived for every role, except project:archive (un-archive), project:delete, which stay owner-only, and member:leave, which a member may still do. Precedence is 404 then 409 then 403.",
     "member-scope": "Tracker's rule: a member may do anything with stories, tasks, comments, attachments, labels, epics, blockers and reviews; only an owner edits project settings, review types and membership.",
     "comment-own": "comment:update-own additionally requires the actor to be the comment's author. comment:delete is allowed to the author or to any project owner; another member deleting someone else's comment gets 403 from the service.",
-    "follower-self": "follower:write is 200 for a viewer only for the viewer's own follow row. Adding or removing somebody else's follow is refused to a viewer by the service.",
+    "follower-self": "follower:write is 200 for a viewer only for the viewer's own follow row. Adding or removing somebody else's follow is refused to a viewer by the service. Story owners are managed under story:write instead -- adding or removing an owner is a story edit, not a follower action, so a viewer never reaches that route at all.",
     "iteration-override": "iteration:override is member-level by assumption: Tracker sets iteration length and team strength from the iteration header, not from the owner-only settings page. See docs/plans/2026-09-16-tracker-step-1-core-model.md Assumptions.",
     "admin-plane": "adminActions require users.is_admin; they are instance-wide and never depend on project membership. Non-admin -> 403, anonymous -> 401.",
     "codes": "200 stands for allowed (the route may answer 201/204). 401 unauthenticated, 403 member-level denial, 404 non-member or row outside the project."

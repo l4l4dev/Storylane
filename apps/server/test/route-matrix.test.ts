@@ -1,18 +1,39 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createAttachmentStore } from "../src/attachments/store";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
-import { makeTestApp, makeTestDb, seedProject, seedUser } from "./harness";
+import {
+  makeTestApp,
+  makeTestDb,
+  seedAttachment,
+  seedBlocker,
+  seedComment,
+  seedEpic,
+  seedLabel,
+  seedProject,
+  seedReview,
+  seedReviewType,
+  seedStory,
+  seedTask,
+  seedUser,
+} from "./harness";
 import { ROUTE_ACTIONS } from "../src/authz/route-manifest";
 import { ALL_ACTIONS, expected, ROLES, type Action, type Role } from "../src/authz/permissions";
 import { withProject, type Actor } from "../src/db/tx";
 import { projects } from "../src/db/schema";
-import { matrixFixtures, type MatrixFixture } from "./matrix-fixtures";
+import { matrixFixtures, type AuthorRole, type MatrixFixture } from "./matrix-fixtures";
 import { mintInvite } from "../src/services/invites";
 
 const db = makeTestDb();
-const { app } = makeTestApp(db);
+const dataDir = mkdtempSync(join(tmpdir(), "sl-matrix-"));
+afterAll(() => rmSync(dataDir, { recursive: true, force: true }));
+const store = createAttachmentStore(dataDir);
+const { app } = makeTestApp(db, undefined, { dataDir });
 const ownerA = seedUser(db, "o@example.test");
 const memberA = seedUser(db, "m@example.test");
 const viewerA = seedUser(db, "v@example.test");
@@ -24,13 +45,55 @@ function seedFullProject() {
     [viewerA, "viewer"],
   ]);
   const seededInvite = withProject(db, ownerA, id, "member:invite", (tx) => mintInvite(tx, { role: "member" }));
-  return { id, inviteId: seededInvite.invite.id };
+  const storyId = seedStory(db, id);
+  // labelId backs no epic, so DELETE .../labels/:labelId never sees a 409 label_backs_an_epic.
+  const labelId = seedLabel(db, id, "matrix label");
+  const epicId = seedEpic(db, id, "Matrix epic seed");
+  const taskId = seedTask(db, id, storyId, "Matrix task seed");
+  const blockerId = seedBlocker(db, id, storyId, ownerA, "Matrix blocker seed");
+  const reviewTypeId = seedReviewType(db, id);
+  const reviewId = seedReview(db, id, storyId, reviewTypeId);
+  const authors = { viewer: viewerA, member: memberA, owner: ownerA };
+  const commentIds = {} as Record<AuthorRole, string>;
+  const attachmentIds = {} as Record<AuthorRole, string>;
+  for (const [role, author] of Object.entries(authors) as [AuthorRole, Actor][]) {
+    commentIds[role] = seedComment(db, id, storyId, author);
+    attachmentIds[role] = seedAttachment(db, store, id, commentIds[role], author);
+  }
+  return {
+    id,
+    inviteId: seededInvite.invite.id,
+    storyId,
+    labelId,
+    epicId,
+    taskId,
+    blockerId,
+    reviewTypeId,
+    reviewId,
+    commentIds,
+    attachmentIds,
+  };
 }
 
 const seeded = seedFullProject();
 const projectId = seeded.id;
 const fixturesFor = (t: ReturnType<typeof seedFullProject>): Record<string, MatrixFixture> =>
-  matrixFixtures({ projectId: t.id, inviteId: t.inviteId, userId: (ownerA as { userId: string }).userId });
+  matrixFixtures({
+    projectId: t.id,
+    inviteId: t.inviteId,
+    userId: (ownerA as { userId: string }).userId,
+    memberUserId: (memberA as { userId: string }).userId,
+    storyId: t.storyId,
+    labelId: t.labelId,
+    epicId: t.epicId,
+    taskId: t.taskId,
+    blockerId: t.blockerId,
+    reviewTypeId: t.reviewTypeId,
+    reviewId: t.reviewId,
+    ownerUserId: (ownerA as { userId: string }).userId,
+    commentIds: t.commentIds,
+    attachmentIds: t.attachmentIds,
+  });
 const FIXTURES = fixturesFor(seeded);
 const actors: Record<Role, Actor> = {
   anonymous: { kind: "anonymous" },
@@ -44,7 +107,35 @@ const actors: Record<Role, Actor> = {
 // iterates roles in a fixed order (anonymous, non-member, viewer, member, owner) — the owner
 // row runs last, so an earlier role never sees a deleted project/state. Give each destructive
 // key its own fresh project per role so the shared one stays live for the rest of the matrix.
-const DESTRUCTIVE = new Set(["DELETE /api/projects/:id"]);
+const DESTRUCTIVE = new Set([
+  "DELETE /api/projects/:id",
+  "DELETE /api/projects/:id/memberships/:userId",
+  "DELETE /api/projects/:id/memberships/me",
+  "DELETE /api/projects/:id/stories/:storyId",
+  "DELETE /api/projects/:id/stories/:storyId/owners/:userId",
+  "DELETE /api/projects/:id/stories/:storyId/follow",
+  "DELETE /api/projects/:id/stories/:storyId/followers/:userId",
+  "DELETE /api/projects/:id/labels/:labelId",
+  "DELETE /api/projects/:id/stories/:storyId/labels/:labelId",
+  "DELETE /api/projects/:id/epics/:epicId",
+  "DELETE /api/projects/:id/iteration_overrides/:number",
+  "DELETE /api/projects/:id/stories/:storyId/tasks/:taskId",
+  "DELETE /api/projects/:id/stories/:storyId/blockers/:blockerId",
+  "DELETE /api/projects/:id/stories/:storyId/comments/:commentId",
+  "DELETE /api/projects/:id/attachments/:attachmentId",
+  "DELETE /api/projects/:id/stories/:storyId/reviews/:reviewId",
+  // The owner row hides ctx.reviewTypeId, which would otherwise make every later
+  // review:write POST fixture (using the same type) answer 409 review_type_hidden.
+  "PUT /api/projects/:id/review_types/:reviewTypeId",
+  // POST creates a label/epic by name; run twice against the shared project (member then
+  // owner rows both expecting 200) the second call would 409 on the name it already took.
+  "POST /api/projects/:id/labels",
+  "POST /api/projects/:id/epics",
+  // Not a DELETE, but the owner row permanently demotes ctx.memberUserId to "viewer" in the
+  // shared project — any later matrix row that relies on that actor still being "member"
+  // (e.g. story:write) would otherwise see the wrong role.
+  "PUT /api/projects/:id/memberships/:userId",
+]);
 
 // Only these exact middleware registrations (app.use(path, …) in app.ts) are exempt — an
 // explicit allowlist, not a heuristic, so a real route registered with app.all(...) still
@@ -96,7 +187,8 @@ describe("permission matrix over project routes", () => {
         // Each destructive role gets its own project/state so an earlier role's delete
         // never leaves a later role authorizing against an already-gone row.
         const target = DESTRUCTIVE.has(key) ? seedFullProject() : seeded;
-        const fixture = DESTRUCTIVE.has(key) ? fixturesFor(target)[key] ?? {} : FIXTURES[key] ?? {};
+        const shared = DESTRUCTIVE.has(key) ? fixturesFor(target)[key] ?? {} : FIXTURES[key] ?? {};
+        const fixture = shared.perRole?.[role] ?? shared;
         let url = path.replace(":id", target.id);
         for (const [name, value] of Object.entries(fixture.params ?? {})) url = url.replace(`:${name}`, value);
         expect(url).not.toContain("/:"); // a param with no fixture would make every row meaningless
@@ -105,10 +197,17 @@ describe("permission matrix over project routes", () => {
         // csrfGuard rejects any unsafe request that is not application/json, so every non-GET
         // row must carry the header or the matrix would assert 403 instead of the real answer.
         if (method !== "GET") headers["content-type"] = "application/json";
+        const raw = fixture.rawBody;
+        if (raw) {
+          Object.assign(headers, raw.headers, {
+            "content-type": raw.contentType,
+            "content-length": String(new TextEncoder().encode(raw.bytes).byteLength),
+          });
+        }
         const res = await app.request(url, {
           method,
           headers,
-          ...(fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
+          ...(raw ? { body: raw.bytes } : fixture.body === undefined ? {} : { body: JSON.stringify(fixture.body) }),
         });
         if (fixture.stream) await res.body?.cancel();
         const want = expected(rule, role);

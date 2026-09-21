@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
-import { makeTestApp, makeTestDb, seedUser } from "./harness";
+import { makeTestApp, makeTestDb, seedMembership, seedUser } from "./harness";
 import { createProject } from "../src/services/projects";
 import { activities, projects } from "../src/db/schema";
 import type { Db } from "../src/db/client";
@@ -73,7 +73,7 @@ describe("archive and unarchive", () => {
     expect(read.status).toBe(200);
 
     const write = await app.request(`${ORIGIN}/api/projects/${project.id}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: jsonAs(owner),
       body: JSON.stringify({ name: "Blocked" }),
     });
@@ -87,7 +87,7 @@ describe("archive and unarchive", () => {
     });
     expect(reopen.status).toBe(200);
     const writeAgain = await app.request(`${ORIGIN}/api/projects/${project.id}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: jsonAs(owner),
       body: JSON.stringify({ name: "Reopened" }),
     });
@@ -95,23 +95,23 @@ describe("archive and unarchive", () => {
   });
 });
 
-describe("PATCH /api/projects/:id validation", () => {
+describe("PUT /api/projects/:id validation", () => {
   it("400s a non-string name instead of 500ing", async () => {
     const project = createProject(db, owner, { name: "P" });
     const res = await app.request(`${ORIGIN}/api/projects/${project.id}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: jsonAs(owner),
       body: JSON.stringify({ name: 1 }),
     });
     expect(res.status).toBe(400);
   });
 
-  it("400s an invalid pointScale instead of hitting the DB trigger", async () => {
+  it("400s an invalid point_scale instead of hitting the DB trigger", async () => {
     const project = createProject(db, owner, { name: "P" });
     const res = await app.request(`${ORIGIN}/api/projects/${project.id}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: jsonAs(owner),
-      body: JSON.stringify({ pointScale: "bogus" }),
+      body: JSON.stringify({ point_scale: "bogus" }),
     });
     expect(res.status).toBe(400);
   });
@@ -135,5 +135,128 @@ describe("DELETE /api/projects/:id cascades", () => {
 
     expect(db.select().from(projects).where(eq(projects.id, project.id)).all()).toEqual([]);
     expect(db.select().from(activities).where(eq(activities.projectId, project.id)).all()).toEqual([]);
+  });
+});
+
+describe("POST /api/projects/:id/review_types authorization precedence", () => {
+  it("answers 403 (not 400) for a member's POST with an empty name — authorization runs before body validation", async () => {
+    const project = createProject(db, owner, { name: "P" });
+    const member = seedUser(db, "member@example.test");
+    seedMembership(db, project.id, member, "member");
+    const res = await app.request(`${ORIGIN}/api/projects/${project.id}/review_types`, {
+      method: "POST",
+      headers: jsonAs(member),
+      body: JSON.stringify({ name: "" }),
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
+async function putJson(path: string, actor: Actor, payload: string | Record<string, unknown>) {
+  const res = await app.request(`${ORIGIN}${path}`, {
+    method: path.endsWith("review_types") ? "POST" : "PUT",
+    headers: jsonAs(actor),
+    body: typeof payload === "string" ? payload : JSON.stringify(payload),
+  });
+  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+}
+
+describe("PUT /api/projects/:id settings bounds", () => {
+  const cases: Array<[Record<string, unknown>, string]> = [
+    [{ iteration_length: 1.5 }, "iteration_length_invalid"],
+    [{ week_start_day: 0.5 }, "week_start_day_invalid"],
+    [{ velocity_averaged_over: 2.5 }, "velocity_averaged_over_invalid"],
+    [{ number_of_done_iterations_to_show: 3.7 }, "number_of_done_iterations_to_show_invalid"],
+    [{ initial_velocity: 2.2 }, "initial_velocity_invalid"],
+    [{ start_date: "hello" }, "start_date_invalid"],
+    [{ start_date: "2026-13-45" }, "start_date_invalid"],
+    [{ start_date: "2026-02-30" }, "start_date_invalid"],
+  ];
+  for (const [patch, code] of cases) {
+    it(`answers 400 ${code} for ${JSON.stringify(patch)} and stores nothing`, async () => {
+      const project = createProject(db, owner, { name: "P" });
+      const before = db.select().from(projects).where(eq(projects.id, project.id)).get();
+      expect(await putJson(`/api/projects/${project.id}`, owner, patch)).toEqual({ status: 400, body: { error: code } });
+      expect(db.select().from(projects).where(eq(projects.id, project.id)).get()).toEqual(before);
+    });
+  }
+
+  it("answers 400 invalid_body for malformed JSON", async () => {
+    const project = createProject(db, owner, { name: "P" });
+    expect(await putJson(`/api/projects/${project.id}`, owner, "{\"name\":")).toEqual({
+      status: 400,
+      body: { error: "invalid_body" },
+    });
+  });
+
+  it("answers 400 for an unknown settings key alone", async () => {
+    const project = createProject(db, owner, { name: "P" });
+    const res = await putJson(`/api/projects/${project.id}`, owner, { automatic_planing: false });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_body");
+  });
+
+  it("answers 400 for an unknown key mixed with valid settings and stores nothing", async () => {
+    const project = createProject(db, owner, { name: "P" });
+    const before = db.select().from(projects).where(eq(projects.id, project.id)).get();
+    const res = await putJson(`/api/projects/${project.id}`, owner, { name: "Renamed", automatic_planing: false });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_body");
+    expect(db.select().from(projects).where(eq(projects.id, project.id)).get()).toEqual(before);
+  });
+});
+
+describe("unknown keys are refused by every project body", () => {
+  it("answers 400 for POST /api/projects, the memberships PUT and both review_type writes", async () => {
+    const created = await app.request(`${ORIGIN}/api/projects`, {
+      method: "POST",
+      headers: jsonAs(owner),
+      body: JSON.stringify({ name: "P", bogus: 1 }),
+    });
+    expect(created.status).toBe(400);
+
+    const project = createProject(db, owner, { name: "P" });
+    const member = seedUser(db, "member@example.test");
+    seedMembership(db, project.id, member, "member");
+    const memberId = (member as { userId: string }).userId;
+    expect(await putJson(`/api/projects/${project.id}/memberships/${memberId}`, owner, { role: "viewer", bogus: 1 })).toEqual({
+      status: 400,
+      body: { error: "invalid_body" },
+    });
+
+    const reviewType = await putJson(`/api/projects/${project.id}/review_types`, owner, { name: "Legal", bogus: 1 });
+    expect(reviewType.status).toBe(400);
+  });
+});
+
+describe("POST /api/projects returns a usable version cursor", () => {
+  it("answers with the same version an immediate GET reports", async () => {
+    const res = await app.request(`${ORIGIN}/api/projects`, {
+      method: "POST",
+      headers: jsonAs(owner),
+      body: JSON.stringify({ name: "Cursor" }),
+    });
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as { id: string; version: number };
+    expect(created.version).toBeGreaterThan(0);
+    const read = await app.request(`${ORIGIN}/api/projects/${created.id}`, { headers: as(owner) });
+    expect(((await read.json()) as { version: number }).version).toBe(created.version);
+  });
+});
+
+describe("review type names are trimmed", () => {
+  it("stores a trimmed name on create and rename, and refuses a blank one", async () => {
+    const project = createProject(db, owner, { name: "P" });
+    const created = await putJson(`/api/projects/${project.id}/review_types`, owner, { name: "  Legal sign-off  " });
+    expect(created.status).toBe(201);
+    expect(created.body.name).toBe("Legal sign-off");
+    expect(await putJson(`/api/projects/${project.id}/review_types`, owner, { name: "   " })).toEqual({
+      status: 400,
+      body: { error: "name_required" },
+    });
+    const renamed = await putJson(`/api/projects/${project.id}/review_types/${created.body.id as string}`, owner, {
+      name: " Legal ",
+    });
+    expect(renamed.body.name).toBe("Legal");
   });
 });
