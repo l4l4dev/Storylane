@@ -168,12 +168,30 @@ function optionalQueryInteger(value: string | undefined, min: number, max: numbe
   return n;
 }
 
+/** Tracker's list params are comma-separated; an unknown member must refuse, not silently drop. */
+function optionalQueryEnumList<T extends string>(
+  value: string | undefined,
+  allowed: readonly string[],
+  code: string,
+): T[] | undefined {
+  if (value === undefined) return undefined;
+  const parts = value.split(",");
+  for (const part of parts) {
+    if (!allowed.includes(part)) throw new HttpError(400, code);
+  }
+  return parts as T[];
+}
+
 function validateStoryFilter(query: Record<string, string>): StoryFilter {
   const filter: StoryFilter = {};
   const limit = optionalQueryInteger(query.limit, 1, 500, "limit_invalid");
   if (limit !== undefined) filter.limit = limit;
   const offset = optionalQueryInteger(query.offset, 0, Number.MAX_SAFE_INTEGER, "offset_invalid");
   if (offset !== undefined) filter.offset = offset;
+  const withState = optionalQueryEnumList<StoryState>(query.with_state, STORY_STATES, "with_state_invalid");
+  if (withState !== undefined) filter.withState = withState;
+  const withStoryType = optionalQueryEnumList<StoryType>(query.with_story_type, STORY_TYPES, "with_story_type_invalid");
+  if (withStoryType !== undefined) filter.withStoryType = withStoryType;
   if (query.with_label !== undefined) filter.withLabel = query.with_label;
   return filter;
 }

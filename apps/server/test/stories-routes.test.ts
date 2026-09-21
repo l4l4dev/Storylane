@@ -262,6 +262,53 @@ describe("GET /stories paging and label filter", () => {
       body: { error: "not_found" },
     });
   });
+
+  it("filters by with_state and with_story_type", async () => {
+    const { db, projectId, app, headers } = setup();
+    const icebox = seedStory(db, projectId, { storyType: "feature" });
+    const started = seedStory(db, projectId, { list: "backlog", currentState: "started", storyType: "feature", estimate: 1 });
+    const chore = seedStory(db, projectId, { list: "backlog", currentState: "unstarted", storyType: "chore" });
+
+    const ids = async (query: string) =>
+      ((await send(app, `/api/projects/${projectId}/stories?${query}`, "GET", headers)).body as unknown as {
+        id: string;
+      }[]).map((s) => s.id);
+
+    expect(await ids("with_state=started")).toEqual([started]);
+    expect((await ids("with_state=started,unstarted")).sort()).toEqual([started, chore].sort());
+    expect(await ids("with_state=started,unstarted&with_story_type=chore")).toEqual([chore]);
+    expect(await ids("with_story_type=feature&with_state=unscheduled")).toEqual([icebox]);
+  });
+
+  it("combines with_state with with_label", async () => {
+    const { db, projectId, app, headers } = setup();
+    const labelled = seedStory(db, projectId, { list: "backlog", currentState: "started", estimate: 1 });
+    seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    const labelId = seedLabel(db, projectId, "ux");
+    db.insert(storyLabels).values({ projectId, storyId: labelled, labelId, addedAt: Date.now() }).run();
+    const other = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    db.insert(storyLabels).values({ projectId, storyId: other, labelId, addedAt: Date.now() }).run();
+
+    const res = await send(app, `/api/projects/${projectId}/stories?with_label=${labelId}&with_state=started`, "GET", headers);
+    expect((res.body as unknown as { id: string }[]).map((s) => s.id)).toEqual([labelled]);
+  });
+
+  it("answers 400 for an unknown or empty filter value", async () => {
+    const { projectId, app, headers } = setup();
+    const cases: [string, string][] = [
+      ["with_state=bogus", "with_state_invalid"],
+      ["with_state=", "with_state_invalid"],
+      ["with_state=started,bogus", "with_state_invalid"],
+      ["with_story_type=bogus", "with_story_type_invalid"],
+      ["with_story_type=", "with_story_type_invalid"],
+    ];
+    for (const [query, error] of cases) {
+      expect(await send(app, `/api/projects/${projectId}/stories?${query}`, "GET", headers)).toEqual({
+        status: 400,
+        body: { error },
+      });
+    }
+  });
 });
 
 describe("story routes body parsing", () => {
