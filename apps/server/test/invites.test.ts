@@ -9,6 +9,8 @@ import { createRateLimiter } from "../src/auth/rate-limit";
 import { EventBus } from "../src/events/bus";
 import { newId } from "../src/id";
 import { eq } from "drizzle-orm";
+import { listActivity } from "../src/services/activity";
+import { withProject } from "../src/db/tx";
 import type { Db } from "../src/db/client";
 import type { Actor } from "../src/db/tx";
 
@@ -373,5 +375,56 @@ describe("previewing and accepting", () => {
     expect(res.status).toBe(200);
     // The existing role wins — accepting an invite never demotes a member.
     expect(((await res.json()) as { role: string }).role).toBe("member");
+  });
+});
+
+describe("activity kinds", () => {
+  it("mints as project_invite_create_activity with the invite as the primary resource", async () => {
+    const { invite } = (await (await mint(owner, "viewer")).json()) as { invite: { id: string } };
+    const rows = withProject(db, owner, projectId, "activity:read", (tx) => listActivity(tx, {}));
+    const created = rows.at(-1)!;
+    expect(created.kind).toBe("project_invite_create_activity");
+    expect(created.changes[0]!.kind).toBe("invite");
+    expect(created.primary_resources).toEqual([{ kind: "invite", id: invite.id }]);
+  });
+
+  it("revokes as project_invite_delete_activity", async () => {
+    const { invite } = (await (await mint(owner, "viewer")).json()) as { invite: { id: string } };
+    const res = await app.request(`${ORIGIN}/api/projects/${projectId}/invites/${invite.id}`, {
+      method: "DELETE",
+      headers: jsonAs(owner),
+    });
+    expect(res.status).toBe(200);
+    const rows = withProject(db, owner, projectId, "activity:read", (tx) => listActivity(tx, {}));
+    const revoked = rows.at(-1)!;
+    expect(revoked.kind).toBe("project_invite_delete_activity");
+    expect(revoked.primary_resources).toEqual([{ kind: "invite", id: invite.id }]);
+  });
+
+  it("still records acceptance as project_membership_create_activity", async () => {
+    const { token } = (await (await mint(owner, "viewer")).json()) as { token: string };
+    await app.request(`${ORIGIN}/api/invites/${token}/accept`, {
+      method: "POST",
+      headers: jsonAs(stranger),
+      body: "{}",
+    });
+    const rows = withProject(db, owner, projectId, "activity:read", (tx) => listActivity(tx, {}));
+    const joined = rows.at(-1)!;
+    expect(joined.kind).toBe("project_membership_create_activity");
+  });
+});
+
+describe("invite routes body parsing", () => {
+  it("answers 400 invalid_body for a malformed mint body, while an absent body stays a role error", async () => {
+    const bad = await app.request(`${ORIGIN}/api/projects/${projectId}/invites`, {
+      method: "POST",
+      headers: jsonAs(owner),
+      body: "{\"role\":",
+    });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "invalid_body" });
+    const absent = await app.request(`${ORIGIN}/api/projects/${projectId}/invites`, { method: "POST", headers: jsonAs(owner) });
+    expect(absent.status).toBe(400);
+    expect(await absent.json()).toEqual({ error: "role_invalid" });
   });
 });

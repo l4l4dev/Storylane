@@ -2,14 +2,16 @@ import type { MiddlewareHandler } from "hono";
 
 export interface Logger {
   info(msg: string, fields?: Record<string, unknown>): void;
+  warn(msg: string, fields?: Record<string, unknown>): void;
   error(msg: string, fields?: Record<string, unknown>): void;
 }
 
 export function createLogger(out: (line: string) => void = (l) => console.log(l)): Logger {
-  const emit = (level: "info" | "error", msg: string, fields?: Record<string, unknown>) =>
+  const emit = (level: "info" | "warn" | "error", msg: string, fields?: Record<string, unknown>) =>
     out(JSON.stringify({ ts: new Date().toISOString(), level, msg, ...fields }));
   return {
     info: (msg, fields) => emit("info", msg, fields),
+    warn: (msg, fields) => emit("warn", msg, fields),
     error: (msg, fields) => emit("error", msg, fields),
   };
 }

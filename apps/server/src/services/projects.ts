@@ -1,41 +1,68 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { BUILT_IN_POINT_SCALES, DEFAULT_POINT_SCALE, projectMembers, projects } from "../db/schema";
-import { formatDateOnly, isoWeekday, MS_PER_DAY } from "@storylane/core";
+import { DEFAULT_POINT_SCALE, epics, iterationOverrides, projectMembers, projects, reviews, stories } from "../db/schema";
+import { isCustomPointScale, nearestOnScale, parsePointScale } from "@storylane/core";
 import { assertNoOpenTransaction, type Actor, type ProjectTx } from "../db/tx";
 import type { MemberRole } from "../authz/permissions";
 import { HttpError } from "../http-error";
 import { newId } from "../id";
 import { bootstrapScope, recordActivity } from "./activity";
+import { seedReviewTypes } from "./reviews";
 
-/**
- * PROVISIONAL (Task 7 owns the settings service): projects.week_start_day's own default. Task 7
- * decides what a new project actually starts on; this pair exists only because the
- * projects_start_date_matches_week_start trigger refuses an insert without a valid start_date.
- */
 const DEFAULT_WEEK_START_DAY = 1;
 
 /**
- * PROVISIONAL (Task 7 owns the settings service): the most recent `weekStartDay` on or before
- * `now` in UTC, as the YYYY-MM-DD the trigger expects. "The most recent UTC Monday" is an
- * invented default — Task 7 replaces it with the one its Step 7 specifies.
+ * The most recent `weekStartDay` on or before `now`, expressed as the YYYY-MM-DD the
+ * projects_start_date_matches_week_start trigger expects, computed in `zone`. Tracker itself
+ * leaves the start date blank and derives it from the first accepted story's iteration
+ * (core-model §2.3.2); we store a date because the calendar trigger needs one, and an earlier
+ * accepted_at still wins once stories exist.
  */
-function mostRecentWeekStart(now: number, weekStartDay: number): string {
-  const back = (isoWeekday(now) - weekStartDay + 7) % 7;
-  return formatDateOnly(now - back * MS_PER_DAY);
+function mostRecentWeekStart(now: number, weekStartDay: number, zone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(now);
+  const dateStr = `${parts.find((p) => p.type === "year")!.value}-${parts.find((p) => p.type === "month")!.value}-${
+    parts.find((p) => p.type === "day")!.value
+  }`;
+  const weekdayName = parts.find((p) => p.type === "weekday")!.value;
+  const WEEKDAYS: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  const isoWeekday = WEEKDAYS[weekdayName]!;
+  const back = (isoWeekday - weekStartDay + 7) % 7;
+  if (back === 0) return dateStr;
+  const [y, m, d] = dateStr.split("-").map(Number) as [number, number, number];
+  const asUtcMidnight = Date.UTC(y, m - 1, d);
+  const shifted = new Date(asUtcMidnight - back * 86_400_000);
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    shifted.getUTCDate(),
+  ).padStart(2, "0")}`;
 }
 
-export interface ProjectDetail {
+export interface ProjectSettings {
   id: string;
   name: string;
   description: string | null;
-  archivedAt: number | null;
   role: MemberRole;
-  /**
-   * PROVISIONAL (Task 7 owns the settings service): the comma-separated ascending point values
-   * (core-model §2.2). Task 7 adds the rest of the settings fields and `point_scale_is_custom`.
-   */
-  pointScale: string;
+  archivedAt: number | null;
+  point_scale: string;
+  point_scale_is_custom: boolean;
+  bugs_and_chores_are_estimatable: boolean;
+  iteration_length: number;
+  week_start_day: number;
+  start_date: string;
+  time_zone: string;
+  velocity_averaged_over: number;
+  initial_velocity: number;
+  number_of_done_iterations_to_show: number;
+  automatic_planning: boolean;
+  enable_tasks: boolean;
+  show_story_priority: boolean;
+  version: number;
+  current_iteration_number: number;
 }
 
 export interface ProjectSummary {
@@ -45,11 +72,21 @@ export interface ProjectSummary {
   role: MemberRole;
 }
 
-export interface ProjectPatch {
+export interface ProjectSettingsPatch {
   name?: string;
   description?: string | null;
-  /** PROVISIONAL (Task 7 owns the settings service): see ProjectDetail.pointScale. */
-  pointScale?: string;
+  point_scale?: string;
+  bugs_and_chores_are_estimatable?: boolean;
+  iteration_length?: number;
+  week_start_day?: number;
+  start_date?: string;
+  time_zone?: string;
+  velocity_averaged_over?: number;
+  initial_velocity?: number;
+  number_of_done_iterations_to_show?: number;
+  automatic_planning?: boolean;
+  enable_tasks?: boolean;
+  show_story_priority?: boolean;
 }
 
 /**
@@ -60,41 +97,64 @@ export interface ProjectPatch {
  * Same rule as revokeUserSessions/changePassword: bun:sqlite has no savepoints here, so call
  * this at the top level, never inside a withProject callback.
  */
-export function createProject(db: Db, actor: Actor, input: { name: string }): ProjectDetail {
+export function createProject(
+  db: Db,
+  actor: Actor,
+  input: { name: string; timeZone?: string; startDate?: string },
+): ProjectSettings {
   if (actor.kind !== "user") throw new HttpError(401, "unauthenticated");
   if (input.name.trim().length === 0) throw new HttpError(400, "name_required");
   assertNoOpenTransaction("createProject");
   const now = Date.now();
   const id = newId();
+  const timeZone = input.timeZone ?? "UTC";
+  const startDate = input.startDate ?? mostRecentWeekStart(now, DEFAULT_WEEK_START_DAY, timeZone);
+  const name = input.name.trim();
   return db.transaction(
     (tx) => {
       tx
         .insert(projects)
         .values({
           id,
-          name: input.name.trim(),
-          startDate: mostRecentWeekStart(now, DEFAULT_WEEK_START_DAY),
+          name,
+          startDate,
+          timeZone,
           createdBy: actor.userId,
           createdAt: now,
         })
         .run();
       tx.insert(projectMembers).values({ projectId: id, userId: actor.userId, role: "owner", joinedAt: now }).run();
-      recordActivity(bootstrapScope(tx, id, actor), {
-        // PROVISIONAL (Task 7 owns the settings service): placeholder activity copy — Tracker's
-        // own wording for these actions is not specified in the plan.
+      seedReviewTypes(bootstrapScope(tx, id, actor));
+      const created = recordActivity(bootstrapScope(tx, id, actor), {
         kind: "project_update_activity",
-        message: `created ${input.name.trim()}`,
+        message: `added the project ${name}`,
         highlight: "created",
-        changes: [{ kind: "project", id, change_type: "create", new_values: { name: input.name.trim() } }],
+        changes: [{ kind: "project", id, change_type: "create", new_values: { name } }],
         primaryResources: [{ kind: "project", id }],
       });
       return {
         id,
-        name: input.name.trim(),
+        name,
         description: null,
-        archivedAt: null,
         role: "owner" as MemberRole,
-        pointScale: DEFAULT_POINT_SCALE,
+        archivedAt: null,
+        point_scale: DEFAULT_POINT_SCALE,
+        point_scale_is_custom: false,
+        bugs_and_chores_are_estimatable: false,
+        iteration_length: 1,
+        week_start_day: DEFAULT_WEEK_START_DAY,
+        start_date: startDate,
+        time_zone: timeZone,
+        velocity_averaged_over: 3,
+        initial_velocity: 10,
+        number_of_done_iterations_to_show: 4,
+        automatic_planning: true,
+        enable_tasks: true,
+        show_story_priority: false,
+        // Bootstrap already recorded the seeded review types, so the stored version is past 0;
+        // a client using this as its first cursor must not disagree with the next read.
+        version: created.projectVersion,
+        current_iteration_number: 1,
       };
     },
     { behavior: "immediate" },
@@ -125,7 +185,7 @@ export function listProjects(db: Db, actor: Actor): ProjectSummary[] {
     .all() as ProjectSummary[];
 }
 
-export function readProject(tx: ProjectTx): ProjectDetail {
+export function readProject(tx: ProjectTx): ProjectSettings {
   const row = tx.tx
     .select({
       id: projects.id,
@@ -133,69 +193,216 @@ export function readProject(tx: ProjectTx): ProjectDetail {
       description: projects.description,
       archivedAt: projects.archivedAt,
       pointScale: projects.pointScale,
+      bugsAndChoresAreEstimatable: projects.bugsAndChoresAreEstimatable,
+      iterationLength: projects.iterationLength,
+      weekStartDay: projects.weekStartDay,
+      startDate: projects.startDate,
+      timeZone: projects.timeZone,
+      velocityAveragedOver: projects.velocityAveragedOver,
+      initialVelocity: projects.initialVelocity,
+      numberOfDoneIterationsToShow: projects.numberOfDoneIterationsToShow,
+      automaticPlanning: projects.automaticPlanning,
+      enableTasks: projects.enableTasks,
+      showStoryPriority: projects.showStoryPriority,
+      version: projects.version,
     })
     .from(projects)
     .where(eq(projects.id, tx.projectId))
     .get();
   if (!row) throw new HttpError(404, "not_found");
-  return { ...row, role: tx.role };
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    role: tx.role,
+    archivedAt: row.archivedAt,
+    point_scale: row.pointScale,
+    point_scale_is_custom: isCustomPointScale(row.pointScale),
+    bugs_and_chores_are_estimatable: row.bugsAndChoresAreEstimatable,
+    iteration_length: row.iterationLength,
+    week_start_day: row.weekStartDay,
+    start_date: row.startDate,
+    time_zone: row.timeZone,
+    velocity_averaged_over: row.velocityAveragedOver,
+    initial_velocity: row.initialVelocity,
+    number_of_done_iterations_to_show: row.numberOfDoneIterationsToShow,
+    automatic_planning: row.automaticPlanning,
+    enable_tasks: row.enableTasks,
+    show_story_priority: row.showStoryPriority,
+    version: row.version,
+    // Task 20 replaces this literal with currentIterationNumber(tx) once the calendar service
+    // exists (this is the plan's only forward reference).
+    current_iteration_number: 1,
+  };
 }
 
-/**
- * PROVISIONAL (Task 7 owns the settings service): Tracker stores the scale as a comma-separated
- * ascending list, so the three built-ins are just three such lists and "custom" is any other one.
- */
-function assertValidPointScale(pointScale: string): void {
-  if ((BUILT_IN_POINT_SCALES as readonly string[]).includes(pointScale)) return;
-  const parts = pointScale.split(",");
-  if (parts.length === 0 || parts.some((p) => !/^\d+(\.\d+)?$/.test(p))) throw new HttpError(400, "point_scale_invalid");
-  const values = parts.map((p) => Number(p));
-  if (values.some((n) => !Number.isFinite(n) || n < 0)) throw new HttpError(400, "point_scale_invalid");
-  if (values.some((n, i) => i > 0 && n <= values[i - 1]!)) throw new HttpError(400, "point_scale_invalid");
+function assertKnownTimeZone(zone: string): void {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+  } catch {
+    throw new HttpError(400, "time_zone_invalid");
+  }
 }
 
-export function updateProject(tx: ProjectTx, patch: ProjectPatch): ProjectDetail {
+/** Maps a CHECK/trigger ABORT message to the field-specific 400 code the route promised. */
+function asFieldError(e: unknown): never {
+  const message = e instanceof Error ? e.message : String(e);
+  if (/iteration_length/.test(message)) throw new HttpError(400, "iteration_length_invalid");
+  if (/start_date_matches_week_start|start_date/.test(message)) throw new HttpError(400, "start_date_invalid");
+  if (/week_start_day/.test(message)) throw new HttpError(400, "week_start_day_invalid");
+  if (/velocity_averaged_over/.test(message)) throw new HttpError(400, "velocity_averaged_over_invalid");
+  if (/done_iterations_shown|number_of_done_iterations_to_show/.test(message)) {
+    throw new HttpError(400, "number_of_done_iterations_to_show_invalid");
+  }
+  if (/initial_velocity/.test(message)) throw new HttpError(400, "initial_velocity_invalid");
+  throw e;
+}
+
+export function updateProject(tx: ProjectTx, patch: ProjectSettingsPatch): ProjectSettings {
+  const current = readProject(tx);
   const set: Record<string, unknown> = {};
-  // An activity payload carries column names (ActivityChange in services/activity.ts), so it
-  // cannot reuse `set` — those are Drizzle's camelCase property names.
-  const newValues: Record<string, unknown> = {};
+  const original: Record<string, unknown> = {};
+  const next: Record<string, unknown> = {};
+
+  const setField = <K extends keyof ProjectSettingsPatch>(
+    key: K,
+    column: string,
+    currentValue: unknown,
+  ): void => {
+    const value = patch[key];
+    if (value === undefined || value === currentValue) return;
+    set[column] = value;
+    original[key as string] = currentValue;
+    next[key as string] = value;
+  };
+
   if (patch.name !== undefined) {
     const name = patch.name.trim();
     if (name.length === 0) throw new HttpError(400, "name_required");
-    set.name = name;
-    newValues.name = name;
+    if (name !== current.name) {
+      set.name = name;
+      original.name = current.name;
+      next.name = name;
+    }
   }
-  if (patch.description !== undefined) {
-    set.description = patch.description;
-    newValues.description = patch.description;
+  setField("description", "description", current.description);
+
+  if (patch.bugs_and_chores_are_estimatable === false && current.bugs_and_chores_are_estimatable) {
+    throw new HttpError(409, "bugs_and_chores_estimation_is_one_way");
   }
-  if (patch.pointScale !== undefined) {
-    assertValidPointScale(patch.pointScale);
-    set.pointScale = patch.pointScale;
-    newValues.point_scale = patch.pointScale;
+  setField("bugs_and_chores_are_estimatable", "bugsAndChoresAreEstimatable", current.bugs_and_chores_are_estimatable);
+
+  if (patch.point_scale !== undefined && patch.point_scale !== current.point_scale) {
+    let parsed: number[];
+    try {
+      parsed = parsePointScale(patch.point_scale);
+    } catch {
+      throw new HttpError(400, "point_scale_invalid");
+    }
+    if (current.point_scale_is_custom && !isCustomPointScale(patch.point_scale)) {
+      throw new HttpError(409, "point_scale_custom_is_one_way");
+    }
+    // Built-in → built-in rewrites every estimate, accepted stories included (core-model §2.2.2);
+    // a move to a custom scale preserves them.
+    if (!current.point_scale_is_custom && !isCustomPointScale(patch.point_scale)) {
+      for (const row of tx.tx
+        .select({ id: stories.id, estimate: stories.estimate })
+        .from(stories)
+        .where(and(eq(stories.projectId, tx.projectId), isNotNull(stories.estimate)))
+        .all()) {
+        tx.tx
+          .update(stories)
+          .set({ estimate: nearestOnScale(row.estimate!, parsed) })
+          .where(and(eq(stories.id, row.id), eq(stories.projectId, tx.projectId)))
+          .run();
+      }
+    }
+    set.pointScale = patch.point_scale;
+    original.point_scale = current.point_scale;
+    next.point_scale = patch.point_scale;
   }
-  if (Object.keys(set).length > 0) {
+
+  if (patch.time_zone !== undefined) assertKnownTimeZone(patch.time_zone);
+  setField("time_zone", "timeZone", current.time_zone);
+  setField("iteration_length", "iterationLength", current.iteration_length);
+  setField("week_start_day", "weekStartDay", current.week_start_day);
+  setField("start_date", "startDate", current.start_date);
+  setField("velocity_averaged_over", "velocityAveragedOver", current.velocity_averaged_over);
+  setField("initial_velocity", "initialVelocity", current.initial_velocity);
+  setField(
+    "number_of_done_iterations_to_show",
+    "numberOfDoneIterationsToShow",
+    current.number_of_done_iterations_to_show,
+  );
+  setField("enable_tasks", "enableTasks", current.enable_tasks);
+  setField("show_story_priority", "showStoryPriority", current.show_story_priority);
+
+  // Automatic planning has no `planned` state, so the stories holding one are handed back to the
+  // backlog before the flag flips; projects_automatic_planning_needs_no_planned refuses the
+  // reverse order. Each rewrite carries its own story_update_activity.
+  if (patch.automatic_planning === true && !current.automatic_planning) {
+    for (const row of tx.tx
+      .select({ id: stories.id })
+      .from(stories)
+      .where(and(eq(stories.projectId, tx.projectId), eq(stories.currentState, "planned")))
+      .all()) {
+      tx.tx
+        .update(stories)
+        .set({ currentState: "unstarted", updatedAt: Date.now() })
+        .where(and(eq(stories.id, row.id), eq(stories.projectId, tx.projectId)))
+        .run();
+      recordActivity(tx, {
+        kind: "story_update_activity",
+        message: "unscheduled a planned story when automatic planning was turned on",
+        highlight: "edited",
+        changes: [
+          {
+            kind: "story",
+            id: row.id,
+            change_type: "update",
+            original_values: { current_state: "planned" },
+            new_values: { current_state: "unstarted" },
+          },
+        ],
+        primaryResources: [{ kind: "story", id: row.id }],
+      });
+    }
+  }
+  setField("automatic_planning", "automaticPlanning", current.automatic_planning);
+
+  // Only the calendar's origin renumbers iterations. iteration_length is itself an overridable
+  // per-iteration value, so changing the project default must not wipe the overrides.
+  const calendarMoved =
+    (patch.start_date !== undefined && patch.start_date !== current.start_date) ||
+    (patch.week_start_day !== undefined && patch.week_start_day !== current.week_start_day);
+
+  if (Object.keys(set).length === 0) return current;
+  try {
     tx.tx.update(projects).set(set as never).where(eq(projects.id, tx.projectId)).run();
-    recordActivity(tx, {
-      // PROVISIONAL (Task 7 owns the settings service): Tracker's own wording for a project
-      // update is not in the plan; these strings are placeholders it will replace.
-      kind: "project_update_activity",
-      message: "updated the project",
-      highlight: "updated",
-      changes: [{ kind: "project", id: tx.projectId, change_type: "update", new_values: newValues }],
-      primaryResources: [{ kind: "project", id: tx.projectId }],
-    });
+  } catch (e) {
+    asFieldError(e);
   }
+  if (calendarMoved) {
+    // core-model §2.3.4: moving the calendar recalculates every iteration, so the overrides
+    // attached to the old numbering no longer describe anything.
+    tx.tx.delete(iterationOverrides).where(eq(iterationOverrides.projectId, tx.projectId)).run();
+  }
+  recordActivity(tx, {
+    kind: "project_update_activity",
+    message: "edited this project",
+    highlight: "edited",
+    changes: [{ kind: "project", id: tx.projectId, change_type: "update", original_values: original, new_values: next }],
+    primaryResources: [{ kind: "project", id: tx.projectId }],
+  });
   return readProject(tx);
 }
 
-export function setArchived(tx: ProjectTx, archived: boolean): ProjectDetail {
+export function setArchived(tx: ProjectTx, archived: boolean): ProjectSettings {
   const archivedAt = archived ? Date.now() : null;
   tx.tx.update(projects).set({ archivedAt }).where(eq(projects.id, tx.projectId)).run();
   recordActivity(tx, {
-    // PROVISIONAL (Task 7 owns the settings service): placeholder copy, as above.
     kind: "project_update_activity",
-    message: archived ? "archived the project" : "unarchived the project",
+    message: archived ? "archived this project" : "unarchived this project",
     highlight: archived ? "archived" : "unarchived",
     changes: [{ kind: "project", id: tx.projectId, change_type: "update", new_values: { archived_at: archivedAt } }],
     primaryResources: [{ kind: "project", id: tx.projectId }],
@@ -204,6 +411,12 @@ export function setArchived(tx: ProjectTx, archived: boolean): ProjectDetail {
 }
 
 export function deleteProject(tx: ProjectTx): void {
-  // Members and activity rows all cascade from projects.id.
+  // Members and activity rows all cascade from projects.id. epics.label_id -> labels.id is
+  // ON DELETE RESTRICT (schema/labels.ts): SQLite does not order cascades across sibling
+  // tables, so a cascade that reaches labels before epics would trip that RESTRICT even though
+  // both rows are leaving in the same delete. Drop epics explicitly first to sidestep it. The
+  // same reasoning applies to reviews.review_type_id -> review_types.id, also RESTRICT.
+  tx.tx.delete(epics).where(eq(epics.projectId, tx.projectId)).run();
+  tx.tx.delete(reviews).where(eq(reviews.projectId, tx.projectId)).run();
   tx.tx.delete(projects).where(eq(projects.id, tx.projectId)).run();
 }

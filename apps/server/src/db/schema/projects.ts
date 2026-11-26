@@ -2,10 +2,13 @@ import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, primaryKey, index, check } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
 
-/** Tracker's three built-in scales; anything else makes point_scale_is_custom true on read.
- *  Linear (`0,1,2,3`) is the scale a new Tracker project starts on
- *  (corpus `articles/estimating_stories.md:13`). */
-export const BUILT_IN_POINT_SCALES = ["0,1,2,3", "0,1,2,4,8", "0,1,2,3,5,8"] as const;
+/**
+ * The built-in list lives in @storylane/core (packages/core/src/point-scale.ts) — re-exported
+ * here for callers that already import from the schema module. DEFAULT_POINT_SCALE stays local:
+ * drizzle-kit must see it as a literal to generate the column default.
+ */
+export { BUILT_IN_POINT_SCALES } from "@storylane/core";
+/** Linear is the scale a new Tracker project starts on (corpus `articles/estimating_stories.md:13`). */
 export const DEFAULT_POINT_SCALE = "0,1,2,3";
 
 export const projects = sqliteTable(

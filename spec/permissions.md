@@ -65,9 +65,12 @@ bookkeeping (`member:read` is 200 for viewers and must not carry it).
 ### Invariants the matrix cannot express
 
 - **Last owner.** The sole owner can never be demoted or removed:
-  `member:change-role` and `member:remove` answer `409 last_owner`.
-  `member:leave` is `403` for any owner instead — transfer ownership first.
-  `member:leave` is the actor removing their own membership.
+  `member:change-role` demoting the sole owner answers `409 last_owner`.
+  Removing yourself is `403`: `member:leave` is `403` for any owner, and
+  `member:remove` naming the actor's own id answers `403 forbidden`, so an owner
+  transfers ownership first and then leaves. `member:leave` is the actor removing
+  their own membership. Removing another owner implies at least two owners, so
+  `member:remove` never reaches `409 last_owner` through the API.
 - **Archived project.** With `projects.archived_at` set, `:read` actions are
   unaffected and every other action answers `409 project_archived` for every
   role, except `project:archive` (un-archive) and `project:delete`, which stay
@@ -81,7 +84,9 @@ bookkeeping (`member:read` is 200 for viewers and must not carry it).
   member deleting someone else's comment gets `403` from the service.
 - **Own follow.** `follower:write` is `200` for a viewer only for the
   viewer's own follow row; adding or removing somebody else's follow is
-  refused to a viewer by the service.
+  refused to a viewer by the service. Story owners are managed under
+  `story:write` instead — adding or removing an owner is a story edit, not a
+  follower action, so a viewer never reaches that route at all.
 - **Iteration override.** `iteration:override` is member-level by
   assumption: Tracker sets iteration length and team strength from the
   iteration header in the Current panel, which members use, not from the

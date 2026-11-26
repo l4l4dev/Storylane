@@ -83,7 +83,7 @@ describe("GET /api/projects/:id/events", () => {
     expect(bus.subscriberCount()).toBe(2);
 
     await app.request(`${ORIGIN}/api/projects/${projectId}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: json(owner),
       body: JSON.stringify({ name: "Ship it" }),
     });
@@ -94,17 +94,39 @@ describe("GET /api/projects/:id/events", () => {
     expect(changed[0]).toContain(projectId);
     expect(changed[0]).not.toContain(otherProjectId);
     // The version the change produced: a client may fetch activity?since_version= from here
-    // instead of refetching the whole project. createProject already recorded version 1.
-    expect(changed[0]).toContain('"version":2');
+    // instead of refetching the whole project. createProject already recorded version 2 (the
+    // seeded review types, then the project itself).
+    expect(changed[0]).toContain('"version":3');
     await theirs.body!.cancel();
+  });
+
+  it("publishes a version past the last one seen when the project is deleted", async () => {
+    const res = await app.request(`${ORIGIN}/api/projects/${projectId}/events`, { headers: as(owner) });
+
+    await app.request(`${ORIGIN}/api/projects/${projectId}`, {
+      method: "PUT",
+      headers: json(owner),
+      body: JSON.stringify({ name: "Ship it" }),
+    });
+    const deleted = await app.request(`${ORIGIN}/api/projects/${projectId}`, { method: "DELETE", headers: json(owner) });
+    expect(deleted.status).toBe(204);
+
+    const frames = await collectFrames(res, 300);
+    const versions = frames
+      .filter((f) => f.includes("project.changed"))
+      .map((f) => Number(/"version":(\d+)/.exec(f)![1]));
+    expect(versions).toHaveLength(2);
+    // The deleted project has no row left to bump, so the event still has to outrank the
+    // version the rename published, or a monotonic cursor discards the deletion.
+    expect(versions[1]).toBeGreaterThan(versions[0]!);
   });
 
   it("publishes nothing on a 400: an invalid body never reaches withProjectChange's publish call", async () => {
     const res = await app.request(`${ORIGIN}/api/projects/${projectId}/events`, { headers: as(owner) });
     const invalid = await app.request(`${ORIGIN}/api/projects/${projectId}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: json(owner),
-      body: JSON.stringify({ pointScale: "bogus" }),
+      body: JSON.stringify({ point_scale: "bogus" }),
     });
     expect(invalid.status).toBe(400);
     const frames = await collectFrames(res, 200);
@@ -123,7 +145,7 @@ describe("GET /api/projects/:id/events", () => {
 
     const res = await app.request(`${ORIGIN}/api/projects/${projectId}/events`, { headers: as(owner) });
     const conflicted = await app.request(`${ORIGIN}/api/projects/${projectId}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: json(owner),
       body: JSON.stringify({ name: "nope" }),
     });

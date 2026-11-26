@@ -7,12 +7,21 @@ import { loadConfig } from "../src/config";
 import { createLogger } from "../src/log";
 import { openDatabase, type Db } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
+import type { AttachmentStore } from "../src/attachments/store";
 import {
+  blockers,
+  comments,
+  epics,
+  fileAttachments,
   labels,
   projectMembers,
   projects,
+  reviews,
+  reviewTypes,
   stories,
+  tasks,
   users,
+  type ReviewStatus,
   type StoryList,
   type StoryState,
   type StoryType,
@@ -45,6 +54,12 @@ export function seedUser(db: Db, email: string, isAdmin = false): Actor {
 export function disableUser(db: Db, actor: Actor): void {
   if (actor.kind !== "user") throw new Error("expected a user actor");
   db.update(users).set({ disabledAt: Date.now() }).where(eq(users.id, actor.userId)).run();
+}
+
+/** Adds an already-seeded user to an already-seeded project, for tests that need a member after the fact. */
+export function seedMembership(db: Db, projectId: string, actor: Actor, role: "owner" | "member" | "viewer"): void {
+  if (actor.kind !== "user") throw new Error("actor must be a user");
+  db.insert(projectMembers).values({ projectId, userId: actor.userId, role, joinedAt: Date.now() }).run();
 }
 
 export function seedProject(db: Db, owner: Actor, others: Array<[Actor, "member" | "viewer"]> = []): string {
@@ -110,6 +125,147 @@ export function seedLabel(db: Db, projectId: string, name: string): string {
   return id;
 }
 
+/** Seeds an epic backed by its own fresh label (`${name} epic label`), never `name` itself. */
+export function seedEpic(db: Db, projectId: string, name: string): string {
+  const labelId = seedLabel(db, projectId, `${name} epic label`);
+  const next = db
+    .select({ n: sql<number>`coalesce(max(${epics.position}), -1) + 1` })
+    .from(epics)
+    .where(eq(epics.projectId, projectId))
+    .get();
+  const id = newId();
+  db.insert(epics)
+    .values({
+      id,
+      projectId,
+      name,
+      labelId,
+      position: next?.n ?? 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .run();
+  return id;
+}
+
+export function seedTask(db: Db, projectId: string, storyId: string, description: string): string {
+  const next = db
+    .select({ n: sql<number>`coalesce(max(${tasks.position}), -1) + 1` })
+    .from(tasks)
+    .where(and(eq(tasks.projectId, projectId), eq(tasks.storyId, storyId)))
+    .get();
+  const id = newId();
+  db.insert(tasks)
+    .values({
+      id,
+      projectId,
+      storyId,
+      description,
+      complete: false,
+      position: next?.n ?? 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .run();
+  return id;
+}
+
+/** Seeds a blocker row directly, bypassing #n resolution — free text is enough for the matrix. */
+export function seedBlocker(db: Db, projectId: string, storyId: string, author: Actor, description = "seeded blocker"): string {
+  if (author.kind !== "user") throw new Error("author must be a user");
+  const id = newId();
+  db.insert(blockers)
+    .values({
+      id,
+      projectId,
+      storyId,
+      blockingStoryId: null,
+      description,
+      resolved: false,
+      personId: author.userId,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .run();
+  return id;
+}
+
+/** Seeds a comment row directly, bypassing the role checks, so a viewer can own one for the matrix. */
+/** Seeds a review type row directly (not one of the four built-ins); seedProject does not seed those. */
+export function seedReviewType(db: Db, projectId: string, name = "Matrix review type seed"): string {
+  const next = db
+    .select({ n: sql<number>`coalesce(max(${reviewTypes.position}), -1) + 1` })
+    .from(reviewTypes)
+    .where(eq(reviewTypes.projectId, projectId))
+    .get();
+  const id = newId();
+  db.insert(reviewTypes)
+    .values({ id, projectId, name, hidden: false, position: next?.n ?? 0, createdAt: Date.now(), updatedAt: Date.now() })
+    .run();
+  return id;
+}
+
+export function seedReview(
+  db: Db,
+  projectId: string,
+  storyId: string,
+  reviewTypeId: string,
+  input: { reviewerId?: string | null; status?: ReviewStatus } = {},
+): string {
+  const id = newId();
+  db.insert(reviews)
+    .values({
+      id,
+      projectId,
+      storyId,
+      reviewTypeId,
+      reviewerId: input.reviewerId ?? null,
+      status: input.status ?? "unstarted",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .run();
+  return id;
+}
+
+export function seedComment(db: Db, projectId: string, storyId: string, author: Actor, text = "seeded comment"): string {
+  if (author.kind !== "user") throw new Error("author must be a user");
+  const id = newId();
+  db.insert(comments)
+    .values({ id, projectId, storyId, text, personId: author.userId, createdAt: Date.now(), updatedAt: Date.now() })
+    .run();
+  return id;
+}
+
+/** Seeds an attachment row plus its bytes, written through the store the app under test reads from. */
+export function seedAttachment(
+  db: Db,
+  store: AttachmentStore,
+  projectId: string,
+  commentId: string,
+  uploader: Actor,
+  input: { filename?: string; contentType?: string; bytes?: string } = {},
+): string {
+  if (uploader.kind !== "user") throw new Error("uploader must be a user");
+  const id = newId();
+  const bytes = new TextEncoder().encode(input.bytes ?? "seeded bytes");
+  const storagePath = store.put(projectId, id, bytes.buffer);
+  db.insert(fileAttachments)
+    .values({
+      id,
+      projectId,
+      commentId,
+      filename: input.filename ?? "seeded.txt",
+      contentType: input.contentType ?? "text/plain",
+      size: bytes.byteLength,
+      storagePath,
+      uploaderId: uploader.userId,
+      createdAt: Date.now(),
+    })
+    .run();
+  return id;
+}
+
 export function makeTestApp(
   db: Db,
   extra?: (app: Hono) => void,
@@ -121,6 +277,8 @@ export function makeTestApp(
     inviteLimiter?: RateLimiter;
     resetLimiter?: RateLimiter;
     adminLimiter?: RateLimiter;
+    /** Attachment bytes land here. Defaults to a never-created temp path, so no test writes to /data. */
+    dataDir?: string;
   },
 ): { app: Hono; lines: string[]; bus: EventBus } {
   const lines: string[] = [];
@@ -130,7 +288,10 @@ export function makeTestApp(
   // static-serving block stays off unless a test opts in via `opts.staticRoot`.
   const staticRoot = opts?.staticRoot ?? join(tmpdir(), `storylane-no-static-${crypto.randomUUID()}`);
   const app = createApp({
-    config: loadConfig({}),
+    config: {
+      ...loadConfig({}),
+      dataDir: opts?.dataDir ?? join(tmpdir(), `storylane-test-data-${crypto.randomUUID()}`),
+    },
     log: createLogger((l) => lines.push(l)),
     health: () => true,
     db,
