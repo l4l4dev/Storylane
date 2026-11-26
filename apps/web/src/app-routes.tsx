@@ -5,7 +5,7 @@ import { SetupPage } from "./pages/SetupPage";
 import { InviteAcceptPage } from "./pages/InviteAcceptPage";
 import { ResetPage } from "./pages/ResetPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
-import { BoardPage } from "./pages/BoardPage";
+import { ProjectPage } from "./pages/ProjectPage";
 import { Header } from "./components/Header";
 
 export function AppRoutes() {
@@ -22,7 +22,7 @@ export function AppRoutes() {
       {signedIn && <Header onSignedOut={session.refresh} />}
       <Switch>
         <Route path="/invite/:token">
-          {(params) => <InviteAcceptPage token={params.token!} onJoined={(id) => navigate(`/projects/${id}/board`)} />}
+          {(params) => <InviteAcceptPage token={params.token!} onJoined={(id) => navigate(`/projects/${id}`)} />}
         </Route>
         <Route path="/reset/:token">{(params) => <ResetPage token={params.token!} />}</Route>
         {session.setupRequired ? (
@@ -31,8 +31,8 @@ export function AppRoutes() {
           </Route>
         ) : session.me ? (
           <>
-            <Route path="/projects/:id/board">{(params) => <BoardPage projectId={params.id!} />}</Route>
-            <Route path="/">{() => <ProjectsPage onOpen={(id) => navigate(`/projects/${id}/board`)} />}</Route>
+            <Route path="/projects/:id">{(params) => <ProjectPage projectId={params.id!} />}</Route>
+            <Route path="/">{() => <ProjectsPage onOpen={(id) => navigate(`/projects/${id}`)} />}</Route>
             {/* Any other URL for a signed-in user (e.g. /login or /setup, reached via back/forward
                 or a stale link like the post-reset "/login?reset=1") must not fall through to
                 `Switch` rendering nothing — send them to the shell instead, so the URL bar stays

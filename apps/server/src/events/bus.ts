@@ -1,6 +1,8 @@
 export interface ProjectChanged {
   type: "project.changed";
   projectId: string;
+  /** projects.version after the change: a client may fetch activity?since_version= instead of refetching. */
+  version: number;
 }
 
 type Listener = (event: ProjectChanged) => void;
@@ -24,8 +26,8 @@ export class EventBus {
     };
   }
 
-  publish(projectId: string): void {
-    const event: ProjectChanged = { type: "project.changed", projectId };
+  publish(projectId: string, version: number): void {
+    const event: ProjectChanged = { type: "project.changed", projectId, version };
     for (const listener of [...(this.#listeners.get(projectId) ?? [])]) {
       // One broken stream must not stop the others; the writer's own error handling closes it.
       try {

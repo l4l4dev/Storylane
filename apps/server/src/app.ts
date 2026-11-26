@@ -8,8 +8,8 @@ import { HttpError } from "./http-error";
 import { requestLogger, type Logger } from "./log";
 import { healthzRoute } from "./routes/healthz";
 import { projectRoutes } from "./routes/projects";
-import { storyRoutes } from "./routes/stories";
 import { eventRoutes } from "./routes/events";
+import { activityRoutes } from "./routes/activity";
 import { failClosed } from "./authz/middleware";
 import { EventBus } from "./events/bus";
 import { authRoutes } from "./routes/auth";
@@ -128,11 +128,11 @@ export function createApp(deps: AppDeps): Hono {
     }),
   );
   app.route("/", projectRoutes({ db: deps.db, bus, actorOf }));
+  app.route("/", activityRoutes({ db: deps.db, actorOf }));
   app.route(
     "/",
     inviteRoutes({ db: deps.db, bus, config: deps.config, actorOf, ...(deps.inviteLimiter ? { limiter: deps.inviteLimiter } : {}) }),
   );
-  app.route("/", storyRoutes({ db: deps.db, bus, actorOf }));
   app.route(
     "/",
     eventRoutes({

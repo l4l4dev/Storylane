@@ -46,6 +46,23 @@ describe("migrations", () => {
     expect(lines.filter((l) => l.includes("pre-migration backup exists, keeping it"))).toHaveLength(1);
     db.$client.close();
   });
+  it("creates every step-1 table in one migration", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db);
+    const tables = (db.$client.query("select name from sqlite_master where type='table'").all() as { name: string }[])
+      .map((t) => t.name);
+    for (const name of [
+      "users", "sessions", "invites", "reset_tokens", "instance_meta",
+      "projects", "project_members", "stories", "story_owners", "story_followers",
+      "labels", "story_labels", "epics", "tasks", "comments", "file_attachments",
+      "blockers", "review_types", "reviews", "iteration_overrides", "activities", "activity_resources",
+    ]) {
+      expect(tables).toContain(name);
+    }
+    const journal = (db.$client.query("select count(*) as n from __drizzle_migrations").get() as { n: number }).n;
+    expect(journal).toBe(1);
+    db.$client.close();
+  });
   it("skips the backup for :memory:", () => {
     const db = openDatabase(":memory:");
     expect(() => backupThenMigrate(db, { dataDir: "/nonexistent", version: "0.1.0", log: silent })).not.toThrow();

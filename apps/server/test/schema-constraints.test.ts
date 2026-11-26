@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { makeTestDb, seedProject, seedState, seedStory, seedUser } from "./harness";
+import { makeTestDb, seedLabel, seedProject, seedStory, seedUser } from "./harness";
 import { newId } from "../src/id";
-import { POINT_SCALES } from "../src/db/schema";
 import type { Db } from "../src/db/client";
 import type { Actor } from "../src/db/tx";
 
@@ -18,108 +17,6 @@ beforeEach(() => {
 });
 
 const run = (sql: string, params: unknown[] = []) => db.$client.run(sql, params as never);
-
-describe("project_states", () => {
-  it("rejects an unknown category", () => {
-    expect(() =>
-      run("insert into project_states (id, project_id, name, category, position, created_at) values (?,?,?,?,?,?)", [
-        newId(), projectId, "Weird", "wat", 0, Date.now(),
-      ]),
-    ).toThrow(/CHECK constraint failed/);
-  });
-
-  it("rejects two states at the same position in one project", () => {
-    seedState(db, projectId, { name: "A", category: "unstarted", position: 0 });
-    expect(() => seedState(db, projectId, { name: "B", category: "done", position: 0 })).toThrow(/UNIQUE/);
-  });
-
-  it("allows the same position in a different project", () => {
-    seedState(db, projectId, { name: "A", category: "unstarted", position: 0 });
-    expect(() => seedState(db, otherProjectId, { name: "A", category: "unstarted", position: 0 })).not.toThrow();
-  });
-
-  it("refuses to change a state's category (guard trigger)", () => {
-    const stateId = seedState(db, projectId, { name: "A", category: "unstarted", position: 0 });
-    expect(() => run("update project_states set category = 'done' where id = ?", [stateId])).toThrow(
-      /project_states.category is immutable/,
-    );
-  });
-
-  it("allows renaming a state and changing its action label", () => {
-    const stateId = seedState(db, projectId, { name: "A", category: "unstarted", position: 0 });
-    expect(() =>
-      run("update project_states set name = 'Ready', action_label = 'Start' where id = ?", [stateId]),
-    ).not.toThrow();
-  });
-});
-
-describe("stories", () => {
-  it("rejects a second story with the same number in one project", () => {
-    seedStory(db, projectId, { title: "one" });
-    expect(() =>
-      run(
-        "insert into stories (id, project_id, number, title, story_type, position, created_by, created_at, updated_at) values (?,?,?,?,?,?,?,?,?)",
-        [newId(), projectId, 1, "dup", "feature", 5, (owner as { userId: string }).userId, Date.now(), Date.now()],
-      ),
-    ).toThrow(/UNIQUE/);
-  });
-
-  it("refuses to change a story's number (guard trigger)", () => {
-    const storyId = seedStory(db, projectId, { title: "one" });
-    expect(() => run("update stories set number = 42 where id = ?", [storyId])).toThrow(
-      /stories.number is pinned/,
-    );
-  });
-
-  it("refuses a state from another project (composite FK)", () => {
-    const foreignState = seedState(db, otherProjectId, { name: "A", category: "unstarted", position: 0 });
-    expect(() => seedStory(db, projectId, { stateId: foreignState })).toThrow(/FOREIGN KEY/);
-  });
-
-  it("refuses to delete a state while a story points at it (ON DELETE RESTRICT)", () => {
-    const stateId = seedState(db, projectId, { name: "A", category: "unstarted", position: 0 });
-    seedStory(db, projectId, { stateId });
-    expect(() => run("delete from project_states where id = ?", [stateId])).toThrow(/FOREIGN KEY/);
-  });
-
-  it("rejects a negative point value and an unknown story type", () => {
-    expect(() => seedStory(db, projectId, { points: -1 })).toThrow(/CHECK constraint failed/);
-    expect(() => seedStory(db, projectId, { storyType: "epic" as never })).toThrow(/CHECK constraint failed/);
-  });
-
-  it("deletes its stories and states when the project goes (cascade)", () => {
-    const stateId = seedState(db, projectId, { name: "A", category: "unstarted", position: 0 });
-    seedStory(db, projectId, { stateId });
-    run("delete from stories where project_id = ?", [projectId]);
-    run("delete from projects where id = ?", [projectId]);
-    expect(db.$client.query("select count(*) as c from project_states").get()).toEqual({ c: 0 });
-  });
-});
-
-describe("activity_logs story guard", () => {
-  it("rejects a story_id that belongs to another project (trigger)", () => {
-    const foreign = seedStory(db, otherProjectId, { title: "elsewhere" });
-    expect(() =>
-      run("insert into activity_logs (id, project_id, story_id, action, created_at) values (?,?,?,?,?)", [
-        newId(), projectId, foreign, "story.updated", Date.now(),
-      ]),
-    ).toThrow(/activity_logs.story_id must belong to the same project/);
-  });
-
-  it("accepts a story_id in the same project and a null story_id", () => {
-    const own = seedStory(db, projectId, { title: "mine" });
-    expect(() =>
-      run("insert into activity_logs (id, project_id, story_id, action, created_at) values (?,?,?,?,?)", [
-        newId(), projectId, own, "story.updated", Date.now(),
-      ]),
-    ).not.toThrow();
-    expect(() =>
-      run("insert into activity_logs (id, project_id, story_id, action, created_at) values (?,?,?,?,?)", [
-        newId(), projectId, null, "project.updated", Date.now(),
-      ]),
-    ).not.toThrow();
-  });
-});
 
 describe("sessions, invites, reset_tokens", () => {
   it("keeps session ids unique and cascades on user delete", () => {
@@ -162,74 +59,257 @@ describe("sessions, invites, reset_tokens", () => {
   });
 });
 
-describe("guard triggers", () => {
-  it("installs every guard trigger", () => {
-    const rows = db.$client
-      .query("select name from sqlite_master where type = 'trigger' order by name")
-      .all() as { name: string }[];
-    expect(rows.map((r) => r.name)).toEqual([
-      "activity_logs_story_in_project_insert",
-      "activity_logs_story_in_project_update",
-      "project_states_category_immutable",
-      "projects_point_scale_valid_insert",
-      "projects_point_scale_valid_update",
-      "stories_number_pinned",
-      "stories_unassign_on_member_removal",
-    ]);
-  });
-});
-
-describe("projects.point_scale", () => {
-  const insertProject = (scale: string) =>
-    run("insert into projects (id, name, point_scale, created_by, created_at) values (?,?,?,?,?)", [
-      newId(), "P", scale, (owner as { userId: string }).userId, Date.now(),
-    ]);
-
-  it("rejects an unknown point scale", () => {
-    expect(() => insertProject("bogus")).toThrow(/projects.point_scale must be one of/);
+describe("projects", () => {
+  it("rejects a start date that is not the week start day", () => {
+    expect(() =>
+      run("update projects set start_date = '2026-09-15' where id = ?", [projectId]),
+    ).toThrow(/start_date must fall on week_start_day/);
   });
 
-  it("accepts every scale in POINT_SCALES", () => {
-    for (const scale of POINT_SCALES) expect(() => insertProject(scale)).not.toThrow();
+  it("accepts a start date on the configured week start day", () => {
+    expect(() =>
+      run("update projects set start_date = '2026-09-13', week_start_day = 7 where id = ?", [projectId]),
+    ).not.toThrow();
   });
 
-  it("refuses to update a project onto an unknown point scale", () => {
-    expect(() => run("update projects set point_scale = 'bogus' where id = ?", [projectId])).toThrow(
-      /projects.point_scale must be one of/,
+  it("rejects an iteration length outside 1-4", () => {
+    expect(() => run("update projects set iteration_length = 5 where id = ?", [projectId])).toThrow(
+      /CHECK constraint failed/,
+    );
+  });
+
+  it("rejects a velocity strategy outside 1-4", () => {
+    expect(() => run("update projects set velocity_averaged_over = 0 where id = ?", [projectId])).toThrow(
+      /CHECK constraint failed/,
+    );
+  });
+
+  it("refuses to turn bug and chore estimation back off", () => {
+    run("update projects set bugs_and_chores_are_estimatable = 1 where id = ?", [projectId]);
+    expect(() =>
+      run("update projects set bugs_and_chores_are_estimatable = 0 where id = ?", [projectId]),
+    ).toThrow(/cannot be turned off again/);
+  });
+
+  it("refuses to re-enable automatic planning while a planned story exists", () => {
+    run("update projects set automatic_planning = 0 where id = ?", [projectId]);
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    run("update stories set current_state = 'planned' where id = ?", [id]);
+    expect(() => run("update projects set automatic_planning = 1 where id = ?", [projectId])).toThrow(
+      /leaves no planned story behind/,
     );
   });
 });
 
-describe("stories.assignee_id", () => {
-  const assign = (storyId: string, userId: string | null) =>
-    run("update stories set assignee_id = ? where id = ?", [userId, storyId]);
+describe("stories", () => {
+  it("rejects a second story with the same number in one project", () => {
+    seedStory(db, projectId);
+    expect(() =>
+      run(
+        "insert into stories (id, project_id, number, name, story_type, current_state, list, position, created_at, updated_at) values (?,?,?,?,?,?,?,?,?,?)",
+        [newId(), projectId, 1, "dup", "feature", "unscheduled", "icebox", 99, Date.now(), Date.now()],
+      ),
+    ).toThrow(/UNIQUE/);
+  });
 
-  it("refuses an assignee who is not a member of the story's project", () => {
+  it("rejects two stories at the same position in one list", () => {
+    seedStory(db, projectId, { position: 1024 });
+    expect(() => seedStory(db, projectId, { position: 1024 })).toThrow(/UNIQUE/);
+  });
+
+  it("allows the same position in the other list", () => {
+    seedStory(db, projectId, { list: "icebox", position: 1024 });
+    expect(() => seedStory(db, projectId, { list: "backlog", position: 1024 })).not.toThrow();
+  });
+
+  it("rejects an unknown state", () => {
+    // list "backlog": an icebox insert would trip stories_icebox_is_unscheduled_insert first,
+    // since SQLite runs BEFORE triggers ahead of CHECK evaluation.
+    expect(() => seedStory(db, projectId, { list: "backlog", currentState: "done" as never })).toThrow(
+      /CHECK constraint failed/,
+    );
+  });
+
+  it("refuses to renumber a story", () => {
+    const id = seedStory(db, projectId);
+    expect(() => run("update stories set number = 42 where id = ?", [id])).toThrow(/number is pinned/);
+  });
+
+  it("refuses to move a story to another project", () => {
+    const id = seedStory(db, projectId);
+    expect(() => run("update stories set project_id = ? where id = ?", [otherProjectId, id])).toThrow(
+      /number is pinned/,
+    );
+  });
+
+  it("keeps unscheduled and the icebox in agreement", () => {
+    const id = seedStory(db, projectId, { list: "icebox" });
+    expect(() => run("update stories set list = 'backlog' where id = ?", [id])).toThrow(
+      /unscheduled is exactly the icebox list/,
+    );
+  });
+
+  it("refuses a started release and a finished chore", () => {
+    const release = seedStory(db, projectId, { list: "backlog", storyType: "release", currentState: "unstarted" });
+    expect(() => run("update stories set current_state = 'started' where id = ?", [release])).toThrow(
+      /a release goes unstarted -> finished -> accepted/,
+    );
+    const chore = seedStory(db, projectId, { list: "backlog", storyType: "chore", currentState: "started" });
+    expect(() => run("update stories set current_state = 'finished' where id = ?", [chore])).toThrow(
+      /a chore unstarted -> started -> accepted/,
+    );
+  });
+
+  it("refuses to deliver a release or a chore", () => {
+    const release = seedStory(db, projectId, { list: "backlog", storyType: "release", currentState: "unstarted" });
+    expect(() => run("update stories set current_state = 'delivered' where id = ?", [release])).toThrow(
+      /a release goes unstarted -> finished -> accepted/,
+    );
+    const chore = seedStory(db, projectId, { list: "backlog", storyType: "chore", currentState: "started" });
+    expect(() => run("update stories set current_state = 'delivered' where id = ?", [chore])).toThrow(
+      /a chore unstarted -> started -> accepted/,
+    );
+  });
+
+  it("refuses to estimate a release", () => {
+    const release = seedStory(db, projectId, { list: "backlog", storyType: "release", currentState: "unstarted" });
+    expect(() => run("update stories set estimate = 2 where id = ?", [release])).toThrow(
+      /a release is never estimated/,
+    );
+  });
+
+  it("refuses to start an unestimated feature but allows an unestimated chore", () => {
+    const feature = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    expect(() => run("update stories set current_state = 'started' where id = ?", [feature])).toThrow(
+      /must be estimated before it starts/,
+    );
+    const chore = seedStory(db, projectId, { list: "backlog", storyType: "chore", currentState: "unstarted" });
+    expect(() => run("update stories set current_state = 'started' where id = ?", [chore])).not.toThrow();
+  });
+
+  it("gates bugs and chores once the project enables their estimation", () => {
+    run("update projects set bugs_and_chores_are_estimatable = 1 where id = ?", [projectId]);
+    const bug = seedStory(db, projectId, { list: "backlog", storyType: "bug", currentState: "unstarted" });
+    expect(() => run("update stories set current_state = 'started' where id = ?", [bug])).toThrow(
+      /must be estimated before it starts/,
+    );
+  });
+
+  it("ties accepted_at to the accepted state in both directions", () => {
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "delivered", estimate: 1 });
+    expect(() => run("update stories set current_state = 'accepted' where id = ?", [id])).toThrow(
+      /accepted_at is set exactly while/,
+    );
+    expect(() =>
+      run("update stories set current_state = 'accepted', accepted_at = ? where id = ?", [Date.now(), id]),
+    ).not.toThrow();
+  });
+
+  it("refuses planned while automatic planning is on, and allows it once off", () => {
+    const id = seedStory(db, projectId, { list: "backlog", currentState: "unstarted" });
+    expect(() => run("update stories set current_state = 'planned' where id = ?", [id])).toThrow(
+      /planned exists only under manual planning/,
+    );
+    run("update projects set automatic_planning = 0 where id = ?", [projectId]);
+    expect(() => run("update stories set current_state = 'planned' where id = ?", [id])).not.toThrow();
+  });
+
+  it("refuses a deadline on a non-release story", () => {
+    const id = seedStory(db, projectId);
+    expect(() => run("update stories set deadline = ? where id = ?", [Date.now(), id])).toThrow(
+      /deadline belongs to release stories only/,
+    );
+  });
+});
+
+describe("cross-project composite keys", () => {
+  it("refuses to label a story with another project's label", () => {
+    const storyId = seedStory(db, projectId);
+    const foreignLabel = seedLabel(db, otherProjectId, "elsewhere");
+    expect(() =>
+      run("insert into story_labels (project_id, story_id, label_id, added_at) values (?,?,?,?)", [
+        projectId, storyId, foreignLabel, Date.now(),
+      ]),
+    ).toThrow(/FOREIGN KEY constraint failed/);
+  });
+
+  it("refuses an owner who is not a member of the story's project", () => {
+    const storyId = seedStory(db, projectId);
     const outsider = seedUser(db, "outsider@example.test") as { userId: string };
-    const storyId = seedStory(db, projectId, { title: "one" });
-    expect(() => assign(storyId, outsider.userId)).toThrow(/FOREIGN KEY/);
+    expect(() =>
+      run("insert into story_owners (project_id, story_id, user_id, added_at) values (?,?,?,?)", [
+        projectId, storyId, outsider.userId, Date.now(),
+      ]),
+    ).toThrow(/FOREIGN KEY constraint failed/);
   });
 
-  it("accepts an assignee who is a member", () => {
+  it("drops owners and follows when a membership is removed", () => {
     const member = seedUser(db, "member@example.test") as { userId: string };
-    const withMember = seedProject(db, owner, [[{ kind: "user", userId: member.userId, isAdmin: false }, "member"]]);
-    const storyId = seedStory(db, withMember, { title: "one" });
-    expect(() => assign(storyId, member.userId)).not.toThrow();
+    run("insert into project_members (project_id, user_id, role, favorite, joined_at) values (?,?,?,?,?)", [
+      projectId, member.userId, "member", 0, Date.now(),
+    ]);
+    const storyId = seedStory(db, projectId);
+    run("insert into story_owners (project_id, story_id, user_id, added_at) values (?,?,?,?)", [
+      projectId, storyId, member.userId, Date.now(),
+    ]);
+    run("delete from project_members where project_id = ? and user_id = ?", [projectId, member.userId]);
+    const left = db.$client.query("select count(*) as n from story_owners").get() as { n: number };
+    expect(left.n).toBe(0);
+  });
+});
+
+describe("blockers", () => {
+  it("unlinks and resolves a blocker when the story it names is deleted", () => {
+    const blocked = seedStory(db, projectId);
+    const blocking = seedStory(db, projectId);
+    const blockerId = newId();
+    const reporter = seedUser(db, "blocker-reporter@example.test") as { userId: string };
+    run(
+      "insert into blockers (id, project_id, story_id, blocking_story_id, description, resolved, person_id, created_at, updated_at) values (?,?,?,?,?,?,?,?,?)",
+      [blockerId, projectId, blocked, blocking, "waiting", 0, reporter.userId, Date.now(), Date.now()],
+    );
+    run("delete from stories where id = ?", [blocking]);
+    const row = db.$client
+      .query("select blocking_story_id as b, resolved as r from blockers where id = ?")
+      .get(blockerId) as { b: string | null; r: number };
+    expect(row.b).toBeNull();
+    expect(row.r).toBe(1);
+  });
+});
+
+describe("iteration_overrides", () => {
+  it("rejects an override length outside 1-99", () => {
+    expect(() =>
+      run("insert into iteration_overrides (project_id, number, length, team_strength, created_at, updated_at) values (?,?,?,?,?,?)", [
+        projectId, 3, 100, 1, Date.now(), Date.now(),
+      ]),
+    ).toThrow(/CHECK constraint failed/);
   });
 
-  it("unassigns only that project's stories when the membership row goes", () => {
-    const member = seedUser(db, "leaver@example.test") as { userId: string };
-    const actor = { kind: "user", userId: member.userId, isAdmin: false } as const;
-    const a = seedProject(db, owner, [[actor, "member"]]);
-    const b = seedProject(db, owner, [[actor, "member"]]);
-    const inA = seedStory(db, a, { title: "in a" });
-    const inB = seedStory(db, b, { title: "in b" });
-    assign(inA, member.userId);
-    assign(inB, member.userId);
-    run("delete from project_members where project_id = ? and user_id = ?", [a, member.userId]);
-    const assigneeOf = (id: string) =>
-      (db.$client.query("select assignee_id as a from stories where id = ?").get(id) as { a: string | null }).a;
-    expect(assigneeOf(inA)).toBeNull();
-    expect(assigneeOf(inB)).toBe(member.userId);
+  it("keeps one override row per (project, number)", () => {
+    const row = [projectId, 3, 2, 1, Date.now(), Date.now()];
+    run("insert into iteration_overrides (project_id, number, length, team_strength, created_at, updated_at) values (?,?,?,?,?,?)", row);
+    expect(() =>
+      run("insert into iteration_overrides (project_id, number, length, team_strength, created_at, updated_at) values (?,?,?,?,?,?)", row),
+    ).toThrow(/UNIQUE/);
+  });
+});
+
+describe("activities", () => {
+  it("keeps project_version unique within a project", () => {
+    const values = (id: string) => [id, projectId, 7, "story_create_activity", "m", "h", "[]", "[]", Date.now()];
+    const insert =
+      "insert into activities (id, project_id, project_version, kind, message, highlight, changes, primary_resources, occurred_at) values (?,?,?,?,?,?,?,?,?)";
+    run(insert, values(newId()));
+    expect(() => run(insert, values(newId()))).toThrow(/UNIQUE/);
+  });
+
+  it("refuses a kind that is not a Tracker activity name", () => {
+    expect(() =>
+      run(
+        "insert into activities (id, project_id, project_version, kind, message, highlight, changes, primary_resources, occurred_at) values (?,?,?,?,?,?,?,?,?)",
+        [newId(), projectId, 8, "story_create", "m", "h", "[]", "[]", Date.now()],
+      ),
+    ).toThrow(/CHECK constraint failed/);
   });
 });

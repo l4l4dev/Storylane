@@ -67,8 +67,12 @@ export function eventRoutes(
         wake();
       };
 
-      const unsubscribe = deps.bus.subscribe(authorizedId, () => {
+      // The coalesced frame carries the newest version seen, so a client that reconnects can
+      // ask for activity?since_version= from there.
+      let lastVersion = 0;
+      const unsubscribe = deps.bus.subscribe(authorizedId, (event) => {
         pending += 1;
+        lastVersion = event.version;
         wake();
       });
       stream.onAbort(finish);
@@ -85,7 +89,7 @@ export function eventRoutes(
             pending = 0;
             await stream.writeSSE({
               event: "project.changed",
-              data: JSON.stringify({ type: "project.changed", projectId: authorizedId }),
+              data: JSON.stringify({ type: "project.changed", projectId: authorizedId, version: lastVersion }),
             });
             continue;
           }

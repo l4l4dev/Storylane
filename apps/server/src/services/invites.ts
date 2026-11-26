@@ -28,10 +28,12 @@ export interface InvitePreview {
   role: MemberRole;
 }
 
-/** `acceptInvite`'s internal result: `changed` tells the route whether to publish. */
+/** `acceptInvite`'s internal result: `changed` tells the route whether to publish, and
+ *  `projectVersion` is the number that publish carries. */
 interface AcceptResult extends InvitePreview {
   /** False when the caller was already a member and nothing was written. */
   changed: boolean;
+  projectVersion: number;
 }
 
 const ROW = {
@@ -63,7 +65,15 @@ export function mintInvite(tx: ProjectTx, input: { role: InviteRole; now?: numbe
       expiresAt: now + INVITE_TTL_MS,
     })
     .run();
-  recordActivity(tx, { action: "member.invited", payload: { role: input.role } });
+  recordActivity(tx, {
+    // PROVISIONAL (Task 7 owns the settings service): placeholder activity copy — Tracker's own
+    // wording for membership actions is not specified in the plan.
+    kind: "project_membership_create_activity",
+    message: `invited a ${input.role}`,
+    highlight: "invited",
+    changes: [{ kind: "project_membership", id, change_type: "create", new_values: { role: input.role } }],
+    primaryResources: [{ kind: "project_membership", id }],
+  });
   const invite = tx.tx
     .select(ROW)
     .from(invites)
@@ -85,7 +95,14 @@ export function revokeInvite(tx: ProjectTx, inviteId: string, now = Date.now()):
   loadInProject(tx, invites, inviteId);
   const scoped = and(eq(invites.id, inviteId), eq(invites.projectId, tx.projectId));
   tx.tx.update(invites).set({ revokedAt: now }).where(scoped).run();
-  recordActivity(tx, { action: "member.invite_revoked" });
+  recordActivity(tx, {
+    // PROVISIONAL (Task 7 owns the settings service): placeholder activity copy, as above.
+    kind: "project_membership_delete_activity",
+    message: "revoked an invitation",
+    highlight: "revoked",
+    changes: [{ kind: "project_membership", id: inviteId, change_type: "delete" }],
+    primaryResources: [{ kind: "project_membership", id: inviteId }],
+  });
   return tx.tx.select(ROW).from(invites).where(scoped).get() as InviteRow;
 }
 
@@ -150,20 +167,38 @@ export function acceptInvite(db: Db, token: string, actor: UserActor, now = Date
         .where(and(eq(projectMembers.projectId, row.projectId), eq(projectMembers.userId, actor.userId)))
         .get();
       const role = (existing?.role ?? row.role) as MemberRole;
+      let recordedVersion = 0;
       if (!existing) {
         tx.insert(projectMembers)
           .values({ projectId: row.projectId, userId: actor.userId, role: row.role, joinedAt: now })
           .run();
-        recordActivity(bootstrapScope(tx, row.projectId, actor), {
-          action: "member.joined",
-          payload: { role: row.role, via: "invite" },
-        });
+        recordedVersion = recordActivity(bootstrapScope(tx, row.projectId, actor), {
+          // PROVISIONAL (Task 7 owns the settings service): placeholder activity copy, as above.
+          kind: "project_membership_create_activity",
+          message: `joined as a ${row.role}`,
+          highlight: "joined",
+          changes: [
+            {
+              kind: "project_membership",
+              id: actor.userId,
+              change_type: "create",
+              new_values: { role: row.role, via: "invite" },
+            },
+          ],
+          primaryResources: [{ kind: "project_membership", id: actor.userId }],
+        }).projectVersion;
         // Only a join that actually changed membership consumes the invite: an already-member
         // accepting a leaked link must not be able to burn the token for the person it was
         // meant for.
         tx.update(invites).set({ acceptedAt: now, acceptedBy: actor.userId }).where(eq(invites.id, row.id)).run();
       }
-      return { projectId: row.projectId, projectName: row.projectName, role, changed: !existing };
+      return {
+        projectId: row.projectId,
+        projectName: row.projectName,
+        role,
+        changed: !existing,
+        projectVersion: recordedVersion,
+      };
     },
     { behavior: "immediate" },
   );
@@ -188,7 +223,7 @@ export function registerAndAcceptInvite(
   token: string,
   user: { email: string; displayName: string; passwordHash: string },
   now = Date.now(),
-): { userId: string; preview: InvitePreview } {
+): { userId: string; preview: InvitePreview; projectVersion: number } {
   assertNoOpenTransaction("registerAndAcceptInvite");
   return db.transaction(
     (tx) => {
@@ -218,12 +253,22 @@ export function registerAndAcceptInvite(
       tx.insert(projectMembers)
         .values({ projectId: row.projectId, userId, role: row.role, joinedAt: now })
         .run();
-      recordActivity(bootstrapScope(tx, row.projectId, actor), {
-        action: "member.joined",
-        payload: { role: row.role, via: "invite" },
+      const { projectVersion } = recordActivity(bootstrapScope(tx, row.projectId, actor), {
+        // PROVISIONAL (Task 7 owns the settings service): placeholder activity copy, as above.
+        kind: "project_membership_create_activity",
+        message: `joined as a ${row.role}`,
+        highlight: "joined",
+        changes: [
+          { kind: "project_membership", id: userId, change_type: "create", new_values: { role: row.role, via: "invite" } },
+        ],
+        primaryResources: [{ kind: "project_membership", id: userId }],
       });
       tx.update(invites).set({ acceptedAt: now, acceptedBy: userId }).where(eq(invites.id, row.id)).run();
-      return { userId, preview: { projectId: row.projectId, projectName: row.projectName, role: row.role as MemberRole } };
+      return {
+        userId,
+        preview: { projectId: row.projectId, projectName: row.projectName, role: row.role as MemberRole },
+        projectVersion,
+      };
     },
     { behavior: "immediate" },
   );
